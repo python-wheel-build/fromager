@@ -13,6 +13,7 @@ trap delete_venv_on_exit EXIT
 setup() {
   $PYTHON -m venv $VENV
   . ./$VENV/bin/activate
+  pip install -U pip
   export SITE_PKGS_DIR=$VENV/lib/$PYTHON/site-packages
 }
 
