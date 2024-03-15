@@ -8,19 +8,18 @@ BUILD_REQUIRES=
 ret_BUILD_REQUIRES=
 tmp_unpack_dir=
 
-delete_venv_on_exit() {
+on_exit() {
   [ $BUILD_REQUIRES ] && rm -f $BUILD_REQUIRES
   [ $ret_BUILD_REQUIRES ] && rm -f $ret_BUILD_REQUIRES
   [ $tmp_unpack_dir ] && rm -rf $tmp_unpack_dir
   rm -rf $VENV/
 }
-trap delete_venv_on_exit EXIT
+trap on_exit EXIT
 
 setup() {
   $PYTHON -m venv $VENV
   . ./$VENV/bin/activate
   pip install -U pip
-  export SITE_PKGS_DIR=$VENV/lib/$PYTHON/site-packages
 }
 
 setup
