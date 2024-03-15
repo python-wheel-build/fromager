@@ -57,10 +57,8 @@ build_wheel() {
   # FIXME: --no-cache-dir should be sufficient, but I don't trust it yet!
   rm -rf ~/.cache/pip
 
-  # Note this is going to download build dependencies and build wheels, etc.
-  # none of which we want happening at this stage
   # FIXME: this sdist should be downloaded in advance, outside of this script
-  local sdist=$(pip download --no-binary :all: $pkg | grep Saved | cut -d ' ' -f 2-)
+  local sdist=$(pip download --no-deps --no-binary :all: "${pkg}" | grep Saved | cut -d ' ' -f 2-)
 
   pip -vvv --disable-pip-version-check wheel --index-url http://localhost:8000/simple ${sdist}
 
