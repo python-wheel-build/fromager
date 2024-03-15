@@ -6,6 +6,10 @@ set -xe
 logfile=".mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
 exec > >(tee "$logfile") 2>&1
 
+TOPLEVEL="hatchling"
+#TOPLEVEL="frozenlist"
+#TOPLEVEL="langchain"
+
 VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
 PYTHON=python3.9
 BUILD_REQUIRES=
@@ -31,7 +35,8 @@ setup
 pip install -U python-pypi-mirror toml pyproject_hooks
 
 rm -rf downloads/ simple/
-pypi-mirror download -d downloads/ langchain
+pypi-mirror download -d downloads/ "${TOPLEVEL}"
+
 
 # cmake needed, otherwise:
 # Building wheels for collected packages: patchelf, ninja
@@ -67,22 +72,35 @@ collect_build_requires() {
     pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
 
     tmp_build_requires=$(mktemp --tmpdir=. build-requires-XXXX.txt)
-    $PYTHON extract-build-requires.py < $pyproject_toml >> $tmp_build_requires
+    $PYTHON extract-build-requires.py < $pyproject_toml > $tmp_build_requires
+    cat $tmp_build_requires >> $ret_BUILD_REQUIRES
+    while read -r req; do add_to_build_order "build_system" "${req}"; done < $tmp_build_requires
 
     # Build backend hooks usually may build requires installed
     pip install -U -r $tmp_build_requires
-    cat $tmp_build_requires >> $ret_BUILD_REQUIRES
-    rm -f $tmp_build_requires
 
     extract_script=$(pwd)/extract-build-requires.py
+    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --backend < pyproject.toml) > $tmp_build_requires
+    cat $tmp_build_requires >> $ret_BUILD_REQUIRES
+    while read -r req; do add_to_build_order "backend_build_wheel" "${req}"; done < $tmp_build_requires
 
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --backend < pyproject.toml) >> $ret_BUILD_REQUIRES
-
+    rm -f $tmp_build_requires
     rm -rf $tmp_unpack_dir; tmp_unpack_dir=
   done
   [ $BUILD_REQUIRES ] && rm -f $BUILD_REQUIRES
   BUILD_REQUIRES=$ret_BUILD_REQUIRES; ret_BUILD_REQUIRES=
 }
+
+BUILD_ORDER_COMMA=""
+add_to_build_order() {
+  type="$1"; shift
+  req="$1"; shift
+  echo -n "${BUILD_ORDER_COMMA}{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\"}" >> build-order.json
+  BUILD_ORDER_COMMA=","
+}
+echo -n "[" > build-order.json
+
+add_to_build_order "toplevel" "${TOPLEVEL}"
 
 collect_build_requires
 while true; do
@@ -94,6 +112,8 @@ while true; do
   new_BUILD_REQUIRES_LEN=$(wc -l < $BUILD_REQUIRES)
   [ $BUILD_REQUIRES_LEN -eq $new_BUILD_REQUIRES_LEN ] && break
 done
+
+echo -n "]" >> build-order.json
 
 pypi-mirror create -d downloads/ -m simple/
 

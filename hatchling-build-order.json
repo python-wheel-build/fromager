@@ -1,0 +1,54 @@
+[
+  {
+    "type": "build",
+    "req": "hatchling"
+  },
+  {
+    "type": "build",
+    "req": "pluggy"
+  },
+  {
+    "type": "build",
+    "req": "pathspec"
+  },
+  {
+    "type": "build",
+    "req": "editables"
+  },
+  {
+    "type": "build",
+    "req": "trove-classifiers"
+  },
+  {
+    "type": "build",
+    "req": "setuptools-scm"
+  },
+  {
+    "type": "build",
+    "req": "typing-extensions"
+  },
+  {
+    "type": "build",
+    "req": "packaging"
+  },
+  {
+    "type": "build",
+    "req": "tomli"
+  },
+  {
+    "type": "build",
+    "req": "calver"
+  },
+  {
+    "type": "build",
+    "req": "setuptools"
+  },
+  {
+    "type": "build",
+    "req": "wheel"
+  },
+  {
+    "type": "build",
+    "req": "flit_core"
+  }
+]

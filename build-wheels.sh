@@ -46,10 +46,8 @@ update_mirror
 $PYTHON -m http.server -d $WHEEL_MIRROR_TMPDIR &
 HTTP_SERVER_PID=$!
 
-PACKAGES="flit_core wheel setuptools calver tomli packaging typing-extensions setuptools-scm trove-classifiers editables pathspec pluggy hatchling"
-
 build_wheel() {
-  local pkg=$1; shift
+  local pkg="$1"; shift
 
   WHEEL_BUILD_TMPDIR=$(mktemp --tmpdir=. --directory wheelbuildXXXX)
   pushd $WHEEL_BUILD_TMPDIR
@@ -70,6 +68,7 @@ build_wheel() {
   rm -rf $WHEEL_BUILD_TMPDIR
 }
 
-for p in $PACKAGES; do
-  build_wheel $p
-done
+jq -r 'reverse | .[].req' build-order.json | \
+  while read -r p; do
+    build_wheel "${p}"
+  done
