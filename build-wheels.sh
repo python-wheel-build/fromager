@@ -33,11 +33,6 @@ pip install -U python-pypi-mirror
 WHEEL_MIRROR_TMPDIR=$(realpath $(mktemp --tmpdir=. --directory wheelmirrorXXXX))
 mkdir $WHEEL_MIRROR_TMPDIR/downloads
 
-# Ensure the repo has a pip wheel to avoid warnings when pip checks for an update
-# FIXME: this should be a re-built pip wheel, not one from PyPI
-# FIXME: or just use --disable-pip-version-check
-#pip -vvv download --dest $WHEEL_MIRROR_TMPDIR/downloads pip
-
 update_mirror() {
   pypi-mirror create -d $WHEEL_MIRROR_TMPDIR/downloads -m $WHEEL_MIRROR_TMPDIR/simple
 }
