@@ -23,4 +23,6 @@ setup
 $PYTHON -m http.server &
 HTTP_SERVER_PID=$!
 
-pip install --no-cache-dir --index-url http://localhost:8000/simple -U langchain
+pip -vvv install --no-cache-dir --index-url http://localhost:8000/simple -U langchain
+
+# --dry-run --ignore-installed --report report.json
