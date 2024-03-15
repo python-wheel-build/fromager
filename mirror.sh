@@ -12,13 +12,9 @@ TOPLEVEL="hatchling"
 
 VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
 PYTHON=python3.9
-BUILD_REQUIRES=
-ret_BUILD_REQUIRES=
 tmp_unpack_dir=
 
 on_exit() {
-  [ $BUILD_REQUIRES ] && rm -f $BUILD_REQUIRES
-  [ $ret_BUILD_REQUIRES ] && rm -f $ret_BUILD_REQUIRES
   [ $tmp_unpack_dir ] && rm -rf $tmp_unpack_dir
   rm -rf $VENV/
 }
@@ -33,10 +29,6 @@ setup() {
 setup
 
 pip install -U python-pypi-mirror toml pyproject_hooks
-
-rm -rf downloads/ simple/
-pypi-mirror download -d downloads/ "${TOPLEVEL}"
-
 
 # cmake needed, otherwise:
 # Building wheels for collected packages: patchelf, ninja
@@ -55,63 +47,69 @@ pypi-mirror download -d downloads/ "${TOPLEVEL}"
 
 # $ sudo dnf install cmake autoconf automake rust cargo
 
-# pypi-mirror download -d downloads/ langchain
-#pypi-mirror download -d downloads/ aiohttp setuptools wheel hatch-fancy-pypi-readme 'flit_core<4,>=3.8' 'setuptools-scm[toml]' pluggy hatchling expandvars calver hatch-vcs cython
-
-collect_build_requires() {
-  ret_BUILD_REQUIRES=$(mktemp --tmpdir=. build-requires-XXXX.txt)
-  for sdist in downloads/*.tar.gz; do
-    tmp_unpack_dir=$(mktemp --tmpdir=. --directory tmpXXXX)
-    tar -C $tmp_unpack_dir -xvzf $sdist
-
-    if [ ! -e $tmp_unpack_dir/*/pyproject.toml ]; then
-      rm -rf $tmp_unpack_dir; tmp_unpack_dir=
-      continue
-    fi
-
-    pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
-
-    tmp_build_requires=$(mktemp --tmpdir=. build-requires-XXXX.txt)
-    $PYTHON extract-build-requires.py < $pyproject_toml > $tmp_build_requires
-    cat $tmp_build_requires >> $ret_BUILD_REQUIRES
-    while read -r req; do add_to_build_order "build_system" "${req}"; done < $tmp_build_requires
-
-    # Build backend hooks usually may build requires installed
-    pip install -U -r $tmp_build_requires
-
-    extract_script=$(pwd)/extract-build-requires.py
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --backend < pyproject.toml) > $tmp_build_requires
-    cat $tmp_build_requires >> $ret_BUILD_REQUIRES
-    while read -r req; do add_to_build_order "backend_build_wheel" "${req}"; done < $tmp_build_requires
-
-    rm -f $tmp_build_requires
-    rm -rf $tmp_unpack_dir; tmp_unpack_dir=
-  done
-  [ $BUILD_REQUIRES ] && rm -f $BUILD_REQUIRES
-  BUILD_REQUIRES=$ret_BUILD_REQUIRES; ret_BUILD_REQUIRES=
-}
-
 BUILD_ORDER_COMMA=""
 add_to_build_order() {
   type="$1"; shift
   req="$1"; shift
+  env
   echo -n "${BUILD_ORDER_COMMA}{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\"}" >> build-order.json
   BUILD_ORDER_COMMA=","
 }
+
+download_sdist() {
+  req="$1"; shift
+  pip download --dest downloads/ --no-deps --no-binary :all: "${req}" | grep Saved | cut -d ' ' -f 2-
+  # FIXME: we should do better than returning zero and empty output if this (common case) happens:
+  # Collecting flit_core>=3.3
+  #   File was already downloaded <...>
+  #   Getting requirements to build wheel ... done
+  #   Preparing metadata (pyproject.toml) ... done
+  # Successfully downloaded flit_core
+}
+
+collect_build_requires() {
+  local sdist="$1"; shift
+
+  tmp_unpack_dir=$(mktemp --tmpdir=. --directory tmpXXXX)
+  tar -C $tmp_unpack_dir -xvzf $sdist
+
+  if [ -e $tmp_unpack_dir/*/pyproject.toml ]; then
+    pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
+
+    $PYTHON extract-build-requires.py < $pyproject_toml | while read -r req; do
+      local req_sdist=$(download_sdist "${req}")
+      if [ -n "${req_sdist}" ]; then
+        collect_build_requires "${req_sdist}"
+
+        add_to_build_order "build_system" "${req}"
+
+        # Build backend hooks usually may build requires installed
+        pip install -U "${req}"
+      fi
+    done
+
+    extract_script=$(pwd)/extract-build-requires.py
+    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --backend < pyproject.toml) | while read -r req; do
+      local req_sdist=$(download_sdist "${req}")
+      if [ -n "${req_sdist}" ]; then
+        collect_build_requires "${req_sdist}"
+
+        add_to_build_order "backend_build_wheel" "${req}"
+      fi
+    done
+  fi
+
+  rm -rf $tmp_unpack_dir; tmp_unpack_dir=
+}
+
+rm -rf downloads/ simple/
+
 echo -n "[" > build-order.json
 
+sdist=$(download_sdist "${TOPLEVEL}")
+collect_build_requires "${sdist}"
+
 add_to_build_order "toplevel" "${TOPLEVEL}"
-
-collect_build_requires
-while true; do
-  pypi-mirror download -d downloads/ -r $BUILD_REQUIRES
-
-  # Ugh, keep downloading build requirements until we're not collecting new ones
-  BUILD_REQUIRES_LEN=$(wc -l < $BUILD_REQUIRES)
-  collect_build_requires
-  new_BUILD_REQUIRES_LEN=$(wc -l < $BUILD_REQUIRES)
-  [ $BUILD_REQUIRES_LEN -eq $new_BUILD_REQUIRES_LEN ] && break
-done
 
 echo -n "]" >> build-order.json
 

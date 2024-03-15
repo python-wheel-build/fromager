@@ -63,7 +63,7 @@ build_wheel() {
   rm -rf $WHEEL_BUILD_TMPDIR
 }
 
-jq -r 'reverse | .[].req' build-order.json | \
+jq -r '.[].req' build-order.json | \
   while read -r p; do
     build_wheel "${p}"
   done
