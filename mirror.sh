@@ -70,9 +70,9 @@ collect_build_requires() {
 
   if [ -e $tmp_unpack_dir/*/pyproject.toml ]; then
     local pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
-    local extract_script=$(pwd)/extract-build-requires.py
+    local extract_script=$(pwd)/extract-requires.py
 
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script < pyproject.toml) | while read -r req_iter; do
+    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-system < pyproject.toml) | while read -r req_iter; do
       local req_sdist=$(download_sdist "${req_iter}")
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
@@ -84,12 +84,21 @@ collect_build_requires() {
       fi
     done
 
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --backend < pyproject.toml) | while read -r req_iter; do
+    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-backend < pyproject.toml) | while read -r req_iter; do
       local req_sdist=$(download_sdist "${req_iter}")
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
-        add_to_build_order "backend_build_wheel" "${req_iter}"
+        add_to_build_order "build_backend" "${req_iter}"
+      fi
+    done
+
+    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script < pyproject.toml) | while read -r req_iter; do
+      local req_sdist=$(download_sdist "${req_iter}")
+      if [ -n "${req_sdist}" ]; then
+        collect_build_requires "${req_sdist}"
+
+        add_to_build_order "dependency" "${req_iter}"
       fi
     done
   fi
