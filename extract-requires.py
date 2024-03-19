@@ -1,9 +1,10 @@
 import argparse
 import os
 import sys
+
+import pyproject_hooks
 import toml
 from packaging import metadata
-import pyproject_hooks
 
 # Extract requirements from a pyproject.toml
 #
