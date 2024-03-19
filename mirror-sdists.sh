@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -xe
+set -o pipefail
 
 # Redirect stdout/stderr to logfile
 logfile=".mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
