@@ -92,6 +92,11 @@ collect_build_requires() {
         collect_build_requires "${req_sdist}"
 
         add_to_build_order "build_backend" "${req_iter}"
+
+        # Build backends are often used to package themselves, so in
+        # order to determine their dependencies they may need to be
+        # installed.
+        pip install -U "${req_iter}"
       fi
     done
 
