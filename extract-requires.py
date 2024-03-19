@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
         with open(os.path.join(metadata_path, "METADATA"), "r") as f:
             parsed = metadata.Metadata.from_email(f.read())
-            for r in parsed.requires_dist:
+            for r in (parsed.requires_dist or []):
                 if not r.marker:
                     requires.append(str(r))
     elif args.build_system:
