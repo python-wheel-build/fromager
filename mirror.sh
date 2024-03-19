@@ -12,10 +12,8 @@ TOPLEVEL="hatchling"
 
 VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
 PYTHON=python3.9
-tmp_unpack_dir=
 
 on_exit() {
-  [ $tmp_unpack_dir ] && rm -rf $tmp_unpack_dir
   rm -rf $VENV/
 }
 trap on_exit EXIT
@@ -47,17 +45,14 @@ pip install -U python-pypi-mirror toml pyproject_hooks
 
 # $ sudo dnf install cmake autoconf automake rust cargo
 
-BUILD_ORDER_COMMA=""
 add_to_build_order() {
-  type="$1"; shift
-  req="$1"; shift
-  env
-  echo -n "${BUILD_ORDER_COMMA}{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\"}" >> build-order.json
-  BUILD_ORDER_COMMA=","
+  local type="$1"; shift
+  local req="$1"; shift
+  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\"}" '. += [$obj]' build-order.json > tmp.$$.json && mv tmp.$$.json build-order.json
 }
 
 download_sdist() {
-  req="$1"; shift
+  local req="$1"; shift
   pip download --dest downloads/ --no-deps --no-binary :all: "${req}" | grep Saved | cut -d ' ' -f 2-
   # FIXME: we should do better than returning zero and empty output if this (common case) happens:
   # Collecting flit_core>=3.3
@@ -70,48 +65,45 @@ download_sdist() {
 collect_build_requires() {
   local sdist="$1"; shift
 
-  tmp_unpack_dir=$(mktemp --tmpdir=. --directory tmpXXXX)
+  local tmp_unpack_dir=$(mktemp --tmpdir=. --directory tmpXXXX)
   tar -C $tmp_unpack_dir -xvzf $sdist
 
   if [ -e $tmp_unpack_dir/*/pyproject.toml ]; then
-    pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
+    local pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
+    local extract_script=$(pwd)/extract-build-requires.py
 
-    $PYTHON extract-build-requires.py < $pyproject_toml | while read -r req; do
-      local req_sdist=$(download_sdist "${req}")
+    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script < pyproject.toml) | while read -r req_iter; do
+      local req_sdist=$(download_sdist "${req_iter}")
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
-        add_to_build_order "build_system" "${req}"
+        add_to_build_order "build_system" "${req_iter}"
 
         # Build backend hooks usually may build requires installed
-        pip install -U "${req}"
+        pip install -U "${req_iter}"
       fi
     done
 
-    extract_script=$(pwd)/extract-build-requires.py
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --backend < pyproject.toml) | while read -r req; do
-      local req_sdist=$(download_sdist "${req}")
+    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --backend < pyproject.toml) | while read -r req_iter; do
+      local req_sdist=$(download_sdist "${req_iter}")
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
-        add_to_build_order "backend_build_wheel" "${req}"
+        add_to_build_order "backend_build_wheel" "${req_iter}"
       fi
     done
   fi
 
-  rm -rf $tmp_unpack_dir; tmp_unpack_dir=
+  rm -rf $tmp_unpack_dir
 }
 
 rm -rf downloads/ simple/
 
-echo -n "[" > build-order.json
+echo -n "[]" > build-order.json
 
-sdist=$(download_sdist "${TOPLEVEL}")
-collect_build_requires "${sdist}"
+collect_build_requires $(download_sdist "${TOPLEVEL}")
 
 add_to_build_order "toplevel" "${TOPLEVEL}"
-
-echo -n "]" >> build-order.json
 
 pypi-mirror create -d downloads/ -m simple/
 
