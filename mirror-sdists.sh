@@ -74,6 +74,9 @@ collect_build_requires() {
     local pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
     local extract_script=$(pwd)/extract-requires.py
 
+    echo "Processing ${sdist} with pyproject.toml:"
+    cat "${pyproject_toml}"
+
     (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-system < pyproject.toml) | while read -r req_iter; do
       local req_sdist=$(download_sdist "${req_iter}")
       if [ -n "${req_sdist}" ]; then
