@@ -59,7 +59,7 @@ if __name__ == "__main__":
         metadata_path = hook_caller.prepare_metadata_for_build_wheel("./")
 
         with open(os.path.join(metadata_path, "METADATA"), "r") as f:
-            parsed = metadata.Metadata.from_email(f.read())
+            parsed = metadata.Metadata.from_email(f.read(), validate=False)
             for r in (parsed.requires_dist or []):
                 if not r.marker:
                     requires.append(str(r))
