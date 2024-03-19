@@ -1,11 +1,16 @@
 import argparse
+import os
 import sys
 import toml
+from packaging import metadata
 import pyproject_hooks
 
-# Extract build requirements from a pyproject.toml
+# Extract requirements from a pyproject.toml
 #
-# The --backend option is used to extract requirements using the
+# By default, extract the list of install-time dependencies by preparing
+# wheel metadata and extracting Requires-Dist from that
+# The --build-system option extracts the build-system.requires section
+# The --build-backend option is used to extract requirements using the
 # build backend get_requires_for_build_wheel hook (PEP 517)
 
 if __name__ == "__main__":
@@ -19,6 +24,18 @@ if __name__ == "__main__":
     requires = []
     if not (args.build_system or args.build_backend):
         requires.extend(pyproject_toml.get('project', {}).get('dependencies', []))
+        hook_caller = pyproject_hooks.BuildBackendHookCaller(
+            source_dir=".",
+            build_backend=pyproject_toml.get('build-system', {}).get('build-backend', ''),
+            backend_path=pyproject_toml.get('build-system', {}).get('backend-path', None),
+            runner=pyproject_hooks.quiet_subprocess_runner)
+        metadata_path = hook_caller.prepare_metadata_for_build_wheel("./")
+
+        with open(os.path.join(metadata_path, "METADATA"), "r") as f:
+            parsed = metadata.Metadata.from_email(f.read())
+            for r in parsed.requires_dist:
+                if not r.marker:
+                    requires.append(str(r))
     elif args.build_system:
         requires.extend(pyproject_toml.get('build-system', {}).get('requires', []))
     elif args.build_backend:

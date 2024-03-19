@@ -6,9 +6,9 @@ set -xe
 logfile=".mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
 exec > >(tee "$logfile") 2>&1
 
-TOPLEVEL="hatchling"
+#TOPLEVEL="hatchling"
 #TOPLEVEL="frozenlist"
-#TOPLEVEL="langchain"
+TOPLEVEL="langchain"
 
 VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
 PYTHON=python3.9
@@ -26,7 +26,7 @@ setup() {
 
 setup
 
-pip install -U python-pypi-mirror toml pyproject_hooks
+pip install -U python-pypi-mirror toml pyproject_hooks packaging
 
 # cmake needed, otherwise:
 # Building wheels for collected packages: patchelf, ninja
@@ -106,7 +106,7 @@ collect_build_requires() {
   rm -rf $tmp_unpack_dir
 }
 
-rm -rf sdists-repo/
+rm -rf sdists-repo/; mkdir sdists-repo/
 
 echo -n "[]" > sdists-repo/build-order.json
 
