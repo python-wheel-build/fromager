@@ -27,7 +27,7 @@ setup() {
 
 setup
 
-pip install -U python-pypi-mirror toml pyproject_hooks packaging
+pip install -U python-pypi-mirror toml pyproject_hooks packaging wheel
 
 # cmake needed, otherwise:
 # Building wheels for collected packages: patchelf, ninja
