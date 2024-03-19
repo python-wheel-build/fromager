@@ -48,12 +48,12 @@ pip install -U python-pypi-mirror toml pyproject_hooks
 add_to_build_order() {
   local type="$1"; shift
   local req="$1"; shift
-  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\"}" '. += [$obj]' build-order.json > tmp.$$.json && mv tmp.$$.json build-order.json
+  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\"}" '. += [$obj]' sdists-repo/build-order.json > tmp.$$.json && mv tmp.$$.json sdists-repo/build-order.json
 }
 
 download_sdist() {
   local req="$1"; shift
-  pip download --dest downloads/ --no-deps --no-binary :all: "${req}" | grep Saved | cut -d ' ' -f 2-
+  pip download --dest sdists-repo/downloads/ --no-deps --no-binary :all: "${req}" | grep Saved | cut -d ' ' -f 2-
   # FIXME: we should do better than returning zero and empty output if this (common case) happens:
   # Collecting flit_core>=3.3
   #   File was already downloaded <...>
@@ -106,14 +106,14 @@ collect_build_requires() {
   rm -rf $tmp_unpack_dir
 }
 
-rm -rf downloads/ simple/
+rm -rf sdists-repo/
 
-echo -n "[]" > build-order.json
+echo -n "[]" > sdists-repo/build-order.json
 
 collect_build_requires $(download_sdist "${TOPLEVEL}")
 
 add_to_build_order "toplevel" "${TOPLEVEL}"
 
-pypi-mirror create -d downloads/ -m simple/
+pypi-mirror create -d sdists-repo/downloads/ -m sdists-repo/simple/
 
 deactivate
