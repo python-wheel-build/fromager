@@ -9,12 +9,10 @@ exec > >(tee "$logfile") 2>&1
 VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
 PYTHON=python3.9
 HTTP_SERVER_PID=
-WHEEL_MIRROR_TMPDIR=
 WHEEL_BUILD_TMPDIR=
 
 on_exit() {
   [ "$HTTP_SERVER_PID" ] && kill $HTTP_SERVER_PID
-  #[ $WHEEL_MIRROR_TMPDIR ] && rm -rf $WHEEL_MIRROR_TMPDIR
   [ $WHEEL_BUILD_TMPDIR ] && rm -rf $WHEEL_BUILD_TMPDIR
   rm -rf $VENV/
 }
@@ -30,15 +28,17 @@ setup
 
 pip install -U python-pypi-mirror
 
-WHEEL_MIRROR_TMPDIR=$(realpath $(mktemp --tmpdir=. --directory wheelmirrorXXXX))
-mkdir $WHEEL_MIRROR_TMPDIR/downloads
+WHEELS_REPO=$(realpath $(pwd)/wheels-repo)
+
+rm -rf "${WHEELS_REPO}"
+mkdir -p "${WHEELS_REPO}/downloads"
 
 update_mirror() {
-  pypi-mirror create -d $WHEEL_MIRROR_TMPDIR/downloads -m $WHEEL_MIRROR_TMPDIR/simple
+  pypi-mirror create -d "${WHEELS_REPO}/downloads" -m "${WHEELS_REPO}/simple"
 }
 
 update_mirror
-$PYTHON -m http.server -d $WHEEL_MIRROR_TMPDIR &
+$PYTHON -m http.server -d "${WHEELS_REPO}" &
 HTTP_SERVER_PID=$!
 
 build_wheel() {
@@ -56,14 +56,14 @@ build_wheel() {
   pip -vvv --disable-pip-version-check wheel --index-url http://localhost:8000/simple ${sdist}
 
   # FIXME: this should only ever be one wheel?
-  mv *.whl $WHEEL_MIRROR_TMPDIR/downloads
+  mv *.whl "${WHEELS_REPO}/downloads"
   update_mirror
 
   popd
-  rm -rf $WHEEL_BUILD_TMPDIR
+  rm -rf $WHEEL_BUILD_TMPDIR; WHEEL_BUILD_TMPDIR=
 }
 
-jq -r '.[].req' build-order.json | \
+jq -r '.[].req' sdists-repo/build-order.json | \
   while read -r p; do
     build_wheel "${p}"
   done
