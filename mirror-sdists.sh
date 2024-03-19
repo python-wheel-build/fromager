@@ -2,6 +2,7 @@
 
 set -xe
 set -o pipefail
+export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
 
 # Redirect stdout/stderr to logfile
 logfile=".mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
