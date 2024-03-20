@@ -16,7 +16,7 @@ TOPLEVEL="langchain"
 
 VENV=$TMP/venv
 #VENV=venv
-PYTHON=python3.9
+PYTHON=python3
 
 on_exit() {
   rm -rf $VENV/
