@@ -8,22 +8,27 @@ export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
 logfile=".mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
 exec > >(tee "$logfile") 2>&1
 
+TMP=$(mktemp --tmpdir=. --directory tmpXXXX)
+
 #TOPLEVEL="hatchling"
 #TOPLEVEL="frozenlist"
 TOPLEVEL="langchain"
 
-VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
+VENV=$TMP/venv
+#VENV=venv
 PYTHON=python3.9
 
 on_exit() {
   rm -rf $VENV/
 }
-trap on_exit EXIT
+#trap on_exit EXIT
 
 setup() {
-  $PYTHON -m venv $VENV
-  . ./$VENV/bin/activate
-  pip install -U pip
+    if [ ! -d $VENV ]; then
+        $PYTHON -m venv $VENV
+    fi
+    . ./$VENV/bin/activate
+    pip install -U pip
 }
 
 setup
@@ -67,7 +72,7 @@ download_sdist() {
 collect_build_requires() {
   local sdist="$1"; shift
 
-  local tmp_unpack_dir=$(mktemp --tmpdir=. --directory tmpXXXX)
+  local tmp_unpack_dir=$(mktemp --tmpdir=$TMP --directory tmpXXXX)
   tar -C $tmp_unpack_dir -xvzf $sdist
 
   if [ -e $tmp_unpack_dir/*/pyproject.toml ]; then
