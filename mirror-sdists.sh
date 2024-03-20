@@ -12,7 +12,7 @@ TMP=$(mktemp --tmpdir=. --directory tmpXXXX)
 
 #TOPLEVEL="hatchling"
 #TOPLEVEL="frozenlist"
-TOPLEVEL="${1:langchain}"
+TOPLEVEL="${1:-langchain}"
 
 VENV=$TMP/venv
 #VENV=venv
