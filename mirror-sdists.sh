@@ -60,13 +60,18 @@ add_to_build_order() {
 
 download_sdist() {
   local req="$1"; shift
-  pip download --dest sdists-repo/downloads/ --no-deps --no-binary :all: "${req}" | grep Saved | cut -d ' ' -f 2-
+  pip download --dest sdists-repo/downloads/ --no-deps --no-binary :all: "${req}"
   # FIXME: we should do better than returning zero and empty output if this (common case) happens:
   # Collecting flit_core>=3.3
   #   File was already downloaded <...>
   #   Getting requirements to build wheel ... done
   #   Preparing metadata (pyproject.toml) ... done
   # Successfully downloaded flit_core
+}
+
+get_downloaded_sdist() {
+    local input=$1
+    grep Saved $input | cut -d ' ' -f 2-
 }
 
 collect_build_requires() {
@@ -78,12 +83,15 @@ collect_build_requires() {
   if [ -e $tmp_unpack_dir/*/pyproject.toml ]; then
     local pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
     local extract_script=$(pwd)/extract-requires.py
+    local parse_script=$(pwd)/parse_dep.py
 
     echo "Processing ${sdist} with pyproject.toml:"
     cat "${pyproject_toml}"
 
     (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-system < pyproject.toml) | while read -r req_iter; do
-      local req_sdist=$(download_sdist "${req_iter}")
+        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+        download_sdist "${req_iter}" | tee $download_output
+        local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
@@ -95,7 +103,9 @@ collect_build_requires() {
     done
 
     (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-backend < pyproject.toml) | while read -r req_iter; do
-      local req_sdist=$(download_sdist "${req_iter}")
+        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+        download_sdist "${req_iter}" | tee $download_output
+        local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
@@ -109,7 +119,9 @@ collect_build_requires() {
     done
 
     (cd $(dirname $pyproject_toml) && $PYTHON $extract_script < pyproject.toml) | while read -r req_iter; do
-      local req_sdist=$(download_sdist "${req_iter}")
+        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+        download_sdist "${req_iter}" | tee $download_output
+        local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
@@ -125,7 +137,8 @@ rm -rf sdists-repo/; mkdir sdists-repo/
 
 echo -n "[]" > sdists-repo/build-order.json
 
-collect_build_requires $(download_sdist "${TOPLEVEL}")
+download_sdist "${TOPLEVEL}" | tee $TMP/toplevel-download.log
+collect_build_requires $(get_downloaded_sdist $TMP/toplevel-download.log)
 
 add_to_build_order "toplevel" "${TOPLEVEL}"
 
