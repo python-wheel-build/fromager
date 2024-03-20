@@ -31,20 +31,7 @@ Finally, the [install-from-mirror](install-from-mirror.sh) script installs the d
 
 ### Current Status
 
-`build-wheels.sh` failing at:
-
-```
-+ pip -vvv --disable-pip-version-check wheel --index-url http://localhost:8000/simple ./SQLAlchemy-2.0.28.tar.gz
-...
-Will try a different candidate, due to conflict:
-    sqlalchemy 2.0.28 depends on typing-extensions>=4.6.0
-ERROR: Could not find a version that satisfies the requirement typing-extensions>=4.6.0 (from sqlalchemy) (from versions: none)
-ERROR: No matching distribution found for typing-extensions>=4.6.0
-```
-
-with [this build-order.json](https://gist.github.com/markmc/aed2781a437e0aa8060a5ea617d36848). Clearly we're not collecting the `typing-extensions` dependency somehow. This is likely an error with calling prepare_metadata_for_build_wheel() for `SQLAlchemy-2.0.28`.
-
-Related, we should fix [extract-requires.py](extract-requires.py) to not use `quiet_subprocess_runner` because it swallows errors and makes it hard to debug stuff like this.
+See the [currently open issues](https://github.com/markmc/rebuilding-the-wheel/issues).
 
 ### Langchain Dependency Tree
 
