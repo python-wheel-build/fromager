@@ -39,14 +39,32 @@ def logging_subprocess_runner(cmd, cwd=None, extra_environ=None):
         raise subprocess.CalledProcessError(completed.returncode, cmd, output)
 
 
-def get_build_backend_hook_caller(pyproject_toml):
+# From pypa/build/src/build/__main__.py
+_DEFAULT_BACKEND = {
+    'build-backend': 'setuptools.build_meta:__legacy__',
+    'backend-path': None,
+    'requires': ['setuptools >= 40.8.0'],
+}
+
+
+def get_build_backend(pyproject_toml):
     if (not 'build-system' in pyproject_toml or
         not 'build-backend' in pyproject_toml['build-system']):
-        return None
+        return _DEFAULT_BACKEND
+    else:
+        return {
+            'build-backend': pyproject_toml['build-system']['build-backend'],
+            'backend-path': pyproject_toml['build-system'].get('backend-path', None),
+            'requires': pyproject_toml['build-system'].get('requires', []),
+        }
+
+
+def get_build_backend_hook_caller(pyproject_toml):
+    backend = get_build_backend(pyproject_toml)
     return pyproject_hooks.BuildBackendHookCaller(
         source_dir=".",
-        build_backend=pyproject_toml['build-system']['build-backend'],
-        backend_path=pyproject_toml['build-system'].get('backend-path', None),
+        build_backend=backend['build-backend'],
+        backend_path=backend['backend-path'],
         runner=logging_subprocess_runner,
     )
 
@@ -59,8 +77,6 @@ if __name__ == "__main__":
 
     pyproject_toml = toml.loads(sys.stdin.read())
     hook_caller = get_build_backend_hook_caller(pyproject_toml)
-    if hook_caller is None:
-        raise Exception('No build-system in pyproject.toml - FIXME implement the legacy behaviour of running setup.py')
 
     requires = []
     if not (args.build_system or args.build_backend):
@@ -74,7 +90,7 @@ if __name__ == "__main__":
                 if not r.marker:
                     requires.append(str(r))
     elif args.build_system:
-        requires.extend(pyproject_toml.get('build-system', {}).get('requires', []))
+        requires.extend(get_build_backend(pyproject_toml)['requires'])
     elif args.build_backend:
         requires.extend(hook_caller.get_requires_for_build_wheel())
 
