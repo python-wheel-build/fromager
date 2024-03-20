@@ -1,9 +1,11 @@
 import argparse
 import os
+import subprocess
 import sys
+
+import pyproject_hooks
 import toml
 from packaging import metadata
-import pyproject_hooks
 
 # Extract requirements from a pyproject.toml
 #
@@ -12,6 +14,30 @@ import pyproject_hooks
 # The --build-system option extracts the build-system.requires section
 # The --build-backend option is used to extract requirements using the
 # build backend get_requires_for_build_wheel hook (PEP 517)
+
+# based on pyproject_hooks/_impl.py: quiet_subprocess_runner
+def logging_subprocess_runner(cmd, cwd=None, extra_environ=None):
+    """Call the subprocess while logging output to stderr.
+
+    This uses :func:`subprocess.check_output` under the hood.
+    """
+    env = os.environ.copy()
+    if extra_environ:
+        env.update(extra_environ)
+
+    completed = subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    output = completed.stdout.decode('utf-8') if completed.stdout else ''
+    if output:
+        print(output, file=sys.stderr)
+    if completed.returncode != 0:
+        raise subprocess.CalledProcessError(completed.returncode, cmd, output)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -28,12 +54,13 @@ if __name__ == "__main__":
             source_dir=".",
             build_backend=pyproject_toml.get('build-system', {}).get('build-backend', ''),
             backend_path=pyproject_toml.get('build-system', {}).get('backend-path', None),
-            runner=pyproject_hooks.quiet_subprocess_runner)
+            runner=logging_subprocess_runner,
+        )
         metadata_path = hook_caller.prepare_metadata_for_build_wheel("./")
 
         with open(os.path.join(metadata_path, "METADATA"), "r") as f:
-            parsed = metadata.Metadata.from_email(f.read())
-            for r in parsed.requires_dist:
+            parsed = metadata.Metadata.from_email(f.read(), validate=False)
+            for r in (parsed.requires_dist or []):
                 if not r.marker:
                     requires.append(str(r))
     elif args.build_system:
@@ -44,7 +71,8 @@ if __name__ == "__main__":
                 source_dir=".",
                 build_backend=pyproject_toml.get('build-system', {}).get('build-backend', ''),
                 backend_path=pyproject_toml.get('build-system', {}).get('backend-path', None),
-                runner=pyproject_hooks.quiet_subprocess_runner)  # using quiet runner to not pollute stdout
+                runner=logging_subprocess_runner,
+            )
             requires.extend(hook_caller.get_requires_for_build_wheel())
 
     for req in requires:

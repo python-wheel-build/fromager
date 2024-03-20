@@ -1,32 +1,39 @@
 #!/bin/bash
 
 set -xe
+set -o pipefail
+export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
 
 # Redirect stdout/stderr to logfile
 logfile=".mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
 exec > >(tee "$logfile") 2>&1
 
+TMP=$(mktemp --tmpdir=. --directory tmpXXXX)
+
 #TOPLEVEL="hatchling"
 #TOPLEVEL="frozenlist"
-TOPLEVEL="langchain"
+TOPLEVEL="${1:langchain}"
 
-VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
-PYTHON=python3.9
+VENV=$TMP/venv
+#VENV=venv
+PYTHON=python3
 
 on_exit() {
   rm -rf $VENV/
 }
-trap on_exit EXIT
+#trap on_exit EXIT
 
 setup() {
-  $PYTHON -m venv $VENV
-  . ./$VENV/bin/activate
-  pip install -U pip
+    if [ ! -d $VENV ]; then
+        $PYTHON -m venv $VENV
+    fi
+    . ./$VENV/bin/activate
+    pip install -U pip
 }
 
 setup
 
-pip install -U python-pypi-mirror toml pyproject_hooks packaging
+pip install -U python-pypi-mirror toml pyproject_hooks packaging wheel
 
 # cmake needed, otherwise:
 # Building wheels for collected packages: patchelf, ninja
@@ -53,7 +60,7 @@ add_to_build_order() {
 
 download_sdist() {
   local req="$1"; shift
-  pip download --dest sdists-repo/downloads/ --no-deps --no-binary :all: "${req}" | grep Saved | cut -d ' ' -f 2-
+  pip download --dest sdists-repo/downloads/ --no-deps --no-binary :all: "${req}"
   # FIXME: we should do better than returning zero and empty output if this (common case) happens:
   # Collecting flit_core>=3.3
   #   File was already downloaded <...>
@@ -62,18 +69,29 @@ download_sdist() {
   # Successfully downloaded flit_core
 }
 
+get_downloaded_sdist() {
+    local input=$1
+    grep Saved $input | cut -d ' ' -f 2-
+}
+
 collect_build_requires() {
   local sdist="$1"; shift
 
-  local tmp_unpack_dir=$(mktemp --tmpdir=. --directory tmpXXXX)
+  local tmp_unpack_dir=$(mktemp --tmpdir=$TMP --directory tmpXXXX)
   tar -C $tmp_unpack_dir -xvzf $sdist
 
   if [ -e $tmp_unpack_dir/*/pyproject.toml ]; then
     local pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
     local extract_script=$(pwd)/extract-requires.py
+    local parse_script=$(pwd)/parse_dep.py
+
+    echo "Processing ${sdist} with pyproject.toml:"
+    cat "${pyproject_toml}"
 
     (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-system < pyproject.toml) | while read -r req_iter; do
-      local req_sdist=$(download_sdist "${req_iter}")
+        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+        download_sdist "${req_iter}" | tee $download_output
+        local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
@@ -85,16 +103,25 @@ collect_build_requires() {
     done
 
     (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-backend < pyproject.toml) | while read -r req_iter; do
-      local req_sdist=$(download_sdist "${req_iter}")
+        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+        download_sdist "${req_iter}" | tee $download_output
+        local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
         add_to_build_order "build_backend" "${req_iter}"
+
+        # Build backends are often used to package themselves, so in
+        # order to determine their dependencies they may need to be
+        # installed.
+        pip install -U "${req_iter}"
       fi
     done
 
     (cd $(dirname $pyproject_toml) && $PYTHON $extract_script < pyproject.toml) | while read -r req_iter; do
-      local req_sdist=$(download_sdist "${req_iter}")
+        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+        download_sdist "${req_iter}" | tee $download_output
+        local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
@@ -110,7 +137,8 @@ rm -rf sdists-repo/; mkdir sdists-repo/
 
 echo -n "[]" > sdists-repo/build-order.json
 
-collect_build_requires $(download_sdist "${TOPLEVEL}")
+download_sdist "${TOPLEVEL}" | tee $TMP/toplevel-download.log
+collect_build_requires $(get_downloaded_sdist $TMP/toplevel-download.log)
 
 add_to_build_order "toplevel" "${TOPLEVEL}"
 
