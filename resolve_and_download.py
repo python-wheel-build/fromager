@@ -86,14 +86,14 @@ def get_project_from_pypi(project, extras):
 
         path = urlparse(url).path
         filename = path.rpartition("/")[-1]
-        # We only handle wheels
-        if not filename.endswith(".whl"):
+        # Limit to sdists
+        if not filename.endswith('.tar.gz'):
             continue
 
         # TODO: Handle compatibility tags?
 
-        # Very primitive wheel filename parsing
-        name, version = filename[:-4].split("-")[:2]
+        # Very primitive sdist filename parsing
+        name, version = filename[:-len('.tar.gz')].split('-')[:2]
         try:
             version = Version(version)
         except InvalidVersion:
