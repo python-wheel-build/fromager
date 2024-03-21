@@ -18,10 +18,9 @@ from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
-
 from resolvelib import BaseReporter, Resolver
 
-from .extras_provider import ExtrasProvider
+from extras_provider import ExtrasProvider
 
 PYTHON_VERSION = Version(python_version())
 
