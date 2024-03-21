@@ -16,7 +16,7 @@ on_exit() {
   [ $WHEEL_BUILD_TMPDIR ] && rm -rf $WHEEL_BUILD_TMPDIR
   rm -rf $VENV/
 }
-trap on_exit EXIT
+trap on_exit EXIT SIGINT SIGTERM
 
 setup() {
   $PYTHON -m venv $VENV

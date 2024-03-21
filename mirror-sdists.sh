@@ -10,25 +10,22 @@ exec > >(tee "$logfile") 2>&1
 
 TMP=$(mktemp --tmpdir=. --directory tmpXXXX)
 
-#TOPLEVEL="hatchling"
-#TOPLEVEL="frozenlist"
 TOPLEVEL="${1:-langchain}"
 
 VENV=$TMP/venv
-#VENV=venv
 PYTHON=python3
 
 on_exit() {
-  rm -rf $VENV/
+  rm -rf $TMP/
 }
-#trap on_exit EXIT
+trap on_exit EXIT SIGINT SIGTERM
 
 setup() {
-    if [ ! -d $VENV ]; then
-        $PYTHON -m venv $VENV
-    fi
-    . ./$VENV/bin/activate
-    pip install -U pip
+  if [ ! -d $VENV ]; then
+    $PYTHON -m venv $VENV
+  fi
+  . ./$VENV/bin/activate
+  pip install -U pip
 }
 
 setup

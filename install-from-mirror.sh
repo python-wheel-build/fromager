@@ -14,7 +14,7 @@ on_exit() {
   [ "$HTTP_SERVER_PID" ] && kill $HTTP_SERVER_PID
   rm -rf $VENV/
 }
-trap on_exit EXIT
+trap on_exit EXIT SIGINT SIGTERM
 
 setup() {
   $PYTHON -m venv $VENV
