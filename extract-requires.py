@@ -87,8 +87,7 @@ if __name__ == "__main__":
         with open(os.path.join(metadata_path, "METADATA"), "r") as f:
             parsed = metadata.Metadata.from_email(f.read(), validate=False)
             for r in (parsed.requires_dist or []):
-                if not r.marker:
-                    requires.append(str(r))
+                requires.append(str(r))
     elif args.build_system:
         requires.extend(get_build_backend(pyproject_toml)['requires'])
     elif args.build_backend:
