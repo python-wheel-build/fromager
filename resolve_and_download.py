@@ -126,7 +126,7 @@ class PyPIProvider(ExtrasProvider):
     def get_base_requirement(self, candidate):
         return Requirement("{}=={}".format(candidate.name, candidate.version))
 
-    def get_preference(self, identifier, resolutions, candidates, information):
+    def get_preference(self, identifier, resolutions, candidates, information, **kwds):
         return sum(1 for _ in candidates[identifier])
 
     def find_matches(self, identifier, requirements, incompatibilities):
