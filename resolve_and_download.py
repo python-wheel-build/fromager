@@ -21,7 +21,9 @@ from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
-from resolvelib import BaseReporter, Resolver
+from resolvelib import (BaseReporter, InconsistentCandidate,
+                        RequirementsConflicted, ResolutionError,
+                        ResolutionImpossible, Resolver)
 
 from extras_provider import ExtrasProvider
 
@@ -221,9 +223,13 @@ def main():
     resolver = Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    log("Resolving", ", ".join(args.requirements), file=sys.stderr)
-    result = resolver.resolve(requirements)
-    download_resolution(args.dest, result)
+    log("Resolving", ", ".join(args.requirements))
+    try:
+        result = resolver.resolve(requirements)
+    except (InconsistentCandidate, RequirementsConflicted, ResolutionImpossible) as err:
+        print(f'could not resolve {requirements}: {err}', file=sys.stderr)
+    else:
+        download_resolution(args.dest, result)
 
 
 if __name__ == "__main__":
