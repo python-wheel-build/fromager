@@ -154,7 +154,8 @@ class PyPIProvider(ExtrasProvider):
         return candidate.version in requirement.specifier
 
     def get_dependencies(self, candidate):
-        return candidate.dependencies
+        #return candidate.dependencies
+        return []
 
 
 def display_resolution(result):
