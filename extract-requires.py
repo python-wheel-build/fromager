@@ -75,7 +75,11 @@ if __name__ == "__main__":
     parser.add_argument("--build-backend", action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
-    pyproject_toml = toml.loads(sys.stdin.read())
+    if not os.path.exists('pyproject.toml'):
+        pyproject_toml = {}
+    else:
+        with open('pyproject.toml', 'r') as f:
+            pyproject_toml = toml.loads(f.read())
     hook_caller = get_build_backend_hook_caller(pyproject_toml)
 
     requires = []
