@@ -25,6 +25,11 @@ from resolvelib import BaseReporter, Resolver
 from extras_provider import ExtrasProvider
 
 PYTHON_VERSION = Version(python_version())
+VERBOSE = False
+
+def log(*args, **kwds):
+    if VERBOSE:
+        print(*args, **kwds, file=sys.stderr)
 
 
 class Candidate:
@@ -74,16 +79,21 @@ class Candidate:
 
 def get_project_from_pypi(project, extras):
     """Return candidates created from the project name and extras."""
+    log('get project', project)
     url = "https://pypi.org/simple/{}".format(project)
     data = requests.get(url).content
+    #log(data.decode('utf-8'))
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
         url = i.attrib["href"]
         py_req = i.attrib.get("data-requires-python")
+        path = urlparse(url).path
+        filename = path.rpartition("/")[-1]
         # Skip items that need a different Python version
         if py_req:
             spec = SpecifierSet(py_req)
             if PYTHON_VERSION not in spec:
+                log(f'skipping {filename} because of python version {py_req}')
                 continue
 
         path = urlparse(url).path
@@ -91,6 +101,7 @@ def get_project_from_pypi(project, extras):
         # Limit to sdists
         if not filename.endswith('.tar.gz'):
             continue
+        log(f'looking at {filename}')
 
         # TODO: Handle compatibility tags?
 
@@ -98,11 +109,14 @@ def get_project_from_pypi(project, extras):
         name, version = filename[:-len('.tar.gz')].split('-')[:2]
         try:
             version = Version(version)
-        except InvalidVersion:
+        except InvalidVersion as err:
             # Ignore files with invalid versions
+            log(f'invalid version for {filename}: {err}')
             continue
 
-        yield Candidate(name, version, url=url, extras=extras)
+        c = Candidate(name, version, url=url, extras=extras)
+        log('candidate', c)
+        yield c
 
 
 def get_metadata_for_wheel(url):
@@ -162,16 +176,16 @@ def download_resolution(destination_dir, result):
         parsed_url = urlparse(candidate.url)
         outfile = os.path.join(destination_dir, os.path.basename(parsed_url.path))
         if os.path.exists(outfile):
-            print(f'already have {outfile}')
+            log(f'already have {outfile}')
             continue
         # Open the URL first in case that fails, so we don't end up with an empty file.
-        print(f'reading {candidate.name} {candidate.version} from {candidate.url}')
+        log(f'reading {candidate.name} {candidate.version} from {candidate.url}')
         with requests.get(candidate.url, stream=True) as r:
             with open(outfile, 'wb') as f:
-                print(f'writing to {outfile}')
+                log(f'writing to {outfile}')
                 for chunk in r.iter_content(chunk_size=1024*1024):
                     f.write(chunk)
-                    print('.', end='')
+                    log('.', end='')
                 print(f'\nSaved {outfile}')
 
 
@@ -181,10 +195,15 @@ def main():
     The requirements are taken as command-line arguments
     and the resolution result will be printed to stdout.
     """
+    global VERBOSE
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--dest', default='.')
     parser.add_argument('requirements', nargs='+')
+    parser.add_argument('-v', dest='verbose', action='store_true', default=False)
     args = parser.parse_args()
+
+    VERBOSE = args.verbose
 
     # Things I want to resolve.
     requirements = [Requirement(r) for r in args.requirements]
@@ -195,7 +214,7 @@ def main():
     resolver = Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    print("Resolving", ", ".join(args.requirements))
+    log("Resolving", ", ".join(args.requirements), file=sys.stderr)
     result = resolver.resolve(requirements)
     download_resolution(args.dest, result)
 
