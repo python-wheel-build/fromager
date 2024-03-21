@@ -32,7 +32,7 @@ setup() {
   # Dependencies for the mirror building scripts
   pip install -U \
       python-pypi-mirror \
-      toml \
+      tomli \
       pyproject_hooks \
       packaging \
       wheel \

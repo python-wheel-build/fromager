@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 import pyproject_hooks
-import toml
+import tomli
 from packaging import metadata
 
 # Extract requirements from a pyproject.toml
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         pyproject_toml = {}
     else:
         with open('pyproject.toml', 'r') as f:
-            pyproject_toml = toml.loads(f.read())
+            pyproject_toml = tomli.loads(f.read())
     hook_caller = get_build_backend_hook_caller(pyproject_toml)
 
     requires = []
