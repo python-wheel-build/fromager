@@ -81,7 +81,7 @@ collect_build_requires() {
       download_sdist "${req_iter}" | tee $download_output
       local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
-        collect_build_requires "${req_sdist}" "${next_why}"
+        collect_build_requires "${req_sdist}" "${why} -> ${next_why}"
 
         add_to_build_order "build_system" "${req_iter}" "${why}"
 
@@ -100,7 +100,7 @@ collect_build_requires() {
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_sdist}" "${next_why}"
+      collect_build_requires "${req_sdist}" "${why} -> ${next_why}"
 
       add_to_build_order "build_backend" "${req_iter}" "${why}"
 
@@ -119,7 +119,7 @@ collect_build_requires() {
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_sdist}" "${next_why}"
+      collect_build_requires "${req_sdist}" "${why} -> ${next_why}"
 
       add_to_build_order "dependency" "${req_iter}" "${why}"
     fi
