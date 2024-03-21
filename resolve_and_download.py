@@ -5,6 +5,7 @@
 #
 import argparse
 import os.path
+import re
 import sys
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -26,6 +27,8 @@ from extras_provider import ExtrasProvider
 
 PYTHON_VERSION = Version(python_version())
 VERBOSE = False
+
+NAME_VERSION_PATTERN = re.compile('(.*)-((\d+\.)+(\d+))\.tar\.gz')
 
 def log(*args, **kwds):
     if VERBOSE:
@@ -101,12 +104,16 @@ def get_project_from_pypi(project, extras):
         # Limit to sdists
         if not filename.endswith('.tar.gz'):
             continue
-        log(f'looking at {filename}')
 
         # TODO: Handle compatibility tags?
 
         # Very primitive sdist filename parsing
-        name, version = filename[:-len('.tar.gz')].split('-')[:2]
+        name_and_version = NAME_VERSION_PATTERN.search(filename)
+        if not name_and_version:
+            log(f'skipping {filename} because could not extract version info')
+            continue
+        name = name_and_version.groups()[0]
+        version = name_and_version.groups()[1]
         try:
             version = Version(version)
         except InvalidVersion as err:
@@ -115,7 +122,7 @@ def get_project_from_pypi(project, extras):
             continue
 
         c = Candidate(name, version, url=url, extras=extras)
-        log('candidate', c)
+        log('candidate', filename, c)
         yield c
 
 
