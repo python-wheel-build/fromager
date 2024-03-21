@@ -77,7 +77,9 @@ collect_build_requires() {
 
         add_to_build_order "build_system" "${req_iter}"
 
-        # Build backend hooks usually may build requires installed
+        # We may need these dependencies installed in order to run build hooks
+        # Example: frozenlist build-system.requires includes expandvars because
+        # it is used by the packaging/pep517_backend/ build backend
         pip install -U "${req_iter}"
       fi
     done
