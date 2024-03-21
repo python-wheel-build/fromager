@@ -13,7 +13,7 @@ TMP=$(mktemp --tmpdir=. --directory tmpXXXX)
 TOPLEVEL="${1:-langchain}"
 
 VENV=$TMP/venv
-PYTHON=python3
+PYTHON=python3.9
 
 on_exit() {
   rm -rf $TMP/
