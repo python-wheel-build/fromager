@@ -59,19 +59,23 @@ collect_build_requires() {
 
   local tmp_unpack_dir=$(mktemp --tmpdir=$TMP --directory tmpXXXX)
   tar -C $tmp_unpack_dir -xvzf $sdist
+  # We can't always predict what case will be used in the directory
+  # name or whether it will match the prefix of the downloaded sdist.
+  local extract_dir="$(ls -1d ${tmp_unpack_dir}/*)"
 
-  if [ -e $tmp_unpack_dir/*/pyproject.toml ]; then
-    local pyproject_toml=$(ls -1 $tmp_unpack_dir/*/pyproject.toml)
-    local extract_script=$(pwd)/extract-requires.py
-    local parse_script=$(pwd)/parse_dep.py
+  local extract_script=$(pwd)/extract-requires.py
+  local parse_script=$(pwd)/parse_dep.py
+  local build_system_deps="${tmp_unpack_dir}/build-system-requirements.txt"
+  local build_backend_deps="${tmp_unpack_dir}/build-backend-requirements.txt"
+  local normal_deps="${tmp_unpack_dir}/requirements.txt"
 
-    echo "Processing ${sdist} with pyproject.toml:"
-    cat "${pyproject_toml}"
+  echo "Build system dependencies for ${sdist}:"
+  (cd ${extract_dir} && $PYTHON $extract_script --build-system) | tee "${build_system_deps}"
 
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-system < pyproject.toml) | while read -r req_iter; do
-        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
-        download_sdist "${req_iter}" | tee $download_output
-        local req_sdist=$(get_downloaded_sdist $download_output)
+  cat "${build_system_deps}" | while read -r req_iter; do
+      download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+      download_sdist "${req_iter}" | tee $download_output
+      local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
         collect_build_requires "${req_sdist}"
 
@@ -82,37 +86,40 @@ collect_build_requires() {
         # it is used by the packaging/pep517_backend/ build backend
         pip install -U "${req_iter}"
       fi
-    done
+  done
 
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script --build-backend < pyproject.toml) | while read -r req_iter; do
-        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
-        download_sdist "${req_iter}" | tee $download_output
-        local req_sdist=$(get_downloaded_sdist $download_output)
-      if [ -n "${req_sdist}" ]; then
-        collect_build_requires "${req_sdist}"
+  echo "Build backend dependencies for ${sdist}:"
+  (cd ${extract_dir} && $PYTHON $extract_script --build-backend) | tee "${build_backend_deps}"
 
-        add_to_build_order "build_backend" "${req_iter}"
+  cat "${build_backend_deps}" | while read -r req_iter; do
+    download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+    download_sdist "${req_iter}" | tee $download_output
+    local req_sdist=$(get_downloaded_sdist $download_output)
+    if [ -n "${req_sdist}" ]; then
+      collect_build_requires "${req_sdist}"
 
-        # Build backends are often used to package themselves, so in
-        # order to determine their dependencies they may need to be
-        # installed.
-        pip install -U "${req_iter}"
-      fi
-    done
+      add_to_build_order "build_backend" "${req_iter}"
 
-    (cd $(dirname $pyproject_toml) && $PYTHON $extract_script < pyproject.toml) | while read -r req_iter; do
-        download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
-        download_sdist "${req_iter}" | tee $download_output
-        local req_sdist=$(get_downloaded_sdist $download_output)
-      if [ -n "${req_sdist}" ]; then
-        collect_build_requires "${req_sdist}"
+      # Build backends are often used to package themselves, so in
+      # order to determine their dependencies they may need to be
+      # installed.
+      pip install -U "${req_iter}"
+    fi
+  done
 
-        add_to_build_order "dependency" "${req_iter}"
-      fi
-    done
-  fi
+  echo "Regular dependencies for ${sdist}:"
+  (cd ${extract_dir} && $PYTHON $extract_script) | tee "${normal_deps}"
 
-  rm -rf $tmp_unpack_dir
+  cat "${normal_deps}" | while read -r req_iter; do
+    download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+    download_sdist "${req_iter}" | tee $download_output
+    local req_sdist=$(get_downloaded_sdist $download_output)
+    if [ -n "${req_sdist}" ]; then
+      collect_build_requires "${req_sdist}"
+
+      add_to_build_order "dependency" "${req_iter}"
+    fi
+  done
 }
 
 rm -rf sdists-repo/; mkdir sdists-repo/
