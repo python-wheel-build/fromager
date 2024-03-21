@@ -3,6 +3,8 @@
 # Modified to look at sdists instead of wheels and to avoid trying to
 # resolve any dependencies.
 #
+import argparse
+import os.path
 import sys
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -158,16 +160,23 @@ class PyPIProvider(ExtrasProvider):
         return []
 
 
-def display_resolution(result):
-    """Print pinned candidates and dependency graph to stdout."""
-    print("\n--- Pinned Candidates ---")
+def download_resolution(destination_dir, result):
+    """Download the candidates"""
     for name, candidate in result.mapping.items():
-        print(f"{name}: {candidate.name} {candidate.version}")
-
-    print("\n--- Dependency Graph ---")
-    for name in result.graph:
-        targets = ", ".join(result.graph.iter_children(name))
-        print(f"{name} -> {targets}")
+        parsed_url = urlparse(candidate.url)
+        outfile = os.path.join(destination_dir, os.path.basename(parsed_url.path))
+        if os.path.exists(outfile):
+            print(f'already have {outfile}')
+            continue
+        # Open the URL first in case that fails, so we don't end up with an empty file.
+        print(f'reading {candidate.name} {candidate.version} from {candidate.url}')
+        with requests.get(candidate.url, stream=True) as r:
+            with open(outfile, 'wb') as f:
+                print(f'writing to {outfile}')
+                for chunk in r.iter_content(chunk_size=1024*1024):
+                    f.write(chunk)
+                    print('.', end='')
+                print(f'\nSaved {outfile}')
 
 
 def main():
@@ -176,12 +185,13 @@ def main():
     The requirements are taken as command-line arguments
     and the resolution result will be printed to stdout.
     """
-    if len(sys.argv) == 1:
-        print("Usage:", sys.argv[0], "<PyPI project name(s)>")
-        return
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dest', default='.')
+    parser.add_argument('requirements', nargs='+')
+    args = parser.parse_args()
+
     # Things I want to resolve.
-    reqs = sys.argv[1:]
-    requirements = [Requirement(r) for r in reqs]
+    requirements = [Requirement(r) for r in args.requirements]
 
     # Create the (reusable) resolver.
     provider = PyPIProvider()
@@ -189,9 +199,9 @@ def main():
     resolver = Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    print("Resolving", ", ".join(reqs))
+    print("Resolving", ", ".join(args.requirements))
     result = resolver.resolve(requirements)
-    display_resolution(result)
+    download_resolution(args.dest, result)
 
 
 if __name__ == "__main__":
