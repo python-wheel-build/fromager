@@ -31,6 +31,7 @@ setup() {
 setup
 
 pip install -U python-pypi-mirror toml pyproject_hooks packaging wheel
+pip install -U resolvelib html5lib requests packaging
 
 add_to_build_order() {
   local type="$1"; shift
@@ -41,13 +42,7 @@ add_to_build_order() {
 
 download_sdist() {
   local req="$1"; shift
-  pip download --dest sdists-repo/downloads/ --no-deps --no-binary :all: "${req}"
-  # FIXME: we should do better than returning zero and empty output if this (common case) happens:
-  # Collecting flit_core>=3.3
-  #   File was already downloaded <...>
-  #   Getting requirements to build wheel ... done
-  #   Preparing metadata (pyproject.toml) ... done
-  # Successfully downloaded flit_core
+  python3 ./resolve_and_download.py --dest sdists-repo/downloads/ "${req}"
 }
 
 get_downloaded_sdist() {
@@ -126,7 +121,7 @@ collect_build_requires() {
   done
 }
 
-rm -rf sdists-repo/; mkdir sdists-repo/
+rm -rf sdists-repo/; mkdir -p sdists-repo/downloads/
 
 echo -n "[]" > sdists-repo/build-order.json
 
