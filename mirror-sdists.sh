@@ -35,7 +35,8 @@ pip install -U python-pypi-mirror toml pyproject_hooks packaging wheel
 add_to_build_order() {
   local type="$1"; shift
   local req="$1"; shift
-  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\"}" '. += [$obj]' sdists-repo/build-order.json > tmp.$$.json && mv tmp.$$.json sdists-repo/build-order.json
+  local why="$1"; shift
+  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\",\"why\":\"${why}\"}" '. += [$obj]' sdists-repo/build-order.json > tmp.$$.json && mv tmp.$$.json sdists-repo/build-order.json
 }
 
 download_sdist() {
@@ -56,6 +57,9 @@ get_downloaded_sdist() {
 
 collect_build_requires() {
   local sdist="$1"; shift
+  local why="$1"; shift
+
+  local next_why=$(basename ${sdist} .tar.gz)
 
   local tmp_unpack_dir=$(mktemp --tmpdir=$TMP --directory tmpXXXX)
   tar -C $tmp_unpack_dir -xvzf $sdist
@@ -77,9 +81,9 @@ collect_build_requires() {
       download_sdist "${req_iter}" | tee $download_output
       local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
-        collect_build_requires "${req_sdist}"
+        collect_build_requires "${req_sdist}" "${next_why}"
 
-        add_to_build_order "build_system" "${req_iter}"
+        add_to_build_order "build_system" "${req_iter}" "${why}"
 
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
@@ -96,9 +100,9 @@ collect_build_requires() {
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_sdist}"
+      collect_build_requires "${req_sdist}" "${next_why}"
 
-      add_to_build_order "build_backend" "${req_iter}"
+      add_to_build_order "build_backend" "${req_iter}" "${why}"
 
       # Build backends are often used to package themselves, so in
       # order to determine their dependencies they may need to be
@@ -115,9 +119,9 @@ collect_build_requires() {
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_sdist}"
+      collect_build_requires "${req_sdist}" "${next_why}"
 
-      add_to_build_order "dependency" "${req_iter}"
+      add_to_build_order "dependency" "${req_iter}" "${why}"
     fi
   done
 }
@@ -127,9 +131,9 @@ rm -rf sdists-repo/; mkdir sdists-repo/
 echo -n "[]" > sdists-repo/build-order.json
 
 download_sdist "${TOPLEVEL}" | tee $TMP/toplevel-download.log
-collect_build_requires $(get_downloaded_sdist $TMP/toplevel-download.log)
+collect_build_requires $(get_downloaded_sdist $TMP/toplevel-download.log) ""
 
-add_to_build_order "toplevel" "${TOPLEVEL}"
+add_to_build_order "toplevel" "${TOPLEVEL}" ""
 
 pypi-mirror create -d sdists-repo/downloads/ -m sdists-repo/simple/
 
