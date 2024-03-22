@@ -24,9 +24,16 @@ setup() {
 
 setup
 
-$PYTHON -m http.server &
+toplevel=${1:-langchain}
+
+$PYTHON -m http.server --directory wheels-repo/ 9090 &
 HTTP_SERVER_PID=$!
 
-pip -vvv install --no-cache-dir --index-url http://localhost:8000/simple -U langchain
+pip -vvv install \
+    --disable-pip-version-check \
+    --no-cache-dir \
+    --index-url http://localhost:9090/simple \
+    --upgrade \
+    "${toplevel}"
 
 # --dry-run --ignore-installed --report report.json

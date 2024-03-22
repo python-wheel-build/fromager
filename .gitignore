@@ -1,3 +1,5 @@
 .*.log
 /sdists-repo/
 /wheels-repo/
+/work-dir/
+/test-venv/
