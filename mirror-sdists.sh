@@ -4,45 +4,55 @@ set -xe
 set -o pipefail
 export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
 
-# Redirect stdout/stderr to logfile
-logfile=".mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
-exec > >(tee "$logfile") 2>&1
+WORKDIR=$(realpath $(pwd)/work-dir)
+if [ -d $WORKDIR ]; then
+    echo "Clean up $WORKDIR first"
+    exit 1
+fi
+mkdir -p $WORKDIR
 
-TMP=$(mktemp --tmpdir=. --directory tmpXXXX)
+# Redirect stdout/stderr to logfile
+logfile="$WORKDIR/mirror-sdists.log"
+exec > >(tee "$logfile") 2>&1
 
 TOPLEVEL="${1:-langchain}"
 
-VENV=$TMP/venv
+VENV=$WORKDIR/venv
 PYTHON=python3.9
 
-on_exit() {
-  rm -rf $TMP/
-}
-trap on_exit EXIT SIGINT SIGTERM
+SDISTS_REPO=$(realpath $(pwd)/sdists-repo)
 
 setup() {
   if [ ! -d $VENV ]; then
     $PYTHON -m venv $VENV
   fi
-  . ./$VENV/bin/activate
+  . $VENV/bin/activate
   pip install -U pip
+  # Dependencies for the mirror building scripts
+  pip install -U \
+      python-pypi-mirror \
+      toml \
+      pyproject_hooks \
+      packaging \
+      wheel \
+      build \
+      resolvelib \
+      html5lib \
+      requests \
+      packaging
 }
-
-setup
-
-pip install -U python-pypi-mirror toml pyproject_hooks packaging wheel
-pip install -U resolvelib html5lib requests packaging
 
 add_to_build_order() {
   local type="$1"; shift
   local req="$1"; shift
   local why="$1"; shift
-  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\",\"why\":\"${why}\"}" '. += [$obj]' sdists-repo/build-order.json > tmp.$$.json && mv tmp.$$.json sdists-repo/build-order.json
+  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\",\"why\":\"${why}\"}" '. += [$obj]' ${SDISTS_REPO}/build-order.json > tmp.$$.json && mv tmp.$$.json ${SDISTS_REPO}/build-order.json
+}
 }
 
 download_sdist() {
   local req="$1"; shift
-  python3 ./resolve_and_download.py --dest sdists-repo/downloads/ "${req}"
+  python3 ./resolve_and_download.py --dest ${SDISTS_REPO}/downloads/ "${req}"
 }
 
 get_downloaded_sdist() {
@@ -56,23 +66,24 @@ collect_build_requires() {
 
   local next_why=$(basename ${sdist} .tar.gz)
 
-  local tmp_unpack_dir=$(mktemp --tmpdir=$TMP --directory tmpXXXX)
-  tar -C $tmp_unpack_dir -xvzf $sdist
+  local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
+  mkdir -p "${unpack_dir}"
+  tar -C $unpack_dir -xvzf $sdist
   # We can't always predict what case will be used in the directory
   # name or whether it will match the prefix of the downloaded sdist.
-  local extract_dir="$(ls -1d ${tmp_unpack_dir}/*)"
+  local extract_dir="$(ls -1d ${unpack_dir}/*)"
 
   local extract_script=$(pwd)/extract-requires.py
   local parse_script=$(pwd)/parse_dep.py
-  local build_system_deps="${tmp_unpack_dir}/build-system-requirements.txt"
-  local build_backend_deps="${tmp_unpack_dir}/build-backend-requirements.txt"
-  local normal_deps="${tmp_unpack_dir}/requirements.txt"
+  local build_system_deps="${unpack_dir}/build-system-requirements.txt"
+  local build_backend_deps="${unpack_dir}/build-backend-requirements.txt"
+  local normal_deps="${unpack_dir}/requirements.txt"
 
   echo "Build system dependencies for ${sdist}:"
   (cd ${extract_dir} && $PYTHON $extract_script --build-system) | tee "${build_system_deps}"
 
   cat "${build_system_deps}" | while read -r req_iter; do
-      download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+      download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
       download_sdist "${req_iter}" | tee $download_output
       local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
@@ -91,7 +102,7 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script --build-backend) | tee "${build_backend_deps}"
 
   cat "${build_backend_deps}" | while read -r req_iter; do
-    download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
@@ -110,7 +121,7 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script) | tee "${normal_deps}"
 
   cat "${normal_deps}" | while read -r req_iter; do
-    download_output=${TMP}/download-$(${parse_script} "${req_iter}").log
+    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
@@ -121,15 +132,19 @@ collect_build_requires() {
   done
 }
 
-rm -rf sdists-repo/; mkdir -p sdists-repo/downloads/
+setup
 
-echo -n "[]" > sdists-repo/build-order.json
+rm -rf ${SDISTS_REPO}/; mkdir -p ${SDISTS_REPO}/downloads/
+echo -n "[]" > ${SDISTS_REPO}/build-order.json
 
-download_sdist "${TOPLEVEL}" | tee $TMP/toplevel-download.log
-collect_build_requires $(get_downloaded_sdist $TMP/toplevel-download.log) ""
+rm -rf "${WHEELS_REPO}"
+mkdir -p "${WHEELS_REPO}/downloads"
+
+download_sdist "${TOPLEVEL}" | tee $WORKDIR/toplevel-download.log
+collect_build_requires $(get_downloaded_sdist $WORKDIR/toplevel-download.log) ""
 
 add_to_build_order "toplevel" "${TOPLEVEL}" ""
 
-pypi-mirror create -d sdists-repo/downloads/ -m sdists-repo/simple/
+pypi-mirror create -d ${SDISTS_REPO}/downloads/ -m ${SDISTS_REPO}/simple/
 
 deactivate
