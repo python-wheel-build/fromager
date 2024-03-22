@@ -12,18 +12,13 @@ For the purposes of this prototype, [langchain](https://pypi.org/project/langcha
 
 The [mirror-sdists](mirror-sdists.sh) script does the following:
 
+* Creates an empty package repository for [wheels](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
 * Downloads all [source distributions](https://packaging.python.org/en/latest/glossary/#term-Source-Distribution-or-sdist) under `sdists-repo/downloads/` using `pip download` and generates a [PEP503 “simple” package repository](https://peps.python.org/pep-0503/) using [pypi-mirror](https://pypi.org/project/python-pypi-mirror/)
 * Three types of dependencies are also downloaded:
   * Firstly, any build system dependency specified in the pyproject.toml build-system.requires section as per [PEP517](https://peps.python.org/pep-0517)
   * Secondly, any build backend dependency returned from the get_requires_for_build_wheel() build backend hook (PEP517 again)
   * Lastly, any install-time dependencies of the project as per the wheel’s [core metadata](https://packaging.python.org/en/latest/specifications/core-metadata/) `Requires-Dist` list.
-* These dependencies are downloaded recursively and we record the order they will need to be built bottom-up in a build-order.json file
-
-The [build-wheels](build-wheels.sh) script then:
-
-* Creates an empty package repository for [wheels](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
-* Iterates over the list of packages in the build-order.json script
-* Fetches the source distribution for each package using`pip download`
+* These dependencies are downloaded recursively and we record the order they will need to be built bottom-up in a build-order.json file.
 * Uses `pip wheel` to build a binary package, only downloading dependencies from the fresh wheel repository
 * Places the newly built wheel in the package repository and regenerates the repository listing
 
