@@ -18,3 +18,6 @@ set -e -o pipefail
 # error: can't find Rust compiler
 
 sudo dnf install -y python3 python3-devel rust cargo cmake autoconf automake
+
+# Needed for cffi build
+sudo dnf install -y libffi libffi-devel
