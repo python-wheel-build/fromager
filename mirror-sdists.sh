@@ -84,6 +84,7 @@ safe_install() {
 }
 
 collect_build_requires() {
+  local req="$1"; shift
   local sdist="$1"; shift
   local why="$1"; shift
 
@@ -103,14 +104,14 @@ collect_build_requires() {
   local normal_deps="${unpack_dir}/requirements.txt"
 
   echo "Build system dependencies for ${sdist}:"
-  (cd ${extract_dir} && $PYTHON $extract_script --build-system) | tee "${build_system_deps}"
+  (cd ${extract_dir} && $PYTHON $extract_script --build-system "${req}") | tee "${build_system_deps}"
 
   cat "${build_system_deps}" | while read -r req_iter; do
       download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
       download_sdist "${req_iter}" | tee $download_output
       local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
-        collect_build_requires "${req_sdist}" "${why} -> ${next_why}"
+        collect_build_requires "${req}" "${req_sdist}" "${why} -> ${next_why}"
 
         add_to_build_order "build_system" "${req_iter}" "${why}"
 
@@ -122,14 +123,14 @@ collect_build_requires() {
   done
 
   echo "Build backend dependencies for ${sdist}:"
-  (cd ${extract_dir} && $PYTHON $extract_script --build-backend) | tee "${build_backend_deps}"
+  (cd ${extract_dir} && $PYTHON $extract_script --build-backend "${req}") | tee "${build_backend_deps}"
 
   cat "${build_backend_deps}" | while read -r req_iter; do
     download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_sdist}" "${why} -> ${next_why}"
+      collect_build_requires "${req}" "${req_sdist}" "${why} -> ${next_why}"
 
       add_to_build_order "build_backend" "${req_iter}" "${why}"
 
@@ -140,22 +141,23 @@ collect_build_requires() {
     fi
   done
 
+  # Build the wheel for this package after handling all of the
+  # build-related dependencies.
+  build_wheel "${extract_dir}" "${WHEELS_REPO}/downloads"
+
   echo "Regular dependencies for ${sdist}:"
-  (cd ${extract_dir} && $PYTHON $extract_script) | tee "${normal_deps}"
+  (cd ${extract_dir} && $PYTHON $extract_script "${req}") | tee "${normal_deps}"
 
   cat "${normal_deps}" | while read -r req_iter; do
     download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_sdist}" "${why} -> ${next_why}"
+      collect_build_requires "${req}" "${req_sdist}" "${why} -> ${next_why}"
 
       add_to_build_order "dependency" "${req_iter}" "${why}"
     fi
   done
-
-  # Build the wheel for this package after handling all of the dependencies
-  build_wheel "${extract_dir}" "${WHEELS_REPO}/downloads"
 }
 
 stop_wheel_server() {
@@ -183,7 +185,7 @@ mkdir -p "${WHEELS_REPO}/downloads"
 start_wheel_server
 
 download_sdist "${TOPLEVEL}" | tee $WORKDIR/toplevel-download.log
-collect_build_requires $(get_downloaded_sdist $WORKDIR/toplevel-download.log) ""
+collect_build_requires "${TOPLEVEL}" $(get_downloaded_sdist $WORKDIR/toplevel-download.log) ""
 
 add_to_build_order "toplevel" "${TOPLEVEL}" ""
 
