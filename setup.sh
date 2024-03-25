@@ -17,4 +17,7 @@ set -e -o pipefail
 # Building wheels for collected packages: maturin
 # error: can't find Rust compiler
 
-sudo dnf install python3 python3-devel rust cargo cmake autoconf automake
+sudo dnf install -y python3 python3-devel rust cargo cmake autoconf automake
+
+# Needed for cffi build
+sudo dnf install -y libffi libffi-devel

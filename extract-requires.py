@@ -4,8 +4,9 @@ import subprocess
 import sys
 
 import pyproject_hooks
-import toml
+import tomli
 from packaging import metadata
+from packaging.requirements import Requirement
 
 # Extract requirements from a pyproject.toml
 #
@@ -73,13 +74,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-system", action=argparse.BooleanOptionalAction)
     parser.add_argument("--build-backend", action=argparse.BooleanOptionalAction)
+    parser.add_argument("original_requirement")
     args = parser.parse_args()
+
+    original_requirement = Requirement(args.original_requirement)
+    original_marker_env = {}
+    if original_requirement.extras:
+        original_marker_env['extra'] = original_requirement.extras
 
     if not os.path.exists('pyproject.toml'):
         pyproject_toml = {}
     else:
         with open('pyproject.toml', 'r') as f:
-            pyproject_toml = toml.loads(f.read())
+            pyproject_toml = tomli.loads(f.read())
     hook_caller = get_build_backend_hook_caller(pyproject_toml)
 
     requires = []
@@ -91,7 +98,10 @@ if __name__ == "__main__":
         with open(os.path.join(metadata_path, "METADATA"), "r") as f:
             parsed = metadata.Metadata.from_email(f.read(), validate=False)
             for r in (parsed.requires_dist or []):
-                requires.append(str(r))
+                if (not r.marker) or r.marker.evaluate(original_marker_env):
+                    requires.append(str(r))
+                else:
+                    print(f'ignoring {r} because marker evaluates false with context {original_marker_env}', file=sys.stderr)
     elif args.build_system:
         requires.extend(get_build_backend(pyproject_toml)['requires'])
     elif args.build_backend:
