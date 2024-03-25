@@ -102,8 +102,6 @@ if __name__ == "__main__":
 
     requires = set()
     if not (args.build_system or args.build_backend):
-        requires.update(pyproject_toml.get('project', {}).get('dependencies', []))
-
         metadata_path = hook_caller.prepare_metadata_for_build_wheel("./")
 
         with open(os.path.join(metadata_path, "METADATA"), "r") as f:
