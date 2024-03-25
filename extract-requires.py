@@ -78,9 +78,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     original_requirement = Requirement(args.original_requirement)
-    original_marker_env = {}
-    if original_requirement.extras:
-        original_marker_env['extra'] = original_requirement.extras
 
     if not os.path.exists('pyproject.toml'):
         pyproject_toml = {}
@@ -89,23 +86,28 @@ if __name__ == "__main__":
             pyproject_toml = tomli.loads(f.read())
     hook_caller = get_build_backend_hook_caller(pyproject_toml)
 
-    requires = []
+    requires = set()
     if not (args.build_system or args.build_backend):
-        requires.extend(pyproject_toml.get('project', {}).get('dependencies', []))
+        requires.update(pyproject_toml.get('project', {}).get('dependencies', []))
 
         metadata_path = hook_caller.prepare_metadata_for_build_wheel("./")
 
         with open(os.path.join(metadata_path, "METADATA"), "r") as f:
             parsed = metadata.Metadata.from_email(f.read(), validate=False)
-            for r in (parsed.requires_dist or []):
-                if (not r.marker) or r.marker.evaluate(original_marker_env):
-                    requires.append(str(r))
-                else:
-                    print(f'ignoring {r} because marker evaluates false with context {original_marker_env}', file=sys.stderr)
+            for extra in original_requirement.extras if original_requirement.extras else [""]:
+                extra_marker_env = {}
+                if extra:
+                    extra_marker_env['extra'] = extra
+                for r in (parsed.requires_dist or []):
+                    if (not r.marker) or r.marker.evaluate(extra_marker_env):
+                        print(f'adding {r} within context {extra_marker_env}', file=sys.stderr)
+                        requires.add(str(r))
+                    else:
+                        print(f'ignoring {r} because marker evaluates false with context {extra_marker_env}', file=sys.stderr)
     elif args.build_system:
-        requires.extend(get_build_backend(pyproject_toml)['requires'])
+        requires.update(get_build_backend(pyproject_toml)['requires'])
     elif args.build_backend:
-        requires.extend(hook_caller.get_requires_for_build_wheel())
+        requires.update(hook_caller.get_requires_for_build_wheel())
 
     for req in requires:
         print(f"{req}")
