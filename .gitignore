@@ -1,3 +1,4 @@
+__pycache__/
 .*.log
 /sdists-repo/
 /wheels-repo/
