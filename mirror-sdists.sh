@@ -114,12 +114,12 @@ collect_build_requires() {
         collect_build_requires "${req_iter}" "${req_sdist}" "${why} -> ${next_why}"
 
         add_to_build_order "build_system" "${req_iter}" "${why}"
-
-        # We may need these dependencies installed in order to run build hooks
-        # Example: frozenlist build-system.requires includes expandvars because
-        # it is used by the packaging/pep517_backend/ build backend
-        safe_install "${req_iter}"
       fi
+
+      # We may need these dependencies installed in order to run build hooks
+      # Example: frozenlist build-system.requires includes expandvars because
+      # it is used by the packaging/pep517_backend/ build backend
+      safe_install "${req_iter}"
   done
 
   echo "Build backend dependencies for ${sdist}:"
@@ -133,12 +133,12 @@ collect_build_requires() {
       collect_build_requires "${req_iter}" "${req_sdist}" "${why} -> ${next_why}"
 
       add_to_build_order "build_backend" "${req_iter}" "${why}"
-
-      # Build backends are often used to package themselves, so in
-      # order to determine their dependencies they may need to be
-      # installed.
-      safe_install "${req_iter}"
     fi
+
+    # Build backends are often used to package themselves, so in
+    # order to determine their dependencies they may need to be
+    # installed.
+    safe_install "${req_iter}"
   done
 
   # Build the wheel for this package after handling all of the
