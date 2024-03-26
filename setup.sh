@@ -24,3 +24,6 @@ sudo dnf install -y libffi libffi-devel
 
 # Needed for cryptography build
 sudo dnf install -y openssl-devel
+
+# Needed for pillow build
+sudo dnf install -y zlib-devel libjpeg-devel
