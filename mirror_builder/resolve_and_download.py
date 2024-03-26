@@ -18,6 +18,7 @@ from zipfile import ZipFile
 
 import html5lib
 import requests
+from extras_provider import ExtrasProvider
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
@@ -26,7 +27,7 @@ from resolvelib import (BaseReporter, InconsistentCandidate,
                         RequirementsConflicted, ResolutionError,
                         ResolutionImpossible, Resolver)
 
-from extras_provider import ExtrasProvider
+logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
 
@@ -80,7 +81,7 @@ class Candidate:
 
 def get_project_from_pypi(project, extras):
     """Return candidates created from the project name and extras."""
-    logging.debug('get project %s', project)
+    logger.info('get project %s', project)
     url = "https://pypi.org/simple/{}".format(project)
     data = requests.get(url).content
     #log(data.decode('utf-8'))
@@ -100,7 +101,7 @@ def get_project_from_pypi(project, extras):
                 log(f'skipping {filename} because of an invalid python version specifier {py_req}: {err}')
                 continue
             if PYTHON_VERSION not in spec:
-                logging.debug(f'skipping {filename} because of python version {py_req}')
+                logger.debug(f'skipping {filename} because of python version {py_req}')
                 continue
 
         path = urlparse(url).path
@@ -114,7 +115,7 @@ def get_project_from_pypi(project, extras):
         # Very primitive sdist filename parsing
         name_and_version = NAME_VERSION_PATTERN.search(filename)
         if not name_and_version:
-            logging.debug(f'skipping {filename} because could not extract version info')
+            logger.debug(f'skipping {filename} because could not extract version info')
             continue
         name = name_and_version.groups()[0]
         version = name_and_version.groups()[1]
@@ -122,11 +123,11 @@ def get_project_from_pypi(project, extras):
             version = Version(version)
         except InvalidVersion as err:
             # Ignore files with invalid versions
-            logging.debug(f'invalid version for {filename}: {err}')
+            logger.debug(f'invalid version for {filename}: {err}')
             continue
 
         c = Candidate(name, version, url=url, extras=extras)
-        logging.debug('candidate %s (%s)', filename, c)
+        logger.debug('candidate %s (%s)', filename, c)
         yield c
 
 
@@ -183,23 +184,21 @@ class PyPIProvider(ExtrasProvider):
 
 def download_resolution(destination_dir, result):
     """Download the candidates"""
-    downloaded = []
     for name, candidate in result.mapping.items():
         parsed_url = urlparse(candidate.url)
         outfile = os.path.join(destination_dir, os.path.basename(parsed_url.path))
         if os.path.exists(outfile):
-            logging.debug(f'already have {outfile}')
-            continue
+            logger.debug(f'already have {outfile}')
+            return outfile
         # Open the URL first in case that fails, so we don't end up with an empty file.
-        logging.debug(f'reading {candidate.name} {candidate.version} from {candidate.url}')
+        logger.debug(f'reading {candidate.name} {candidate.version} from {candidate.url}')
         with requests.get(candidate.url, stream=True) as r:
             with open(outfile, 'wb') as f:
-                logging.debug(f'writing to {outfile}')
+                logger.debug(f'writing to {outfile}')
                 for chunk in r.iter_content(chunk_size=1024*1024):
                     f.write(chunk)
-                logging.info(f'Saved {outfile}')
-            downloaded.append(outfile)
-    return downloaded
+                logger.info(f'Saved {outfile}')
+            return outfile
 
 
 def main():
@@ -220,8 +219,8 @@ def main():
 
     # Things I want to resolve.
     requirements = [Requirement(r) for r in args.requirements]
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
+    logger.basicConfig(
+        level=logger.DEBUG if args.verbose else logging.INFO,
     )
 
     # Things I want to resolve.
@@ -233,7 +232,7 @@ def main():
     resolver = Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logging.debug("Resolving %s", ", ".join(args.requirements))
+    logger.debug("Resolving %s", ", ".join(args.requirements))
     try:
         result = resolver.resolve(requirements)
     except (InconsistentCandidate, RequirementsConflicted, ResolutionImpossible) as err:
