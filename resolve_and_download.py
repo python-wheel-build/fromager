@@ -18,7 +18,7 @@ from zipfile import ZipFile
 import html5lib
 import requests
 from packaging.requirements import Requirement
-from packaging.specifiers import SpecifierSet
+from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 from resolvelib import (BaseReporter, InconsistentCandidate,
@@ -96,7 +96,13 @@ def get_project_from_pypi(project, extras):
         filename = path.rpartition("/")[-1]
         # Skip items that need a different Python version
         if py_req:
-            spec = SpecifierSet(py_req)
+            try:
+                spec = SpecifierSet(py_req)
+            except InvalidSpecifier as err:
+                # Ignore files with invalid python specifiers
+                # e.g. shellingham has files with ">= '2.7'"
+                log(f'skipping {filename} because of an invalid python version specifier {py_req}: {err}')
+                continue
             if PYTHON_VERSION not in spec:
                 log(f'skipping {filename} because of python version {py_req}')
                 continue
