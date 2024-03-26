@@ -5,10 +5,6 @@ set -o pipefail
 export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
 
 WORKDIR=$(realpath $(pwd)/work-dir)
-if [ -d $WORKDIR ]; then
-    echo "Clean up $WORKDIR first"
-    exit 1
-fi
 mkdir -p $WORKDIR
 
 PYTHON=${PYTHON:-python3.9}
