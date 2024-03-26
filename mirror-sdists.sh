@@ -84,14 +84,12 @@ get_downloaded_sdist() {
 }
 
 safe_install() {
-  local req="$1"; shift
-
   pip -vvv install \
       --upgrade \
       --disable-pip-version-check \
       --only-binary :all: \
       --index-url "${WHEEL_SERVER_URL}" \
-      "${req}"
+        "$@"
 }
 
 patch_sdist() {
