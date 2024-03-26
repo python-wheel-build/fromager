@@ -83,6 +83,19 @@ safe_install() {
         "${req}"
 }
 
+patch_sdist() {
+  local extract_dir="$1"; shift
+
+  for p in patches/$(basename "${extract_dir}")*.patch; do
+    if [ -e "${p}" ]; then
+      p=$(realpath "${p}")
+      pushd "${extract_dir}"
+      patch -p1 < "${p}"
+      popd
+    fi
+  done
+}
+
 collect_build_requires() {
   local req="$1"; shift
   local sdist="$1"; shift
@@ -96,6 +109,8 @@ collect_build_requires() {
   # We can't always predict what case will be used in the directory
   # name or whether it will match the prefix of the downloaded sdist.
   local extract_dir="$(ls -1d ${unpack_dir}/*)"
+
+  patch_sdist "${extract_dir}"
 
   local extract_script=$(pwd)/extract-requires.py
   local parse_script=$(pwd)/parse_dep.py
