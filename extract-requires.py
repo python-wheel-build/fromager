@@ -72,15 +72,23 @@ def get_build_backend_hook_caller(pyproject_toml):
 
 
 def evaluate_marker(req, extras=None):
-    marker_env = markers.default_environment()
-    for extra in extras if extras else [""]:
-        if extra:
-            marker_env['extra'] = extra
-        if (not req.marker) or req.marker.evaluate(marker_env):
-            print(f'adding {req} via extra="{extra}"', file=sys.stderr)
+    if not req.marker:
+        return True
+
+    default_env = markers.default_environment()
+    if not extras:
+        marker_envs = [default_env]
+    else:
+        marker_envs = [default_env.copy() | {'extra':e} for e in extras]
+
+    for marker_env in marker_envs:
+        if req.marker.evaluate(marker_env):
+            print(f'adding {req} -- marker evaluates true with extras={extras} and default_env={default_env}',
+                  file=sys.stderr)
             return True
-        else:
-            print(f'ignoring {req} because marker evaluates false with context {marker_env}', file=sys.stderr)
+
+    print(f'ignoring {req} -- marker evaluates false with extras={extras} and default_env={default_env}',
+          file=sys.stderr)
     return False
 
 
