@@ -69,7 +69,24 @@ build_wheel() {
   local sdist_dir="$1"; shift
   local dest_dir="$1"; shift
 
-  (cd "${sdist_dir}" && python -m build --wheel . && mv dist/*.whl "${WHEELS_REPO}/downloads/")
+  local -r unpack_dir=$(dirname "${sdist_dir}")
+  local -r build_env="${unpack_dir}/build-env"
+  $PYTHON -m venv "${build_env}"
+  # FIXME: Still installs 'build' and 'wheel' from outside
+  (cd "${sdist_dir}"\
+       && source "${build_env}/bin/activate" \
+       && pip install --disable-pip-version-check build wheel \
+       && safe_install -r "${unpack_dir}/build-system-requirements.txt" \
+       && safe_install -r "${unpack_dir}/build-backend-requirements.txt" \
+       && pip freeze \
+       && pwd \
+       && python3 -m build \
+                  --wheel \
+                  --skip-dependency-check \
+                  --no-isolation \
+                  --outdir "${WHEELS_REPO}/downloads/" \
+                  . \
+      )
   update_mirror
 }
 
