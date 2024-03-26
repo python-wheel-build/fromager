@@ -183,6 +183,7 @@ class PyPIProvider(ExtrasProvider):
 
 def download_resolution(destination_dir, result):
     """Download the candidates"""
+    downloaded = []
     for name, candidate in result.mapping.items():
         parsed_url = urlparse(candidate.url)
         outfile = os.path.join(destination_dir, os.path.basename(parsed_url.path))
@@ -197,7 +198,8 @@ def download_resolution(destination_dir, result):
                 for chunk in r.iter_content(chunk_size=1024*1024):
                     f.write(chunk)
                 logging.info(f'Saved {outfile}')
-            return outfile
+            downloaded.append(outfile)
+    return downloaded
 
 
 def main():
