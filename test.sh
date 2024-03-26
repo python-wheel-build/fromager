@@ -6,7 +6,16 @@ set -o pipefail
 
 toplevel=${1:-langchain}
 
-rm -rf sdists-repo wheels-repo .build* work-dir
-./mirror-sdists.sh "${toplevel}"
+PYTHON_TO_TEST="
+  python3.9
+  python3.12
+"
 
-./install-from-mirror.sh "${toplevel}"
+for PYTHON in $PYTHON_TO_TEST; do
+    PYTHON=$PYTHON ./mirror-sdists.sh "${toplevel}"
+    if PYTHON=$PYTHON ./install-from-mirror.sh "${toplevel}"; then
+        echo "SUCCESS $PYTHON"
+    else
+        echo "FAIL $PYTHON"
+    fi
+done
