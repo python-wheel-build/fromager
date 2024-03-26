@@ -20,6 +20,7 @@ VENV=$WORKDIR/venv-${PYTHON_VERSION}
 
 WHEELS_REPO=$(realpath $(pwd)/wheels-repo)
 SDISTS_REPO=$(realpath $(pwd)/sdists-repo)
+BUILD_ORDER=${SDISTS_REPO}/build-order-${PYTHON_VERSION}.json
 
 setup() {
   if [ ! -d $VENV ]; then
@@ -45,7 +46,7 @@ add_to_build_order() {
   local type="$1"; shift
   local req="$1"; shift
   local why="$1"; shift
-  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\",\"why\":\"${why}\"}" '. += [$obj]' ${SDISTS_REPO}/build-order.json > tmp.$$.json && mv tmp.$$.json ${SDISTS_REPO}/build-order.json
+  jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\",\"why\":\"${why}\"}" '. += [$obj]' ${BUILD_ORDER} > tmp.$$.json && mv tmp.$$.json ${BUILD_ORDER}
 }
 
 update_mirror() {
@@ -176,7 +177,7 @@ trap on_exit EXIT SIGINT SIGTERM
 setup
 
 rm -rf ${SDISTS_REPO}/; mkdir -p ${SDISTS_REPO}/downloads/
-echo -n "[]" > ${SDISTS_REPO}/build-order.json
+echo -n "[]" > ${BUILD_ORDER}
 
 rm -rf "${WHEELS_REPO}"
 mkdir -p "${WHEELS_REPO}/downloads"
