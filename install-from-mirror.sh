@@ -39,5 +39,6 @@ pip -vvv install \
     --index-url http://localhost:9090/simple \
     --upgrade \
     "${toplevel}"
+pip freeze
 
 # --dry-run --ignore-installed --report report.json
