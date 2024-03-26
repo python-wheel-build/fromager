@@ -194,8 +194,17 @@ collect_build_requires() {
   add_to_build_order "${type}" "${req}" "${why}"
 }
 
+handle_toplevel_requirement() {
+  local req="$1"; shift
+
+  local -r download_log="$WORKDIR/download-toplevel.log"
+  download_sdist "${req}" | tee "${download_log}"
+  local -r sdist="$(get_downloaded_sdist "${download_log}")"
+  collect_build_requires "toplevel" "${req}" "${sdist}" ""
+}
+
 stop_wheel_server() {
-    kill ${HTTP_SERVER_PID}
+  kill ${HTTP_SERVER_PID}
 }
 start_wheel_server() {
   update_mirror
@@ -218,8 +227,7 @@ echo -n "[]" > ${BUILD_TRACKER}
 mkdir -p "${WHEELS_REPO}/downloads"
 start_wheel_server
 
-download_sdist "${TOPLEVEL}" | tee $WORKDIR/toplevel-download.log
-collect_build_requires "toplevel" "${TOPLEVEL}" $(get_downloaded_sdist $WORKDIR/toplevel-download.log) ""
+handle_toplevel_requirement "${TOPLEVEL}"
 
 pypi-mirror create -d ${SDISTS_REPO}/downloads/ -m ${SDISTS_REPO}/simple/
 
