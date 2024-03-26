@@ -7,7 +7,7 @@ logfile=".install_from_mirror_$(date '+%Y-%m-%d_%H-%M-%S').log"
 exec > >(tee "$logfile") 2>&1
 
 VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
-PYTHON=python3.9
+PYTHON=${PYTHON:-python3.9}
 HTTP_SERVER_PID=
 
 on_exit() {
