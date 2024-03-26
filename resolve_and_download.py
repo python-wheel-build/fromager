@@ -234,6 +234,7 @@ def main():
         result = resolver.resolve(requirements)
     except (InconsistentCandidate, RequirementsConflicted, ResolutionImpossible) as err:
         print(f'could not resolve {requirements}: {err}', file=sys.stderr)
+        sys.exit(1)
     else:
         download_resolution(args.dest, result)
 
