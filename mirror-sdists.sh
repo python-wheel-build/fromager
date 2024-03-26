@@ -42,6 +42,12 @@ setup() {
       packaging
 }
 
+already_processed() {
+  local req="$1"
+
+  jq .[].req < "${BUILD_ORDER}" | grep "$req"
+}
+
 add_to_build_order() {
   local type="$1"; shift
   local req="$1"; shift
@@ -68,7 +74,7 @@ download_sdist() {
 
 get_downloaded_sdist() {
     local input=$1
-    grep Saved $input | cut -d ' ' -f 2-
+    grep -E '(Existing|Saved)' $input | cut -d ' ' -f 2-
 }
 
 safe_install() {
@@ -87,9 +93,19 @@ collect_build_requires() {
   local sdist="$1"; shift
   local why="$1"; shift
 
+  # Check if we have already processed this requirement to avoid cycles.
+  if already_processed "$req"; then
+      echo "$req has already been seen"
+      return
+  fi
+
   local next_why=$(basename ${sdist} .tar.gz)
 
   local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
+  # If the sdist was already unpacked we may have been doing the
+  # analysis with a different Python version, so remove the directory
+  # to ensure we get clean results this time.
+  rm -rf "${unpack_dir}"
   mkdir -p "${unpack_dir}"
   tar -C $unpack_dir -xvzf $sdist
   # We can't always predict what case will be used in the directory
@@ -106,6 +122,15 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script --build-system "${req}") | tee "${build_system_deps}"
 
   cat "${build_system_deps}" | while read -r req_iter; do
+
+      # Check if we have already processed this requirement to avoid
+      # cycles. Do this before recursing to avoid adding an item to the
+      # build order list multiple times.
+      if already_processed "$req_iter"; then
+          echo "$req_iter has already been seen"
+          continue
+      fi
+
       download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
       download_sdist "${req_iter}" | tee $download_output
       local req_sdist=$(get_downloaded_sdist $download_output)
@@ -125,6 +150,15 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script --build-backend "${req}") | tee "${build_backend_deps}"
 
   cat "${build_backend_deps}" | while read -r req_iter; do
+
+    # Check if we have already processed this requirement to avoid
+    # cycles. Do this before recursing to avoid adding an item to the
+    # build order list multiple times.
+    if already_processed "$req_iter"; then
+        echo "$req_iter has already been seen"
+        continue
+    fi
+
     download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
@@ -148,6 +182,15 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script "${req}") | tee "${normal_deps}"
 
   cat "${normal_deps}" | while read -r req_iter; do
+
+    # Check if we have already processed this requirement to avoid
+    # cycles. Do this before recursing to avoid adding an item to the
+    # build order list multiple times.
+    if already_processed "$req_iter"; then
+        echo "$req_iter has already been seen"
+        continue
+    fi
+
     download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
@@ -176,10 +219,9 @@ trap on_exit EXIT SIGINT SIGTERM
 
 setup
 
-rm -rf ${SDISTS_REPO}/; mkdir -p ${SDISTS_REPO}/downloads/
+mkdir -p ${SDISTS_REPO}/downloads/
 echo -n "[]" > ${BUILD_ORDER}
 
-rm -rf "${WHEELS_REPO}"
 mkdir -p "${WHEELS_REPO}/downloads"
 start_wheel_server
 

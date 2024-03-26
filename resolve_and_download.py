@@ -18,7 +18,7 @@ from zipfile import ZipFile
 import html5lib
 import requests
 from packaging.requirements import Requirement
-from packaging.specifiers import SpecifierSet, InvalidSpecifier
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 from resolvelib import (BaseReporter, InconsistentCandidate,
@@ -191,7 +191,7 @@ def download_resolution(destination_dir, result):
         parsed_url = urlparse(candidate.url)
         outfile = os.path.join(destination_dir, os.path.basename(parsed_url.path))
         if os.path.exists(outfile):
-            log(f'already have {outfile}')
+            print(f'\nExisting {outfile}')
             continue
         # Open the URL first in case that fails, so we don't end up with an empty file.
         log(f'reading {candidate.name} {candidate.version} from {candidate.url}')

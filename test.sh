@@ -19,9 +19,5 @@ fi
 
 for PYTHON in $PYTHON_TO_TEST; do
     PYTHON=$PYTHON ./mirror-sdists.sh "${toplevel}"
-    if PYTHON=$PYTHON ./install-from-mirror.sh "${toplevel}"; then
-        echo "SUCCESS $PYTHON"
-    else
-        echo "FAIL $PYTHON"
-    fi
+    PYTHON=$PYTHON ./install-from-mirror.sh "${toplevel}"
 done
