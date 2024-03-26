@@ -11,14 +11,16 @@ if [ -d $WORKDIR ]; then
 fi
 mkdir -p $WORKDIR
 
+PYTHON=${PYTHON:-python3.9}
+PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
+
 # Redirect stdout/stderr to logfile
-logfile="$WORKDIR/mirror-sdists.log"
+logfile="$WORKDIR/mirror-sdists-${PYTHON_VERSION}.log"
 exec > >(tee "$logfile") 2>&1
 
 TOPLEVEL="${1:-langchain}"
 
-VENV=$WORKDIR/venv
-PYTHON=python3.9
+VENV=$WORKDIR/venv-${PYTHON_VERSION}
 
 WHEELS_REPO=$(realpath $(pwd)/wheels-repo)
 SDISTS_REPO=$(realpath $(pwd)/sdists-repo)
