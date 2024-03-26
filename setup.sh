@@ -21,3 +21,6 @@ sudo dnf install -y python3 python3-devel rust cargo cmake autoconf automake
 
 # Needed for cffi build
 sudo dnf install -y libffi libffi-devel
+
+# Needed for cryptography build
+sudo dnf install -y openssl-devel
