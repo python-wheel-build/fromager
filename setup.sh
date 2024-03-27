@@ -27,3 +27,6 @@ sudo dnf install -y openssl-devel
 
 # Needed for pillow build
 sudo dnf install -y zlib-devel libjpeg-devel
+
+# Needed for 3.12 builds (on CentOS Stream 9)
+sudo dnf install -y python3.12-devel
