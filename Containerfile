@@ -44,5 +44,3 @@ RUN dnf -y install zlib-devel libjpeg-devel
 RUN dnf -y install python3.9 python3.12 python3.12-devel
 
 WORKDIR /src
-
-ENTRYPOINT ./test.sh

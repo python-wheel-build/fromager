@@ -5,3 +5,4 @@ __pycache__/
 /work-dir/
 /test-venv/
 /venv*/
+/container-work-dir/
