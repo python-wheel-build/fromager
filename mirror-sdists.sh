@@ -21,6 +21,7 @@ VENV=$WORKDIR/venv-${PYTHON_VERSION}
 WHEELS_REPO=$(realpath $(pwd)/wheels-repo)
 SDISTS_REPO=$(realpath $(pwd)/sdists-repo)
 BUILD_ORDER=${SDISTS_REPO}/build-order-${PYTHON_VERSION}.json
+BUILD_TRACKER=${WORKDIR}/build-tracker-${PYTHON_VERSION}.json
 
 setup() {
   if [ ! -d $VENV ]; then
@@ -42,17 +43,21 @@ setup() {
       packaging
 }
 
-already_processed() {
-  local req="$1"
-
-  jq .[].req < "${BUILD_ORDER}" | grep "$req"
-}
-
 add_to_build_order() {
   local type="$1"; shift
   local req="$1"; shift
   local why="$1"; shift
   jq --argjson obj "{\"type\":\"${type}\",\"req\":\"${req//\"/\'}\",\"why\":\"${why}\"}" '. += [$obj]' ${BUILD_ORDER} > tmp.$$.json && mv tmp.$$.json ${BUILD_ORDER}
+}
+
+add_to_build_tracker() {
+  local resolved_name="$1"; shift
+  jq --argjson obj "{\"name\":\"${resolved_name}\"}" '. += [$obj]' ${BUILD_TRACKER} > tmp.$$.json && mv tmp.$$.json ${BUILD_TRACKER}
+}
+
+already_built_or_in_process() {
+  local resolved_name="$1"; shift
+  jq -r '.[].name' < "${BUILD_TRACKER}" | grep "^${resolved_name}$"
 }
 
 update_mirror() {
@@ -102,17 +107,21 @@ patch_sdist() {
 }
 
 collect_build_requires() {
+  local type="$1"; shift
   local req="$1"; shift
   local sdist="$1"; shift
   local why="$1"; shift
 
+  local resolved_name=$(basename "${sdist}" .tar.gz)
+
   # Check if we have already processed this requirement to avoid cycles.
-  if already_processed "$req"; then
-      echo "$req has already been seen"
+  if already_built_or_in_process "${resolved_name}"; then
+      echo "${resolved_name} has already been seen"
       return
   fi
+  add_to_build_tracker "${resolved_name}"
 
-  local next_why=$(basename ${sdist} .tar.gz)
+  local next_why="${why} -> ${resolved_name}"
 
   local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
   # If the sdist was already unpacked we may have been doing the
@@ -133,26 +142,15 @@ collect_build_requires() {
   local build_backend_deps="${unpack_dir}/build-backend-requirements.txt"
   local normal_deps="${unpack_dir}/requirements.txt"
 
-  echo "Build system dependencies for ${sdist}:"
+  echo "Build system dependencies for ${resolved_name}:"
   (cd ${extract_dir} && $PYTHON $extract_script --build-system "${req}") | tee "${build_system_deps}"
 
   cat "${build_system_deps}" | while read -r req_iter; do
-
-      # Check if we have already processed this requirement to avoid
-      # cycles. Do this before recursing to avoid adding an item to the
-      # build order list multiple times.
-      if already_processed "$req_iter"; then
-          echo "$req_iter has already been seen"
-          continue
-      fi
-
       download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
       download_sdist "${req_iter}" | tee $download_output
       local req_sdist=$(get_downloaded_sdist $download_output)
       if [ -n "${req_sdist}" ]; then
-        collect_build_requires "${req_iter}" "${req_sdist}" "${why} -> ${next_why}"
-
-        add_to_build_order "build_system" "${req_iter}" "${why}"
+        collect_build_requires "build_system" "${req_iter}" "${req_sdist}" "${next_why}"
       fi
 
       # We may need these dependencies installed in order to run build hooks
@@ -161,26 +159,15 @@ collect_build_requires() {
       safe_install "${req_iter}"
   done
 
-  echo "Build backend dependencies for ${sdist}:"
+  echo "Build backend dependencies for ${resolved_name}:"
   (cd ${extract_dir} && $PYTHON $extract_script --build-backend "${req}") | tee "${build_backend_deps}"
 
   cat "${build_backend_deps}" | while read -r req_iter; do
-
-    # Check if we have already processed this requirement to avoid
-    # cycles. Do this before recursing to avoid adding an item to the
-    # build order list multiple times.
-    if already_processed "$req_iter"; then
-        echo "$req_iter has already been seen"
-        continue
-    fi
-
     download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_iter}" "${req_sdist}" "${why} -> ${next_why}"
-
-      add_to_build_order "build_backend" "${req_iter}" "${why}"
+      collect_build_requires "build_backend" "${req_iter}" "${req_sdist}" "${next_why}"
     fi
 
     # Build backends are often used to package themselves, so in
@@ -193,28 +180,19 @@ collect_build_requires() {
   # build-related dependencies.
   build_wheel "${extract_dir}" "${WHEELS_REPO}/downloads"
 
-  echo "Regular dependencies for ${sdist}:"
+  echo "Regular dependencies for ${resolved_name}:"
   (cd ${extract_dir} && $PYTHON $extract_script "${req}") | tee "${normal_deps}"
 
   cat "${normal_deps}" | while read -r req_iter; do
-
-    # Check if we have already processed this requirement to avoid
-    # cycles. Do this before recursing to avoid adding an item to the
-    # build order list multiple times.
-    if already_processed "$req_iter"; then
-        echo "$req_iter has already been seen"
-        continue
-    fi
-
     download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
-      collect_build_requires "${req_iter}" "${req_sdist}" "${why} -> ${next_why}"
-
-      add_to_build_order "dependency" "${req_iter}" "${why}"
+      collect_build_requires "dependency" "${req_iter}" "${req_sdist}" "${next_why}"
     fi
   done
+
+  add_to_build_order "${type}" "${req}" "${why}"
 }
 
 stop_wheel_server() {
@@ -236,14 +214,13 @@ setup
 
 mkdir -p ${SDISTS_REPO}/downloads/
 echo -n "[]" > ${BUILD_ORDER}
+echo -n "[]" > ${BUILD_TRACKER}
 
 mkdir -p "${WHEELS_REPO}/downloads"
 start_wheel_server
 
 download_sdist "${TOPLEVEL}" | tee $WORKDIR/toplevel-download.log
-collect_build_requires "${TOPLEVEL}" $(get_downloaded_sdist $WORKDIR/toplevel-download.log) ""
-
-add_to_build_order "toplevel" "${TOPLEVEL}" ""
+collect_build_requires "toplevel" "${TOPLEVEL}" $(get_downloaded_sdist $WORKDIR/toplevel-download.log) ""
 
 pypi-mirror create -d ${SDISTS_REPO}/downloads/ -m ${SDISTS_REPO}/simple/
 
