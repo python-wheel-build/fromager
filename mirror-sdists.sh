@@ -1,4 +1,5 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 set -xe
 set -o pipefail
@@ -78,19 +79,19 @@ download_sdist() {
 }
 
 get_downloaded_sdist() {
-    local input=$1
-    grep -E '(Existing|Saved)' $input | cut -d ' ' -f 2-
+  local input=$1
+  grep -E '(Existing|Saved)' $input | cut -d ' ' -f 2-
 }
 
 safe_install() {
-    local req="$1"; shift
+  local req="$1"; shift
 
-    pip -vvv install \
-        --upgrade \
-        --disable-pip-version-check \
-        --only-binary :all: \
-        --index-url "${WHEEL_SERVER_URL}" \
-        "${req}"
+  pip -vvv install \
+      --upgrade \
+      --disable-pip-version-check \
+      --only-binary :all: \
+      --index-url "${WHEEL_SERVER_URL}" \
+      "${req}"
 }
 
 patch_sdist() {
@@ -146,17 +147,17 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script --build-system "${req}") | tee "${build_system_deps}"
 
   cat "${build_system_deps}" | while read -r req_iter; do
-      download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
-      download_sdist "${req_iter}" | tee $download_output
-      local req_sdist=$(get_downloaded_sdist $download_output)
-      if [ -n "${req_sdist}" ]; then
-        collect_build_requires "build_system" "${req_iter}" "${req_sdist}" "${next_why}"
-      fi
+    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
+    download_sdist "${req_iter}" | tee $download_output
+    local req_sdist=$(get_downloaded_sdist $download_output)
+    if [ -n "${req_sdist}" ]; then
+      collect_build_requires "build_system" "${req_iter}" "${req_sdist}" "${next_why}"
+    fi
 
-      # We may need these dependencies installed in order to run build hooks
-      # Example: frozenlist build-system.requires includes expandvars because
-      # it is used by the packaging/pep517_backend/ build backend
-      safe_install "${req_iter}"
+    # We may need these dependencies installed in order to run build hooks
+    # Example: frozenlist build-system.requires includes expandvars because
+    # it is used by the packaging/pep517_backend/ build backend
+    safe_install "${req_iter}"
   done
 
   echo "Build backend dependencies for ${resolved_name}:"
@@ -199,14 +200,14 @@ stop_wheel_server() {
     kill ${HTTP_SERVER_PID}
 }
 start_wheel_server() {
-    update_mirror
-    $PYTHON -m http.server --directory "${WHEELS_REPO}" 9090 &
-    HTTP_SERVER_PID=$!
-    WHEEL_SERVER_URL="http://localhost:9090/simple"
+  update_mirror
+  $PYTHON -m http.server --directory "${WHEELS_REPO}" 9090 &
+  HTTP_SERVER_PID=$!
+  WHEEL_SERVER_URL="http://localhost:9090/simple"
 }
 
 on_exit() {
-    stop_wheel_server
+  stop_wheel_server
 }
 trap on_exit EXIT SIGINT SIGTERM
 
