@@ -95,6 +95,11 @@ download_sdist() {
   python3 ./resolve_and_download.py --dest ${SDISTS_REPO}/downloads/ "${req}"
 }
 
+make_download_log_name() {
+  local req="$1"; shift
+  echo "${WORKDIR}/download-$($(pwd)/parse_dep.py "${req}").log"
+}
+
 get_downloaded_sdist() {
   local input=$1
   grep -E '(Existing|Saved)' $input | cut -d ' ' -f 2-
@@ -153,7 +158,6 @@ collect_build_requires() {
   patch_sdist "${extract_dir}"
 
   local extract_script=$(pwd)/extract-requires.py
-  local parse_script=$(pwd)/parse_dep.py
   local build_system_deps="${unpack_dir}/build-system-requirements.txt"
   local build_backend_deps="${unpack_dir}/build-backend-requirements.txt"
   local normal_deps="${unpack_dir}/requirements.txt"
@@ -162,7 +166,7 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script --build-system "${req}") | tee "${build_system_deps}"
 
   cat "${build_system_deps}" | while read -r req_iter; do
-    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
+    download_output=$(make_download_log_name "${req_iter}")
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
@@ -179,7 +183,7 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script --build-backend "${req}") | tee "${build_backend_deps}"
 
   cat "${build_backend_deps}" | while read -r req_iter; do
-    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
+    download_output=$(make_download_log_name "${req_iter}")
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
@@ -200,7 +204,7 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script "${req}") | tee "${normal_deps}"
 
   cat "${normal_deps}" | while read -r req_iter; do
-    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
+    download_output=$(make_download_log_name "${req_iter}")
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
@@ -214,9 +218,9 @@ collect_build_requires() {
 handle_toplevel_requirement() {
   local req="$1"; shift
 
-  local -r download_log="$WORKDIR/download-toplevel.log"
-  download_sdist "${req}" | tee "${download_log}"
-  local -r sdist="$(get_downloaded_sdist "${download_log}")"
+  download_output=$(make_download_log_name "${req}")
+  download_sdist "${req}" | tee "${download_output}"
+  local -r sdist="$(get_downloaded_sdist "${download_output}")"
   collect_build_requires "toplevel" "${req}" "${sdist}" ""
 }
 
