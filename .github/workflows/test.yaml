@@ -1,3 +1,5 @@
+# Based on https://fedoramagazine.org/github-actions-use-podman-to-run-fedora-linux/
+
 name: CI
 on:
   pull_request:
@@ -24,7 +26,16 @@ jobs:
           sudo apt-get -y install podman
           podman pull fedora:39
 
-      - name: Create container and run tests
+      - name: Create container
         run: |
-          echo ${{ matrix.python-version }}
-          ls -a
+          podman build --tag test-${{ matrix.python-version }} -f ./Containerfile
+
+      - name: Run tests
+        run: |
+          podman run --rm \
+            --userns=keep-id \
+            --security-opt label=disable \
+            --volume .:/src:rw,exec \
+            -e PYTHON_TO_TEST=python${{ matrix.python-version }} \
+            test-${{ matrix.python-version }} \
+            ./test.sh
