@@ -1,4 +1,5 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 set -xe
 set -o pipefail
@@ -68,7 +69,24 @@ build_wheel() {
   local sdist_dir="$1"; shift
   local dest_dir="$1"; shift
 
-  (cd "${sdist_dir}" && python -m build --wheel . && mv dist/*.whl "${WHEELS_REPO}/downloads/")
+  local -r unpack_dir=$(dirname "${sdist_dir}")
+  local -r build_env="${unpack_dir}/build-env"
+  $PYTHON -m venv "${build_env}"
+  # FIXME: Still installs 'build' and 'wheel' from outside
+  (cd "${sdist_dir}"\
+       && source "${build_env}/bin/activate" \
+       && pip install --disable-pip-version-check build wheel \
+       && safe_install -r "${unpack_dir}/build-system-requirements.txt" \
+       && safe_install -r "${unpack_dir}/build-backend-requirements.txt" \
+       && pip freeze \
+       && pwd \
+       && python3 -m build \
+                  --wheel \
+                  --skip-dependency-check \
+                  --no-isolation \
+                  --outdir "${WHEELS_REPO}/downloads/" \
+                  . \
+      )
   update_mirror
 }
 
@@ -77,20 +95,23 @@ download_sdist() {
   python3 ./resolve_and_download.py --dest ${SDISTS_REPO}/downloads/ "${req}"
 }
 
+make_download_log_name() {
+  local req="$1"; shift
+  echo "${WORKDIR}/download-$($(pwd)/parse_dep.py "${req}").log"
+}
+
 get_downloaded_sdist() {
-    local input=$1
-    grep -E '(Existing|Saved)' $input | cut -d ' ' -f 2-
+  local input=$1
+  grep -E '(Existing|Saved)' $input | cut -d ' ' -f 2-
 }
 
 safe_install() {
-    local req="$1"; shift
-
-    pip -vvv install \
-        --upgrade \
-        --disable-pip-version-check \
-        --only-binary :all: \
-        --index-url "${WHEEL_SERVER_URL}" \
-        "${req}"
+  pip -vvv install \
+      --upgrade \
+      --disable-pip-version-check \
+      --only-binary :all: \
+      --index-url "${WHEEL_SERVER_URL}" \
+        "$@"
 }
 
 patch_sdist() {
@@ -137,7 +158,6 @@ collect_build_requires() {
   patch_sdist "${extract_dir}"
 
   local extract_script=$(pwd)/extract-requires.py
-  local parse_script=$(pwd)/parse_dep.py
   local build_system_deps="${unpack_dir}/build-system-requirements.txt"
   local build_backend_deps="${unpack_dir}/build-backend-requirements.txt"
   local normal_deps="${unpack_dir}/requirements.txt"
@@ -146,24 +166,24 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script --build-system "${req}") | tee "${build_system_deps}"
 
   cat "${build_system_deps}" | while read -r req_iter; do
-      download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
-      download_sdist "${req_iter}" | tee $download_output
-      local req_sdist=$(get_downloaded_sdist $download_output)
-      if [ -n "${req_sdist}" ]; then
-        collect_build_requires "build_system" "${req_iter}" "${req_sdist}" "${next_why}"
-      fi
+    download_output=$(make_download_log_name "${req_iter}")
+    download_sdist "${req_iter}" | tee $download_output
+    local req_sdist=$(get_downloaded_sdist $download_output)
+    if [ -n "${req_sdist}" ]; then
+      collect_build_requires "build_system" "${req_iter}" "${req_sdist}" "${next_why}"
+    fi
 
-      # We may need these dependencies installed in order to run build hooks
-      # Example: frozenlist build-system.requires includes expandvars because
-      # it is used by the packaging/pep517_backend/ build backend
-      safe_install "${req_iter}"
+    # We may need these dependencies installed in order to run build hooks
+    # Example: frozenlist build-system.requires includes expandvars because
+    # it is used by the packaging/pep517_backend/ build backend
+    safe_install "${req_iter}"
   done
 
   echo "Build backend dependencies for ${resolved_name}:"
   (cd ${extract_dir} && $PYTHON $extract_script --build-backend "${req}") | tee "${build_backend_deps}"
 
   cat "${build_backend_deps}" | while read -r req_iter; do
-    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
+    download_output=$(make_download_log_name "${req_iter}")
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
@@ -184,7 +204,7 @@ collect_build_requires() {
   (cd ${extract_dir} && $PYTHON $extract_script "${req}") | tee "${normal_deps}"
 
   cat "${normal_deps}" | while read -r req_iter; do
-    download_output=${WORKDIR}/download-$(${parse_script} "${req_iter}").log
+    download_output=$(make_download_log_name "${req_iter}")
     download_sdist "${req_iter}" | tee $download_output
     local req_sdist=$(get_downloaded_sdist $download_output)
     if [ -n "${req_sdist}" ]; then
@@ -195,18 +215,27 @@ collect_build_requires() {
   add_to_build_order "${type}" "${req}" "${why}"
 }
 
+handle_toplevel_requirement() {
+  local req="$1"; shift
+
+  download_output=$(make_download_log_name "${req}")
+  download_sdist "${req}" | tee "${download_output}"
+  local -r sdist="$(get_downloaded_sdist "${download_output}")"
+  collect_build_requires "toplevel" "${req}" "${sdist}" ""
+}
+
 stop_wheel_server() {
-    kill ${HTTP_SERVER_PID}
+  kill ${HTTP_SERVER_PID}
 }
 start_wheel_server() {
-    update_mirror
-    $PYTHON -m http.server --directory "${WHEELS_REPO}" 9090 &
-    HTTP_SERVER_PID=$!
-    WHEEL_SERVER_URL="http://localhost:9090/simple"
+  update_mirror
+  $PYTHON -m http.server --directory "${WHEELS_REPO}" 9090 &
+  HTTP_SERVER_PID=$!
+  WHEEL_SERVER_URL="http://localhost:9090/simple"
 }
 
 on_exit() {
-    stop_wheel_server
+  stop_wheel_server
 }
 trap on_exit EXIT SIGINT SIGTERM
 
@@ -219,8 +248,7 @@ echo -n "[]" > ${BUILD_TRACKER}
 mkdir -p "${WHEELS_REPO}/downloads"
 start_wheel_server
 
-download_sdist "${TOPLEVEL}" | tee $WORKDIR/toplevel-download.log
-collect_build_requires "toplevel" "${TOPLEVEL}" $(get_downloaded_sdist $WORKDIR/toplevel-download.log) ""
+handle_toplevel_requirement "${TOPLEVEL}"
 
 pypi-mirror create -d ${SDISTS_REPO}/downloads/ -m ${SDISTS_REPO}/simple/
 

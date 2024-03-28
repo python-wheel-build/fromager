@@ -1,0 +1,12 @@
+*** numpy-1.26.4.old/pyproject.toml	2024-03-28 10:10:32.690436902 -0400
+--- numpy-1.26.4/pyproject.toml	2024-03-28 10:10:53.147440348 -0400
+*************** build-backend = "mesonpy"
+*** 3,8 ****
+--- 3,9 ----
+  requires = [
+      "Cython>=0.29.34,<3.1",
+      "meson-python>=0.15.0,<0.16.0",
++     "ninja",
+  ]
+  
+  [project]
