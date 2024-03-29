@@ -116,6 +116,24 @@ patch_sdist() {
   done
 }
 
+unpack_sdist() {
+  local sdist="$1"; shift
+
+  local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
+  # If the sdist was already unpacked we may have been doing the
+  # analysis with a different Python version, so remove the directory
+  # to ensure we get clean results this time.
+  rm -rf "${unpack_dir}"
+  mkdir -p "${unpack_dir}"
+  tar -C $unpack_dir -xvzf $sdist
+
+  # We can't always predict what case will be used in the directory
+  # name or whether it will match the prefix of the downloaded sdist.
+  local extract_dir="$(ls -1d ${unpack_dir}/*)"
+
+  patch_sdist "${extract_dir}"
+}
+
 collect_build_requires() {
   local type="$1"; shift
   local req="$1"; shift
@@ -133,18 +151,11 @@ collect_build_requires() {
 
   local next_why="${why} -> ${resolved_name}"
 
+  unpack_sdist "${sdist}"
   local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
-  # If the sdist was already unpacked we may have been doing the
-  # analysis with a different Python version, so remove the directory
-  # to ensure we get clean results this time.
-  rm -rf "${unpack_dir}"
-  mkdir -p "${unpack_dir}"
-  tar -C $unpack_dir -xvzf $sdist
   # We can't always predict what case will be used in the directory
   # name or whether it will match the prefix of the downloaded sdist.
   local extract_dir="$(ls -1d ${unpack_dir}/*)"
-
-  patch_sdist "${extract_dir}"
 
   local extract_script=$(pwd)/extract-requires.py
   local build_system_deps="${unpack_dir}/build-system-requirements.txt"
