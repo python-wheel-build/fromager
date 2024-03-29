@@ -57,7 +57,6 @@ update_mirror() {
 
 build_wheel() {
   local sdist_dir="$1"; shift
-  local dest_dir="$1"; shift
 
   local -r unpack_dir=$(dirname "${sdist_dir}")
   local -r build_env="${unpack_dir}/build-env"
@@ -188,7 +187,7 @@ collect_build_requires() {
 
   # Build the wheel for this package after handling all of the
   # build-related dependencies.
-  build_wheel "${extract_dir}" "${WHEELS_REPO}/downloads"
+  build_wheel "${extract_dir}"
 
   echo "Regular dependencies for ${resolved_name}:"
   (cd ${extract_dir} && $PYTHON $extract_script "${req}") | tee "${normal_deps}"
