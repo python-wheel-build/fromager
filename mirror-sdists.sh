@@ -29,9 +29,8 @@ setup() {
     $PYTHON -m venv $VENV
   fi
   . $VENV/bin/activate
-  pip install -U pip
   # Dependencies for the mirror building scripts
-  pip install --upgrade -r ./requirements.txt
+  pip --disable-pip-version-check install --upgrade -r ./requirements.txt
 }
 
 bootstrap_build_dependencies() {
