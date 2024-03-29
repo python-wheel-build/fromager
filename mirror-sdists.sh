@@ -34,6 +34,33 @@ setup() {
   pip install --upgrade -r ./requirements.txt
 }
 
+bootstrap_build_dependencies() {
+  local src_dir=${WORKDIR}/build-${PYTHON}
+
+  # flit_core is a basic build system dependency for several
+  # packages. It is capable of building its own wheels, so we use the
+  # bootstrapping instructions to do that and put the wheel in the
+  # local server directory for reuse when building other packages via
+  # 'pip wheel'.
+  #
+  # https://flit.pypa.io/en/stable/bootstrap.html
+  download_output=$(make_download_log_name "flit_core")
+  download_sdist "flit_core" | tee "${download_output}"
+  local -r sdist="$(get_downloaded_sdist "${download_output}")"
+  unpack_sdist "${sdist}"
+  local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
+  # We can't always predict what case will be used in the directory
+  # name or whether it will match the prefix of the downloaded sdist.
+  local extract_dir="$(ls -1d ${unpack_dir}/*)"
+  (cd ${extract_dir} \
+      && python3 -m flit_core.wheel \
+      && python3 ./bootstrap_install.py dist/flit_core-*.whl \
+      && cp dist/flit_core-*.whl "${WHEELS_REPO}/downloads/" \
+    )
+  add_to_build_tracker "$(basename $extract_dir)"
+  update_mirror
+}
+
 add_to_build_order() {
   local type="$1"; shift
   local req="$1"; shift
@@ -247,6 +274,8 @@ echo -n "[]" > ${BUILD_TRACKER}
 
 mkdir -p "${WHEELS_REPO}/downloads"
 start_wheel_server
+
+bootstrap_build_dependencies
 
 handle_toplevel_requirement "${TOPLEVEL}"
 
