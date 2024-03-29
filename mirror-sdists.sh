@@ -116,6 +116,7 @@ get_downloaded_sdist() {
 
 safe_install() {
   pip -vvv install \
+      --no-cache-dir \
       --upgrade \
       --disable-pip-version-check \
       --only-binary :all: \
