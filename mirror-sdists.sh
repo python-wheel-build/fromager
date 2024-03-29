@@ -31,17 +31,7 @@ setup() {
   . $VENV/bin/activate
   pip install -U pip
   # Dependencies for the mirror building scripts
-  pip install -U \
-      python-pypi-mirror \
-      tomli \
-      pyproject_hooks \
-      packaging \
-      wheel \
-      build \
-      resolvelib \
-      html5lib \
-      requests \
-      packaging
+  pip install --upgrade -r ./requirements.txt
 }
 
 add_to_build_order() {
