@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 import sys
 
 from . import bootstrap, context, sdist, server
@@ -13,7 +14,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('-o', '--sdists-repo', default='sdists-repo')
     parser.add_argument('-w', '--wheels-repo', default='wheels-repo')
-    parser.add_argument('-t', '--work-dir', default='work-dir')
+    parser.add_argument('-t', '--work-dir', default=os.environ.get('WORK_DIR', 'work-dir'))
     parser.add_argument('--wheel-server-port', default=0, type=int)
     args = parser.parse_args(sys.argv[1:])
 

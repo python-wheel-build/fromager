@@ -5,7 +5,8 @@ set -xe
 set -o pipefail
 export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
 
-WORKDIR=$(realpath $(pwd)/work-dir)
+DEFAULT_WORKDIR=$(realpath $(pwd)/work-dir)
+WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 mkdir -p $WORKDIR
 
 PYTHON=${PYTHON:-python3.9}
