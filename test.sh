@@ -15,16 +15,6 @@ WORKDIR=$(realpath $(pwd)/work-dir)
 mkdir -p $WORKDIR
 
 for PYTHON in $PYTHON_TO_TEST; do
-
-    VENV="${WORKDIR}/venv-${PYTHON}"
-    # Create a fresh virtualenv every time since the process installs
-    # packages into it.
-    rm -rf "${VENV}"
-    "${PYTHON}" -m venv "${VENV}"
-    source "${VENV}/bin/activate"
-    pip install --upgrade pip
-    pip install -r requirements.txt
-    python3 -m mirror_builder "${toplevel}" 2>&1 | tee work-dir/mirror_builder-${PYTHON}.log
-
+    PYTHON=$PYTHON ./mirror-sdists.sh "${toplevel}"
     PYTHON=$PYTHON ./install-from-mirror.sh "${toplevel}"
 done
