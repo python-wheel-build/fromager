@@ -18,7 +18,6 @@ from zipfile import ZipFile
 
 import html5lib
 import requests
-from extras_provider import ExtrasProvider
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
@@ -26,6 +25,8 @@ from packaging.version import InvalidVersion, Version
 from resolvelib import (BaseReporter, InconsistentCandidate,
                         RequirementsConflicted, ResolutionError,
                         ResolutionImpossible, Resolver)
+
+from .extras_provider import ExtrasProvider
 
 logger = logging.getLogger(__name__)
 
