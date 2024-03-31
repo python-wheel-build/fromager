@@ -1,0 +1,7 @@
+html5lib
+packaging
+pyproject_hooks
+python-pypi-mirror
+requests
+resolvelib
+tomli

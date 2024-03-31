@@ -29,19 +29,35 @@ setup() {
     $PYTHON -m venv $VENV
   fi
   . $VENV/bin/activate
-  pip install -U pip
   # Dependencies for the mirror building scripts
-  pip install -U \
-      python-pypi-mirror \
-      tomli \
-      pyproject_hooks \
-      packaging \
-      wheel \
-      build \
-      resolvelib \
-      html5lib \
-      requests \
-      packaging
+  pip --disable-pip-version-check install --upgrade -r ./requirements.txt
+}
+
+bootstrap_build_dependencies() {
+  local src_dir=${WORKDIR}/build-${PYTHON}
+
+  # flit_core is a basic build system dependency for several
+  # packages. It is capable of building its own wheels, so we use the
+  # bootstrapping instructions to do that and put the wheel in the
+  # local server directory for reuse when building other packages via
+  # 'pip wheel'.
+  #
+  # https://flit.pypa.io/en/stable/bootstrap.html
+  download_output=$(make_download_log_name "flit_core")
+  download_sdist "flit_core" | tee "${download_output}"
+  local -r sdist="$(get_downloaded_sdist "${download_output}")"
+  unpack_sdist "${sdist}"
+  local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
+  # We can't always predict what case will be used in the directory
+  # name or whether it will match the prefix of the downloaded sdist.
+  local extract_dir="$(ls -1d ${unpack_dir}/*)"
+  (cd ${extract_dir} \
+      && python3 -m flit_core.wheel \
+      && python3 ./bootstrap_install.py dist/flit_core-*.whl \
+      && cp dist/flit_core-*.whl "${WHEELS_REPO}/downloads/" \
+    )
+  add_to_build_tracker "$(basename $extract_dir)"
+  update_mirror
 }
 
 add_to_build_order() {
@@ -67,26 +83,19 @@ update_mirror() {
 
 build_wheel() {
   local sdist_dir="$1"; shift
-  local dest_dir="$1"; shift
 
   local -r unpack_dir=$(dirname "${sdist_dir}")
-  local -r build_env="${unpack_dir}/build-env"
-  $PYTHON -m venv "${build_env}"
-  # FIXME: Still installs 'build' and 'wheel' from outside
+
   (cd "${sdist_dir}"\
-       && source "${build_env}/bin/activate" \
-       && pip install --disable-pip-version-check build wheel \
-       && safe_install -r "${unpack_dir}/build-system-requirements.txt" \
-       && safe_install -r "${unpack_dir}/build-backend-requirements.txt" \
-       && pip freeze \
-       && pwd \
-       && python3 -m build \
-                  --wheel \
-                  --skip-dependency-check \
-                  --no-isolation \
-                  --outdir "${WHEELS_REPO}/downloads/" \
-                  . \
-      )
+       && pip -vvv --disable-pip-version-check \
+              wheel \
+              --index-url "${WHEEL_SERVER_URL}" \
+              --only-binary :all: \
+              --wheel-dir "${WHEELS_REPO}/downloads/" \
+              --no-deps \
+              . \
+    )
+
   update_mirror
 }
 
@@ -107,6 +116,7 @@ get_downloaded_sdist() {
 
 safe_install() {
   pip -vvv install \
+      --no-cache-dir \
       --upgrade \
       --disable-pip-version-check \
       --only-binary :all: \
@@ -127,6 +137,24 @@ patch_sdist() {
   done
 }
 
+unpack_sdist() {
+  local sdist="$1"; shift
+
+  local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
+  # If the sdist was already unpacked we may have been doing the
+  # analysis with a different Python version, so remove the directory
+  # to ensure we get clean results this time.
+  rm -rf "${unpack_dir}"
+  mkdir -p "${unpack_dir}"
+  tar -C $unpack_dir -xvzf $sdist
+
+  # We can't always predict what case will be used in the directory
+  # name or whether it will match the prefix of the downloaded sdist.
+  local extract_dir="$(ls -1d ${unpack_dir}/*)"
+
+  patch_sdist "${extract_dir}"
+}
+
 collect_build_requires() {
   local type="$1"; shift
   local req="$1"; shift
@@ -144,18 +172,11 @@ collect_build_requires() {
 
   local next_why="${why} -> ${resolved_name}"
 
+  unpack_sdist "${sdist}"
   local unpack_dir=${WORKDIR}/$(basename ${sdist} .tar.gz)
-  # If the sdist was already unpacked we may have been doing the
-  # analysis with a different Python version, so remove the directory
-  # to ensure we get clean results this time.
-  rm -rf "${unpack_dir}"
-  mkdir -p "${unpack_dir}"
-  tar -C $unpack_dir -xvzf $sdist
   # We can't always predict what case will be used in the directory
   # name or whether it will match the prefix of the downloaded sdist.
   local extract_dir="$(ls -1d ${unpack_dir}/*)"
-
-  patch_sdist "${extract_dir}"
 
   local extract_script=$(pwd)/extract-requires.py
   local build_system_deps="${unpack_dir}/build-system-requirements.txt"
@@ -198,7 +219,7 @@ collect_build_requires() {
 
   # Build the wheel for this package after handling all of the
   # build-related dependencies.
-  build_wheel "${extract_dir}" "${WHEELS_REPO}/downloads"
+  build_wheel "${extract_dir}"
 
   echo "Regular dependencies for ${resolved_name}:"
   (cd ${extract_dir} && $PYTHON $extract_script "${req}") | tee "${normal_deps}"
@@ -247,6 +268,8 @@ echo -n "[]" > ${BUILD_TRACKER}
 
 mkdir -p "${WHEELS_REPO}/downloads"
 start_wheel_server
+
+bootstrap_build_dependencies
 
 handle_toplevel_requirement "${TOPLEVEL}"
 
