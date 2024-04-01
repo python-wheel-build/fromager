@@ -5,6 +5,11 @@ set -xe
 set -o pipefail
 export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
 
+VERBOSE=${VERBOSE:-}
+if [ -n "${VERBOSE}" ]; then
+  VERBOSE="-v"
+fi
+
 DEFAULT_WORKDIR=$(realpath $(pwd)/work-dir)
 WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 mkdir -p $WORKDIR
@@ -27,4 +32,4 @@ source "${VENV}/bin/activate"
 pip install --upgrade pip
 pip install -r requirements.txt
 
-python3 -m mirror_builder "${TOPLEVEL}"
+python3 -m mirror_builder ${VERBOSE} "${TOPLEVEL}"

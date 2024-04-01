@@ -31,7 +31,7 @@ class WorkContext:
         self._seen_requirements = set()
 
     def mark_as_seen(self, sdist_id):
-        logger.debug('remembering %s', sdist_id)
+        logger.debug('remembering seen sdist %s', sdist_id)
         self._seen_requirements.add(sdist_id)
 
     def has_been_seen(self, sdist_id):
@@ -58,7 +58,7 @@ class WorkContext:
         for p in [self.sdists_repo, self.sdists_downloads,
                   self.wheels_repo, self.wheels_downloads]:
             if not p.exists():
-                logger.debug('Creating %s', p)
+                logger.debug('creating %s', p)
                 p.mkdir(parents=True)
 
     @property

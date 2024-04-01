@@ -2,14 +2,21 @@ import functools
 import http.server
 import logging
 import shutil
-import subprocess
 import threading
+
+from . import external_commands
 
 logger = logging.getLogger(__name__)
 
 
+class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+
+    def log_message(self, format, *args):
+        logger.debug(format, *args)
+
+
 def add_wheel_to_mirror(ctx, name_version, filename):
-    logger.info('copying wheel %s to mirror', filename)
+    logger.debug('copying wheel %s to mirror', filename)
     shutil.copyfile(filename, ctx.wheels_downloads / filename.name)
     update_wheel_mirror(ctx)
     ctx.mark_as_seen(name_version)
@@ -20,7 +27,7 @@ def start_wheel_server(ctx):
     logger.debug('wheel port %s', ctx.wheel_server_port)
     server = http.server.ThreadingHTTPServer(
         ('localhost', ctx.wheel_server_port),
-        functools.partial(http.server.SimpleHTTPRequestHandler, directory=ctx.wheels_repo),
+        functools.partial(LoggingHTTPRequestHandler, directory=ctx.wheels_repo),
         bind_and_activate=False,
     )
     server.timeout = 0.5
@@ -44,7 +51,7 @@ def start_wheel_server(ctx):
 
 def update_wheel_mirror(ctx):
     logger.debug('updating wheel mirror')
-    subprocess.check_call([
+    external_commands.run([
         'pypi-mirror',
         'create',
         '-d', ctx.wheels_downloads,

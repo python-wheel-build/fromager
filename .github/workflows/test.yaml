@@ -37,5 +37,6 @@ jobs:
             --security-opt label=disable \
             --volume .:/src:rw,exec \
             -e PYTHON_TO_TEST=python${{ matrix.python-version }} \
+            -e VERBOSE=-v \
             test-${{ matrix.python-version }} \
             ./test.sh

@@ -7,7 +7,7 @@ import tarfile
 import resolvelib
 from packaging.requirements import Requirement
 
-from . import dependencies, resolve_and_download, server
+from . import dependencies, external_commands, resolve_and_download, server
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,10 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
     # Avoid cyclic dependencies and redundant processing.
     resolved_name = get_resolved_name(sdist_filename)
     if ctx.has_been_seen(resolved_name):
-        logger.info(f'Redundant requirement {req} resolves to {resolved_name}')
+        logger.debug(f'redundant requirement {req} resolves to {resolved_name}')
         return
     ctx.mark_as_seen(resolved_name)
-    logger.info(f'Processing requirement {req} resolves to {resolved_name} ({why})')
+    logger.info(f'dependency "{req}" resolves to {resolved_name} ({why})')
 
     next_why = f'{why} -> {resolved_name}'
 
@@ -43,7 +43,7 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
-        safe_install(ctx, dep)
+        safe_install(ctx, dep, 'build_system')
 
     build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
     logger.debug('build backend deps for %s: %s', req, build_backend_dependencies)
@@ -57,7 +57,7 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
-        safe_install(ctx, dep)
+        safe_install(ctx, dep, 'build_backend')
 
     _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
 
@@ -78,7 +78,7 @@ def get_resolved_name(sdist_filename):
 
 
 def _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
-    logger.info('building wheel in %s', sdist_root_dir)
+    logger.info('building wheel for %s', resolved_name)
     cmd = [
         'pip', '-vvv',
         '--disable-pip-version-check',
@@ -89,11 +89,11 @@ def _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
         '--no-deps',
         '.',
     ]
-    logger.debug(cmd)
-    subprocess.check_call(cmd, cwd=sdist_root_dir)
+    external_commands.run(cmd, cwd=sdist_root_dir)
     for wheel in sdist_root_dir.parent.glob('*.whl'):
         server.add_wheel_to_mirror(ctx, sdist_root_dir.name, wheel)
     ctx.add_to_build_order(req_type, req, resolved_name, why)
+    logger.info('built wheel for %s', resolved_name)
 
 
 def _write_requirements_file(requirements, filename):
@@ -102,9 +102,9 @@ def _write_requirements_file(requirements, filename):
             f.write(f'{r}\n')
 
 
-def safe_install(ctx, req):
-    logger.debug('installing %s', req)
-    subprocess.check_call([
+def safe_install(ctx, req, req_type):
+    logger.debug('installing %s %s', req_type, req)
+    external_commands.run([
         'pip', '-vvv',
         'install',
         '--disable-pip-version-check',
@@ -114,6 +114,7 @@ def safe_install(ctx, req):
         '--index-url', ctx.wheel_server_url,
         f'{req}',
     ])
+    logger.info('installed %s %s', req_type, req)
 
 
 def unpack_sdist(ctx, sdist_filename):
@@ -154,7 +155,7 @@ def download_sdist(ctx, requirements):
     resolver = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logger.info("Resolving %s", ", ".join(requirements))
+    logger.debug("resolving requirement %s", ", ".join(requirements))
     try:
         result = resolver.resolve(reqs)
     except (resolvelib.InconsistentCandidate,
