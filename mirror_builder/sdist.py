@@ -43,7 +43,7 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
-        safe_install(ctx, dep)
+        safe_install(ctx, dep, 'build_system')
 
     build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
     logger.debug('build backend deps for %s: %s', req, build_backend_dependencies)
@@ -57,7 +57,7 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
-        safe_install(ctx, dep)
+        safe_install(ctx, dep, 'build_backend')
 
     _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
 
@@ -102,8 +102,8 @@ def _write_requirements_file(requirements, filename):
             f.write(f'{r}\n')
 
 
-def safe_install(ctx, req):
-    logger.debug('installing %s', req)
+def safe_install(ctx, req, req_type):
+    logger.debug('installing %s %s', req_type, req)
     external_commands.run([
         'pip', '-vvv',
         'install',
@@ -114,7 +114,7 @@ def safe_install(ctx, req):
         '--index-url', ctx.wheel_server_url,
         f'{req}',
     ])
-    logger.info('installed %s', req)
+    logger.info('installed %s %s', req_type, req)
 
 
 def unpack_sdist(ctx, sdist_filename):
