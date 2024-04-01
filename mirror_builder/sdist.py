@@ -22,10 +22,10 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
     # Avoid cyclic dependencies and redundant processing.
     resolved_name = get_resolved_name(sdist_filename)
     if ctx.has_been_seen(resolved_name):
-        logger.info(f'Redundant requirement {req} resolves to {resolved_name}')
+        logger.debug(f'redundant requirement {req} resolves to {resolved_name}')
         return
     ctx.mark_as_seen(resolved_name)
-    logger.info(f'Processing requirement {req} resolves to {resolved_name} ({why})')
+    logger.info(f'dependency "{req}" resolves to {resolved_name} ({why})')
 
     next_why = f'{why} -> {resolved_name}'
 
@@ -78,7 +78,7 @@ def get_resolved_name(sdist_filename):
 
 
 def _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
-    logger.info('building wheel in %s', sdist_root_dir)
+    logger.debug('building wheel in %s', sdist_root_dir)
     cmd = [
         'pip', '-vvv',
         '--disable-pip-version-check',
@@ -114,6 +114,7 @@ def safe_install(ctx, req):
         '--index-url', ctx.wheel_server_url,
         f'{req}',
     ])
+    logger.info('installed %s', req)
 
 
 def unpack_sdist(ctx, sdist_filename):
@@ -154,7 +155,7 @@ def download_sdist(ctx, requirements):
     resolver = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logger.info("Resolving %s", ", ".join(requirements))
+    logger.debug("resolving requirement %s", ", ".join(requirements))
     try:
         result = resolver.resolve(reqs)
     except (resolvelib.InconsistentCandidate,

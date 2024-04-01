@@ -82,7 +82,7 @@ class Candidate:
 
 def get_project_from_pypi(project, extras):
     """Return candidates created from the project name and extras."""
-    logger.info('get project %s', project)
+    logger.debug('get available versions of project %s', project)
     url = "https://pypi.org/simple/{}".format(project)
     data = requests.get(url).content
     #log(data.decode('utf-8'))
@@ -198,7 +198,7 @@ def download_resolution(destination_dir, result):
                 logger.debug(f'writing to {outfile}')
                 for chunk in r.iter_content(chunk_size=1024*1024):
                     f.write(chunk)
-                logger.info(f'Saved {outfile}')
+            logger.debug(f'saved {outfile}')
             return outfile
 
 

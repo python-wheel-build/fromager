@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_build_system_dependencies(req, sdist_root_dir):
-    logger.info('getting build system dependencies for %s in %s',
-                req, sdist_root_dir)
+    logger.debug('getting build system dependencies for %s in %s',
+                 req, sdist_root_dir)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
     for r in get_build_backend(pyproject_toml)['requires']:
@@ -25,8 +25,8 @@ def get_build_system_dependencies(req, sdist_root_dir):
 
 
 def get_build_backend_dependencies(req, sdist_root_dir):
-    logger.info('getting build backend dependencies for %s in %s',
-                req, sdist_root_dir)
+    logger.debug('getting build backend dependencies for %s in %s',
+                 req, sdist_root_dir)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml)
@@ -37,8 +37,8 @@ def get_build_backend_dependencies(req, sdist_root_dir):
 
 
 def get_install_dependencies(req, sdist_root_dir):
-    logger.info('getting installation dependencies for %s in %s',
-                req, sdist_root_dir)
+    logger.debug('getting installation dependencies for %s in %s',
+                 req, sdist_root_dir)
     original_requirement = Requirement(req)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
