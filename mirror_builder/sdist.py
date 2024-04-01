@@ -7,7 +7,7 @@ import tarfile
 import resolvelib
 from packaging.requirements import Requirement
 
-from . import dependencies, resolve_and_download, server
+from . import dependencies, external_commands, resolve_and_download, server
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +89,11 @@ def _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
         '--no-deps',
         '.',
     ]
-    logger.debug(cmd)
-    subprocess.check_call(cmd, cwd=sdist_root_dir)
+    external_commands.run(cmd, cwd=sdist_root_dir)
     for wheel in sdist_root_dir.parent.glob('*.whl'):
         server.add_wheel_to_mirror(ctx, sdist_root_dir.name, wheel)
     ctx.add_to_build_order(req_type, req, resolved_name, why)
+    logger.info('built wheel for %s', resolved_name)
 
 
 def _write_requirements_file(requirements, filename):
@@ -104,7 +104,7 @@ def _write_requirements_file(requirements, filename):
 
 def safe_install(ctx, req):
     logger.debug('installing %s', req)
-    subprocess.check_call([
+    external_commands.run([
         'pip', '-vvv',
         'install',
         '--disable-pip-version-check',

@@ -1,7 +1,6 @@
 import logging
-import subprocess
 
-from . import sdist, server
+from . import external_commands, sdist, server
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,7 @@ def bootstrap_build_dependencies(ctx):
     resolved_name = sdist.get_resolved_name(sdist_filename)
     sdist_root_dir = sdist.unpack_sdist(ctx, sdist_filename)
     logger.info('building flit_core wheel in %s', sdist_root_dir)
-    subprocess.check_call(
+    external_commands.run(
         ['python3', '-m', 'flit_core.wheel'],
         cwd=sdist_root_dir,
     )

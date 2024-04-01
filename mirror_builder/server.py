@@ -2,8 +2,9 @@ import functools
 import http.server
 import logging
 import shutil
-import subprocess
 import threading
+
+from . import external_commands
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def start_wheel_server(ctx):
 
 def update_wheel_mirror(ctx):
     logger.debug('updating wheel mirror')
-    subprocess.check_call([
+    external_commands.run([
         'pypi-mirror',
         'create',
         '-d', ctx.wheels_downloads,

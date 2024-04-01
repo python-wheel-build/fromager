@@ -1,13 +1,14 @@
 import argparse
 import logging
 import os
-import subprocess
 import sys
 
 import pyproject_hooks
 import tomli
 from packaging import markers, metadata
 from packaging.requirements import Requirement
+
+from . import external_commands
 
 logger = logging.getLogger(__name__)
 
@@ -58,30 +59,6 @@ def _get_pyproject_contents(sdist_root_dir):
     return tomli.loads(pyproject_toml_filename.read_text())
 
 
-# based on pyproject_hooks/_impl.py: quiet_subprocess_runner
-def logging_subprocess_runner(cmd, cwd=None, extra_environ=None):
-    """Call the subprocess while logging output to stderr.
-
-    This uses :func:`subprocess.check_output` under the hood.
-    """
-    env = os.environ.copy()
-    if extra_environ:
-        env.update(extra_environ)
-
-    logger.debug('running %s', cmd)
-    completed = subprocess.run(
-        cmd,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    output = completed.stdout.decode('utf-8') if completed.stdout else ''
-    logger.debug('output: %s', output)
-    if completed.returncode != 0:
-        raise subprocess.CalledProcessError(completed.returncode, cmd, output)
-
-
 # From pypa/build/src/build/__main__.py
 _DEFAULT_BACKEND = {
     'build-backend': 'setuptools.build_meta:__legacy__',
@@ -108,7 +85,7 @@ def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml):
         source_dir=sdist_root_dir,
         build_backend=backend['build-backend'],
         backend_path=backend['backend-path'],
-        runner=logging_subprocess_runner,
+        runner=external_commands.run,
     )
 
 
