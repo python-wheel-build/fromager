@@ -78,7 +78,7 @@ def get_resolved_name(sdist_filename):
 
 
 def _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
-    logger.debug('building wheel in %s', sdist_root_dir)
+    logger.info('building wheel for %s', resolved_name)
     cmd = [
         'pip', '-vvv',
         '--disable-pip-version-check',
