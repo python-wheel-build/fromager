@@ -7,6 +7,8 @@ import sys
 
 from . import bootstrap, context, sdist, server
 
+TERSE_LOG_FMT  ='%(message)s'
+VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
 
 def main():
     parser = argparse.ArgumentParser()
@@ -20,7 +22,7 @@ def main():
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
-        format='%(levelname)s:%(name)s:%(lineno)d: %(message)s',
+        format=VERBOSE_LOG_FMT if args.verbose else TERSE_LOG_FMT,
     )
 
     ctx = context.WorkContext(
