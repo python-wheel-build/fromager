@@ -1,9 +1,6 @@
 import importlib.metadata
 import logging
 import pathlib
-import shutil
-import subprocess
-import tarfile
 
 from . import dependencies, external_commands, sources, wheels
 
@@ -26,7 +23,7 @@ def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
 
     next_why = f'{why} -> {resolved_name}'
 
-    sdist_root_dir = unpack_sdist(ctx, sdist_filename)
+    sdist_root_dir = sources.unpack_source(ctx, sdist_filename)
 
     build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
     _write_requirements_file(
@@ -101,31 +98,3 @@ def safe_install(ctx, req, req_type):
     ])
     version = importlib.metadata.version(req.name)
     logger.info('installed %s %s using %s', req_type, req, version)
-
-
-def unpack_sdist(ctx, sdist_filename):
-    unpack_dir = ctx.work_dir / pathlib.Path(sdist_filename).stem[:-len('.tar')]
-    if unpack_dir.exists():
-        shutil.rmtree(unpack_dir)
-        logger.debug('cleaning up %s', unpack_dir)
-    # We create a unique directory based on the sdist name, but that
-    # may not be the same name as the root directory of the content in
-    # the sdist (due to case, punctuation, etc.), so after we unpack
-    # it look for what was created.
-    logger.debug('unpacking %s to %s', sdist_filename, unpack_dir)
-    with tarfile.open(sdist_filename, 'r') as t:
-        t.extractall(unpack_dir)
-    sdist_root_dir = list(unpack_dir.glob('*'))[0]
-    _patch_sdist(ctx, sdist_root_dir)
-    return sdist_root_dir
-
-
-def _patch_sdist(ctx, sdist_root_dir):
-    for p in pathlib.Path('patches').glob(sdist_root_dir.name + '*.patch'):
-        logger.info('applying patch file %s to %s', p, sdist_root_dir)
-        with open(p, 'r') as f:
-            subprocess.check_call(
-                ['patch', '-p1'],
-                stdin=f,
-                cwd=sdist_root_dir,
-            )
