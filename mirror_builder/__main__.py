@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 
-from . import bootstrap, context, sdist, server
+from . import context, sdist, server
 
 TERSE_LOG_FMT  ='%(message)s'
 VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
@@ -34,8 +34,6 @@ def main():
     ctx.setup()
 
     server.start_wheel_server(ctx)
-
-    bootstrap.bootstrap_build_dependencies(ctx)
 
     for toplevel in args.toplevel:
         sdist.handle_requirement(ctx, toplevel)

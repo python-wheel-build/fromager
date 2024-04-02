@@ -7,7 +7,8 @@ import tarfile
 import resolvelib
 from packaging.requirements import Requirement
 
-from . import dependencies, external_commands, resolve_and_download, server
+from . import (dependencies, external_commands, resolve_and_download, server,
+               wheels)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
         # installed.
         safe_install(ctx, dep, 'build_backend')
 
-    _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
+    wheels.build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
 
     install_dependencies = dependencies.get_install_dependencies(req, sdist_root_dir)
     # The install dependency lists can be quite long, so we probably don't want to log them.
@@ -75,25 +76,6 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
 
 def get_resolved_name(sdist_filename):
     return pathlib.Path(sdist_filename).name[:-len('.tar.gz')]
-
-
-def _build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
-    logger.info('building wheel for %s', resolved_name)
-    cmd = [
-        'pip', '-vvv',
-        '--disable-pip-version-check',
-        'wheel',
-        '--index-url', ctx.wheel_server_url,
-        '--only-binary', ':all:',
-        '--wheel-dir', sdist_root_dir.parent.absolute(),
-        '--no-deps',
-        '.',
-    ]
-    external_commands.run(cmd, cwd=sdist_root_dir)
-    for wheel in sdist_root_dir.parent.glob('*.whl'):
-        server.add_wheel_to_mirror(ctx, sdist_root_dir.name, wheel)
-    ctx.add_to_build_order(req_type, req, resolved_name, why)
-    logger.info('built wheel for %s', resolved_name)
 
 
 def _write_requirements_file(requirements, filename):
