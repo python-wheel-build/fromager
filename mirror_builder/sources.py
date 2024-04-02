@@ -61,3 +61,19 @@ def _patch_source(ctx, source_root_dir):
                 stdin=f,
                 cwd=source_root_dir,
             )
+
+
+def prepare_source(ctx, req):
+    source_filename = download_source(ctx, req)
+
+    resolved_name = _get_resolved_name(source_filename)
+    if ctx.has_been_seen(resolved_name):
+        return (resolved_name, None)
+    ctx.mark_as_seen(resolved_name)
+
+    source_root_dir = unpack_source(ctx, source_filename)
+    return (resolved_name, source_root_dir)
+
+
+def _get_resolved_name(source_filename):
+    return pathlib.Path(source_filename).name[:-len('.tar.gz')]

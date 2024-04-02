@@ -1,6 +1,5 @@
 import importlib.metadata
 import logging
-import pathlib
 
 from . import dependencies, external_commands, sources, wheels
 
@@ -8,20 +7,16 @@ logger = logging.getLogger(__name__)
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
-    sdist_filename = sources.download_source(ctx, req)
+    (resolved_name, sdist_root_dir) = sources.prepare_source(ctx, req)
 
     # Avoid cyclic dependencies and redundant processing.
-    resolved_name = _get_resolved_name(sdist_filename)
-    if ctx.has_been_seen(resolved_name):
-        logger.info('existing dependency %s -> %s resolves to %s', why, req, resolved_name)
-        return resolved_name
-    ctx.mark_as_seen(resolved_name)
+    if sdist_root_dir is None:
+        logger.debug(f'redundant requirement {req} resolves to {resolved_name}')
+        return
+
     logger.info('new dependency %s -> %s resolves to %s', why, req, resolved_name)
 
     next_why = f'{why} -> {resolved_name}'
-
-    sdist_root_dir = sources.unpack_source(ctx, sdist_filename)
-
     next_req_type = 'build_system'
     build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
     _write_requirements_file(
@@ -60,10 +55,6 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         handle_requirement(ctx, dep, next_req_type, next_why)
 
     return resolved_name
-
-
-def _get_resolved_name(sdist_filename):
-    return pathlib.Path(sdist_filename).name[:-len('.tar.gz')]
 
 
 def _write_requirements_file(requirements, filename):
