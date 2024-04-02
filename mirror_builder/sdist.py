@@ -6,7 +6,6 @@ import subprocess
 import tarfile
 
 import resolvelib
-from packaging.requirements import Requirement
 
 from . import dependencies, external_commands, resolve_and_download, wheels
 
@@ -102,7 +101,8 @@ def safe_install(ctx, req, req_type):
         '--index-url', ctx.wheel_server_url,
         f'{req}',
     ])
-    logger.info('installed %s %s', req_type, req)
+    version = importlib.metadata.version(req.name)
+    logger.info('installed %s %s using %s', req_type, req, version)
 
 
 def unpack_sdist(ctx, sdist_filename):
@@ -135,7 +135,6 @@ def _patch_sdist(ctx, sdist_root_dir):
 
 def download_sdist(ctx, requirements):
     "Download the requirement and return the name of the output path."
-    reqs = [Requirement(r) for r in requirements]
 
     # Create the (reusable) resolver.
     provider = resolve_and_download.PyPIProvider()
@@ -143,9 +142,9 @@ def download_sdist(ctx, requirements):
     resolver = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logger.debug("resolving requirement %s", ", ".join(requirements))
+    logger.debug("resolving requirement %s", ", ".join(str(r) for r in requirements))
     try:
-        result = resolver.resolve(reqs)
+        result = resolver.resolve(requirements)
     except (resolvelib.InconsistentCandidate,
             resolvelib.RequirementsConflicted,
             resolvelib.ResolutionImpossible) as err:
