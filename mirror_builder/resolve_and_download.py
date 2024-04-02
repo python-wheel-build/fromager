@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
 
-NAME_VERSION_PATTERN = re.compile('(.*)-((\d+\.)+(\d+))\.tar\.gz')
+NAME_VERSION_PATTERN = re.compile(r'(.*)-((\d+\.)+(\d+))\.tar\.gz')
 
 
 class Candidate:
@@ -85,7 +85,6 @@ def get_project_from_pypi(project, extras):
     logger.debug('get available versions of project %s', project)
     url = "https://pypi.org/simple/{}".format(project)
     data = requests.get(url).content
-    #log(data.decode('utf-8'))
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
         url = i.attrib["href"]
@@ -99,7 +98,7 @@ def get_project_from_pypi(project, extras):
             except InvalidSpecifier as err:
                 # Ignore files with invalid python specifiers
                 # e.g. shellingham has files with ">= '2.7'"
-                log(f'skipping {filename} because of an invalid python version specifier {py_req}: {err}')
+                logger.debug(f'skipping {filename} because of an invalid python version specifier {py_req}: {err}')
                 continue
             if PYTHON_VERSION not in spec:
                 logger.debug(f'skipping {filename} because of python version {py_req}')
@@ -179,7 +178,7 @@ class PyPIProvider(ExtrasProvider):
         return candidate.version in requirement.specifier
 
     def get_dependencies(self, candidate):
-        #return candidate.dependencies
+        # return candidate.dependencies
         return []
 
 
@@ -236,7 +235,7 @@ def main():
     logger.debug("Resolving %s", ", ".join(args.requirements))
     try:
         result = resolver.resolve(requirements)
-    except (InconsistentCandidate, RequirementsConflicted, ResolutionImpossible) as err:
+    except (InconsistentCandidate, RequirementsConflicted, ResolutionError, ResolutionImpossible) as err:
         print(f'could not resolve {requirements}: {err}', file=sys.stderr)
         sys.exit(1)
     else:

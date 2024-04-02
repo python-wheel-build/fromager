@@ -1,7 +1,5 @@
-import argparse
 import logging
 import os
-import sys
 
 import pyproject_hooks
 import tomli
@@ -68,8 +66,8 @@ _DEFAULT_BACKEND = {
 
 
 def get_build_backend(pyproject_toml):
-    if (not 'build-system' in pyproject_toml or
-        not 'build-backend' in pyproject_toml['build-system']):
+    if ('build-system' not in pyproject_toml or
+        'build-backend' not in pyproject_toml['build-system']):
         return _DEFAULT_BACKEND
     else:
         return {
@@ -97,7 +95,7 @@ def evaluate_marker(req, extras=None):
     if not extras:
         marker_envs = [default_env]
     else:
-        marker_envs = [default_env.copy() | {'extra':e} for e in extras]
+        marker_envs = [default_env.copy() | {'extra': e} for e in extras]
 
     for marker_env in marker_envs:
         if req.marker.evaluate(marker_env):

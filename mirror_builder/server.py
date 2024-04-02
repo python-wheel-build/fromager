@@ -35,7 +35,7 @@ def start_wheel_server(ctx):
 
     logger.debug(f'address {server.server_address}')
     server.server_bind()
-    ctx.wheel_server_port = server.server_port # in case a port was allocated for us
+    ctx.wheel_server_port = server.server_port  # in case a port was allocated for us
 
     logger.debug('starting wheel server at %s', ctx.wheel_server_url)
     server.server_activate()

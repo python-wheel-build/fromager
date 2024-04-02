@@ -64,7 +64,6 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
 
     install_dependencies = dependencies.get_install_dependencies(req, sdist_root_dir)
     # The install dependency lists can be quite long, so we probably don't want to log them.
-    #logger.debug('install dependencies for %s: %s', req, install_dependencies)
     _write_requirements_file(
         install_dependencies,
         sdist_root_dir.parent / 'requirements.txt',

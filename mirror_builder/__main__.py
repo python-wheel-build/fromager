@@ -7,8 +7,9 @@ import sys
 
 from . import context, sdist, server
 
-TERSE_LOG_FMT  ='%(message)s'
+TERSE_LOG_FMT = '%(message)s'
 VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
+
 
 def main():
     parser = argparse.ArgumentParser()
