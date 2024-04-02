@@ -7,12 +7,9 @@ from . import dependencies, external_commands, sources, wheels
 logger = logging.getLogger(__name__)
 
 
-def handle_requirement(ctx, req, why='', req_type='toplevel'):
+def handle_requirement(ctx, req, req_type='toplevel', why=''):
     sdist_filename = sources.download_source(ctx, req)
-    return _collect_build_requires(ctx, req_type, req, sdist_filename, why)
 
-
-def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
     # Avoid cyclic dependencies and redundant processing.
     resolved_name = _get_resolved_name(sdist_filename)
     if ctx.has_been_seen(resolved_name):
@@ -25,39 +22,42 @@ def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
 
     sdist_root_dir = sources.unpack_source(ctx, sdist_filename)
 
+    next_req_type = 'build_system'
     build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
     _write_requirements_file(
         build_system_dependencies,
         sdist_root_dir.parent / 'build-system-requirements.txt',
     )
     for dep in build_system_dependencies:
-        resolved = handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
+        resolved = handle_requirement(ctx, dep, next_req_type, next_why)
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
-        _maybe_install(ctx, dep, 'build_system', resolved)
+        _maybe_install(ctx, dep, next_req_type, resolved)
 
+    next_req_type = 'build_backend'
     build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
     _write_requirements_file(
         build_backend_dependencies,
         sdist_root_dir.parent / 'build-backend-requirements.txt',
     )
     for dep in build_backend_dependencies:
-        resolved = handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
+        resolved = handle_requirement(ctx, dep, next_req_type, next_why)
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
-        _maybe_install(ctx, dep, 'build_backend', resolved)
+        _maybe_install(ctx, dep, next_req_type, resolved)
 
     wheels.build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
 
+    next_req_type = 'dependency'
     install_dependencies = dependencies.get_install_dependencies(req, sdist_root_dir)
     _write_requirements_file(
         install_dependencies,
         sdist_root_dir.parent / 'requirements.txt',
     )
     for dep in install_dependencies:
-        handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
+        handle_requirement(ctx, dep, next_req_type, next_why)
 
     return resolved_name
 
