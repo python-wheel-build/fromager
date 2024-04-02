@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def handle_requirement(ctx, req, why='', req_type='toplevel'):
-    sdist_filename = download_sdist(ctx, [req])
+    sdist_filename = download_sdist(ctx, req)
     return _collect_build_requires(ctx, req_type, req, sdist_filename, why)
 
 
@@ -133,7 +133,7 @@ def _patch_sdist(ctx, sdist_root_dir):
             )
 
 
-def download_sdist(ctx, requirements):
+def download_sdist(ctx, requirement):
     "Download the requirement and return the name of the output path."
 
     # Create the (reusable) resolver.
@@ -142,13 +142,13 @@ def download_sdist(ctx, requirements):
     resolver = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logger.debug("resolving requirement %s", ", ".join(str(r) for r in requirements))
+    logger.debug("resolving requirement %s", requirement)
     try:
-        result = resolver.resolve(requirements)
+        result = resolver.resolve([requirement])
     except (resolvelib.InconsistentCandidate,
             resolvelib.RequirementsConflicted,
             resolvelib.ResolutionImpossible) as err:
-        logger.warning(f'could not resolve {requirements}: {err}')
+        logger.warning(f'could not resolve {requirement}: {err}')
     else:
         return resolve_and_download.download_resolution(
             ctx.sdists_downloads,
