@@ -1,3 +1,4 @@
+import importlib.metadata
 import logging
 import pathlib
 import shutil
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def handle_requirement(ctx, req, why='', req_type='toplevel'):
     sdist_filename = download_sdist(ctx, [req])
-    _collect_build_requires(ctx, req_type, req, sdist_filename, why)
+    return _collect_build_requires(ctx, req_type, req, sdist_filename, why)
 
 
 def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
@@ -36,11 +37,11 @@ def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
         sdist_root_dir.parent / 'build-system-requirements.txt',
     )
     for dep in build_system_dependencies:
-        handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
+        resolved = handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
-        safe_install(ctx, dep, 'build_system')
+        _maybe_install(ctx, dep, 'build_system', resolved)
 
     build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
     _write_requirements_file(
@@ -48,11 +49,11 @@ def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
         sdist_root_dir.parent / 'build-backend-requirements.txt',
     )
     for dep in build_backend_dependencies:
-        handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
+        resolved = handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
-        safe_install(ctx, dep, 'build_backend')
+        _maybe_install(ctx, dep, 'build_backend', resolved)
 
     wheels.build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
 
@@ -64,6 +65,8 @@ def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
     for dep in install_dependencies:
         handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
 
+    return resolved_name
+
 
 def _get_resolved_name(sdist_filename):
     return pathlib.Path(sdist_filename).name[:-len('.tar.gz')]
@@ -73,6 +76,18 @@ def _write_requirements_file(requirements, filename):
     with open(filename, 'w') as f:
         for r in requirements:
             f.write(f'{r}\n')
+
+
+def _maybe_install(ctx, req, req_type, resolved_name):
+    "Install the package if it is not already installed."
+    try:
+        version = importlib.metadata.version(req.name)
+        actual_version = f'{req.name}-{version}'
+        if resolved_name == actual_version:
+            return
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    safe_install(ctx, req, req_type)
 
 
 def safe_install(ctx, req, req_type):
