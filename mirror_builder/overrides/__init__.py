@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 # inputs as mirror_builder.wheels.build_wheel() and returns an
 # iterable that produces the names of wheel files that were created.
 
+# Remember dists we have looked for that have no override module so we
+# don't spend time trying to i mport the same missing package over and
+# over.
+_dists_without_overrides = set()
+
 
 def find_override_method(distname, method):
     """Given a distname and method name, look for an override implementation of the method.
@@ -18,6 +23,8 @@ def find_override_method(distname, method):
 
     If the module exists and cannot be imported, propagate the exception.
     """
+    if distname in _dists_without_overrides:
+        return None
     module_fullname = __name__ + '.' + distname
     logger.debug('looking for %s override in %s', method, module_fullname)
     if module_fullname in sys.modules:
@@ -26,6 +33,7 @@ def find_override_method(distname, method):
         spec = importlib.util.find_spec(module_fullname)
         if spec is None:
             logger.debug('no module %s', module_fullname)
+            _dists_without_overrides.add(distname)
             return None
         mod = importlib.import_module(module_fullname)
     if not hasattr(mod, method):
