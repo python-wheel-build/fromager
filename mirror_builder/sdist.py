@@ -7,8 +7,7 @@ import tarfile
 import resolvelib
 from packaging.requirements import Requirement
 
-from . import (dependencies, external_commands, resolve_and_download, server,
-               wheels)
+from . import dependencies, external_commands, resolve_and_download, wheels
 
 logger = logging.getLogger(__name__)
 
