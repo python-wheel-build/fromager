@@ -6,12 +6,22 @@ import tarfile
 
 import resolvelib
 
-from . import resolve_and_download
+from . import overrides, resolve_and_download
 
 logger = logging.getLogger(__name__)
 
 
 def download_source(ctx, req):
+    logger.info('downloading source for %s', req)
+    downloader = overrides.find_override_method(req.name, 'download_source')
+    if not downloader:
+        downloader = _default_download_source
+    source_filename = downloader(ctx, req)
+    logger.info('downloaded source for %s to %s', req, source_filename)
+    return source_filename
+
+
+def _default_download_source(ctx, req):
     "Download the requirement and return the name of the output path."
 
     # Create the (reusable) resolver.
