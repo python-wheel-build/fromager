@@ -27,15 +27,17 @@ logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
 
-NAME_VERSION_PATTERN = re.compile(r'(.*)-((\d+\.)+(\d+))\.tar\.gz')
+# Note we are deliberately skipping pre-release versions like 4.10.0rc1
+NAME_VERSION_PATTERN = re.compile(r'(.*)-((\d+\.)+(\d+))(-.*\.whl|\.tar\.gz)')
 
 
 class Candidate:
-    def __init__(self, name, version, url=None, extras=None):
+    def __init__(self, name, version, url=None, extras=None, is_sdist=None):
         self.name = canonicalize_name(name)
         self.version = version
         self.url = url
         self.extras = extras
+        self.is_sdist = is_sdist
 
         self._metadata = None
         self._dependencies = None
@@ -101,9 +103,6 @@ def get_project_from_pypi(project, extras):
 
         path = urlparse(url).path
         filename = path.rpartition("/")[-1]
-        # Limit to sdists
-        if not filename.endswith('.tar.gz'):
-            continue
 
         # TODO: Handle compatibility tags?
 
@@ -114,6 +113,7 @@ def get_project_from_pypi(project, extras):
             continue
         name = name_and_version.groups()[0]
         version = name_and_version.groups()[1]
+        is_sdist = name_and_version.groups()[-1] == '.tar.gz'
         try:
             version = Version(version)
         except InvalidVersion as err:
@@ -121,7 +121,7 @@ def get_project_from_pypi(project, extras):
             logger.debug(f'invalid version for {filename}: {err}')
             continue
 
-        c = Candidate(name, version, url=url, extras=extras)
+        c = Candidate(name, version, url=url, extras=extras, is_sdist=is_sdist)
         logger.debug('candidate %s (%s)', filename, c)
         yield c
 
@@ -139,6 +139,10 @@ def get_metadata_for_wheel(url):
 
 
 class PyPIProvider(ExtrasProvider):
+    def __init__(self, only_sdists=False):
+        super().__init__()
+        self.only_sdists = only_sdists
+
     def identify(self, requirement_or_candidate):
         return canonicalize_name(requirement_or_candidate.name)
 
@@ -162,7 +166,8 @@ class PyPIProvider(ExtrasProvider):
         candidates = (
             candidate
             for candidate in get_project_from_pypi(identifier, set())
-            if candidate.version not in bad_versions
+            if (candidate.is_sdist or not self.only_sdists)
+            and candidate.version not in bad_versions
             and all(candidate.version in r.specifier for r in requirements)
         )
         return sorted(candidates, key=attrgetter("version"), reverse=True)
