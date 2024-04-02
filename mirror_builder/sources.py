@@ -46,7 +46,7 @@ def unpack_source(ctx, source_filename):
     # it look for what was created.
     logger.debug('unpacking %s to %s', source_filename, unpack_dir)
     with tarfile.open(source_filename, 'r') as t:
-        t.extractall(unpack_dir)
+        t.extractall(unpack_dir, filter='data')
     source_root_dir = list(unpack_dir.glob('*'))[0]
     _patch_source(ctx, source_root_dir)
     return source_root_dir
