@@ -12,48 +12,43 @@ from . import dependencies, external_commands, resolve_and_download, wheels
 logger = logging.getLogger(__name__)
 
 
-def handle_requirement(ctx, req, why=''):
-    logging.info('evaluating %s -> %r', why, req)
+def handle_requirement(ctx, req, why='', req_type='toplevel'):
     sdist_filename = download_sdist(ctx, [req])
-    collect_build_requires(ctx, "toplevel", req, sdist_filename, why)
+    _collect_build_requires(ctx, req_type, req, sdist_filename, why)
 
 
-def collect_build_requires(ctx, req_type, req, sdist_filename, why):
+def _collect_build_requires(ctx, req_type, req, sdist_filename, why):
     # Avoid cyclic dependencies and redundant processing.
-    resolved_name = get_resolved_name(sdist_filename)
+    resolved_name = _get_resolved_name(sdist_filename)
     if ctx.has_been_seen(resolved_name):
-        logger.debug(f'redundant requirement {req} resolves to {resolved_name}')
-        return
+        logger.info('existing dependency %s -> %s resolves to %s', why, req, resolved_name)
+        return resolved_name
     ctx.mark_as_seen(resolved_name)
-    logger.info(f'dependency "{req}" resolves to {resolved_name} ({why})')
+    logger.info('new dependency %s -> %s resolves to %s', why, req, resolved_name)
 
     next_why = f'{why} -> {resolved_name}'
 
     sdist_root_dir = unpack_sdist(ctx, sdist_filename)
 
     build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
-    logger.debug('build system deps for %s: %s', req, build_system_dependencies)
     _write_requirements_file(
         build_system_dependencies,
         sdist_root_dir.parent / 'build-system-requirements.txt',
     )
     for dep in build_system_dependencies:
-        dep_sdist_filename = download_sdist(ctx, [dep])
-        collect_build_requires(ctx, "build_system", dep, dep_sdist_filename, next_why)
+        handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
         safe_install(ctx, dep, 'build_system')
 
     build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
-    logger.debug('build backend deps for %s: %s', req, build_backend_dependencies)
     _write_requirements_file(
         build_backend_dependencies,
         sdist_root_dir.parent / 'build-backend-requirements.txt',
     )
     for dep in build_backend_dependencies:
-        dep_sdist_filename = download_sdist(ctx, [dep])
-        collect_build_requires(ctx, "build_backend", dep, dep_sdist_filename, next_why)
+        handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
@@ -62,17 +57,15 @@ def collect_build_requires(ctx, req_type, req, sdist_filename, why):
     wheels.build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
 
     install_dependencies = dependencies.get_install_dependencies(req, sdist_root_dir)
-    # The install dependency lists can be quite long, so we probably don't want to log them.
     _write_requirements_file(
         install_dependencies,
         sdist_root_dir.parent / 'requirements.txt',
     )
     for dep in install_dependencies:
-        dep_sdist_filename = download_sdist(ctx, [dep])
-        collect_build_requires(ctx, "dependency", dep, dep_sdist_filename, next_why)
+        handle_requirement(ctx=ctx, req=dep, why=next_why, req_type=req_type)
 
 
-def get_resolved_name(sdist_filename):
+def _get_resolved_name(sdist_filename):
     return pathlib.Path(sdist_filename).name[:-len('.tar.gz')]
 
 
