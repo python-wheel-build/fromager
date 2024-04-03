@@ -149,6 +149,7 @@ def download_sdist(ctx, requirement):
             resolvelib.RequirementsConflicted,
             resolvelib.ResolutionImpossible) as err:
         logger.warning(f'could not resolve {requirement}: {err}')
+        raise
     else:
         return resolve_and_download.download_resolution(
             ctx.sdists_downloads,
