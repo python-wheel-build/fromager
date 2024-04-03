@@ -1,9 +1,12 @@
 import logging
+import os.path
 import pathlib
 import shutil
 import subprocess
 import tarfile
+from urllib.parse import urlparse
 
+import requests
 import resolvelib
 
 from . import overrides, resolve_and_download
@@ -38,11 +41,25 @@ def _default_download_source(ctx, req):
             resolvelib.ResolutionImpossible) as err:
         logger.warning(f'could not resolve {req}: {err}')
         raise
-    else:
-        return resolve_and_download.download_resolution(
-            ctx.sdists_downloads,
-            result,
-        )
+
+    for name, candidate in result.mapping.items():
+        return download_url(ctx.sdists_downloads, candidate.url)
+
+
+def download_url(destination_dir, url):
+    outfile = os.path.join(destination_dir, os.path.basename(urlparse(url).path))
+    if os.path.exists(outfile):
+        logger.debug(f'already have {outfile}')
+        return outfile
+    # Open the URL first in case that fails, so we don't end up with an empty file.
+    logger.debug(f'reading from {url}')
+    with requests.get(url, stream=True) as r:
+        with open(outfile, 'wb') as f:
+            logger.debug(f'writing to {outfile}')
+            for chunk in r.iter_content(chunk_size=1024*1024):
+                f.write(chunk)
+        logger.debug(f'saved {outfile}')
+        return outfile
 
 
 def unpack_source(ctx, source_filename):

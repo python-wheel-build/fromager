@@ -4,7 +4,6 @@
 # resolve any dependencies.
 #
 import logging
-import os.path
 import re
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -180,22 +179,3 @@ class PyPIProvider(ExtrasProvider):
     def get_dependencies(self, candidate):
         # return candidate.dependencies
         return []
-
-
-def download_resolution(destination_dir, result):
-    """Download the candidates"""
-    for name, candidate in result.mapping.items():
-        parsed_url = urlparse(candidate.url)
-        outfile = os.path.join(destination_dir, os.path.basename(parsed_url.path))
-        if os.path.exists(outfile):
-            logger.debug(f'already have {outfile}')
-            return outfile
-        # Open the URL first in case that fails, so we don't end up with an empty file.
-        logger.debug(f'reading {candidate.name} {candidate.version} from {candidate.url}')
-        with requests.get(candidate.url, stream=True) as r:
-            with open(outfile, 'wb') as f:
-                logger.debug(f'writing to {outfile}')
-                for chunk in r.iter_content(chunk_size=1024*1024):
-                    f.write(chunk)
-            logger.debug(f'saved {outfile}')
-            return outfile
