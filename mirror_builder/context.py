@@ -43,7 +43,7 @@ class WorkContext:
         self._build_requirements.add(resolved_name)
         info = {
             'type': req_type,
-            'req': req,
+            'req': str(req),
             'resolved': resolved_name,
             'why': why,
         }

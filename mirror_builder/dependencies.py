@@ -17,7 +17,8 @@ def get_build_system_dependencies(req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
     for r in get_build_backend(pyproject_toml)['requires']:
-        if evaluate_marker(Requirement(r)):
+        r = Requirement(r)
+        if evaluate_marker(r):
             requires.add(r)
     return requires
 
@@ -29,7 +30,8 @@ def get_build_backend_dependencies(req, sdist_root_dir):
     requires = set()
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml)
     for r in hook_caller.get_requires_for_build_wheel():
-        if evaluate_marker(Requirement(r)):
+        r = Requirement(r)
+        if evaluate_marker(r):
             requires.add(r)
     return requires
 
@@ -37,7 +39,6 @@ def get_build_backend_dependencies(req, sdist_root_dir):
 def get_install_dependencies(req, sdist_root_dir):
     logger.debug('getting installation dependencies for %s in %s',
                  req, sdist_root_dir)
-    original_requirement = Requirement(req)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml)
@@ -45,8 +46,8 @@ def get_install_dependencies(req, sdist_root_dir):
     with open(os.path.join(sdist_root_dir, metadata_path, "METADATA"), "r") as f:
         parsed = metadata.Metadata.from_email(f.read(), validate=False)
         for r in (parsed.requires_dist or []):
-            if evaluate_marker(r, original_requirement.extras):
-                requires.add(str(r))
+            if evaluate_marker(r, req.extras):
+                requires.add(r)
     return requires
 
 

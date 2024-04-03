@@ -1,7 +1,5 @@
 import logging
 
-from packaging.requirements import Requirement
-
 from . import external_commands, overrides, server
 
 logger = logging.getLogger(__name__)
@@ -9,8 +7,7 @@ logger = logging.getLogger(__name__)
 
 def build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
     logger.info('building wheel for %s', resolved_name)
-    r = Requirement(req)
-    builder = overrides.find_override_method(r.name, 'build_wheel')
+    builder = overrides.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = _default_build_wheel
     wheel_filenames = builder(ctx, req_type, req, resolved_name, why, sdist_root_dir)

@@ -5,6 +5,8 @@ import logging
 import os
 import sys
 
+from packaging.requirements import Requirement
+
 from . import context, sdist, server
 
 TERSE_LOG_FMT = '%(message)s'
@@ -37,7 +39,7 @@ def main():
     server.start_wheel_server(ctx)
 
     for toplevel in args.toplevel:
-        sdist.handle_requirement(ctx, toplevel)
+        sdist.handle_requirement(ctx, Requirement(toplevel))
 
 
 if __name__ == '__main__':
