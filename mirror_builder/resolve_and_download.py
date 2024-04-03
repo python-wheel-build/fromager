@@ -3,11 +3,9 @@
 # Modified to look at sdists instead of wheels and to avoid trying to
 # resolve any dependencies.
 #
-import argparse
 import logging
 import os.path
 import re
-import sys
 from email.message import EmailMessage
 from email.parser import BytesParser
 from io import BytesIO
@@ -22,9 +20,6 @@ from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
-from resolvelib import (BaseReporter, InconsistentCandidate,
-                        RequirementsConflicted, ResolutionError,
-                        ResolutionImpossible, Resolver)
 
 from .extras_provider import ExtrasProvider
 
@@ -199,51 +194,3 @@ def download_resolution(destination_dir, result):
                     f.write(chunk)
             logger.debug(f'saved {outfile}')
             return outfile
-
-
-def main():
-    """Resolve requirements as project names on PyPI.
-
-    The requirements are taken as command-line arguments
-    and the resolution result will be printed to stdout.
-    """
-    global VERBOSE
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dest', default='.')
-    parser.add_argument('requirements', nargs='+')
-    parser.add_argument('-v', dest='verbose', action='store_true', default=False)
-    args = parser.parse_args()
-
-    VERBOSE = args.verbose
-
-    # Things I want to resolve.
-    requirements = [Requirement(r) for r in args.requirements]
-    logger.basicConfig(
-        level=logger.DEBUG if args.verbose else logging.INFO,
-    )
-
-    # Things I want to resolve.
-    requirements = [Requirement(r) for r in args.requirements]
-
-    # Create the (reusable) resolver.
-    provider = PyPIProvider()
-    reporter = BaseReporter()
-    resolver = Resolver(provider, reporter)
-
-    # Kick off the resolution process, and get the final result.
-    logger.debug("Resolving %s", ", ".join(args.requirements))
-    try:
-        result = resolver.resolve(requirements)
-    except (InconsistentCandidate, RequirementsConflicted, ResolutionError, ResolutionImpossible) as err:
-        print(f'could not resolve {requirements}: {err}', file=sys.stderr)
-        sys.exit(1)
-    else:
-        download_resolution(args.dest, result)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print()

@@ -16,7 +16,7 @@ def download_source(ctx, req):
 
     # Create the (reusable) resolver.
     provider = resolve_and_download.PyPIProvider()
-    reporter = resolve_and_download.BaseReporter()
+    reporter = resolvelib.BaseReporter()
     resolver = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
