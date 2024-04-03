@@ -74,6 +74,17 @@ def _patch_source(ctx, source_root_dir):
 
 
 def prepare_source(ctx, req):
+    logger.info('preparing source for %s', req)
+    preparer = overrides.find_override_method(req.name, 'prepare_source')
+    if not preparer:
+        preparer = _default_prepare_source
+    (resolved_name, source_root_dir) = preparer(ctx, req)
+    if source_root_dir is not None:
+        logger.info('prepared source for %s at %s', req, source_root_dir)
+    return (resolved_name, source_root_dir)
+
+
+def _default_prepare_source(ctx, req):
     source_filename = download_source(ctx, req)
 
     resolved_name = _get_resolved_name(source_filename)
