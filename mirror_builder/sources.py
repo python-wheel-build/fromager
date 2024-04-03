@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import requests
 import resolvelib
 
-from . import overrides, resolve_and_download
+from . import overrides, resolver
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +28,14 @@ def _default_download_source(ctx, req):
     "Download the requirement and return the name of the output path."
 
     # Create the (reusable) resolver. Limit to sdists.
-    provider = resolve_and_download.PyPIProvider(only_sdists=True)
+    provider = resolver.PyPIProvider(only_sdists=True)
     reporter = resolvelib.BaseReporter()
-    resolver = resolvelib.Resolver(provider, reporter)
+    rslvr = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
     logger.debug("resolving requirement %s", req)
     try:
-        result = resolver.resolve([req])
+        result = rslvr.resolve([req])
     except (resolvelib.InconsistentCandidate,
             resolvelib.RequirementsConflicted,
             resolvelib.ResolutionImpossible) as err:
