@@ -9,3 +9,4 @@ __pycache__/
 /build/
 /mirror_builder.egg-info/
 /mirror_builder/version.py
+/.coverage

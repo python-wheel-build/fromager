@@ -17,6 +17,8 @@ class WorkContext:
         self.work_dir = pathlib.Path(work_dir)
         self.wheel_server_port = wheel_server_port
 
+        self._build_order_filename = self.work_dir / f'build-order-{platform.python_version()}.json'
+
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
         # be built in order.
@@ -48,14 +50,15 @@ class WorkContext:
             'why': why,
         }
         self._build_stack.append(info)
-        with open(self.work_dir / f'build-order-{platform.python_version()}.json', 'w') as f:
+        with open(self._build_order_filename, 'w') as f:
             json.dump(self._build_stack, f, indent=2)
 
     def setup(self):
         # The work dir must already exist, so don't try to create it.
         # Use os.makedirs() to create the others in case the paths
         # already exist.
-        for p in [self.sdists_repo, self.sdists_downloads,
+        for p in [self.work_dir,
+                  self.sdists_repo, self.sdists_downloads,
                   self.wheels_repo, self.wheels_downloads]:
             if not p.exists():
                 logger.debug('creating %s', p)
