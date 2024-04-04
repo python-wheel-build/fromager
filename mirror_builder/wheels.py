@@ -25,6 +25,7 @@ def _default_build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
         'pip', '-vvv',
         '--disable-pip-version-check',
         'wheel',
+        '--no-cache-dir',
         '--index-url', 'http://127.0.0.1:8000/simple/',
         '--only-binary', ':all:',
         '--wheel-dir', sdist_root_dir.parent.absolute(),
