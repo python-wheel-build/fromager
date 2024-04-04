@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mirror-builder"
+authors = [
+    {name = "Mark McLoughlin", email="markmc@redhat.com"},
+    {name = "Doug Hellmann", email="dhellmann@redhat.com"},
+]
+description = "Wheel mirror builder"
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Utilities",
+]
+
+requires-python = ">=3.9"
+
+dependencies = [
+    "html5lib",
+    "packaging",
+    "pyproject_hooks",
+    "python-pypi-mirror",
+    "requests",
+    "resolvelib",
+    "tomli",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "coverage!=4.4,>=4.0",
+]
+
+# https://github.com/pypa/setuptools_scm/
+[tool.setuptools_scm]
+write_to = "mirror_builder/version.py"
+
+[tool.setuptools]
+packages = [
+    "mirror_builder",
+]

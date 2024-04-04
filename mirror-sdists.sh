@@ -30,6 +30,6 @@ rm -rf "${VENV}"
 "${PYTHON}" -m venv "${VENV}"
 source "${VENV}/bin/activate"
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e .
 
 python3 -m mirror_builder ${VERBOSE} "${TOPLEVEL}"
