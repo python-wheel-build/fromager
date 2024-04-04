@@ -74,9 +74,7 @@ def unpack_source(ctx, source_filename):
     logger.debug('unpacking %s to %s', source_filename, unpack_dir)
     with tarfile.open(source_filename, 'r') as t:
         t.extractall(unpack_dir, filter='data')
-    source_root_dir = list(unpack_dir.glob('*'))[0]
-    _patch_source(ctx, source_root_dir)
-    return source_root_dir
+    return list(unpack_dir.glob('*'))[0]
 
 
 def _patch_source(ctx, source_root_dir):
@@ -110,6 +108,7 @@ def _default_prepare_source(ctx, req):
     ctx.mark_as_seen(resolved_name)
 
     source_root_dir = unpack_source(ctx, source_filename)
+    _patch_source(ctx, source_root_dir)
     return (resolved_name, source_root_dir)
 
 
