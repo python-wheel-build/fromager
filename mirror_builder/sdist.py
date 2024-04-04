@@ -14,7 +14,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         logger.debug(f'redundant requirement {req} resolves to {resolved_name}')
         return
 
-    logger.info('new dependency %s -> %s resolves to %s', why, req, resolved_name)
+    logger.info('new dependency (%s) %s -> %s resolves to %s', req_type, why, req, resolved_name)
 
     next_why = f'{why} -> {resolved_name}'
     next_req_type = 'build_system'
