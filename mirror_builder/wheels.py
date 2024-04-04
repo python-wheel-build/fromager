@@ -19,10 +19,13 @@ def build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
 
 def _default_build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir):
     cmd = [
+        'firejail',
+        '--net=none',
+        '--join=local-wheel-server',
         'pip', '-vvv',
         '--disable-pip-version-check',
         'wheel',
-        '--index-url', ctx.wheel_server_url,
+        '--index-url', 'http://127.0.0.1:8000/simple/',
         '--only-binary', ':all:',
         '--wheel-dir', sdist_root_dir.parent.absolute(),
         '--no-deps',
