@@ -78,7 +78,7 @@ def unpack_source(ctx, source_filename):
 
 
 def _patch_source(ctx, source_root_dir):
-    for p in pathlib.Path('patches').glob(source_root_dir.name + '*.patch'):
+    for p in sorted(pathlib.Path('patches').glob(source_root_dir.name + '*.patch')):
         logger.info('applying patch file %s to %s', p, source_root_dir)
         with open(p, 'r') as f:
             subprocess.check_call(
