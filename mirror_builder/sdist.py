@@ -43,7 +43,8 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         # installed.
         _maybe_install(ctx, dep, next_req_type, resolved)
 
-    wheels.build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir)
+    wheels.build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir,
+                       build_system_dependencies | build_backend_dependencies)
 
     next_req_type = 'dependency'
     install_dependencies = dependencies.get_install_dependencies(req, sdist_root_dir)

@@ -14,9 +14,6 @@ DEFAULT_WORKDIR=$(realpath $(pwd)/work-dir)
 WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 mkdir -p $WORKDIR
 
-# Start a server for our local wheels directory.
-./jailed-server.sh
-
 PYTHON=${PYTHON:-python3.9}
 PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
 
