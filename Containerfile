@@ -10,6 +10,9 @@ RUN dnf -y groupinstall "Development Tools" "Development Libraries"
 # Commands needed in test.sh
 RUN dnf -y install procps-ng jq patch
 
+# We use firejail to isolate wheel building processes from the internet
+RUN dnf -y install firejail
+
 # cmake needed, otherwise:
 # Building wheels for collected packages: patchelf, ninja
 # ...
