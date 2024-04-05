@@ -28,6 +28,9 @@ RUN dnf -y install cmake autoconf automake
 # C extension compilation
 RUN dnf -y install  gcc g++
 
+# Our ninja wheels wrap the ninja-build RPM package
+RUN dnf -y install ninja-build
+
 # rust/cargo needed, otherwise:
 # Building wheels for collected packages: maturin
 # error: can't find Rust compiler
