@@ -1,38 +1,65 @@
 import logging
+import os.path
 import pathlib
 import shutil
 import subprocess
 import tarfile
+from urllib.parse import urlparse
 
+import requests
 import resolvelib
 
-from . import resolve_and_download
+from . import overrides, resolver
 
 logger = logging.getLogger(__name__)
 
 
 def download_source(ctx, req):
+    logger.info('downloading source for %s', req)
+    downloader = overrides.find_override_method(req.name, 'download_source')
+    if not downloader:
+        downloader = _default_download_source
+    source_filename = downloader(ctx, req)
+    logger.info('downloaded source for %s to %s', req, source_filename)
+    return source_filename
+
+
+def _default_download_source(ctx, req):
     "Download the requirement and return the name of the output path."
 
-    # Create the (reusable) resolver.
-    provider = resolve_and_download.PyPIProvider()
+    # Create the (reusable) resolver. Limit to sdists.
+    provider = resolver.PyPIProvider(only_sdists=True)
     reporter = resolvelib.BaseReporter()
-    resolver = resolvelib.Resolver(provider, reporter)
+    rslvr = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
     logger.debug("resolving requirement %s", req)
     try:
-        result = resolver.resolve([req])
+        result = rslvr.resolve([req])
     except (resolvelib.InconsistentCandidate,
             resolvelib.RequirementsConflicted,
             resolvelib.ResolutionImpossible) as err:
         logger.warning(f'could not resolve {req}: {err}')
         raise
-    else:
-        return resolve_and_download.download_resolution(
-            ctx.sdists_downloads,
-            result,
-        )
+
+    for name, candidate in result.mapping.items():
+        return download_url(ctx.sdists_downloads, candidate.url)
+
+
+def download_url(destination_dir, url):
+    outfile = os.path.join(destination_dir, os.path.basename(urlparse(url).path))
+    if os.path.exists(outfile):
+        logger.debug(f'already have {outfile}')
+        return outfile
+    # Open the URL first in case that fails, so we don't end up with an empty file.
+    logger.debug(f'reading from {url}')
+    with requests.get(url, stream=True) as r:
+        with open(outfile, 'wb') as f:
+            logger.debug(f'writing to {outfile}')
+            for chunk in r.iter_content(chunk_size=1024*1024):
+                f.write(chunk)
+        logger.debug(f'saved {outfile}')
+        return outfile
 
 
 def unpack_source(ctx, source_filename):
@@ -47,13 +74,11 @@ def unpack_source(ctx, source_filename):
     logger.debug('unpacking %s to %s', source_filename, unpack_dir)
     with tarfile.open(source_filename, 'r') as t:
         t.extractall(unpack_dir, filter='data')
-    source_root_dir = list(unpack_dir.glob('*'))[0]
-    _patch_source(ctx, source_root_dir)
-    return source_root_dir
+    return list(unpack_dir.glob('*'))[0]
 
 
 def _patch_source(ctx, source_root_dir):
-    for p in pathlib.Path('patches').glob(source_root_dir.name + '*.patch'):
+    for p in sorted(pathlib.Path('patches').glob(source_root_dir.name + '*.patch')):
         logger.info('applying patch file %s to %s', p, source_root_dir)
         with open(p, 'r') as f:
             subprocess.check_call(
@@ -64,6 +89,17 @@ def _patch_source(ctx, source_root_dir):
 
 
 def prepare_source(ctx, req):
+    logger.info('preparing source for %s', req)
+    preparer = overrides.find_override_method(req.name, 'prepare_source')
+    if not preparer:
+        preparer = _default_prepare_source
+    (resolved_name, source_root_dir) = preparer(ctx, req)
+    if source_root_dir is not None:
+        logger.info('prepared source for %s at %s', req, source_root_dir)
+    return (resolved_name, source_root_dir)
+
+
+def _default_prepare_source(ctx, req):
     source_filename = download_source(ctx, req)
 
     resolved_name = _get_resolved_name(source_filename)
@@ -72,6 +108,7 @@ def prepare_source(ctx, req):
     ctx.mark_as_seen(resolved_name)
 
     source_root_dir = unpack_source(ctx, source_filename)
+    _patch_source(ctx, source_root_dir)
     return (resolved_name, source_root_dir)
 
 

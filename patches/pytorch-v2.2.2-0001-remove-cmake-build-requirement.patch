@@ -1,0 +1,12 @@
+Remove cmake build requirement in favor of using our RPM-packaged version
+
+--- pytorch-v2.2.2/pyproject.toml.orig	2024-04-04 18:27:36.159735489 +0100
++++ pytorch-v2.2.2/pyproject.toml	2024-04-04 18:32:41.397909605 +0100
+@@ -6,7 +6,6 @@ requires = [
+     "numpy",
+     "ninja",
+     "pyyaml",
+-    "cmake",
+     "typing-extensions",
+     "requests",
+ ]
