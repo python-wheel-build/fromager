@@ -24,6 +24,6 @@ def run(cmd, cwd=None, extra_environ=None):
     )
     output = completed.stdout.decode('utf-8') if completed.stdout else ''
     if completed.returncode != 0:
-        logger.error('output: %s', output)
+        logger.error('%s failed with %s', cmd, output)
         raise subprocess.CalledProcessError(completed.returncode, cmd, output)
     logger.debug('output: %s', output)
