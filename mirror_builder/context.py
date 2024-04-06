@@ -39,14 +39,16 @@ class WorkContext:
     def has_been_seen(self, sdist_id):
         return sdist_id in self._seen_requirements
 
-    def add_to_build_order(self, req_type, req, resolved_name, why):
+    def add_to_build_order(self, req_type, req, version, why):
+        resolved_name = f'{req.name}-{version}'
         if resolved_name in self._build_requirements:
             return
         self._build_requirements.add(resolved_name)
         info = {
             'type': req_type,
             'req': str(req),
-            'resolved': resolved_name,
+            'dist': req.name,
+            'version': str(version),
             'why': why,
         }
         self._build_stack.append(info)

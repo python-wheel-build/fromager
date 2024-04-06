@@ -7,16 +7,16 @@ logger = logging.getLogger(__name__)
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
-    (resolved_name, sdist_root_dir) = sources.prepare_source(ctx, req)
+    (resolved_version, sdist_root_dir) = sources.prepare_source(ctx, req)
 
     # Avoid cyclic dependencies and redundant processing.
     if sdist_root_dir is None:
-        logger.debug(f'redundant requirement {req} resolves to {resolved_name}')
+        logger.debug(f'redundant requirement {req} resolves to {resolved_version}')
         return
 
-    logger.info('new dependency (%s) %s -> %s resolves to %s', req_type, why, req, resolved_name)
+    logger.info('new dependency (%s) %s -> %s resolves to %s', req_type, why, req, resolved_version)
 
-    next_why = f'{why} -> {resolved_name}'
+    next_why = f'{why} -> {req.name}({resolved_version})'
     next_req_type = 'build_system'
     build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
     _write_requirements_file(
@@ -43,7 +43,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         # installed.
         _maybe_install(ctx, dep, next_req_type, resolved)
 
-    wheels.build_wheel(ctx, req_type, req, resolved_name, why, sdist_root_dir,
+    wheels.build_wheel(ctx, req_type, req, resolved_version, why, sdist_root_dir,
                        build_system_dependencies | build_backend_dependencies)
 
     next_req_type = 'dependency'
@@ -55,7 +55,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     for dep in install_dependencies:
         handle_requirement(ctx, dep, next_req_type, next_why)
 
-    return resolved_name
+    return resolved_version
 
 
 def _write_requirements_file(requirements, filename):
@@ -64,12 +64,11 @@ def _write_requirements_file(requirements, filename):
             f.write(f'{r}\n')
 
 
-def _maybe_install(ctx, req, req_type, resolved_name):
+def _maybe_install(ctx, req, req_type, resolved_version):
     "Install the package if it is not already installed."
     try:
-        version = importlib.metadata.version(req.name)
-        actual_version = f'{req.name}-{version}'
-        if resolved_name == actual_version:
+        actual_version = importlib.metadata.version(req.name)
+        if resolved_version == actual_version:
             return
     except importlib.metadata.PackageNotFoundError:
         pass

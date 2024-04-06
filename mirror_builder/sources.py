@@ -19,9 +19,9 @@ def download_source(ctx, req):
     downloader = overrides.find_override_method(req.name, 'download_source')
     if not downloader:
         downloader = _default_download_source
-    source_filename = downloader(ctx, req)
-    logger.info('downloaded source for %s to %s', req, source_filename)
-    return source_filename
+    source_filename, version = downloader(ctx, req)
+    logger.info('downloaded source for %s version %s to %s', req, version, source_filename)
+    return (source_filename, version)
 
 
 def _default_download_source(ctx, req):
@@ -43,7 +43,7 @@ def _default_download_source(ctx, req):
         raise
 
     for name, candidate in result.mapping.items():
-        return download_url(ctx.sdists_downloads, candidate.url)
+        return (download_url(ctx.sdists_downloads, candidate.url), candidate.version)
 
 
 def download_url(destination_dir, url):
@@ -93,24 +93,20 @@ def prepare_source(ctx, req):
     preparer = overrides.find_override_method(req.name, 'prepare_source')
     if not preparer:
         preparer = _default_prepare_source
-    (resolved_name, source_root_dir) = preparer(ctx, req)
+    (resolved_version, source_root_dir) = preparer(ctx, req)
     if source_root_dir is not None:
         logger.info('prepared source for %s at %s', req, source_root_dir)
-    return (resolved_name, source_root_dir)
+    return (resolved_version, source_root_dir)
 
 
 def _default_prepare_source(ctx, req):
-    source_filename = download_source(ctx, req)
+    source_filename, version = download_source(ctx, req)
 
-    resolved_name = _get_resolved_name(source_filename)
+    resolved_name = f'{req.name}-{version}'
     if ctx.has_been_seen(resolved_name):
-        return (resolved_name, None)
+        return (version, None)
     ctx.mark_as_seen(resolved_name)
 
     source_root_dir = unpack_source(ctx, source_filename)
     _patch_source(ctx, source_root_dir)
-    return (resolved_name, source_root_dir)
-
-
-def _get_resolved_name(source_filename):
-    return pathlib.Path(source_filename).name[:-len('.tar.gz')]
+    return (version, source_root_dir)
