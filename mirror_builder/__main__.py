@@ -15,12 +15,18 @@ VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('toplevel', nargs='+')
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('-o', '--sdists-repo', default='sdists-repo')
     parser.add_argument('-w', '--wheels-repo', default='wheels-repo')
     parser.add_argument('-t', '--work-dir', default=os.environ.get('WORKDIR', 'work-dir'))
     parser.add_argument('--wheel-server-port', default=0, type=int)
+
+    subparsers = parser.add_subparsers(title='commands', dest='command')
+
+    parser_bootstrap = subparsers.add_parser('bootstrap')
+    parser_bootstrap.set_defaults(func=do_bootstrap)
+    parser_bootstrap.add_argument('toplevel', nargs='+')
+
     args = parser.parse_args(sys.argv[1:])
 
     logging.basicConfig(
@@ -36,8 +42,11 @@ def main():
     )
     ctx.setup()
 
-    server.start_wheel_server(ctx)
+    args.func(ctx, args)
 
+
+def do_bootstrap(ctx, args):
+    server.start_wheel_server(ctx)
     for toplevel in args.toplevel:
         sdist.handle_requirement(ctx, Requirement(toplevel))
 
