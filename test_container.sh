@@ -3,24 +3,31 @@
 set -xe
 set -o pipefail
 
-WORKDIR=$(realpath $(pwd)/work-dir)
+# Create a separate work dir so we can save the output to compare to
+# what we get when we run the same scripts outside of the container.
+WORKDIR=$(pwd)/work-dir-container
+export WORKDIR
 mkdir -p $WORKDIR
 
-logfile="$WORKDIR/test-container.log"
+PYTHON=${PYTHON:-python3}
+
+logfile="$WORKDIR/test-container-${PYTHON}.log"
 exec > >(tee "$logfile") 2>&1
 
 podman build --tag rebuilding-the-wheel -f ./Containerfile
 
-# Create a separate work dir so we can save the output to compare to
-# what we get when we run the same scripts outside of the container.
-mkdir -p container-work-dir
-chmod ugo+rwx container-work-dir
+in_container() {
+    podman run -it --rm \
+           -e PYTHON=$PYTHON \
+           -e WORKDIR=/work-dir \
+           -e VERBOSE=true \
+           --userns=keep-id \
+           --security-opt label=disable \
+           --volume .:/src:rw,exec \
+           --volume $WORKDIR:/work-dir:rw,exec \
+           rebuilding-the-wheel \
+           "$@"
+}
 
-podman run -it --rm \
-       -e PYTHON_TO_TEST=python3.12 \
-       -e WORKDIR=/src/container-work-dir \
-       --userns=keep-id \
-       --security-opt label=disable \
-       --volume .:/src:rw,exec \
-       rebuilding-the-wheel \
-       ./test.sh "$@"
+in_container ./mirror-sdists.sh
+in_container ./install-from-mirror.sh

@@ -58,11 +58,4 @@ jobs:
 
       - name: Run tests
         run: |
-          podman run --rm \
-            --userns=keep-id \
-            --security-opt label=disable \
-            --volume .:/src:rw,exec \
-            -e PYTHON_TO_TEST=python${{ matrix.python-version }} \
-            -e VERBOSE=-v \
-            test-${{ matrix.python-version }} \
-            ./test.sh
+          PYTHON=python${{ matrix.python-version }} ./test_container.sh
