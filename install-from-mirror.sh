@@ -2,7 +2,8 @@
 
 set -xe
 
-WORKDIR=$(realpath $(pwd)/work-dir)
+DEFAULT_WORKDIR=$(realpath $(pwd)/work-dir)
+WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 mkdir -p $WORKDIR
 
 PYTHON=${PYTHON:-python3.9}
