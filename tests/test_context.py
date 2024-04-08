@@ -12,22 +12,24 @@ def test_seen(tmp_context):
 
 def test_build_order(tmp_context):
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('buildme>1.0'), 'buildme-6.0', ' -> buildme')
+        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
     tmp_context.add_to_build_order(
-        'dependency', Requirement('testdist>1.0'), 'testdist-1.2', ' -> testdist')
+        'dependency', Requirement('testdist>1.0'), '1.2', ' -> testdist')
     contents_str = tmp_context._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
         {
             'type': 'build_backend',
             'req': 'buildme>1.0',
-            'resolved': 'buildme-6.0',
+            'dist': 'buildme',
+            'version': '6.0',
             'why': ' -> buildme',
         },
         {
             'type': 'dependency',
             'req': 'testdist>1.0',
-            'resolved': 'testdist-1.2',
+            'dist': 'testdist',
+            'version': '1.2',
             'why': ' -> testdist',
         },
     ]
@@ -36,16 +38,17 @@ def test_build_order(tmp_context):
 
 def test_build_order_repeats(tmp_context):
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('buildme>1.0'), 'buildme-6.0', ' -> buildme')
+        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('buildme>1.0'), 'buildme-6.0', ' -> buildme')
+        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
     contents_str = tmp_context._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
         {
             'type': 'build_backend',
             'req': 'buildme>1.0',
-            'resolved': 'buildme-6.0',
+            'dist': 'buildme',
+            'version': '6.0',
             'why': ' -> buildme',
         },
     ]
