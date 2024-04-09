@@ -7,7 +7,8 @@ logger = logging.getLogger(__name__)
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
-    (resolved_version, sdist_root_dir) = sources.prepare_source(ctx, req)
+    source_filename, resolved_version = sources.download_source(ctx, req)
+    sdist_root_dir = sources.prepare_source(ctx, req, source_filename, resolved_version)
 
     # Avoid cyclic dependencies and redundant processing.
     if sdist_root_dir is None:
