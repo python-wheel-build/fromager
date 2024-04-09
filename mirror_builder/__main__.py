@@ -8,7 +8,7 @@ import sys
 
 from packaging.requirements import Requirement
 
-from . import context, sdist, server, sources
+from . import context, sdist, server, sources, wheels
 
 TERSE_LOG_FMT = '%(message)s'
 VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
@@ -44,6 +44,12 @@ def main():
     parser_prepare_build.add_argument('dist_name')
     parser_prepare_build.add_argument('dist_version')
     parser_prepare_build.add_argument('source_dir')
+
+    parser_build = subparsers.add_parser('build')
+    parser_build.set_defaults(func=do_build)
+    parser_build.add_argument('dist_name')
+    parser_build.add_argument('dist_version')
+    parser_build.add_argument('source_dir')
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -92,6 +98,17 @@ def do_prepare_build(ctx, args):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     source_root_dir = pathlib.Path(args.source_dir)
     sdist.prepare_build_environment(ctx, req, source_root_dir)
+
+
+def do_build(ctx, args):
+    req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    source_root_dir = pathlib.Path(args.source_dir)
+    build_env = wheels.BuildEnvironment(ctx, source_root_dir.parent, None)
+    wheel_filenames = wheels.build_wheel(ctx, req, source_root_dir, build_env)
+    with open(ctx.work_dir / 'last-wheels.txt', 'w') as f:
+        for filename in wheel_filenames:
+            f.write(f'{filename}\n')
+            print(filename)
 
 
 if __name__ == '__main__':
