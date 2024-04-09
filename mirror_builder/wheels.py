@@ -2,25 +2,20 @@ import logging
 import platform
 import venv
 
-from . import external_commands, overrides, server
+from . import external_commands, overrides
 
 logger = logging.getLogger(__name__)
 
 
-def build_wheel(ctx, req_type, req, version, why, sdist_root_dir, build_dependencies):
-    logger.info('building wheel for %s (%s)', req.name, version)
+def build_wheel(ctx, req, sdist_root_dir, build_env):
+    logger.info('building wheel for %s in %s', req.name, sdist_root_dir)
     builder = overrides.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = _default_build_wheel
-    build_env = BuildEnvironment(ctx, sdist_root_dir.parent, build_dependencies)
-    wheel_filenames = builder(ctx, build_env, req_type, req, version, why, sdist_root_dir)
-    for wheel in wheel_filenames:
-        server.add_wheel_to_mirror(ctx, sdist_root_dir.name, wheel)
-    ctx.add_to_build_order(req_type, req, version, why)
-    logger.info('built wheel for %s (%s)', req.name, version)
+    return builder(ctx, build_env, req, sdist_root_dir)
 
 
-def _default_build_wheel(ctx, build_env, req_type, req, version, why, sdist_root_dir):
+def _default_build_wheel(ctx, build_env, req, sdist_root_dir):
     cmd = [
         build_env.python, '-m', 'pip', '-vvv',
         '--disable-pip-version-check',

@@ -1,7 +1,7 @@
 import importlib.metadata
 import logging
 
-from . import dependencies, external_commands, sources, wheels
+from . import dependencies, external_commands, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,15 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         # installed.
         _maybe_install(ctx, dep, next_req_type, resolved)
 
-    wheels.build_wheel(ctx, req_type, req, resolved_version, why, sdist_root_dir,
-                       build_system_dependencies | build_backend_dependencies)
+    build_env = wheels.BuildEnvironment(
+        ctx, sdist_root_dir.parent,
+        build_system_dependencies | build_backend_dependencies,
+    )
+    wheel_filenames = wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
+    for wheel in wheel_filenames:
+        server.add_wheel_to_mirror(ctx, sdist_root_dir.name, wheel)
+    logger.info('built wheel for %s (%s)', req.name, resolved_version)
+    ctx.add_to_build_order(req_type, req, resolved_version, why)
 
     next_req_type = 'dependency'
     install_dependencies = dependencies.get_install_dependencies(req, sdist_root_dir)
