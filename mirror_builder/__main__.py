@@ -3,6 +3,7 @@
 import argparse
 import logging
 import os
+import pathlib
 import sys
 
 from packaging.requirements import Requirement
@@ -31,6 +32,12 @@ def main():
     parser_download.set_defaults(func=do_download_source_archive)
     parser_download.add_argument('dist_name')
     parser_download.add_argument('dist_version')
+
+    parser_prepare_source = subparsers.add_parser('prepare-source')
+    parser_prepare_source.set_defaults(func=do_prepare_source)
+    parser_prepare_source.add_argument('dist_name')
+    parser_prepare_source.add_argument('dist_version')
+    parser_prepare_source.add_argument('source_archive')
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -62,6 +69,16 @@ def do_download_source_archive(ctx, args):
     with open(ctx.work_dir / 'last-download.txt', 'w') as f:
         f.write(filename)
     print(filename)
+
+
+def do_prepare_source(ctx, args):
+    req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    source_filename = pathlib.Path(args.source_archive)
+    # FIXME: Does the version need to be a Version instead of str?
+    source_root_dir = sources.prepare_source(ctx, req, source_filename, args.dist_version)
+    with open(ctx.work_dir / 'last-source-dir.txt', 'w') as f:
+        f.write(str(source_root_dir))
+    print(source_root_dir)
 
 
 if __name__ == '__main__':
