@@ -97,7 +97,6 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
         ctx, sdist_root_dir.parent,
         build_system_dependencies | build_backend_dependencies,
     )
-    logger.info('created build environment for %s in %s', req.name, build_env.path)
     return build_env.path
 
 

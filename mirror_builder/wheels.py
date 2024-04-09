@@ -46,6 +46,10 @@ class BuildEnvironment:
         return (self.path / 'bin/python3').absolute()
 
     def _createenv(self):
+        if self.path.exists():
+            logger.info('reusing build environment in %s', self.path)
+            return
+        logger.debug('creating build environment in %s', self.path)
         self._builder = venv.EnvBuilder(clear=True, with_pip=True)
         self._builder.create(self.path)
         req_filename = self.path / 'requirements.txt'
@@ -64,3 +68,4 @@ class BuildEnvironment:
              ],
             cwd=self.path.parent,
         )
+        logger.info('created build environment in %s', self.path)
