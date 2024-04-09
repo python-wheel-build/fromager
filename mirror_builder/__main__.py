@@ -7,7 +7,7 @@ import sys
 
 from packaging.requirements import Requirement
 
-from . import context, sdist, server
+from . import context, sdist, server, sources
 
 TERSE_LOG_FMT = '%(message)s'
 VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
@@ -26,6 +26,11 @@ def main():
     parser_bootstrap = subparsers.add_parser('bootstrap')
     parser_bootstrap.set_defaults(func=do_bootstrap)
     parser_bootstrap.add_argument('toplevel', nargs='+')
+
+    parser_download = subparsers.add_parser('download-source-archive')
+    parser_download.set_defaults(func=do_download_source_archive)
+    parser_download.add_argument('dist_name')
+    parser_download.add_argument('dist_version')
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -49,6 +54,14 @@ def do_bootstrap(ctx, args):
     server.start_wheel_server(ctx)
     for toplevel in args.toplevel:
         sdist.handle_requirement(ctx, Requirement(toplevel))
+
+
+def do_download_source_archive(ctx, args):
+    req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    filename, _ = sources.download_source(ctx, req)
+    with open(ctx.work_dir / 'last-download.txt', 'w') as f:
+        f.write(filename)
+    print(filename)
 
 
 if __name__ == '__main__':
