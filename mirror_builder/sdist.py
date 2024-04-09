@@ -59,6 +59,41 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     return resolved_version
 
 
+def prepare_build_environment(ctx, req, sdist_root_dir):
+    logger.info('preparing build environment for %s', req.name)
+
+    next_req_type = 'build_system'
+    build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
+    _write_requirements_file(
+        build_system_dependencies,
+        sdist_root_dir.parent / 'build-system-requirements.txt',
+    )
+    for dep in build_system_dependencies:
+        # We may need these dependencies installed in order to run build hooks
+        # Example: frozenlist build-system.requires includes expandvars because
+        # it is used by the packaging/pep517_backend/ build backend
+        _maybe_install(ctx, dep, next_req_type, None)
+
+    next_req_type = 'build_backend'
+    build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
+    _write_requirements_file(
+        build_backend_dependencies,
+        sdist_root_dir.parent / 'build-backend-requirements.txt',
+    )
+    for dep in build_backend_dependencies:
+        # Build backends are often used to package themselves, so in
+        # order to determine their dependencies they may need to be
+        # installed.
+        _maybe_install(ctx, dep, next_req_type, None)
+
+    build_env = wheels.BuildEnvironment(
+        ctx, sdist_root_dir.parent,
+        build_system_dependencies | build_backend_dependencies,
+    )
+    logger.info('created build environment for %s in %s', req.name, build_env.path)
+    return build_env.path
+
+
 def _write_requirements_file(requirements, filename):
     with open(filename, 'w') as f:
         for r in requirements:
@@ -67,12 +102,13 @@ def _write_requirements_file(requirements, filename):
 
 def _maybe_install(ctx, req, req_type, resolved_version):
     "Install the package if it is not already installed."
-    try:
-        actual_version = importlib.metadata.version(req.name)
-        if resolved_version == actual_version:
-            return
-    except importlib.metadata.PackageNotFoundError:
-        pass
+    if resolved_version is not None:
+        try:
+            actual_version = importlib.metadata.version(req.name)
+            if resolved_version == actual_version:
+                return
+        except importlib.metadata.PackageNotFoundError:
+            pass
     safe_install(ctx, req, req_type)
 
 

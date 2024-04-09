@@ -42,18 +42,18 @@ class BuildEnvironment:
 
     def __init__(self, ctx, parent_dir, build_requirements):
         self._ctx = ctx
-        self._path = parent_dir / f'build-{platform.python_version()}'
+        self.path = parent_dir / f'build-{platform.python_version()}'
         self._build_requirements = build_requirements
         self._createenv()
 
     @property
     def python(self):
-        return (self._path / 'bin/python3').absolute()
+        return (self.path / 'bin/python3').absolute()
 
     def _createenv(self):
         self._builder = venv.EnvBuilder(clear=True, with_pip=True)
-        self._builder.create(self._path)
-        req_filename = self._path / 'requirements.txt'
+        self._builder.create(self.path)
+        req_filename = self.path / 'requirements.txt'
         # FIXME: Ensure each requirement is pinned to a specific version.
         with open(req_filename, 'w') as f:
             for r in self._build_requirements:
@@ -67,5 +67,5 @@ class BuildEnvironment:
              '--index-url', self._ctx.wheel_server_url,
              '-r', req_filename.absolute(),
              ],
-            cwd=self._path.parent,
+            cwd=self.path.parent,
         )

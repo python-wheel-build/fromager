@@ -39,6 +39,12 @@ def main():
     parser_prepare_source.add_argument('dist_version')
     parser_prepare_source.add_argument('source_archive')
 
+    parser_prepare_build = subparsers.add_parser('prepare-build')
+    parser_prepare_build.set_defaults(func=do_prepare_build)
+    parser_prepare_build.add_argument('dist_name')
+    parser_prepare_build.add_argument('dist_version')
+    parser_prepare_build.add_argument('source_dir')
+
     args = parser.parse_args(sys.argv[1:])
 
     logging.basicConfig(
@@ -79,6 +85,13 @@ def do_prepare_source(ctx, args):
     with open(ctx.work_dir / 'last-source-dir.txt', 'w') as f:
         f.write(str(source_root_dir))
     print(source_root_dir)
+
+
+def do_prepare_build(ctx, args):
+    server.start_wheel_server(ctx)
+    req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    source_root_dir = pathlib.Path(args.source_dir)
+    sdist.prepare_build_environment(ctx, req, source_root_dir)
 
 
 if __name__ == '__main__':
