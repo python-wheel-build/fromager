@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -43,10 +43,6 @@ test = [
     "pytest-cov",
     "coverage!=4.4,>=4.0",
 ]
-
-# https://github.com/pypa/setuptools_scm/
-[tool.setuptools_scm]
-write_to = "mirror_builder/version.py"
 
 [tool.setuptools]
 packages = [

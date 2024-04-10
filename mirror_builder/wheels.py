@@ -2,25 +2,20 @@ import logging
 import platform
 import venv
 
-from . import external_commands, overrides, server
+from . import external_commands, overrides
 
 logger = logging.getLogger(__name__)
 
 
-def build_wheel(ctx, req_type, req, version, why, sdist_root_dir, build_dependencies):
-    logger.info('building wheel for %s (%s)', req.name, version)
+def build_wheel(ctx, req, sdist_root_dir, build_env):
+    logger.info('building wheel for %s in %s', req.name, sdist_root_dir)
     builder = overrides.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = _default_build_wheel
-    build_env = BuildEnvironment(ctx, sdist_root_dir.parent, build_dependencies)
-    wheel_filenames = builder(ctx, build_env, req_type, req, version, why, sdist_root_dir)
-    for wheel in wheel_filenames:
-        server.add_wheel_to_mirror(ctx, sdist_root_dir.name, wheel)
-    ctx.add_to_build_order(req_type, req, version, why)
-    logger.info('built wheel for %s (%s)', req.name, version)
+    return builder(ctx, build_env, req, sdist_root_dir)
 
 
-def _default_build_wheel(ctx, build_env, req_type, req, version, why, sdist_root_dir):
+def _default_build_wheel(ctx, build_env, req, sdist_root_dir):
     cmd = [
         build_env.python, '-m', 'pip', '-vvv',
         '--disable-pip-version-check',
@@ -42,18 +37,22 @@ class BuildEnvironment:
 
     def __init__(self, ctx, parent_dir, build_requirements):
         self._ctx = ctx
-        self._path = parent_dir / f'build-{platform.python_version()}'
+        self.path = parent_dir / f'build-{platform.python_version()}'
         self._build_requirements = build_requirements
         self._createenv()
 
     @property
     def python(self):
-        return (self._path / 'bin/python3').absolute()
+        return (self.path / 'bin/python3').absolute()
 
     def _createenv(self):
+        if self.path.exists():
+            logger.info('reusing build environment in %s', self.path)
+            return
+        logger.debug('creating build environment in %s', self.path)
         self._builder = venv.EnvBuilder(clear=True, with_pip=True)
-        self._builder.create(self._path)
-        req_filename = self._path / 'requirements.txt'
+        self._builder.create(self.path)
+        req_filename = self.path / 'requirements.txt'
         # FIXME: Ensure each requirement is pinned to a specific version.
         with open(req_filename, 'w') as f:
             for r in self._build_requirements:
@@ -67,5 +66,6 @@ class BuildEnvironment:
              '--index-url', self._ctx.wheel_server_url,
              '-r', req_filename.absolute(),
              ],
-            cwd=self._path.parent,
+            cwd=self.path.parent,
         )
+        logger.info('created build environment in %s', self.path)
