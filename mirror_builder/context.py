@@ -1,13 +1,14 @@
 import json
 import logging
 import pathlib
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
 class WorkContext:
 
-    def __init__(self, sdists_repo, wheels_repo, work_dir, wheel_server_port, cleanup=True):
+    def __init__(self, sdists_repo, wheels_repo, work_dir, wheel_server_url, cleanup=True):
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / 'downloads'
         self.wheels_repo = pathlib.Path(wheels_repo).absolute()
@@ -15,7 +16,7 @@ class WorkContext:
         self.wheels_downloads = self.wheels_repo / 'downloads'
         self.wheel_server_dir = self.wheels_repo / 'simple'
         self.work_dir = pathlib.Path(work_dir).absolute()
-        self.wheel_server_port = wheel_server_port
+        self.wheel_server_url = wheel_server_url
         self.cleanup = cleanup
 
         self._build_order_filename = self.work_dir / 'build-order.json'
@@ -32,6 +33,16 @@ class WorkContext:
         # than the package, in case we do have multiple rules for the same
         # package.
         self._seen_requirements = set()
+
+    @property
+    def pip_wheel_server_args(self):
+        args = ['--index-url', self.wheel_server_url]
+        parsed = urlparse(self.wheel_server_url)
+        if parsed.scheme != 'https':
+            args = args + [
+                '--trusted-host', parsed.hostname
+            ]
+        return args
 
     def _resolved_key(self, req, version):
         return (req.name, str(version))
@@ -69,7 +80,3 @@ class WorkContext:
             if not p.exists():
                 logger.debug('creating %s', p)
                 p.mkdir(parents=True)
-
-    @property
-    def wheel_server_url(self):
-        return f'http://localhost:{self.wheel_server_port}/simple/'

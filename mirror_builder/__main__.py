@@ -10,6 +10,8 @@ from packaging.requirements import Requirement
 
 from . import context, sdist, server, sources, wheels
 
+logger = logging.getLogger(__name__)
+
 TERSE_LOG_FMT = '%(message)s'
 VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
 
@@ -20,7 +22,7 @@ def main():
     parser.add_argument('-o', '--sdists-repo', default='sdists-repo')
     parser.add_argument('-w', '--wheels-repo', default='wheels-repo')
     parser.add_argument('-t', '--work-dir', default=os.environ.get('WORKDIR', 'work-dir'))
-    parser.add_argument('--wheel-server-port', default=0, type=int)
+    parser.add_argument('--wheel-server-url')
     parser.add_argument('--no-cleanup', dest='cleanup', default=True, action='store_false')
 
     subparsers = parser.add_subparsers(title='commands', dest='command')
@@ -63,7 +65,7 @@ def main():
         sdists_repo=args.sdists_repo,
         wheels_repo=args.wheels_repo,
         work_dir=args.work_dir,
-        wheel_server_port=args.wheel_server_port,
+        wheel_server_url=args.wheel_server_url,
         cleanup=args.cleanup,
     )
     ctx.setup()
@@ -79,12 +81,14 @@ def do_bootstrap(ctx, args):
 
 def do_download_source_archive(ctx, args):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    logger.info('downloading source archive for %s', req)
     filename, _ = sources.download_source(ctx, req)
     print(filename)
 
 
 def do_prepare_source(ctx, args):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    logger.info('preparing source directory for %s', req)
     source_filename = pathlib.Path(args.source_archive)
     # FIXME: Does the version need to be a Version instead of str?
     source_root_dir = sources.prepare_source(ctx, req, source_filename, args.dist_version)
@@ -94,12 +98,14 @@ def do_prepare_source(ctx, args):
 def do_prepare_build(ctx, args):
     server.start_wheel_server(ctx)
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    logger.info('preparing build environment for %s', req)
     source_root_dir = pathlib.Path(args.source_dir)
     sdist.prepare_build_environment(ctx, req, source_root_dir)
 
 
 def do_build(ctx, args):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
+    logger.info('building for %s', req)
     source_root_dir = pathlib.Path(args.source_dir)
     build_env = wheels.BuildEnvironment(ctx, source_root_dir.parent, None)
     wheel_filenames = wheels.build_wheel(ctx, req, source_root_dir, build_env)

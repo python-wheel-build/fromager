@@ -1,0 +1,16 @@
+FROM e2e-build-base
+
+# Which package should be bootstrapped?
+ARG TOPLEVEL
+
+ENV VIRTUAL_ENV=/venv
+ENV PATH=$VIRTUAL_ENV/bin:$PATH
+
+RUN python3 -m mirror_builder -v \
+    --work-dir /work-dir \
+    --sdists-repo /sdists-repo \
+    --wheels-repo /wheels-repo \
+    bootstrap ${TOPLEVEL}
+
+FROM scratch
+COPY --from=0 /work-dir/build-order.json /bootstrap/build-order.json

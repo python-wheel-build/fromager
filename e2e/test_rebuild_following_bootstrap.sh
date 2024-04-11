@@ -13,59 +13,118 @@ WORKDIR=$(pwd)/work-dir
 
 # Create the various output directories
 mkdir -p $WORKDIR
-mkdir -p wheels-repo
-mkdir -p sdists-repo
+mkdir -p wheels-repo/downloads/
+mkdir -p sdists-repo/downloads/
 
 # Redirect stdout/stderr to logfile
-logfile="$WORKDIR/mirror-sdists-${PYTHON_VERSION}.log"
+logfile="$WORKDIR/rebuild-following-bootstrap.log"
 exec > >(tee "$logfile") 2>&1
 
 # Which version of python should the test use
 PYTHON=${PYTHON:-python3.12}
 
-# What image tag should be used
-TAG=$(basename ${BASH_SOURCE[0]} .sh)
+bootstrap() {
+    local dist="$1"; shift
 
-# How do we run something inside a container
-in_container() {
-    podman run -it --rm \
-           -e PYTHON=$PYTHON \
-           -e WORKDIR=/work-dir \
-           -e VERBOSE=$VERBOSE \
-           --userns=keep-id \
-           --security-opt label=disable \
-           --volume $WORKDIR:/work-dir:rw,exec \
-           --volume $(pwd)/wheels-repo:/wheels-repo:rw \
-           --volume $(pwd)/sdists-repo:/sdists-repo:rw \
-           --volume .:/src:rw,exec \
-           $TAG \
-           ./e2e/container_exec.sh "$@"
+    banner "Bootstrapping $dist"
+    # Bootstrap a complex set of dependencies to get the build order. We
+    # use a simple dist here instead of langchain to avoid dependencies
+    # with rust parts so we can isolate the build environments when
+    # building one wheel at a time later.
+    podman build -f $TOPDIR/Containerfile.e2e-bootstrap \
+           --tag e2e-bootstrap-$dist \
+           --build-arg="TOPLEVEL=$dist"
+
+    # Create a container with the image so we can copy the
+    # build-order.json file out of it to use for the build.
+    podman rm -f e2e-extract-bootstrap-$dist
+    podman create --name e2e-extract-bootstrap-$dist e2e-bootstrap-$dist ls >/dev/null 2>&1
+    podman cp e2e-extract-bootstrap-$dist:/bootstrap/build-order.json work-dir/
 }
 
-in_isolated_container() {
-    podman run -it --rm \
-           -e PYTHON=$PYTHON \
-           -e WORKDIR=/work-dir \
-           -e VERBOSE=true \
+banner() {
+    echo "##############################"
+    echo "$*"
+    echo "##############################"
+}
+
+build_wheel() {
+    local dist="$1"; shift
+    local version="$1"; shift
+
+    banner " building image for $dist $version"
+
+    # Create an image for building the wheel
+    podman build -f $TOPDIR/Containerfile.e2e-one-wheel \
+           --tag e2e-build-$dist \
+           --build-arg="DIST=$dist" \
+           --build-arg="VERSION=$version" \
+           --build-arg="WHEEL_SERVER_URL=$WHEEL_SERVER_URL"
+
+    banner " building $dist $version"
+
+    podman rm -f e2e-build-$dist
+    podman run -it \
+           --name=e2e-build-$dist \
            --network=none \
-           --userns=keep-id \
            --security-opt label=disable \
-           --volume $WORKDIR:/work-dir:rw,exec \
-           --volume $(pwd)/wheels-repo:/wheels-repo:rw \
-           --volume $(pwd)/sdists-repo:/sdists-repo:rw \
-           --volume .:/src:rw,exec \
-           $TAG \
-           ./e2e/container_exec.sh "$@"
+           -e WHEEL_SERVER_URL=${WHEEL_SERVER_URL} \
+           e2e-build-$dist
+
+    # Copy the results of the build out of the container, then clean up.
+    mkdir -p work-dir/$dist
+    podman cp e2e-build-$dist:/work-dir/built-artifacts.tar work-dir/$dist
+    podman rm e2e-build-$dist
+
+    # Update the wheel server directory so the next build can find its dependencies.
+    tar -C work-dir/$dist -xvf work-dir/$dist/built-artifacts.tar
+    cp work-dir/$dist/wheels-repo/build/*.whl wheels-repo/downloads/
+    cp work-dir/$dist/sdists-repo/downloads/*.tar.gz sdists-repo/downloads/
+    $MIRROR_VENV/bin/pypi-mirror create -d wheels-repo/downloads/ -m wheels-repo/simple/
 }
 
-# Build the image.
-podman build --tag $TAG -f $TOPDIR/Containerfile.e2e
+on_exit() {
+  [ "$HTTP_SERVER_PID" ] && kill $HTTP_SERVER_PID
+}
+trap on_exit EXIT SIGINT SIGTERM
+
+# Build the base image.
+banner "Build base image"
+podman build --tag e2e-build-base -f $TOPDIR/Containerfile.e2e
+
+# Bootstrap to create the build order file, if we don't have one.
+if [ ! -f work-dir/build-order.json ]; then
+    bootstrap stevedore
+fi
+
+# Start a web server for the wheels-repo. We remember the PID so we
+# can stop it later, and we determine the primary IP of the host
+# because podman won't see the server via localhost.
+$PYTHON -m http.server --directory wheels-repo/ 9090 &
+HTTP_SERVER_PID=$!
+IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
+WHEEL_SERVER_URL="http://${IP}:9090/simple"
+
+# Set up a virtualenv with the mirror tool in it.
+banner "Set up mirror tools"
+MIRROR_VENV=$WORKDIR/venv-mirror-tools
+rm -rf $MIRROR_VENV/
+python3 -m venv $MIRROR_VENV
+$MIRROR_VENV/bin/python3 -m pip install python-pypi-mirror
+
+# Create a script to build the wheels one at a time in the same
+# order. We can't just read the output of jq in a loop because the
+# container commands eat stdin.
+jq -r '.[] | "build_wheel " + .dist + " " + .version' "work-dir/build-order.json" | tee $WORKDIR/build_script.sh
+source $WORKDIR/build_script.sh
+
+exit 0
 
 # Bootstrap a complex set of dependencies to get the build order. We
 # use a simple dist here instead of langchain to avoid dependencies
 # with rust parts so we can isolate the build environments when
 # building one wheel at a time later.
-in_container bootstrap "stevedore"
+in_container e2e-build-base bootstrap "stevedore"
 
 VERBOSE=true
 
@@ -81,11 +140,6 @@ rm -rf wheels-repo sdists-repo
 mkdir -p wheels-repo
 mkdir -p wheels-repo/downloads/
 mkdir -p sdists-repo
-
-# Set up a virtualenv with the mirror tool in it.
-VENV=$WORKDIR/venv-mirror-tools
-python3 -m venv $VENV
-$VENV/bin/python3 -m pip install python-pypi-mirror
 
 build_wheel() {
     local name="$1"; shift

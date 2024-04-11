@@ -46,4 +46,13 @@ RUN dnf -y install zlib-devel libjpeg-devel
 # python3.12-devel needed for 3.12 builds (on CentOS Stream 9)
 RUN dnf -y install python3.9 python3.12 python3.12-devel
 
+RUN python3.12 -m venv /venv \
+    && /venv/bin/pip install --upgrade pip
+
+ENV VIRTUAL_ENV=/venv
+ENV PATH=$VIRTUAL_ENV/bin:$PATH
+
+COPY . /mirror-builder
+RUN pip install /mirror-builder
+
 WORKDIR /src
