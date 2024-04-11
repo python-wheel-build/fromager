@@ -80,8 +80,6 @@ def do_bootstrap(ctx, args):
 def do_download_source_archive(ctx, args):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     filename, _ = sources.download_source(ctx, req)
-    with open(ctx.work_dir / 'last-download.txt', 'w') as f:
-        f.write(filename)
     print(filename)
 
 
@@ -90,8 +88,6 @@ def do_prepare_source(ctx, args):
     source_filename = pathlib.Path(args.source_archive)
     # FIXME: Does the version need to be a Version instead of str?
     source_root_dir = sources.prepare_source(ctx, req, source_filename, args.dist_version)
-    with open(ctx.work_dir / 'last-source-dir.txt', 'w') as f:
-        f.write(str(source_root_dir))
     print(source_root_dir)
 
 
@@ -107,10 +103,8 @@ def do_build(ctx, args):
     source_root_dir = pathlib.Path(args.source_dir)
     build_env = wheels.BuildEnvironment(ctx, source_root_dir.parent, None)
     wheel_filenames = wheels.build_wheel(ctx, req, source_root_dir, build_env)
-    with open(ctx.work_dir / 'last-wheels.txt', 'w') as f:
-        for filename in wheel_filenames:
-            f.write(f'{filename}\n')
-            print(filename)
+    for filename in wheel_filenames:
+        print(filename)
 
 
 if __name__ == '__main__':
