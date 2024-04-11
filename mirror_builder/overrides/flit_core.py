@@ -15,7 +15,7 @@ def build_wheel(ctx, build_env, req, sdist_root_dir):
     # https://flit.pypa.io/en/stable/bootstrap.html
     logger.info('bootstrapping flit_core wheel in %s', sdist_root_dir)
     external_commands.run(
-        [build_env.python, '-m', 'flit_core.wheel'],
+        [build_env.python, '-m', 'flit_core.wheel',
+         '--outdir', ctx.wheels_build],
         cwd=sdist_root_dir,
     )
-    return (sdist_root_dir / 'dist').glob('*.whl')
