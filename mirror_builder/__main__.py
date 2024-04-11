@@ -150,9 +150,8 @@ def _find_source_dir(work_dir, req, dist_version):
 def do_prepare_build(ctx, args):
     server.start_wheel_server(ctx)
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
-    source_dir = _find_source_dir(pathlib.Path(args.work_dir), req, args.dist_version)
+    source_root_dir = _find_source_dir(pathlib.Path(args.work_dir), req, args.dist_version)
     logger.info('preparing build environment for %s', req)
-    source_root_dir = pathlib.Path(source_dir)
     sdist.prepare_build_environment(ctx, req, source_root_dir)
 
 
