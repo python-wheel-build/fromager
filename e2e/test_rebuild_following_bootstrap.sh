@@ -37,9 +37,9 @@ bootstrap() {
 
     # Create a container with the image so we can copy the
     # build-order.json file out of it to use for the build.
-    podman rm -f e2e-extract-bootstrap-$dist
     podman create --name e2e-extract-bootstrap-$dist e2e-bootstrap-$dist ls >/dev/null 2>&1
     podman cp e2e-extract-bootstrap-$dist:/bootstrap/build-order.json work-dir/
+    podman rm -f e2e-extract-bootstrap-$dist
 }
 
 banner() {
@@ -63,9 +63,9 @@ build_wheel() {
 
     banner " building $dist $version"
 
-    podman rm -f e2e-build-$dist
     podman run -it \
            --name=e2e-build-$dist \
+           --replace \
            --network=none \
            --security-opt label=disable \
            -e WHEEL_SERVER_URL=${WHEEL_SERVER_URL} \
@@ -75,6 +75,7 @@ build_wheel() {
     mkdir -p work-dir/$dist
     podman cp e2e-build-$dist:/work-dir/built-artifacts.tar work-dir/$dist
     podman rm e2e-build-$dist
+    podman image rm e2e-build-$dist
 
     # Update the wheel server directory so the next build can find its dependencies.
     tar -C work-dir/$dist -xvf work-dir/$dist/built-artifacts.tar
