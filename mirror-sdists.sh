@@ -20,10 +20,10 @@ PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
 TOPLEVEL="${1:-langchain}"
 
 # Redirect stdout/stderr to logfile
-logfile="$WORKDIR/mirror-sdists-${PYTHON_VERSION}.log"
+logfile="$WORKDIR/mirror-sdists.log"
 exec > >(tee "$logfile") 2>&1
 
-VENV="${WORKDIR}/venv-${PYTHON}"
+VENV="${WORKDIR}/venv"
 # Create a fresh virtualenv every time since the process installs
 # packages into it.
 rm -rf "${VENV}"

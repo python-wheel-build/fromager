@@ -73,7 +73,7 @@ BOOTSTRAP_OUTPUT=$WORKDIR/bootstrap-output.txt
 find wheels-repo/downloads > $BOOTSTRAP_OUTPUT
 
 # Look at the bootstrap command output to decide which wheels to build.
-REBUILD_ORDER_FILE=${WORKDIR}/build-order-${PYTHON_VERSION}.json
+REBUILD_ORDER_FILE=${WORKDIR}/build-order.json
 
 # Recreate sdists-repo and wheels-repo so they are rebuilt as we build
 # those wheels again.

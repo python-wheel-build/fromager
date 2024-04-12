@@ -1,7 +1,6 @@
 import json
 import logging
 import pathlib
-import platform
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +16,7 @@ class WorkContext:
         self.work_dir = pathlib.Path(work_dir).absolute()
         self.wheel_server_port = wheel_server_port
 
-        self._build_order_filename = self.work_dir / f'build-order-{platform.python_version()}.json'
+        self._build_order_filename = self.work_dir / 'build-order.json'
 
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
