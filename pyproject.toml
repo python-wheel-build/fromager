@@ -47,4 +47,5 @@ test = [
 [tool.setuptools]
 packages = [
     "mirror_builder",
+    "mirror_builder.overrides",
 ]
