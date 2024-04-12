@@ -90,7 +90,11 @@ trap on_exit EXIT SIGINT SIGTERM
 
 # Build the base image.
 banner "Build base image"
-podman build --tag e2e-build-base -f $TOPDIR/Containerfile.e2e
+podman build \
+       --tag e2e-build-base \
+       -f $TOPDIR/Containerfile.e2e \
+       --build-arg="PYTHON=$PYTHON"
+
 
 # Bootstrap to create the build order file, if we don't have one.
 if [ ! -f work-dir/build-order.json ]; then
