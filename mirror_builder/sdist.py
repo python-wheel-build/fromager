@@ -8,14 +8,16 @@ logger = logging.getLogger(__name__)
 
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
     source_filename, resolved_version = sources.download_source(ctx, req)
-    sdist_root_dir = sources.prepare_source(ctx, req, source_filename, resolved_version)
 
     # Avoid cyclic dependencies and redundant processing.
-    if sdist_root_dir is None:
+    if ctx.has_been_seen(req, resolved_version):
         logger.debug(f'redundant requirement {req} resolves to {resolved_version}')
-        return
+        return resolved_version
+    ctx.mark_as_seen(req, resolved_version)
 
     logger.info('new dependency (%s) %s -> %s resolves to %s', req_type, why, req, resolved_version)
+
+    sdist_root_dir = sources.prepare_source(ctx, req, source_filename, resolved_version)
 
     next_why = f'{why} -> {req.name}({resolved_version})'
     next_req_type = 'build_system'

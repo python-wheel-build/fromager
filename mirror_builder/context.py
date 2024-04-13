@@ -31,12 +31,15 @@ class WorkContext:
         # package.
         self._seen_requirements = set()
 
-    def mark_as_seen(self, sdist_id):
-        logger.debug('remembering seen sdist %s', sdist_id)
-        self._seen_requirements.add(sdist_id)
+    def _resolved_key(self, req, version):
+        return (req.name, str(version))
 
-    def has_been_seen(self, sdist_id):
-        return sdist_id in self._seen_requirements
+    def mark_as_seen(self, req, version):
+        logger.debug('remembering seen sdist %s', self._resolved_key(req, version))
+        self._seen_requirements.add(self._resolved_key(req, version))
+
+    def has_been_seen(self, req, version):
+        return self._resolved_key(req, version) in self._seen_requirements
 
     def add_to_build_order(self, req_type, req, version, why):
         resolved_name = f'{req.name}-{version}'

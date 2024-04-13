@@ -19,7 +19,6 @@ def add_wheel_to_mirror(ctx, name_version, filename):
     logger.debug('copying wheel %s to mirror', filename)
     shutil.copyfile(filename, ctx.wheels_downloads / filename.name)
     update_wheel_mirror(ctx)
-    ctx.mark_as_seen(name_version)
 
 
 def start_wheel_server(ctx):
