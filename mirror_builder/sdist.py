@@ -1,5 +1,6 @@
 import importlib.metadata
 import logging
+import shutil
 
 from . import dependencies, external_commands, server, sources, wheels
 
@@ -62,6 +63,16 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     )
     for dep in install_dependencies:
         handle_requirement(ctx, dep, next_req_type, next_why)
+
+    # Cleanup the source tree and build environment, leaving any other
+    # artifacts that were created.
+    if ctx.cleanup:
+        logger.debug('cleaning up source tree %s', sdist_root_dir)
+        shutil.rmtree(sdist_root_dir)
+        logger.debug('cleaned up source tree %s', sdist_root_dir)
+        logger.debug('cleaning up build environment %s', build_env.path)
+        shutil.rmtree(build_env.path)
+        logger.debug('cleaned up build environment %s', build_env.path)
 
     return resolved_version
 
