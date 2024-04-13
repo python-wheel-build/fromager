@@ -38,7 +38,7 @@ bootstrap() {
     # Create a container with the image so we can copy the
     # build-order.json file out of it to use for the build.
     podman create --name e2e-extract-bootstrap-$dist e2e-bootstrap-$dist ls >/dev/null 2>&1
-    podman cp e2e-extract-bootstrap-$dist:/bootstrap/build-order.json work-dir/
+    podman cp e2e-extract-bootstrap-$dist:/work-dir/build-order.json work-dir/
     podman rm -f e2e-extract-bootstrap-$dist
 }
 

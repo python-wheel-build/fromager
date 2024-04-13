@@ -13,4 +13,4 @@ RUN python3 -m mirror_builder -v \
     bootstrap ${TOPLEVEL}
 
 FROM scratch
-COPY --from=0 /work-dir/build-order.json /bootstrap/build-order.json
+COPY --from=0 /work-dir/build-order.json /work-dir/build-order.json
