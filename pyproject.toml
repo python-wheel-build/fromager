@@ -48,4 +48,8 @@ test = [
 packages = [
     "mirror_builder",
     "mirror_builder.overrides",
+    "mirror_builder.patches",
 ]
+
+[tool.setuptools.package-data]
+"mirror_builder.patches" = ["*.patch"]
