@@ -100,11 +100,6 @@ def prepare_source(ctx, req, source_filename, version):
 
 
 def _default_prepare_source(ctx, req, source_filename, version):
-    resolved_name = f'{req.name}-{version}'
-    if ctx.has_been_seen(resolved_name):
-        return None
-    ctx.mark_as_seen(resolved_name)
-
     source_root_dir = unpack_source(ctx, source_filename)
     _patch_source(ctx, source_root_dir)
     return source_root_dir

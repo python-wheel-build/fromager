@@ -4,10 +4,11 @@ from packaging.requirements import Requirement
 
 
 def test_seen(tmp_context):
-    distid = 'testdist-1.2'
-    assert not tmp_context.has_been_seen(distid)
-    tmp_context.mark_as_seen(distid)
-    assert tmp_context.has_been_seen(distid)
+    req = Requirement('testdist')
+    version = '1.2'
+    assert not tmp_context.has_been_seen(req, version)
+    tmp_context.mark_as_seen(req, version)
+    assert tmp_context.has_been_seen(req, version)
 
 
 def test_build_order(tmp_context):
