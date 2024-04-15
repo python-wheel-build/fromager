@@ -21,6 +21,7 @@ def main():
     parser.add_argument('-w', '--wheels-repo', default='wheels-repo')
     parser.add_argument('-t', '--work-dir', default=os.environ.get('WORKDIR', 'work-dir'))
     parser.add_argument('--wheel-server-port', default=0, type=int)
+    parser.add_argument('--no-cleanup', dest='cleanup', default=True, action='store_false')
 
     subparsers = parser.add_subparsers(title='commands', dest='command')
 
@@ -63,6 +64,7 @@ def main():
         wheels_repo=args.wheels_repo,
         work_dir=args.work_dir,
         wheel_server_port=args.wheel_server_port,
+        cleanup=args.cleanup,
     )
     ctx.setup()
 
