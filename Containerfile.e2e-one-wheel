@@ -33,7 +33,7 @@ RUN python3 -m mirror_builder -v \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
     --wheels-repo /wheels-repo \
-    prepare-source ${DIST} ${VERSION} /sdists-repo/downloads/${DIST}*.tar.gz \
+    prepare-source ${DIST} ${VERSION} \
     2>&1 | tee /build-logs/prepare-source.log
 
 
@@ -59,7 +59,7 @@ RUN python3 -m mirror_builder -v \
     --sdists-repo /sdists-repo \
     --wheels-repo /wheels-repo \
     --wheel-server-url ${WHEEL_SERVER_URL} \
-    prepare-build ${DIST} ${VERSION} /work-dir/${DIST}*/${DIST}* \
+    prepare-build ${DIST} ${VERSION} \
     2>&1 | tee /build-logs/prepare-build.log
 
 
