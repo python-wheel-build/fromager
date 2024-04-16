@@ -11,6 +11,7 @@ class WorkContext:
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / 'downloads'
         self.wheels_repo = pathlib.Path(wheels_repo).absolute()
+        self.wheels_build = self.wheels_repo / 'build'
         self.wheels_downloads = self.wheels_repo / 'downloads'
         self.wheel_server_dir = self.wheels_repo / 'simple'
         self.work_dir = pathlib.Path(work_dir).absolute()

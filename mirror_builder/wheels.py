@@ -8,11 +8,13 @@ logger = logging.getLogger(__name__)
 
 
 def build_wheel(ctx, req, sdist_root_dir, build_env):
-    logger.info('building wheel for %s in %s', req.name, sdist_root_dir)
+    logger.info('building wheel for %s in %s writing to %s', req.name, sdist_root_dir,
+                ctx.wheels_build)
     builder = overrides.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = _default_build_wheel
-    return builder(ctx, build_env, req, sdist_root_dir)
+    builder(ctx, build_env, req, sdist_root_dir)
+    return ctx.wheels_build.glob('*.whl')
 
 
 def _default_build_wheel(ctx, build_env, req, sdist_root_dir):
@@ -23,13 +25,12 @@ def _default_build_wheel(ctx, build_env, req, sdist_root_dir):
         '--no-cache-dir',
         '--no-build-isolation',
         '--only-binary', ':all:',
-        '--wheel-dir', sdist_root_dir.parent.absolute(),
+        '--wheel-dir', ctx.wheels_build,
         '--no-deps',
         '--index-url', ctx.wheel_server_url,  # probably redundant, but just in case
         '.',
     ]
     external_commands.run(cmd, cwd=sdist_root_dir)
-    return sdist_root_dir.parent.glob('*.whl')
 
 
 class BuildEnvironment:

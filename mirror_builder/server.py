@@ -15,12 +15,6 @@ class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         logger.debug(format, *args)
 
 
-def add_wheel_to_mirror(ctx, name_version, filename):
-    logger.debug('copying wheel %s to mirror', filename)
-    shutil.copyfile(filename, ctx.wheels_downloads / filename.name)
-    update_wheel_mirror(ctx)
-
-
 def start_wheel_server(ctx):
     update_wheel_mirror(ctx)
     logger.debug('wheel port %s', ctx.wheel_server_port)
@@ -50,6 +44,9 @@ def start_wheel_server(ctx):
 
 def update_wheel_mirror(ctx):
     logger.debug('updating wheel mirror')
+    for wheel in ctx.wheels_build.glob('*.whl'):
+        logger.debug('adding %s', wheel)
+        shutil.move(wheel, ctx.wheels_downloads / wheel.name)
     external_commands.run([
         'pypi-mirror',
         'create',
