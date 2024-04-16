@@ -1,5 +1,7 @@
 FROM fedora:39
 
+ARG PYTHON=python3.12
+
 # The diff command is needed in tests run while building patchelf
 #
 # The base layer is minimal, so instead of tracking individual tools
@@ -45,5 +47,16 @@ RUN dnf -y install zlib-devel libjpeg-devel
 # Python dependencies (last in case we want to change versions)
 # python3.12-devel needed for 3.12 builds (on CentOS Stream 9)
 RUN dnf -y install python3.9 python3.12 python3.12-devel
+
+# Create a virtualenv for our tools
+RUN $PYTHON -m venv /venv \
+    && /venv/bin/pip install --upgrade pip
+
+# Activate the virtualenv
+ENV VIRTUAL_ENV=/venv
+ENV PATH=$VIRTUAL_ENV/bin:$PATH
+
+COPY . /mirror-builder
+RUN pip install /mirror-builder
 
 WORKDIR /src

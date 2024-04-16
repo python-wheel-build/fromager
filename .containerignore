@@ -1,0 +1,12 @@
+**/__pycache__/*
+*.egg-info/*
+*.log
+.cache/*
+.cargo/*
+.git/*
+.tox/*
+.venv/*
+sdists-repo/*
+venv*
+wheels-repo/*
+work-dir/*

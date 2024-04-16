@@ -139,7 +139,7 @@ def safe_install(ctx, req, req_type):
         '--no-cache-dir',
         '--upgrade',
         '--only-binary', ':all:',
-        '--index-url', ctx.wheel_server_url,
+    ] + ctx.pip_wheel_server_args + [
         f'{req}',
     ])
     version = importlib.metadata.version(req.name)
