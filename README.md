@@ -26,7 +26,7 @@ Finally, the [install-from-mirror](install-from-mirror.sh) script installs the d
 
 ### Current Status
 
-See the [currently open issues](https://github.com/markmc/rebuilding-the-wheel/issues).
+See the [currently open issues](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/issues)
 
 ### Langchain Dependency Tree
 
