@@ -1,0 +1,29 @@
+stages:
+  - test-quick
+  # - test-e2e
+
+linter:
+  stage: test-quick
+  variables:
+    PYTHON: python3
+  image: python:latest
+
+  before_script:
+    - $PYTHON --version
+    - $PYTHON -m pip install --upgrade tox
+
+  script:
+    - tox -e linter
+
+unit:
+  stage: test-quick
+  variables:
+    PYTHON: python3
+  image: python:latest
+
+  before_script:
+    - $PYTHON --version
+    - $PYTHON -m pip install --upgrade tox
+
+  script:
+    - tox -e py
