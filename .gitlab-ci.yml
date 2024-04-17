@@ -39,7 +39,7 @@ test-without-isolation:
   image: fedora:39
 
   before_script:
-    bash -x ./setup.sh
+    - bash -x ./setup.sh
 
   script:
     ./test.sh
