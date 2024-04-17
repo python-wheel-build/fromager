@@ -99,7 +99,6 @@ podman build \
        -f $TOPDIR/Containerfile.e2e \
        --build-arg="PYTHON=$PYTHON"
 
-
 # Bootstrap to create the build order file, if we don't have one.
 if [ ! -f work-dir/build-order.json ]; then
     bootstrap $TOPLEVEL
