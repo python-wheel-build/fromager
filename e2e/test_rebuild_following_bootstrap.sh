@@ -16,6 +16,9 @@ mkdir -p $WORKDIR
 mkdir -p wheels-repo/downloads/
 mkdir -p sdists-repo/downloads/
 
+# What are we building?
+TOPLEVEL=${1:-stevedore}
+
 # Redirect stdout/stderr to logfile
 logfile="$WORKDIR/rebuild-following-bootstrap.log"
 exec > >(tee "$logfile") 2>&1
@@ -99,7 +102,7 @@ podman build \
 
 # Bootstrap to create the build order file, if we don't have one.
 if [ ! -f work-dir/build-order.json ]; then
-    bootstrap stevedore
+    bootstrap $TOPLEVEL
 fi
 
 # Start a web server for the wheels-repo. We remember the PID so we
