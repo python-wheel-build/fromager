@@ -1,6 +1,6 @@
 stages:
   - test-quick
-  # - test-e2e
+  - test-e2e
 
 linter:
   stage: test-quick
@@ -27,3 +27,19 @@ unit:
 
   script:
     - tox -e py
+
+# This test does not use its own containers and does not run any
+# portion of the build in isolation. It's useful for verifying that
+# building some of the more complex packages, with patches, works OK
+# and that the dependency resolution algorithm is handling all of the
+# edge cases.
+test-without-isolation:
+  stage: test-e2e
+
+  image: fedora:39
+
+  before_script:
+    bash -x ./setup.sh
+
+  script:
+    ./test.sh
