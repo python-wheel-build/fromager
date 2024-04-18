@@ -2,10 +2,6 @@ workflow:
   rules:
     - if: $CI_COMMIT_MESSAGE =~ /^Draft:/
       when: never
-    - changes:
-      - README.md
-      - .github
-      when: never
     - if: $CI_PIPELINE_SOURCE == "merge-request-event"
 
 stages:
