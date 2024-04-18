@@ -8,38 +8,38 @@ stages:
   - test-quick
   - test-e2e
 
-linter:
+
+.tox_job_template: &tox_job_template
+  image: fedora:39
+  before_script:
+    - dnf install -y python3
+    - python3 -m venv tox_env
+    - ./tox_env/bin/python3 --version
+    - ./tox_env/bin/python3 -m pip install --upgrade tox
+  script:
+    - ./tox_env/bin/tox -e $TOX_TARGET
+
+
+tox-linter:
   stage: test-quick
   variables:
-    PYTHON: python3
-  image: python:latest
+    TOX_TARGET: linter
+  <<: *tox_job_template
 
-  before_script:
-    - $PYTHON --version
-    - $PYTHON -m pip install --upgrade tox
 
-  script:
-    - tox -e linter
-
-unit:
+tox-unit:
   stage: test-quick
   variables:
-    PYTHON: python3
-  image: python:latest
+    TOX_TARGET: py
+  <<: *tox_job_template
 
-  before_script:
-    - $PYTHON --version
-    - $PYTHON -m pip install --upgrade tox
-
-  script:
-    - tox -e py
 
 # This test does not use its own containers and does not run any
 # portion of the build in isolation. It's useful for verifying that
 # building some of the more complex packages, with patches, works OK
 # and that the dependency resolution algorithm is handling all of the
 # edge cases.
-test-without-isolation:
+e2e-without-isolation:
   stage: test-e2e
 
   image: fedora:39
