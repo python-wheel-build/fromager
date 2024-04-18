@@ -11,7 +11,7 @@
 
 set -ue -o pipefail
 
-echo $PATH
+echo "${PATH}"
 
 VERBOSE=${VERBOSE:-}
 if [ -n "${VERBOSE}" ]; then
@@ -22,15 +22,17 @@ fi
 VENV="${WORKDIR}/venv-${PYTHON}"
 if [ ! -d "${VENV}" ]; then
     "${PYTHON}" -m venv "${VENV}"
+    # shellcheck disable=SC1091
     source "${VENV}/bin/activate"
     pip install --upgrade pip
     pip install -e .
 fi
-source $VENV/bin/activate
+# shellcheck disable=SC1091
+source "${VENV}/bin/activate"
 
 python3 -m mirror_builder \
-        ${VERBOSE}\
-        --work-dir $WORKDIR \
+        "${VERBOSE}" \
+        --work-dir "${WORKDIR}" \
         --sdists-repo /sdists-repo \
         --wheels-repo /wheels-repo \
         "$@"

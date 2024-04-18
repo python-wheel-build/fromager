@@ -3,6 +3,7 @@
 set -x
 set -ue -o pipefail
 
+# shellcheck disable=SC1091
 source /venv/bin/activate
 
 python3 -m mirror_builder \

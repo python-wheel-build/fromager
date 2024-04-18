@@ -10,12 +10,11 @@ if [ -n "${VERBOSE}" ]; then
   VERBOSE="-v"
 fi
 
-DEFAULT_WORKDIR=$(realpath $(pwd)/work-dir)
+DEFAULT_WORKDIR=$(realpath "$(pwd)/work-dir")
 WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
-mkdir -p $WORKDIR
+mkdir -p "$WORKDIR"
 
 PYTHON=${PYTHON:-python3.9}
-PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
 
 TOPLEVEL="${1:-langchain}"
 
@@ -28,8 +27,9 @@ VENV="${WORKDIR}/venv"
 # packages into it.
 rm -rf "${VENV}"
 "${PYTHON}" -m venv "${VENV}"
+# shellcheck disable=SC1091
 source "${VENV}/bin/activate"
 pip install --upgrade pip
 pip install -e .
 
-python3 -m mirror_builder ${VERBOSE} bootstrap "${TOPLEVEL}"
+python3 -m mirror_builder "${VERBOSE}" bootstrap "${TOPLEVEL}"
