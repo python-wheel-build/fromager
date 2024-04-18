@@ -13,8 +13,9 @@ def run(cmd, cwd=None, extra_environ={}):
     env = os.environ.copy()
     env.update(extra_environ)
 
-    logger.debug('running: %s %s',
-        ' '.join(f"%s=%s" % x for x in extra_environ.items()),
+    logger.debug(
+        'running: %s %s',
+        ' '.join('%s=%s' % x for x in extra_environ.items()),
         ' '.join(shlex.quote(str(s)) for s in cmd)
     )
     completed = subprocess.run(
