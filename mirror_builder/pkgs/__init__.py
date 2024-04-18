@@ -2,12 +2,16 @@ import fnmatch
 import logging
 from importlib import resources
 
-logger = logging.getLogger(__name__)
+from . import overrides
 
 # An interface for reretrieving per-package information which influences
 # the build process for a particular package - i.e. for a given package
 # and build target, what patches should we apply, what environment variables
 # should we set, etc.
+
+logger = logging.getLogger(__name__)
+
+find_override_method = overrides.find_override_method
 
 
 def _files_for_pkg(anchor, pkg_base, ext):
@@ -46,7 +50,7 @@ def patches_for_source_dir(source_dir_name):
     the filenames.
 
     """
-    return _files_for_pkg('mirror_builder.patches', source_dir_name, '.patch')
+    return _files_for_pkg('mirror_builder.pkgs.patches', source_dir_name, '.patch')
 
 
 def extra_environ_for_pkg(pkgname):
@@ -57,7 +61,7 @@ def extra_environ_for_pkg(pkgname):
 
     """
     extra_environ = {}
-    for env_file in _files_for_pkg('mirror_builder.envs', pkgname, '.env'):
+    for env_file in _files_for_pkg('mirror_builder.pkgs.envs', pkgname, '.env'):
         with open(env_file, 'r') as f:
             for line in f:
                 key, value = line.strip().split('=')

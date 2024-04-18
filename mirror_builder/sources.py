@@ -9,14 +9,14 @@ from urllib.parse import urlparse
 import requests
 import resolvelib
 
-from . import overrides, pkgdb, resolver
+from . import pkgs, resolver
 
 logger = logging.getLogger(__name__)
 
 
 def download_source(ctx, req):
     logger.info('downloading source for %s', req)
-    downloader = overrides.find_override_method(req.name, 'download_source')
+    downloader = pkgs.find_override_method(req.name, 'download_source')
     if not downloader:
         downloader = _default_download_source
     source_filename, version = downloader(ctx, req)
@@ -78,7 +78,7 @@ def unpack_source(ctx, source_filename):
 
 
 def _patch_source(ctx, source_root_dir):
-    for p in pkgdb.patches_for_source_dir(source_root_dir.name):
+    for p in pkgs.patches_for_source_dir(source_root_dir.name):
         logger.info('applying patch file %s to %s', p, source_root_dir)
         with open(p, 'r') as f:
             subprocess.check_call(
@@ -90,7 +90,7 @@ def _patch_source(ctx, source_root_dir):
 
 def prepare_source(ctx, req, source_filename, version):
     logger.info('preparing source for %s from %s', req, source_filename)
-    preparer = overrides.find_override_method(req.name, 'prepare_source')
+    preparer = pkgs.find_override_method(req.name, 'prepare_source')
     if not preparer:
         preparer = _default_prepare_source
     source_root_dir = preparer(ctx, req, source_filename, version)
