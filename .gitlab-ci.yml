@@ -34,6 +34,15 @@ tox-unit:
   <<: *tox_job_template
 
 
+shellcheck:
+  stage: test-quick
+  image: fedora:39
+  before_script:
+    - dnf install -y ShellCheck
+  script:
+    - ./shellcheck.sh
+
+
 # This test does not use its own containers and does not run any
 # portion of the build in isolation. It's useful for verifying that
 # building some of the more complex packages, with patches, works OK
