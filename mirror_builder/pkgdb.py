@@ -47,3 +47,19 @@ def patches_for_source_dir(source_dir_name):
 
     """
     return _files_for_pkg('mirror_builder.patches', source_dir_name, '.patch')
+
+
+def extra_environ_for_pkg(pkgname):
+    """Return a dict of extra environment variables for a particular package.
+
+    Extra environment variables are stored in per-package .env files in the
+    envs package, with a key=value per line.
+
+    """
+    extra_environ = {}
+    for env_file in _files_for_pkg('mirror_builder.envs', pkgname, '.env'):
+        with open(env_file, 'r') as f:
+            for line in f:
+                key, value = line.strip().split('=')
+                extra_environ[key] = value
+    return extra_environ
