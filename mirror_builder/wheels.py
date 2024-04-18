@@ -22,7 +22,7 @@ def _default_build_wheel(ctx, build_env, req, sdist_root_dir):
     # A specific package override can add additional environment variables
     extra_environ = overrides.find_override_method(req.name, 'extra_environ')
     if not extra_environ:
-        extra_environ = lambda ctx, req: { }
+        def extra_environ(ctx, req): return {}
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = [
             build_env.python, '-m', 'pip', '-vvv',
