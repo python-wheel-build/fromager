@@ -38,7 +38,7 @@ shellcheck:
   stage: test-quick
   image: fedora:39
   before_script:
-    - dnf install -y ShellCheck
+    - dnf install -y ShellCheck git
   script:
     - ./shellcheck.sh
 
