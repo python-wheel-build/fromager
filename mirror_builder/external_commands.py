@@ -30,3 +30,4 @@ def run(cmd, cwd=None, extra_environ={}):
         logger.error('%s failed with %s', cmd, output)
         raise subprocess.CalledProcessError(completed.returncode, cmd, output)
     logger.debug('output: %s', output)
+    return output
