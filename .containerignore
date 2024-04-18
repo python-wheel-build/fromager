@@ -9,4 +9,4 @@
 sdists-repo/*
 venv*
 wheels-repo/*
-work-dir/*
+work-dir*/*
