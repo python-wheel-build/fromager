@@ -160,9 +160,8 @@ def do_build(ctx, args):
     logger.info('building for %s', req)
     source_root_dir = _find_source_dir(pathlib.Path(args.work_dir), req, args.dist_version)
     build_env = wheels.BuildEnvironment(ctx, source_root_dir.parent, None)
-    wheel_filenames = wheels.build_wheel(ctx, req, source_root_dir, build_env)
-    for filename in wheel_filenames:
-        print(filename)
+    wheel_filename = wheels.build_wheel(ctx, req, source_root_dir, build_env)
+    print(wheel_filename)
 
 
 if __name__ == '__main__':

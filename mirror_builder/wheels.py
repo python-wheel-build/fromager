@@ -16,7 +16,10 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
         builder = _default_build_wheel
     extra_environ = pkgs.extra_environ_for_pkg(req.name)
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
-    return ctx.wheels_build.glob('*.whl')
+    wheels = list(ctx.wheels_build.glob('*.whl'))
+    if wheels:
+        return wheels[0]
+    return None
 
 
 def _default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
