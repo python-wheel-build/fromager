@@ -1,5 +1,5 @@
 import pytest
-from mirror_builder import sources
+from mirror_builder import pkgdb
 
 
 @pytest.mark.parametrize('dir_name,expected_patches', [
@@ -9,6 +9,6 @@ from mirror_builder import sources
                         'pytorch-v2.2.2-002-dist-info-no-run-build-deps.patch']),
 ])
 def test_patches_for_source_dir(dir_name, expected_patches):
-    patches = list(sources._patches_for_source_dir(dir_name))
+    patches = list(pkgdb.patches_for_source_dir(dir_name))
     actual_patches = [p.name for p in patches]
     assert expected_patches == actual_patches

@@ -1,17 +1,15 @@
-import fnmatch
 import logging
 import os.path
 import pathlib
 import shutil
 import subprocess
 import tarfile
-from importlib import resources
 from urllib.parse import urlparse
 
 import requests
 import resolvelib
 
-from . import overrides, resolver
+from . import overrides, pkgdb, resolver
 
 logger = logging.getLogger(__name__)
 
@@ -79,33 +77,8 @@ def unpack_source(ctx, source_filename):
     return list(unpack_dir.glob('*'))[0]
 
 
-def _patches_for_source_dir(source_dir_name):
-    """Iterator producing patches to apply to the source dir.
-
-    Input should be the base directory name, not a full path.
-
-    Yields pathlib.Path() references to patches in the order they
-    should be applied, which is controlled through lexical sorting of
-    the filenames.
-
-    """
-    # importlib.resources.files gives us back a MultiplexedPath, but
-    # that doesn't support a glob() method directly, so we have to
-    # look through the list of files in the path ourselves.
-    patch_dir = resources.files("mirror_builder.patches")
-    pattern = source_dir_name + '*.patch'
-    for p in sorted(patch_dir.iterdir()):
-        if not fnmatch.fnmatch(p.name, '*.patch'):
-            # ignore things like python files so we don't log excessively
-            continue
-        if not fnmatch.fnmatch(p.name, pattern):
-            logger.debug(f'{p.name} does not match {pattern}')
-            continue
-        yield p
-
-
 def _patch_source(ctx, source_root_dir):
-    for p in _patches_for_source_dir(source_root_dir.name):
+    for p in pkgdb.patches_for_source_dir(source_root_dir.name):
         logger.info('applying patch file %s to %s', p, source_root_dir)
         with open(p, 'r') as f:
             subprocess.check_call(
