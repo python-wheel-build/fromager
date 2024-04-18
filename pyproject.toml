@@ -47,8 +47,9 @@ test = [
 [tool.setuptools]
 packages = [
     "mirror_builder",
-    "mirror_builder.overrides",
-    "mirror_builder.patches",
+    "mirror_builder.pkgs.envs",
+    "mirror_builder.pkgs.overrides",
+    "mirror_builder.pkgs.patches",
 ]
 
 [tool.setuptools.package-data]

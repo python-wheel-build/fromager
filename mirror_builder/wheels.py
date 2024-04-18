@@ -3,7 +3,7 @@ import platform
 import tempfile
 import venv
 
-from . import external_commands, overrides
+from . import external_commands, pkgs
 
 logger = logging.getLogger(__name__)
 
@@ -11,18 +11,15 @@ logger = logging.getLogger(__name__)
 def build_wheel(ctx, req, sdist_root_dir, build_env):
     logger.info('building wheel for %s in %s writing to %s', req.name, sdist_root_dir,
                 ctx.wheels_build)
-    builder = overrides.find_override_method(req.name, 'build_wheel')
+    builder = pkgs.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = _default_build_wheel
-    builder(ctx, build_env, req, sdist_root_dir)
+    extra_environ = pkgs.extra_environ_for_pkg(req.name)
+    builder(ctx, build_env, extra_environ, req, sdist_root_dir)
     return ctx.wheels_build.glob('*.whl')
 
 
-def _default_build_wheel(ctx, build_env, req, sdist_root_dir):
-    # A specific package override can add additional environment variables
-    extra_environ = overrides.find_override_method(req.name, 'extra_environ')
-    if not extra_environ:
-        def extra_environ(ctx, req): return {}
+def _default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = [
             build_env.python, '-m', 'pip', '-vvv',
@@ -36,7 +33,7 @@ def _default_build_wheel(ctx, build_env, req, sdist_root_dir):
             '--index-url', ctx.wheel_server_url,  # probably redundant, but just in case
             sdist_root_dir,
         ]
-        external_commands.run(cmd, cwd=dir_name, extra_environ=extra_environ(ctx, req))
+        external_commands.run(cmd, cwd=dir_name, extra_environ=extra_environ)
 
 
 class BuildEnvironment:
