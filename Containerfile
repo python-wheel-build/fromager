@@ -1,11 +1,14 @@
 FROM fedora:39
 
-# The diff command is needed in tests run while building patchelf
-#
 # The base layer is minimal, so instead of tracking individual tools
 # needed by different build steps or scripts we just install the
 # development environment.
 RUN dnf -y groupinstall "Development Tools" "Development Libraries"
+
+# Redundant, but needed to ensure diff is present in CI.
+# The diff command is needed in tests run while building patchelf
+#
+RUN dnf -y install diffutils
 
 # Commands needed in test.sh
 RUN dnf -y install procps-ng jq patch
