@@ -2,7 +2,7 @@ workflow:
   rules:
     - if: $CI_COMMIT_MESSAGE =~ /^Draft:/
       when: never
-    - if: $CI_PIPELINE_SOURCE == "merge-request-event"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 stages:
   - test-quick
