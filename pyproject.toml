@@ -55,3 +55,11 @@ packages = [
 
 [tool.setuptools.package-data]
 "mirror_builder.patches" = ["*.patch"]
+
+[tool.isort]
+known_first_party=["mirror_builder"]
+skip_glob=[
+  ".tox/*",    # test runner environment
+  "work-dir*", # test runner output
+  "tox_env",   # CI job venv
+]
