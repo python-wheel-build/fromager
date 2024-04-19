@@ -56,30 +56,8 @@ build_wheel() {
     local dist="$1"; shift
     local version="$1"; shift
 
-    banner " building image for $dist $version"
-
-    # Create an image for building the wheel
-    podman build -f "$TOPDIR/Containerfile.e2e-one-wheel" \
-           --tag "e2e-build-$dist" \
-           --build-arg="DIST=$dist" \
-           --build-arg="VERSION=$version" \
-           --build-arg="WHEEL_SERVER_URL=$WHEEL_SERVER_URL"
-
-    banner " building $dist $version"
-
-    podman run -it \
-           --name="e2e-build-$dist" \
-           --replace \
-           --network=none \
-           --security-opt label=disable \
-           -e "WHEEL_SERVER_URL=${WHEEL_SERVER_URL}" \
-           "e2e-build-$dist"
-
-    # Copy the results of the build out of the container, then clean up.
     mkdir -p "work-dir/$dist"
-    podman cp "e2e-build-$dist:/work-dir/built-artifacts.tar" "work-dir/$dist"
-    podman rm "e2e-build-$dist"
-    podman image rm "e2e-build-$dist"
+    "${TOPDIR}/build_wheel.sh" "${dist}" "${version}" "work-dir/$dist"
 
     # Update the wheel server directory so the next build can find its dependencies.
     tar -C "work-dir/$dist" -xvf "work-dir/$dist/built-artifacts.tar"
@@ -111,7 +89,7 @@ fi
 $PYTHON -m http.server --directory wheels-repo/ 9090 &
 HTTP_SERVER_PID=$!
 IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
-WHEEL_SERVER_URL="http://${IP}:9090/simple"
+export WHEEL_SERVER_URL="http://${IP}:9090/simple"
 
 # Set up a virtualenv with the mirror tool in it.
 banner "Set up mirror tools"
