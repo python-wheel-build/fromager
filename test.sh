@@ -18,7 +18,7 @@ for PYTHON in $PYTHON_TO_TEST; do
 
     WORKDIR=$(pwd)/work-dir-${PYTHON_VERSION}
     export WORKDIR
-    mkdir -p $WORKDIR
+    mkdir -p "$WORKDIR"
 
     ./mirror-sdists.sh "${toplevel}"
 

@@ -15,13 +15,14 @@ export WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 
 export PYTHON=${PYTHON:-python3.12}
 PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
+export PYTHON_VERSION
 
 setup() {
-    rm -rf $WORKDIR
-    mkdir -p $WORKDIR
+    rm -rf "${WORKDIR}"
+    mkdir -p "${WORKDIR}"
 }
 
 full_clean() {
-    rm -rf $TOPDIR/wheels-repo $TOPDIR/sdists-repo
-    rm -rf $WORKDIR
+    rm -rf "${TOPDIR}/wheels-repo" "${TOPDIR}/sdists-repo"
+    rm -rf "${WORKDIR}"
 }

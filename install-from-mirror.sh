@@ -2,9 +2,9 @@
 
 set -xe
 
-DEFAULT_WORKDIR=$(realpath $(pwd)/work-dir)
+DEFAULT_WORKDIR=$(realpath "$(pwd)/work-dir")
 WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
-mkdir -p $WORKDIR
+mkdir -p "$WORKDIR"
 
 PYTHON=${PYTHON:-python3.9}
 
@@ -12,18 +12,19 @@ PYTHON=${PYTHON:-python3.9}
 logfile="$WORKDIR/install-mirror-${PYTHON_VERSION}.log"
 exec > >(tee "$logfile") 2>&1
 
-VENV=$(basename $(mktemp --dry-run --directory --tmpdir=. venvXXXX))
+VENV=$(basename "$(mktemp --dry-run --directory --tmpdir=. venvXXXX)")
 HTTP_SERVER_PID=
 
 on_exit() {
   [ "$HTTP_SERVER_PID" ] && kill $HTTP_SERVER_PID
-  rm -rf $VENV/
+  rm -rf "${VENV:?}"
 }
 trap on_exit EXIT SIGINT SIGTERM
 
 setup() {
-  $PYTHON -m venv $VENV
-  . ./$VENV/bin/activate
+  $PYTHON -m venv "${VENV}"
+  # shellcheck disable=SC1090
+  . "./$VENV/bin/activate"
   pip install -U pip
 }
 

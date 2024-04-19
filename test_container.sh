@@ -7,7 +7,7 @@ set -o pipefail
 # what we get when we run the same scripts outside of the container.
 WORKDIR=$(pwd)/work-dir-container
 export WORKDIR
-mkdir -p $WORKDIR
+mkdir -p "$WORKDIR"
 
 PYTHON=${PYTHON:-python3}
 
@@ -18,13 +18,13 @@ podman build --tag rebuilding-the-wheel -f ./Containerfile
 
 in_container() {
     podman run -it --rm \
-           -e PYTHON=$PYTHON \
+           -e PYTHON="$PYTHON" \
            -e WORKDIR=/work-dir \
            -e VERBOSE=true \
            --userns=keep-id \
            --security-opt label=disable \
            --volume .:/src:rw,exec \
-           --volume $WORKDIR:/work-dir:rw,exec \
+           --volume "$WORKDIR:/work-dir:rw,exec" \
            rebuilding-the-wheel \
            "$@"
 }
