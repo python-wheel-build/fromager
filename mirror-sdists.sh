@@ -33,4 +33,6 @@ pip install --upgrade pip
 pip install -e .
 
 # shellcheck disable=SC2086
-python3 -m mirror_builder ${VERBOSE} bootstrap "${TOPLEVEL}"
+python3 -m mirror_builder ${VERBOSE} \
+        --log-file "$WORKDIR/mirror-sdists-debug.log" \
+        bootstrap "${TOPLEVEL}"
