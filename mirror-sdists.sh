@@ -32,4 +32,5 @@ source "${VENV}/bin/activate"
 pip install --upgrade pip
 pip install -e .
 
-python3 -m mirror_builder "${VERBOSE}" bootstrap "${TOPLEVEL}"
+# shellcheck disable=SC2086
+python3 -m mirror_builder ${VERBOSE} bootstrap "${TOPLEVEL}"
