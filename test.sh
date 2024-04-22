@@ -6,11 +6,12 @@ set -o pipefail
 
 toplevel=${1:-langchain}
 
-PYTHON_TO_TEST="
-  python3.9
+DEFAULT_PYTHON_TO_TEST="
   python3.11
+  python3.9
   python3.12
 "
+PYTHON_TO_TEST=${PYTHON_TO_TEST=-${DEFAULT_PYTHON_TO_TEST}}
 
 
 for PYTHON in $PYTHON_TO_TEST; do

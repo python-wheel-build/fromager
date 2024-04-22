@@ -1,6 +1,6 @@
 FROM fedora:39
 
-ARG PYTHON=python3.12
+ARG PYTHON=python3.11
 
 # The diff command is needed in tests run while building patchelf
 #

@@ -9,7 +9,7 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 DEFAULT_WORKDIR=$(pwd)/work-dir
 export WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 
-export PYTHON=${PYTHON:-python3.12}
+export PYTHON=${PYTHON:-python3.11}
 PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
 export PYTHON_VERSION
 
