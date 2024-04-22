@@ -53,8 +53,15 @@ e2e-without-isolation:
 
   image: fedora:39
 
+  parallel:
+    matrix:
+      - PYTHON_TO_TEST:
+          - python3.9
+          - python3.11
+          - python3.12
+
   before_script:
     - bash -x ./setup.sh
 
   script:
-    ./test.sh
+    - PYTHON_TO_TEST=$PYTHON_TO_TEST ./test.sh
