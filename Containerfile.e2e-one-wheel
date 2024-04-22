@@ -17,32 +17,28 @@ RUN mkdir /sdists-repo && mkdir /work-dir && mkdir /build-logs
 
 # Download the source archive
 RUN python3 -m mirror_builder -v \
+    --log-file /build-logs/download-source-archive.log \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
     --wheels-repo /wheels-repo \
-    download-source-archive ${DIST} ${VERSION} \
-    2>&1 | tee /build-logs/download-source-archive.log
-
-RUN find /work-dir
+    download-source-archive ${DIST} ${VERSION}
 
 # Prepare the source dir for building
 RUN python3 -m mirror_builder -v \
+    --log-file /build-logs/prepare-source.log \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
     --wheels-repo /wheels-repo \
-    prepare-source ${DIST} ${VERSION} \
-    2>&1 | tee /build-logs/prepare-source.log
-
-RUN find /work-dir
+    prepare-source ${DIST} ${VERSION}
 
 # Prepare the build environment
 RUN python3 -m mirror_builder -v \
+    --log-file /build-logs/prepare-build.log \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
     --wheels-repo /wheels-repo \
     --wheel-server-url ${WHEEL_SERVER_URL} \
-    prepare-build ${DIST} ${VERSION} \
-    2>&1 | tee /build-logs/prepare-build.log
+    prepare-build ${DIST} ${VERSION}
 
 COPY e2e/container_build.sh /work-dir
 

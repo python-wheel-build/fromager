@@ -21,6 +21,7 @@ VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    parser.add_argument('--log-file', default='')
     parser.add_argument('-o', '--sdists-repo', default='sdists-repo')
     parser.add_argument('-w', '--wheels-repo', default='wheels-repo')
     parser.add_argument('-t', '--work-dir', default=os.environ.get('WORKDIR', 'work-dir'))
@@ -55,10 +56,22 @@ def main():
 
     args = parser.parse_args(sys.argv[1:])
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format=VERBOSE_LOG_FMT if args.verbose else TERSE_LOG_FMT,
-    )
+    # Configure console and log output.
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.DEBUG if args.verbose else logging.INFO)
+    stream_formatter = logging.Formatter(VERBOSE_LOG_FMT if args.verbose else TERSE_LOG_FMT)
+    stream_handler.setFormatter(stream_formatter)
+    logging.getLogger().addHandler(stream_handler)
+    if args.log_file:
+        # Always log to the file at debug level
+        file_handler = logging.FileHandler(args.log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter(VERBOSE_LOG_FMT)
+        file_handler.setFormatter(file_formatter)
+        logging.getLogger().addHandler(file_handler)
+    # We need to set the overall logger level to debug and allow the
+    # handlers to filter messages at their own level.
+    logging.getLogger().setLevel(logging.DEBUG)
 
     ctx = context.WorkContext(
         sdists_repo=args.sdists_repo,
