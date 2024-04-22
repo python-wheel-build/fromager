@@ -8,6 +8,7 @@ toplevel=${1:-langchain}
 
 PYTHON_TO_TEST="
   python3.9
+  python3.11
   python3.12
 "
 
