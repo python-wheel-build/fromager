@@ -1,16 +1,16 @@
-workflow:
-  rules:
-    - if: $CI_COMMIT_MESSAGE =~ /^Draft:/
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-
 stages:
   - test-quick
   - test-e2e
   - manual
 
+.mr_rules_template: &mr_rules_template
+  rules:
+    - if: $CI_COMMIT_MESSAGE =~ /^Draft:/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 .tox_job_template: &tox_job_template
+  <<: *mr_rules_template
   image: fedora:39
   before_script:
     - dnf install -y python3
@@ -36,6 +36,7 @@ tox-unit:
 
 
 shellcheck:
+  <<: *mr_rules_template
   stage: test-quick
   image: fedora:39
   before_script:
@@ -50,6 +51,7 @@ shellcheck:
 # and that the dependency resolution algorithm is handling all of the
 # edge cases.
 e2e-without-isolation:
+  <<: *mr_rules_template
   stage: test-e2e
 
   image: fedora:39
