@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import functools
 import logging
 import os
 import pathlib
@@ -10,7 +11,7 @@ import sys
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from . import context, sdist, server, sources, wheels
+from . import context, jobs, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,9 @@ def main():
     parser_build.add_argument('dist_name')
     parser_build.add_argument('dist_version')
 
+    # The jobs CLI is complex enough that it's in its own module
+    jobs.build_cli(parser, subparsers)
+
     args = parser.parse_args(sys.argv[1:])
 
     # Configure console and log output.
@@ -73,32 +77,42 @@ def main():
     # handlers to filter messages at their own level.
     logging.getLogger().setLevel(logging.DEBUG)
 
-    ctx = context.WorkContext(
-        sdists_repo=args.sdists_repo,
-        wheels_repo=args.wheels_repo,
-        work_dir=args.work_dir,
-        wheel_server_url=args.wheel_server_url,
-        cleanup=args.cleanup,
-    )
-    ctx.setup()
-
-    args.func(ctx, args)
+    args.func(args)
 
 
-def do_bootstrap(ctx, args):
+def requires_context(f):
+    "Decorate f() to add WorkContext argument before calling it."
+    @functools.wraps(f)
+    def provides_context(args):
+        ctx = context.WorkContext(
+            sdists_repo=args.sdists_repo,
+            wheels_repo=args.wheels_repo,
+            work_dir=args.work_dir,
+            wheel_server_url=args.wheel_server_url,
+            cleanup=args.cleanup,
+        )
+        ctx.setup()
+        return f(args, ctx)
+    return provides_context
+
+
+@requires_context
+def do_bootstrap(args, ctx):
     server.start_wheel_server(ctx)
     for toplevel in args.toplevel:
         sdist.handle_requirement(ctx, Requirement(toplevel))
 
 
-def do_download_source_archive(ctx, args):
+@requires_context
+def do_download_source_archive(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('downloading source archive for %s', req)
     filename, _ = sources.download_source(ctx, req)
     print(filename)
 
 
-def do_prepare_source(ctx, args):
+@requires_context
+def do_prepare_source(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('preparing source directory for %s', req)
     source_filename = _find_sdist(pathlib.Path(args.sdists_repo), req, args.dist_version)
@@ -160,7 +174,8 @@ def _find_source_dir(work_dir, req, dist_version):
     )
 
 
-def do_prepare_build(ctx, args):
+@requires_context
+def do_prepare_build(args, ctx):
     server.start_wheel_server(ctx)
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     source_root_dir = _find_source_dir(pathlib.Path(args.work_dir), req, args.dist_version)
@@ -168,7 +183,8 @@ def do_prepare_build(ctx, args):
     sdist.prepare_build_environment(ctx, req, source_root_dir)
 
 
-def do_build(ctx, args):
+@requires_context
+def do_build(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('building for %s', req)
     source_root_dir = _find_source_dir(pathlib.Path(args.work_dir), req, args.dist_version)
