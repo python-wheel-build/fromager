@@ -75,10 +75,6 @@ bootstrap:
   stage: manual
   rules:
     - if: $CI_PIPELINE_SOURCE == "trigger"
-    - if: $CI_PIPELINE_SOURCE != "trigger"
-      when: never
-    - when: manual
-
 
   variables:
     DIST_NAME: "stevedore"
