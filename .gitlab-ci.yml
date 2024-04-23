@@ -7,6 +7,7 @@ workflow:
 stages:
   - test-quick
   - test-e2e
+  - manual
 
 
 .tox_job_template: &tox_job_template
@@ -65,3 +66,29 @@ e2e-without-isolation:
 
   script:
     - PYTHON_TO_TEST=$PYTHON_TO_TEST ./test.sh
+
+# Manual pipeline to produce bootstrap artifacts for determining which
+# packages need to be included to produce a build.
+bootstrap:
+  stage: manual
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - when: never
+
+  variables:
+    DIST_NAME: "stevedore"
+    DIST_VERSION: "5.2.0"
+    PYTHON: "python3.11"
+
+  artifacts:
+    paths:
+      - work-dir/build-order.json
+      - work-dir/bootstrap.log
+
+  image: fedora:39
+
+  before_script:
+    - bash -x ./setup.sh
+
+  script:
+    - PYTHON=$PYTHON ./pipelines/bootstrap.sh ${DIST_NAME}==${DIST_VERSION}
