@@ -67,7 +67,7 @@ e2e-without-isolation:
     - bash -x ./setup.sh
 
   script:
-    - PYTHON_TO_TEST=$PYTHON_TO_TEST ./test.sh
+    - PYTHON_TO_TEST=$PYTHON_TO_TEST ./e2e/test_without_isolation.sh
 
 # Manual pipeline to produce bootstrap artifacts for determining which
 # packages need to be included to produce a build.
