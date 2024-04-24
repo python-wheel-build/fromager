@@ -89,3 +89,15 @@ langchain==0.1.11
 └── tenacity [required: >=8.1.0,<9.0.0, installed: 8.2.3]
 ```
 
+### Running Pipelines
+
+The project uses gitlab pipelines for building. As a convenience,
+there is a command line program available for users who have access to
+a GitLab token with permission to trigger pipelines in the
+`GITLAB_TOKEN` environment variable.
+
+To run the bootstrap job for `setuptools` version `69.5.1`, use:
+
+```
+$ tox -e job -- bootstrap -d setuptools -v 69.5.1
+```
