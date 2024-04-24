@@ -93,3 +93,28 @@ bootstrap:
 
   script:
     - PYTHON=$PYTHON ./pipelines/bootstrap.sh ${DIST_NAME}==${DIST_VERSION}
+
+# Manual pipeline to produce one wheel.
+build-wheel:
+  stage: manual
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel"
+
+  variables:
+    DIST_NAME: ""
+    DIST_VERSION: ""
+    PYTHON: "python3.11"
+
+  artifacts:
+    paths:
+      - wheels-repo/build/*.whl
+      - sdists-repo/downloads/*.tar.gz
+      - build-logs/*.log
+
+  image: fedora:39
+
+  before_script:
+    - bash -x ./setup.sh
+
+  script:
+    - PYTHON=$PYTHON ./build_wheel.sh ${DIST_NAME} ${DIST_VERSION}
