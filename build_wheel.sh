@@ -101,6 +101,12 @@ build_wheel() {
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
             build "$DIST" "$VERSION"
+
+    # Copy the results of the build to the artifacts directory in a
+    # tarball as is done when extracting content from the container
+    # build for isolated builds.
+    mkdir -p "${artifacts_dir}"
+    tar cvf "$artifacts_dir/built-artifacts.tar" wheels-repo/build sdists-repo/downloads build-logs
 }
 
 
