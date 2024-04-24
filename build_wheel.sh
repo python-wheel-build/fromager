@@ -69,7 +69,7 @@ build_wheel() {
     fi
 
     # Download the source archive
-    python3 -m mirror_builder -v \
+    python3 -m mirror_builder \
             --log-file build-logs/download-source-archive.log \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
@@ -77,7 +77,7 @@ build_wheel() {
             download-source-archive "${DIST}" "${VERSION}"
 
     # Prepare the source dir for building
-    python3 -m mirror_builder -v \
+    python3 -m mirror_builder \
             --log-file build-logs/prepare-source.log \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
@@ -85,7 +85,7 @@ build_wheel() {
             prepare-source "${DIST}" "${VERSION}"
 
     # Prepare the build environment
-    python3 -m mirror_builder -v \
+    python3 -m mirror_builder \
         --log-file build-logs/prepare-build.log \
         --work-dir "$WORKDIR" \
         --sdists-repo sdists-repo \
