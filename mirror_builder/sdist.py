@@ -123,10 +123,13 @@ def _maybe_install(ctx, req, req_type, resolved_version):
     if resolved_version is not None:
         try:
             actual_version = importlib.metadata.version(req.name)
-            if resolved_version == actual_version:
+            if str(resolved_version) == actual_version:
+                logger.debug('already have %s %s installed', req.name, resolved_version)
                 return
-        except importlib.metadata.PackageNotFoundError:
-            pass
+            logger.info('found %s %s installed, updating to %s',
+                        req.name, actual_version, resolved_version)
+        except importlib.metadata.PackageNotFoundError as err:
+            logger.debug('could not determine version of %s: %s', req.name, err)
     safe_install(ctx, req, req_type)
 
 
