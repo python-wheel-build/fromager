@@ -7,6 +7,27 @@ from . import dependencies, external_commands, server, sources, wheels
 logger = logging.getLogger(__name__)
 
 
+class MissingDependency(Exception):
+
+    def __init__(self, req_type, req, all_reqs):
+        self.missing_req = req
+        self.all_reqs = all_reqs
+        resolutions = []
+        for r in all_reqs:
+            try:
+                url, version = sources.resolve_sdist(req)
+            except Exception as err:
+                resolutions.append(f'{r} -> {err}')
+            else:
+                resolutions.append(f'{r} -> {version}')
+        formatted_reqs = '\n'.join(resolutions)
+        msg = (
+            f'Failed to install {req_type} dependency {req}. '
+            f'Check all {req_type} dependencies:\n{formatted_reqs}'
+        )
+        super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
+
+
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
     source_filename, resolved_version = sources.download_source(ctx, req)
 
@@ -91,7 +112,11 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
-        _maybe_install(ctx, dep, next_req_type, None)
+        try:
+            _maybe_install(ctx, dep, next_req_type, None)
+        except Exception as err:
+            logger.error('failed to install %s dependency %s: %s', next_req_type, dep, err)
+            raise MissingDependency(next_req_type, dep, build_system_dependencies) from err
 
     next_req_type = 'build_backend'
     build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
@@ -103,7 +128,11 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
-        _maybe_install(ctx, dep, next_req_type, None)
+        try:
+            _maybe_install(ctx, dep, next_req_type, None)
+        except Exception as err:
+            logger.error('failed to install %s dependency %s: %s', next_req_type, dep, err)
+            raise MissingDependency(next_req_type, dep, build_backend_dependencies) from err
 
     build_env = wheels.BuildEnvironment(
         ctx, sdist_root_dir.parent,

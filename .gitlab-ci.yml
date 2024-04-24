@@ -69,6 +69,33 @@ e2e-without-isolation:
   script:
     - PYTHON_TO_TEST=$PYTHON_TO_TEST ./e2e/test_without_isolation.sh
 
+
+# This test does not use its own containers and does not run any
+# portion of the build in isolation. It's useful for verifying that
+# when a build dependency is not present in the index, we report a
+# full, clear error message showing all of the dependencies so someone
+# can add everything at once.
+e2e-report-missing-dependency:
+  <<: *mr_rules_template
+  stage: test-e2e
+
+  image: fedora:39
+
+  parallel:
+    matrix:
+      - PYTHON_TO_TEST:
+          - python3.9
+          - python3.11
+          - python3.12
+
+  before_script:
+    - bash -x ./setup.sh
+    - dnf install -y iproute
+
+  script:
+    - PYTHON_TO_TEST=$PYTHON_TO_TEST ./e2e/test_report_missing_dependency.sh
+
+
 # Manual pipeline to produce bootstrap artifacts for determining which
 # packages need to be included to produce a build.
 bootstrap:

@@ -26,3 +26,9 @@ full_clean() {
     rm -rf "${TOPDIR}/wheels-repo" "${TOPDIR}/sdists-repo"
     rm -rf "${WORKDIR}"
 }
+
+banner() {
+    echo "##############################"
+    echo "$*"
+    echo "##############################"
+}

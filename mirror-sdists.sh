@@ -14,7 +14,7 @@ DEFAULT_WORKDIR=$(realpath "$(pwd)/work-dir")
 WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 mkdir -p "$WORKDIR"
 
-PYTHON=${PYTHON:-python3.9}
+PYTHON=${PYTHON:-python3.11}
 
 TOPLEVEL="${1:-langchain}"
 
@@ -22,7 +22,7 @@ TOPLEVEL="${1:-langchain}"
 logfile="$WORKDIR/mirror-sdists.log"
 exec > >(tee "$logfile") 2>&1
 
-VENV="${WORKDIR}/venv"
+VENV="${WORKDIR}/venv-mirror-sdists"
 # Create a fresh virtualenv every time since the process installs
 # packages into it.
 rm -rf "${VENV}"

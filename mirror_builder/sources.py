@@ -24,9 +24,8 @@ def download_source(ctx, req):
     return (source_filename, version)
 
 
-def _default_download_source(ctx, req):
-    "Download the requirement and return the name of the output path."
-
+def resolve_sdist(req):
+    "Return URL to source and its version."
     # Create the (reusable) resolver. Limit to sdists.
     provider = resolver.PyPIProvider(only_sdists=True)
     reporter = resolvelib.BaseReporter()
@@ -43,7 +42,13 @@ def _default_download_source(ctx, req):
         raise
 
     for name, candidate in result.mapping.items():
-        return (download_url(ctx.sdists_downloads, candidate.url), candidate.version)
+        return (candidate.url, candidate.version)
+
+
+def _default_download_source(ctx, req):
+    "Download the requirement and return the name of the output path."
+    url, version = resolve_sdist(req)
+    return (download_url(ctx.sdists_downloads, url), version)
 
 
 def download_url(destination_dir, url):

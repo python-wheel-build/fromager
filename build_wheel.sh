@@ -56,7 +56,7 @@ build_wheel() {
     mkdir -p "${WORKDIR}"
     mkdir -p build-logs
 
-    VENV="${WORKDIR}/venv"
+    VENV="${WORKDIR}/venv-build-wheel"
     if [ -d "$VENV" ]; then
         # shellcheck disable=SC1091
         source "${VENV}/bin/activate"
@@ -69,7 +69,7 @@ build_wheel() {
     fi
 
     # Download the source archive
-    python3 -m mirror_builder -v \
+    python3 -m mirror_builder \
             --log-file build-logs/download-source-archive.log \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
@@ -77,7 +77,7 @@ build_wheel() {
             download-source-archive "${DIST}" "${VERSION}"
 
     # Prepare the source dir for building
-    python3 -m mirror_builder -v \
+    python3 -m mirror_builder \
             --log-file build-logs/prepare-source.log \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
@@ -85,7 +85,7 @@ build_wheel() {
             prepare-source "${DIST}" "${VERSION}"
 
     # Prepare the build environment
-    python3 -m mirror_builder -v \
+    python3 -m mirror_builder \
         --log-file build-logs/prepare-build.log \
         --work-dir "$WORKDIR" \
         --sdists-repo sdists-repo \
@@ -101,6 +101,12 @@ build_wheel() {
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
             build "$DIST" "$VERSION"
+
+    # Copy the results of the build to the artifacts directory in a
+    # tarball as is done when extracting content from the container
+    # build for isolated builds.
+    mkdir -p "${artifacts_dir}"
+    tar cvf "$artifacts_dir/built-artifacts.tar" wheels-repo/build sdists-repo/downloads build-logs
 }
 
 
