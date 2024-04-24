@@ -56,7 +56,7 @@ build_wheel() {
     mkdir -p "${WORKDIR}"
     mkdir -p build-logs
 
-    VENV="${WORKDIR}/venv"
+    VENV="${WORKDIR}/venv-build-wheel"
     if [ -d "$VENV" ]; then
         # shellcheck disable=SC1091
         source "${VENV}/bin/activate"
