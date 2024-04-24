@@ -25,7 +25,7 @@ def find_override_method(distname, method):
     """
     if distname in _dists_without_overrides:
         return None
-    module_fullname = __name__ + '.' + distname
+    module_fullname = __name__ + '.' + (distname.replace('.', '_'))
     logger.debug('looking for %s override in %s', method, module_fullname)
     if module_fullname in sys.modules:
         mod = sys.modules[module_fullname]

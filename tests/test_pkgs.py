@@ -46,3 +46,8 @@ def test_patches_for_source_dir(dir_name, expected_patches):
 def test_extra_environ_for_pkg(pkgname, expected_environ):
     extra_environ = pkgs.extra_environ_for_pkg(pkgname)
     assert expected_environ == extra_environ
+
+
+def test_lookup_package_with_dot():
+    build_wheel = pkgs.find_override_method('my.package', 'build_wheel')
+    assert None is build_wheel
