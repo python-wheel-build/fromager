@@ -10,3 +10,4 @@ __pycache__/
 /mirror_builder/version.py
 /.coverage
 /artifacts
+/build-logs/
