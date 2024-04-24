@@ -77,7 +77,11 @@ def main():
     # handlers to filter messages at their own level.
     logging.getLogger().setLevel(logging.DEBUG)
 
-    args.func(args)
+    try:
+        args.func(args)
+    except Exception as err:
+        logger.exception(err)
+        raise
 
 
 def requires_context(f):
