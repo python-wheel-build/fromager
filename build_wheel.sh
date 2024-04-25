@@ -1,10 +1,68 @@
 #!/bin/bash
 
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+usage() {
+    local err="$1"
+    if [ -n "$err" ]; then
+        echo "ERROR: $err"
+        echo
+    fi
+    cat - <<EOF
+build_wheel.sh [-h]
+build_wheel.sh [-i] DIST VERSION [artifacts-dir]
+
+  DIST            The name of the distribution to build.
+
+  VERSION         The version of DIST to build.
+
+  ARTIFACTS-DIR   Where to put the build artifacts. Defaults to "artifacts".
+
+  -i              Use build isolation, running everything in containers.
+
+  -h              This help message.
+EOF
+}
+
+DO_SHIFT=false
+BUILDER=build_wheel
+while getopts "ih" opt; do
+    case "$opt" in
+        i)
+            BUILDER=build_wheel_isolated
+            DO_SHIFT=true
+            ;;
+        h)
+            usage
+            exit 0
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if "$DO_SHIFT"; then
+    shift
+fi
+
+DIST="$1"
+VERSION="$2"
+ARTIFACTS_DIR="${3:-artifacts}"
+
+if [ -z "$DIST" ]; then
+    usage "Specify a DIST to build"
+    exit 1
+fi
+if [ -z "$VERSION" ]; then
+    usage "Specify the version of $DIST to build"
+    exit 1
+fi
+
+
 set -x
 set -e
 set -o pipefail
-
-SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 export PYTHON=${PYTHON:-python3.11}
 PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
@@ -110,22 +168,7 @@ build_wheel() {
 }
 
 
-usage() {
-    cat - <<EOF
-build_wheel.sh dist version
-EOF
-}
-
-
-if [ $# -lt 2 ]; then
-    usage
-    exit 1
-fi
-DIST="$1"; shift
-VERSION="$1"; shift
-ARTIFACTS_DIR="${1:-artifacts}"
-
 DEFAULT_WORKDIR="$(pwd)/work-dir"
 export WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 
-build_wheel "${DIST}" "${VERSION}" "${ARTIFACTS_DIR}"
+"$BUILDER" "${DIST}" "${VERSION}" "${ARTIFACTS_DIR}"
