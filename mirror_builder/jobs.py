@@ -19,6 +19,12 @@ def build_cli(parser, subparsers):
     parser_job_bootstrap.add_argument('dist_version')
     parser_job_bootstrap.add_argument('--python', '-p', default='python3.11')
 
+    parser_job_build_wheel = job_subparsers.add_parser('build-wheel')
+    parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
+    parser_job_build_wheel.add_argument('dist_name')
+    parser_job_build_wheel.add_argument('dist_version')
+    parser_job_build_wheel.add_argument('--python', '-p', default='python3.11')
+
 
 def requires_token(f):
     "Decorate f() so that it receives the GITLAB_TOKEN as the second argument."
@@ -35,6 +41,18 @@ def requires_token(f):
 def do_job_bootstrap(args, token):
     run_job(
         'bootstrap',
+        token,
+        variables={
+            'PYTHON': args.python,
+            'DIST_NAME': args.dist_name,
+            'DIST_VERSION': args.dist_version,
+        })
+
+
+@requires_token
+def do_job_build_wheel(args, token):
+    run_job(
+        'build-wheel',
         token,
         variables={
             'PYTHON': args.python,
