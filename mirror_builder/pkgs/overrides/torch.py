@@ -33,3 +33,7 @@ def download_source(ctx, req):
 
 def _get_pytorch_release_tarball_url(version):
     return f"https://github.com/pytorch/pytorch/releases/download/v{version}/pytorch-v{version}.tar.gz"
+
+
+def expected_source_archive_name(req, dist_version):
+    return f'pytorch-v{dist_version}.tar.gz'

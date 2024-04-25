@@ -11,7 +11,7 @@ import sys
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from . import context, jobs, sdist, server, sources, wheels
+from . import context, jobs, pkgs, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -136,17 +136,23 @@ def _dist_name_to_filename(dist_name):
 
 def _find_sdist(sdists_repo, req, dist_version):
     downloads_dir = sdists_repo / 'downloads'
-    filename_prefix = _dist_name_to_filename(req.name)
-    canonical_name = canonicalize_name(req.name)
-    candidates = [
-        # First check if the file is there using the canonically
-        # transformed name.
-        downloads_dir / f'{filename_prefix}-{dist_version}.tar.gz',
-        # If that didn't work, try the canonical dist name. That's not
-        # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
-        # and setuptools-scm-8.0.4.tar.gz) for example
-        downloads_dir / f'{canonical_name}-{dist_version}.tar.gz',
-    ]
+    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
+    if sdist_name_func:
+        candidates = [
+            downloads_dir / sdist_name_func(req, dist_version)
+        ]
+    else:
+        filename_prefix = _dist_name_to_filename(req.name)
+        canonical_name = canonicalize_name(req.name)
+        candidates = [
+            # First check if the file is there using the canonically
+            # transformed name.
+            downloads_dir / f'{filename_prefix}-{dist_version}.tar.gz',
+            # If that didn't work, try the canonical dist name. That's not
+            # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
+            # and setuptools-scm-8.0.4.tar.gz) for example
+            downloads_dir / f'{canonical_name}-{dist_version}.tar.gz',
+        ]
     for sdist_file in candidates:
         if sdist_file.exists():
             return sdist_file
@@ -156,19 +162,26 @@ def _find_sdist(sdists_repo, req, dist_version):
 
 
 def _find_source_dir(work_dir, req, dist_version):
-    filename_prefix = _dist_name_to_filename(req.name)
-    filename_based = f'{filename_prefix}-{dist_version}'
-    canonical_name = canonicalize_name(req.name)
-    canonical_based = f'{canonical_name}-{dist_version}'
-    candidates = [
-        # First check if the file is there using the canonically
-        # transformed name.
-        work_dir / filename_based / filename_based,
-        # If that didn't work, try the canonical dist name. That's not
-        # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
-        # and setuptools-scm-8.0.4.tar.gz) for example
-        work_dir / canonical_based / canonical_based,
-    ]
+    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
+    if sdist_name_func:
+        sdist_base_name = sdist_name_func(req, dist_version)[:-len('.tar.gz')]
+        candidates = [
+            work_dir / sdist_base_name / sdist_base_name,
+        ]
+    else:
+        filename_prefix = _dist_name_to_filename(req.name)
+        filename_based = f'{filename_prefix}-{dist_version}'
+        canonical_name = canonicalize_name(req.name)
+        canonical_based = f'{canonical_name}-{dist_version}'
+        candidates = [
+            # First check if the file is there using the canonically
+            # transformed name.
+            work_dir / filename_based / filename_based,
+            # If that didn't work, try the canonical dist name. That's not
+            # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
+            # and setuptools-scm-8.0.4.tar.gz) for example
+            work_dir / canonical_based / canonical_based,
+        ]
     for source_dir in candidates:
         if source_dir.exists():
             return source_dir
