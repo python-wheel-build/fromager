@@ -137,6 +137,7 @@ build-wheel:
       - wheels-repo/build/*.whl
       - sdists-repo/downloads/*.tar.gz
       - build-logs/*.log
+      - work-dir/*/*requirements.txt
 
   image: fedora:39
 

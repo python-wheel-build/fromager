@@ -106,7 +106,7 @@ build_wheel() {
     # tarball as is done when extracting content from the container
     # build for isolated builds.
     mkdir -p "${artifacts_dir}"
-    tar cvf "$artifacts_dir/built-artifacts.tar" wheels-repo/build sdists-repo/downloads build-logs
+    tar cvf "$artifacts_dir/built-artifacts.tar" wheels-repo/build sdists-repo/downloads build-logs work-dir/*/*requirements.txt
 }
 
 
