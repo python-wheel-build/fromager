@@ -107,8 +107,8 @@ bootstrap:
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "bootstrap"
 
   variables:
-    DIST_NAME: "stevedore"
-    DIST_VERSION: "5.2.0"
+    DIST_NAME: ""
+    DIST_VERSION: ""
     PYTHON: "python3.11"
 
   artifacts:
