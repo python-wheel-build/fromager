@@ -90,6 +90,9 @@ e2e-report-missing-dependency:
 
   before_script:
     - bash -x ./setup.sh
+    # The test script needs to run `ip route` but nothing else in the
+    # stack needs that command so add it as a dependency in the test
+    # setup instead of more globally in setup.sh or the Containerfile.
     - dnf install -y iproute
 
   script:
