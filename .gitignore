@@ -11,3 +11,4 @@ __pycache__/
 /.coverage
 /artifacts
 /build-logs/
+/.pypirc

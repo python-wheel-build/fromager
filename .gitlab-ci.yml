@@ -149,3 +149,4 @@ build-wheel:
 
   script:
     - PYTHON=$PYTHON ./build_wheel.sh ${DIST_NAME} ${DIST_VERSION}
+    - CONFIG=$PYPIRC_INTERNAL_TEST ./upload_to_index.sh wheels-repo/build/*.whl
