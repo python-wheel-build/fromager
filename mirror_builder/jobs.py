@@ -39,7 +39,7 @@ def requires_token(f):
 
 @requires_token
 def do_job_bootstrap(args, token):
-    run_job(
+    output = start_pipeline(
         'bootstrap',
         token,
         variables={
@@ -47,11 +47,12 @@ def do_job_bootstrap(args, token):
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
         })
+    print(json.dumps(output, sort_keys=True, indent=2))
 
 
 @requires_token
 def do_job_build_wheel(args, token):
-    run_job(
+    output = start_pipeline(
         'build-wheel',
         token,
         variables={
@@ -59,9 +60,11 @@ def do_job_build_wheel(args, token):
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
         })
+    print(json.dumps(output, sort_keys=True, indent=2))
 
 
 def run_job(job_name, token, variables):
+def start_pipeline(job_name, token, variables):
     data = {
         'token': token,
         'ref': 'main',
@@ -71,4 +74,4 @@ def run_job(job_name, token, variables):
         data[f'variables[{n}]'] = v
     r = requests.post(_trigger_url, data=data)
     output = r.json()
-    print(json.dumps(output, sort_keys=True, indent=2))
+    return output
