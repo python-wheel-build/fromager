@@ -99,5 +99,5 @@ a GitLab token with permission to trigger pipelines in the
 To run the bootstrap job for `setuptools` version `69.5.1`, use:
 
 ```
-$ tox -e job -- bootstrap -d setuptools -v 69.5.1
+$ tox -e job -- bootstrap setuptools 69.5.1
 ```

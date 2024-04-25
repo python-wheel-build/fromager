@@ -15,8 +15,8 @@ def build_cli(parser, subparsers):
 
     parser_job_bootstrap = job_subparsers.add_parser('bootstrap')
     parser_job_bootstrap.set_defaults(func=do_job_bootstrap)
-    parser_job_bootstrap.add_argument('--dist-name', '-d', default='stevedore')
-    parser_job_bootstrap.add_argument('--dist-version', '-v', default='5.2.0')
+    parser_job_bootstrap.add_argument('dist_name')
+    parser_job_bootstrap.add_argument('dist_version')
     parser_job_bootstrap.add_argument('--python', '-p', default='python3.11')
 
 
