@@ -61,33 +61,7 @@ build_wheel() {
     local dist="$1"; shift
     local version="$1"; shift
 
-    # Build the base image.
-    podman build \
-       --tag e2e-build-base \
-       -f "$TOPDIR/Containerfile.e2e" \
-       --build-arg="PYTHON=$PYTHON"
-
-    # Create an image for building the wheel
-    podman build -f "$TOPDIR/Containerfile.e2e-one-wheel" \
-           --tag "e2e-build-$dist" \
-           --build-arg="DIST=$dist" \
-           --build-arg="VERSION=$version" \
-           --build-arg="WHEEL_SERVER_URL=$WHEEL_SERVER_URL"
-
-    # Run the image to build the wheel.
-    podman run -it \
-           --name="e2e-build-$dist" \
-           --replace \
-           --network=none \
-           --security-opt label=disable \
-           -e "WHEEL_SERVER_URL=${WHEEL_SERVER_URL}" \
-           "e2e-build-$dist"
-
-    # Copy the results of the build out of the container, then clean up.
-    mkdir -p "work-dir/$dist"
-    podman cp "e2e-build-$dist:/work-dir/built-artifacts.tar" "work-dir/$dist"
-    podman rm "e2e-build-$dist"
-    podman image rm "e2e-build-$dist"
+    "$TOPDIR/build_wheel.sh" -i "$dist" "$version" "work-dir/$dist"
 
     # Update the wheel server
     tar -C "work-dir/$dist" -xvf "work-dir/$dist/built-artifacts.tar"
