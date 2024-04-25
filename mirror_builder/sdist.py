@@ -15,7 +15,7 @@ class MissingDependency(Exception):
         resolutions = []
         for r in all_reqs:
             try:
-                url, version = sources.resolve_sdist(req)
+                url, version = sources.resolve_sdist(r)
             except Exception as err:
                 resolutions.append(f'{r} -> {err}')
             else:
