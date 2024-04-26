@@ -2,11 +2,13 @@ import functools
 import json
 import logging
 import os
+import time
 
-import requests
+import gitlab
 
 logger = logging.getLogger(__name__)
-_trigger_url = 'https://gitlab.com/api/v4/projects/56921574/trigger/pipeline'
+
+_project_id = 56921574
 
 
 def build_cli(parser, subparsers):
@@ -18,57 +20,116 @@ def build_cli(parser, subparsers):
     parser_job_bootstrap.add_argument('dist_name')
     parser_job_bootstrap.add_argument('dist_version')
     parser_job_bootstrap.add_argument('--python', '-p', default='python3.11')
+    parser_job_bootstrap.add_argument('--wait', '-w', default=False, action='store_true')
+    parser_job_bootstrap.add_argument('--show-progress', default=False, action='store_true')
 
     parser_job_build_wheel = job_subparsers.add_parser('build-wheel')
     parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
     parser_job_build_wheel.add_argument('dist_name')
     parser_job_build_wheel.add_argument('dist_version')
     parser_job_build_wheel.add_argument('--python', '-p', default='python3.11')
+    parser_job_build_wheel.add_argument('--wait', '-w', default=False, action='store_true')
+    parser_job_build_wheel.add_argument('--show-progress', default=False, action='store_true')
+
+    parser_job_build_sequence = job_subparsers.add_parser('build-sequence')
+    parser_job_build_sequence.set_defaults(func=do_job_build_sequence)
+    parser_job_build_sequence.add_argument('build_order_file')
+    parser_job_build_sequence.add_argument('--python', '-p', default='python3.11')
+    parser_job_build_sequence.add_argument('--show-progress', default=False, action='store_true')
 
 
-def requires_token(f):
-    "Decorate f() so that it receives the GITLAB_TOKEN as the second argument."
+def requires_client(f):
+    "Decorate f() so that it receives the gitlab client as the second argument."
     @functools.wraps(f)
-    def provides_token(args):
+    def provides_client(args):
         token = os.environ.get('GITLAB_TOKEN')
         if not token:
             raise ValueError('Please set the GITLAB_TOKEN environment variable')
-        return f(args, token)
-    return provides_token
+        client = gitlab.Gitlab(private_token=token)
+        client.auth()
+        return f(args, client)
+    return provides_client
 
 
-@requires_token
-def do_job_bootstrap(args, token):
-    run_job(
+@requires_client
+def do_job_bootstrap(args, client):
+    run_pipeline(
+        client,
         'bootstrap',
-        token,
         variables={
             'PYTHON': args.python,
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
-        })
+        },
+        wait=args.wait,
+        show_progress=args.show_progress,
+    )
 
 
-@requires_token
-def do_job_build_wheel(args, token):
-    run_job(
+@requires_client
+def do_job_build_wheel(args, client):
+    run_pipeline(
+        client,
         'build-wheel',
-        token,
         variables={
             'PYTHON': args.python,
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
-        })
+        },
+        wait=args.wait,
+        show_progress=args.show_progress,
+    )
 
 
-def run_job(job_name, token, variables):
-    data = {
-        'token': token,
-        'ref': 'main',
-        'variables[JOB]': job_name,
-    }
-    for n, v in variables.items():
-        data[f'variables[{n}]'] = v
-    r = requests.post(_trigger_url, data=data)
-    output = r.json()
-    print(json.dumps(output, sort_keys=True, indent=2))
+@requires_client
+def do_job_build_sequence(args, client):
+    with open(args.build_order_file, 'r') as f:
+        build_order = json.load(f)
+
+    for step in build_order:
+        dist = step['dist']
+        version = step['version']
+        print(f'{dist} {version}')
+
+        run_pipeline(
+            client,
+            'build-wheel',
+            variables={
+                'PYTHON': args.python,
+                'DIST_NAME': dist,
+                'DIST_VERSION': version,
+            },
+            wait=True,
+            show_progress=args.show_progress,
+        )
+
+
+def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
+    project = client.projects.get(_project_id)
+    trigger = get_or_create_trigger(project, 'sequence-trigger')
+    data = {}
+    data.update(variables)
+    data['JOB'] = job_name
+    pipeline = project.trigger_pipeline(
+        ref='main',
+        token=trigger.token,
+        variables=data,
+    )
+    print(f'pipeline: {pipeline.id} {pipeline.web_url}')
+    if not wait:
+        return
+    while not pipeline.finished_at:
+        if show_progress:
+            print('.', end='', flush=True)
+        pipeline.refresh()
+        time.sleep(15)
+    if show_progress:
+        print()
+
+
+# https://python-gitlab.readthedocs.io/en/stable/gl_objects/pipelines_and_jobs.html
+def get_or_create_trigger(project, trigger_description):
+    for t in project.triggers.list():
+        if t.description == trigger_description:
+            return t
+    return project.triggers.create({'description': trigger_description})
