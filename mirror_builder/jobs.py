@@ -29,6 +29,10 @@ def build_cli(parser, subparsers):
     parser_job_build_wheel.add_argument('--python', '-p', default='python3.11')
     parser_job_build_wheel.add_argument('--wait', '-w', default=False, action='store_true')
 
+    parser_job_build_sequence = job_subparsers.add_parser('build-sequence')
+    parser_job_build_sequence.set_defaults(func=do_job_build_sequence)
+    parser_job_build_sequence.add_argument('build_order_file')
+    parser_job_build_sequence.add_argument('--python', '-p', default='python3.11')
 
 
 def requires_client(f):
@@ -73,6 +77,28 @@ def do_job_build_wheel(args, client):
         verbose=args.verbose,
     )
 
+
+@requires_client
+def do_job_build_sequence(args, client):
+    with open(args.build_order_file, 'r') as f:
+        build_order = json.load(f)
+
+    for step in build_order:
+        dist = step['dist']
+        version = step['version']
+        logger.info(f'Starting {dist} {version}')
+
+        run_pipeline(
+            client,
+            'build-wheel',
+            variables={
+                'PYTHON': args.python,
+                'DIST_NAME': dist,
+                'DIST_VERSION': version,
+            },
+            wait=True,
+            verbose=args.verbose,
+        )
 
 
 def run_pipeline(client, job_name, variables, wait=False, verbose=False):
