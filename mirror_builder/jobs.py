@@ -30,6 +30,11 @@ def build_cli(parser, subparsers):
     parser_job_onboard_sdist.add_argument('--wait', '-w', default=False, action='store_true')
     parser_job_onboard_sdist.add_argument('--show-progress', default=False, action='store_true')
 
+    parser_job_onboard_sequence = job_subparsers.add_parser('onboard-sequence')
+    parser_job_onboard_sequence.set_defaults(func=do_job_onboard_sequence)
+    parser_job_onboard_sequence.add_argument('build_order_file')
+    parser_job_onboard_sequence.add_argument('--show-progress', default=False, action='store_true')
+
     parser_job_build_wheel = job_subparsers.add_parser('build-wheel')
     parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
     parser_job_build_wheel.add_argument('dist_name')
@@ -85,6 +90,28 @@ def do_job_onboard_sdist(args, client):
         wait=args.wait,
         show_progress=args.show_progress,
     )
+
+
+@requires_client
+def do_job_onboard_sequence(args, client):
+    with open(args.build_order_file, 'r') as f:
+        build_order = json.load(f)
+
+    for step in build_order:
+        dist = step['dist']
+        version = step['version']
+        print(f'{dist} {version}')
+
+        run_pipeline(
+            client,
+            'onboard-sdist',
+            variables={
+                'DIST_NAME': dist,
+                'DIST_VERSION': version,
+            },
+            wait=True,
+            show_progress=args.show_progress,
+        )
 
 
 @requires_client
