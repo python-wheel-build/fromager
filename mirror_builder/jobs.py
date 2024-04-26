@@ -3,10 +3,11 @@ import json
 import logging
 import os
 
-import requests
+import gitlab
 
 logger = logging.getLogger(__name__)
-_trigger_url = 'https://gitlab.com/api/v4/projects/56921574/trigger/pipeline'
+
+_project_id = 56921574
 
 
 def build_cli(parser, subparsers):
@@ -26,52 +27,61 @@ def build_cli(parser, subparsers):
     parser_job_build_wheel.add_argument('--python', '-p', default='python3.11')
 
 
-def requires_token(f):
-    "Decorate f() so that it receives the GITLAB_TOKEN as the second argument."
+
+def requires_client(f):
+    "Decorate f() so that it receives the gitlab client as the second argument."
     @functools.wraps(f)
-    def provides_token(args):
+    def provides_client(args):
         token = os.environ.get('GITLAB_TOKEN')
         if not token:
             raise ValueError('Please set the GITLAB_TOKEN environment variable')
-        return f(args, token)
-    return provides_token
+        client = gitlab.Gitlab(private_token=token)
+        client.auth()
+        return f(args, client)
+    return provides_client
 
 
-@requires_token
-def do_job_bootstrap(args, token):
-    output = start_pipeline(
+@requires_client
+def do_job_bootstrap(args, client):
+    run_pipeline(
+        client,
         'bootstrap',
-        token,
         variables={
             'PYTHON': args.python,
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
         })
-    print(json.dumps(output, sort_keys=True, indent=2))
 
 
-@requires_token
-def do_job_build_wheel(args, token):
-    output = start_pipeline(
+@requires_client
+def do_job_build_wheel(args, client):
+    run_pipeline(
+        client,
         'build-wheel',
-        token,
         variables={
             'PYTHON': args.python,
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
         })
-    print(json.dumps(output, sort_keys=True, indent=2))
 
 
-def run_job(job_name, token, variables):
-def start_pipeline(job_name, token, variables):
-    data = {
-        'token': token,
-        'ref': 'main',
-        'variables[JOB]': job_name,
-    }
-    for n, v in variables.items():
-        data[f'variables[{n}]'] = v
-    r = requests.post(_trigger_url, data=data)
-    output = r.json()
-    return output
+def run_pipeline(client, job_name, variables):
+    project = client.projects.get(_project_id)
+    trigger = get_or_create_trigger(project, 'sequence-trigger')
+    data = {}
+    data.update(variables)
+    data['JOB'] = job_name
+    pipeline = project.trigger_pipeline(
+        ref='main',
+        token=trigger.token,
+        variables=data,
+    )
+    logger.info(f'pipeline: {pipeline.id}')
+
+
+# https://python-gitlab.readthedocs.io/en/stable/gl_objects/pipelines_and_jobs.html
+def get_or_create_trigger(project, trigger_description):
+    for t in project.triggers.list():
+        if t.description == trigger_description:
+            return t
+    return project.triggers.create({'description': trigger_description})
