@@ -164,6 +164,8 @@ build-wheel:
     DIST_NAME: ""
     DIST_VERSION: ""
     PYTHON: "python3.11"
+    SECURE_FILES_DOWNLOAD_PATH: ./config
+
 
   artifacts:
     paths:
@@ -176,7 +178,11 @@ build-wheel:
 
   before_script:
     - bash -x ./setup.sh
+    # Extra dependencies needed for the secure files installer.
+    - dnf install -y which curl
 
   script:
+    # Initialize secure files, following https://docs.gitlab.com/ee/ci/secure_files/
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
     - PYTHON=$PYTHON ./build_wheel.sh ${DIST_NAME} ${DIST_VERSION}
-    - CONFIG=$PYPIRC_EXPERIMENTAL_CPU ./upload_to_index.sh wheels-repo/build/*.whl
+    - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=experimental/cpu ./upload_to_index.sh wheels-repo/build/*.whl
