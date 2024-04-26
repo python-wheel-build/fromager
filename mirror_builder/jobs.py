@@ -2,6 +2,7 @@ import functools
 import json
 import logging
 import os
+import time
 
 import gitlab
 
@@ -19,12 +20,14 @@ def build_cli(parser, subparsers):
     parser_job_bootstrap.add_argument('dist_name')
     parser_job_bootstrap.add_argument('dist_version')
     parser_job_bootstrap.add_argument('--python', '-p', default='python3.11')
+    parser_job_bootstrap.add_argument('--wait', '-w', default=False, action='store_true')
 
     parser_job_build_wheel = job_subparsers.add_parser('build-wheel')
     parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
     parser_job_build_wheel.add_argument('dist_name')
     parser_job_build_wheel.add_argument('dist_version')
     parser_job_build_wheel.add_argument('--python', '-p', default='python3.11')
+    parser_job_build_wheel.add_argument('--wait', '-w', default=False, action='store_true')
 
 
 
@@ -50,7 +53,10 @@ def do_job_bootstrap(args, client):
             'PYTHON': args.python,
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
-        })
+        },
+        wait=args.wait,
+        verbose=args.verbose,
+    )
 
 
 @requires_client
@@ -62,10 +68,14 @@ def do_job_build_wheel(args, client):
             'PYTHON': args.python,
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
-        })
+        },
+        wait=args.wait,
+        verbose=args.verbose,
+    )
 
 
-def run_pipeline(client, job_name, variables):
+
+def run_pipeline(client, job_name, variables, wait=False, verbose=False):
     project = client.projects.get(_project_id)
     trigger = get_or_create_trigger(project, 'sequence-trigger')
     data = {}
@@ -77,6 +87,13 @@ def run_pipeline(client, job_name, variables):
         variables=data,
     )
     logger.info(f'pipeline: {pipeline.id}')
+    if not wait:
+        return
+    while not pipeline.finished_at:
+        if verbose:
+            print('.', end='', flush=True)
+        pipeline.refresh()
+        time.sleep(15)
 
 
 # https://python-gitlab.readthedocs.io/en/stable/gl_objects/pipelines_and_jobs.html
