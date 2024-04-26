@@ -89,7 +89,7 @@ def do_job_build_sequence(args, client):
     for step in build_order:
         dist = step['dist']
         version = step['version']
-        logger.info(f'Starting {dist} {version}')
+        print(f'{dist} {version}')
 
         run_pipeline(
             client,
@@ -115,7 +115,7 @@ def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
         token=trigger.token,
         variables=data,
     )
-    logger.info(f'pipeline: {pipeline.id} {pipeline.web_url}')
+    print(f'pipeline: {pipeline.id} {pipeline.web_url}')
     if not wait:
         return
     while not pipeline.finished_at:
