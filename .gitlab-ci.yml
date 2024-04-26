@@ -144,6 +144,8 @@ onboard-sdist:
 
   before_script:
     - bash -x ./setup.sh
+    # Extra dependencies needed for the secure files installer.
+    - dnf install -y which curl
 
   script:
     # Initialize secure files, following https://docs.gitlab.com/ee/ci/secure_files/
