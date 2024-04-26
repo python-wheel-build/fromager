@@ -151,7 +151,7 @@ onboard-sdist:
     # Initialize secure files, following https://docs.gitlab.com/ee/ci/secure_files/
     - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
     - ./pipelines/onboard_sdist.sh ${DIST_NAME} ${DIST_VERSION}
-    - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=internal/test ./upload_to_index.sh sdists-repo/downloads/*.tar.gz
+    - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=experimental/sources ./upload_to_index.sh sdists-repo/downloads/*.tar.gz
 
 
 # Manual pipeline to produce one wheel.
