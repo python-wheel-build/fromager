@@ -21,6 +21,7 @@ def build_cli(parser, subparsers):
     parser_job_bootstrap.add_argument('dist_version')
     parser_job_bootstrap.add_argument('--python', '-p', default='python3.11')
     parser_job_bootstrap.add_argument('--wait', '-w', default=False, action='store_true')
+    parser_job_bootstrap.add_argument('--show-progress', default=False, action='store_true')
 
     parser_job_build_wheel = job_subparsers.add_parser('build-wheel')
     parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
@@ -28,11 +29,13 @@ def build_cli(parser, subparsers):
     parser_job_build_wheel.add_argument('dist_version')
     parser_job_build_wheel.add_argument('--python', '-p', default='python3.11')
     parser_job_build_wheel.add_argument('--wait', '-w', default=False, action='store_true')
+    parser_job_build_wheel.add_argument('--show-progress', default=False, action='store_true')
 
     parser_job_build_sequence = job_subparsers.add_parser('build-sequence')
     parser_job_build_sequence.set_defaults(func=do_job_build_sequence)
     parser_job_build_sequence.add_argument('build_order_file')
     parser_job_build_sequence.add_argument('--python', '-p', default='python3.11')
+    parser_job_build_sequence.add_argument('--show-progress', default=False, action='store_true')
 
 
 def requires_client(f):
@@ -59,7 +62,7 @@ def do_job_bootstrap(args, client):
             'DIST_VERSION': args.dist_version,
         },
         wait=args.wait,
-        verbose=args.verbose,
+        show_progress=args.show_progress,
     )
 
 
@@ -74,7 +77,7 @@ def do_job_build_wheel(args, client):
             'DIST_VERSION': args.dist_version,
         },
         wait=args.wait,
-        verbose=args.verbose,
+        show_progress=args.show_progress,
     )
 
 
@@ -97,11 +100,11 @@ def do_job_build_sequence(args, client):
                 'DIST_VERSION': version,
             },
             wait=True,
-            verbose=args.verbose,
+            show_progress=args.show_progress,
         )
 
 
-def run_pipeline(client, job_name, variables, wait=False, verbose=False):
+def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
     project = client.projects.get(_project_id)
     trigger = get_or_create_trigger(project, 'sequence-trigger')
     data = {}
@@ -116,10 +119,12 @@ def run_pipeline(client, job_name, variables, wait=False, verbose=False):
     if not wait:
         return
     while not pipeline.finished_at:
-        if verbose:
+        if show_progress:
             print('.', end='', flush=True)
         pipeline.refresh()
         time.sleep(15)
+    if show_progress:
+        print()
 
 
 # https://python-gitlab.readthedocs.io/en/stable/gl_objects/pipelines_and_jobs.html
