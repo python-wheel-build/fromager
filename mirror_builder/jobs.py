@@ -23,6 +23,13 @@ def build_cli(parser, subparsers):
     parser_job_bootstrap.add_argument('--wait', '-w', default=False, action='store_true')
     parser_job_bootstrap.add_argument('--show-progress', default=False, action='store_true')
 
+    parser_job_onboard_sdist = job_subparsers.add_parser('onboard-sdist')
+    parser_job_onboard_sdist.set_defaults(func=do_job_onboard_sdist)
+    parser_job_onboard_sdist.add_argument('dist_name')
+    parser_job_onboard_sdist.add_argument('dist_version')
+    parser_job_onboard_sdist.add_argument('--wait', '-w', default=False, action='store_true')
+    parser_job_onboard_sdist.add_argument('--show-progress', default=False, action='store_true')
+
     parser_job_build_wheel = job_subparsers.add_parser('build-wheel')
     parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
     parser_job_build_wheel.add_argument('dist_name')
@@ -58,6 +65,20 @@ def do_job_bootstrap(args, client):
         'bootstrap',
         variables={
             'PYTHON': args.python,
+            'DIST_NAME': args.dist_name,
+            'DIST_VERSION': args.dist_version,
+        },
+        wait=args.wait,
+        show_progress=args.show_progress,
+    )
+
+
+@requires_client
+def do_job_onboard_sdist(args, client):
+    run_pipeline(
+        client,
+        'onboard-sdist',
+        variables={
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
         },
