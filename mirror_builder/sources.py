@@ -15,12 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 def download_source(ctx, req):
-    logger.info('downloading source for %s', req)
     downloader = pkgs.find_override_method(req.name, 'download_source')
     if not downloader:
         downloader = _default_download_source
     source_filename, version = downloader(ctx, req)
-    logger.info('downloaded source for %s version %s to %s', req, version, source_filename)
     return (source_filename, version)
 
 
@@ -48,11 +46,16 @@ def resolve_sdist(req):
 def _default_download_source(ctx, req):
     "Download the requirement and return the name of the output path."
     url, version = resolve_sdist(req)
-    return (download_url(ctx.sdists_downloads, url), version)
+    source_filename = download_url(ctx.sdists_downloads, url)
+    logger.info('have source for %s version %s in %s', req, version, source_filename)
+    return (source_filename, version)
 
 
 def download_url(destination_dir, url):
     outfile = os.path.join(destination_dir, os.path.basename(urlparse(url).path))
+    logger.debug('looking for %s %s',
+                 outfile,
+                 '(exists)' if os.path.exists(outfile) else '(not there)')
     if os.path.exists(outfile):
         logger.debug(f'already have {outfile}')
         return outfile
@@ -63,7 +66,7 @@ def download_url(destination_dir, url):
             logger.debug(f'writing to {outfile}')
             for chunk in r.iter_content(chunk_size=1024*1024):
                 f.write(chunk)
-        logger.debug(f'saved {outfile}')
+        logger.info(f'saved {outfile}')
         return outfile
 
 

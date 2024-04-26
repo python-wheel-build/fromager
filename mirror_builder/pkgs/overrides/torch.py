@@ -26,9 +26,13 @@ def download_source(ctx, req):
 
     for _, candidate in result.mapping.items():
         logger.info(f"resolved {req} to {candidate.version}")
-        return (sources.download_url(ctx.sdists_downloads,
-                                     _get_pytorch_release_tarball_url(candidate.version)),
-                candidate.version)
+        source_filename = sources.download_url(
+            ctx.sdists_downloads,
+            _get_pytorch_release_tarball_url(candidate.version),
+        )
+        logger.info('have source for %s version %s in %s',
+                    req, candidate.version, source_filename)
+        return (source_filename, candidate.version)
 
 
 def _get_pytorch_release_tarball_url(version):

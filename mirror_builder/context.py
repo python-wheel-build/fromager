@@ -3,6 +3,8 @@ import logging
 import pathlib
 from urllib.parse import urlparse
 
+from packaging.utils import canonicalize_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +47,7 @@ class WorkContext:
         return args
 
     def _resolved_key(self, req, version):
-        return (req.name, str(version))
+        return (canonicalize_name(req.name), str(version))
 
     def mark_as_seen(self, req, version):
         logger.debug('remembering seen sdist %s', self._resolved_key(req, version))
@@ -55,14 +57,15 @@ class WorkContext:
         return self._resolved_key(req, version) in self._seen_requirements
 
     def add_to_build_order(self, req_type, req, version, why):
-        resolved_name = f'{req.name}-{version}'
-        if resolved_name in self._build_requirements:
+        key = self._resolved_key(req, version)
+        if key in self._build_requirements:
             return
-        self._build_requirements.add(resolved_name)
+        logger.info('adding %s %s to build order', *key)
+        self._build_requirements.add(key)
         info = {
             'type': req_type,
             'req': str(req),
-            'dist': req.name,
+            'dist': canonicalize_name(req.name),
             'version': str(version),
             'why': why,
         }
