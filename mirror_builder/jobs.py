@@ -115,7 +115,7 @@ def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
         token=trigger.token,
         variables=data,
     )
-    logger.info(f'pipeline: {pipeline.id}')
+    logger.info(f'pipeline: {pipeline.id} {pipeline.web_url}')
     if not wait:
         return
     while not pipeline.finished_at:
