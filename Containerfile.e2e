@@ -49,14 +49,18 @@ RUN dnf -y install zlib-devel libjpeg-devel
 RUN dnf -y install python3.9 python3.11 python3.11-devel python3.12 python3.12-devel
 
 # Create a virtualenv for our tools
-RUN $PYTHON -m venv /venv \
-    && /venv/bin/pip install --upgrade pip
+RUN $PYTHON -m venv /venv
 
 # Activate the virtualenv
 ENV VIRTUAL_ENV=/venv
 ENV PATH=$VIRTUAL_ENV/bin:$PATH
+ENV TOOL_SERVER_URL=https://pyai.fedorainfracloud.org/internal/tools/+simple/
 
 COPY . /mirror-builder
-RUN pip install /mirror-builder
+RUN pip install \
+    --disable-pip-version-check \
+    --no-cache-dir \
+    --index-url $TOOL_SERVER_URL \
+    /mirror-builder
 
 WORKDIR /src

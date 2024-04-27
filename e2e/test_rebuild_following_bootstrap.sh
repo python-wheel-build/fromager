@@ -1,16 +1,10 @@
 #!/bin/bash
-
-set -x
-set -e
-set -o pipefail
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
 source "${SCRIPTDIR}/common.sh"
 TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
-
-# Where should the test write working files
-WORKDIR=$(pwd)/work-dir
 
 # Create the various output directories
 mkdir -p "${WORKDIR}"
@@ -24,48 +18,45 @@ TOPLEVEL=${1:-stevedore}
 logfile="$WORKDIR/rebuild-following-bootstrap.log"
 exec > >(tee "$logfile") 2>&1
 
-# Which version of python should the test use
-PYTHON=${PYTHON:-python3.12}
-
 # Where does the wheel server run?
 TEST_INDEX_NAME="test"
 TEST_SERVER_DIR="$WORKDIR/devpi-server-dir"
 
 
 bootstrap() {
-    local dist="$1"; shift
+  local dist="$1"; shift
 
-    banner "Bootstrapping $dist"
-    # Bootstrap a complex set of dependencies to get the build order. We
-    # use a simple dist here instead of langchain to avoid dependencies
-    # with rust parts so we can isolate the build environments when
-    # building one wheel at a time later.
-    podman build -f "${TOPDIR}/Containerfile.e2e-bootstrap" \
-           --tag "e2e-bootstrap-$dist" \
-           --build-arg="TOPLEVEL=$dist"
+  banner "Bootstrapping $dist"
+  # Bootstrap a complex set of dependencies to get the build order. We
+  # use a simple dist here instead of langchain to avoid dependencies
+  # with rust parts so we can isolate the build environments when
+  # building one wheel at a time later.
+  podman build -f "${TOPDIR}/Containerfile.e2e-bootstrap" \
+         --tag "e2e-bootstrap-$dist" \
+         --build-arg="TOPLEVEL=$dist"
 
-    # Create a container with the image so we can copy the
-    # build-order.json file out of it to use for the build.
-    podman create --name "e2e-extract-bootstrap-$dist" "e2e-bootstrap-$dist" ls >/dev/null 2>&1
-    podman cp "e2e-extract-bootstrap-$dist:/work-dir/build-order.json" work-dir/
-    podman rm -f "e2e-extract-bootstrap-$dist"
+  # Create a container with the image so we can copy the
+  # build-order.json file out of it to use for the build.
+  podman create --name "e2e-extract-bootstrap-$dist" "e2e-bootstrap-$dist" ls >/dev/null 2>&1
+  podman cp "e2e-extract-bootstrap-$dist:/work-dir/build-order.json" work-dir/
+  podman rm -f "e2e-extract-bootstrap-$dist"
 }
 
 banner() {
-    echo "##############################"
-    echo "$*"
-    echo "##############################"
+  echo "##############################"
+  echo "$*"
+  echo "##############################"
 }
 
 build_wheel() {
-    local dist="$1"; shift
-    local version="$1"; shift
+  local dist="$1"; shift
+  local version="$1"; shift
 
-    "$TOPDIR/build_wheel.sh" -i "$dist" "$version" "work-dir/$dist"
+  "$TOPDIR/build_wheel.sh" -i "$dist" "$version" "work-dir/$dist"
 
-    # Update the wheel server
-    tar -C "work-dir/$dist" -xvf "work-dir/$dist/built-artifacts.tar"
-    "$MIRROR_VENV/bin/devpi" upload --index "$TEST_INDEX_NAME" "work-dir/$dist/wheels-repo/build"/*.whl
+  # Update the wheel server
+  tar -C "work-dir/$dist" -xvf "work-dir/$dist/built-artifacts.tar"
+  "$MIRROR_VENV/bin/devpi" upload --index "$TEST_INDEX_NAME" "work-dir/$dist/wheels-repo/build"/*.whl
 }
 
 on_exit() {
@@ -82,7 +73,7 @@ podman build \
 
 # Bootstrap to create the build order file, if we don't have one.
 if [ ! -f work-dir/build-order.json ]; then
-    bootstrap "$TOPLEVEL"
+  bootstrap "$TOPLEVEL"
 fi
 
 # Determine the primary IP of the host because podman won't see the
@@ -96,7 +87,7 @@ banner "Set up devpi"
 MIRROR_VENV=$WORKDIR/venv-mirror
 rm -rf "${MIRROR_VENV:?}"
 python3 -m venv "$MIRROR_VENV"
-"$MIRROR_VENV/bin/python3" -m pip install devpi
+"$MIRROR_VENV/bin/python3" -m pip install --index-url "$TOOL_SERVER_URL" devpi
 rm -rf "${TEST_SERVER_DIR:?}"
 "$MIRROR_VENV/bin/devpi-init" --serverdir "$TEST_SERVER_DIR" --no-root-pypi
 "$MIRROR_VENV/bin/devpi-server" --host "${IP}" --serverdir "$TEST_SERVER_DIR" &
@@ -105,10 +96,10 @@ HTTP_SERVER_PID=$!
 # Wait for the server to be available
 tries=3
 while [[ "$tries" -gt 0 ]]; do
-    if curl "$TEST_SERVER_BASE_URL" >/dev/null 2>&1; then
-        break
-    fi
-    sleep 1
+  if curl "$TEST_SERVER_BASE_URL" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
 done
 
 # After the server is up, configure the index we will use.

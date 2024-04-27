@@ -1,30 +1,18 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
-set -x
-set -e
-set -o pipefail
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck disable=SC1091
+source "${SCRIPTDIR}/common.sh"
 
 toplevel=${1:-langchain}
 
-DEFAULT_PYTHON_TO_TEST="
-  python3.11
-  python3.9
-  python3.12
-"
-PYTHON_TO_TEST=${PYTHON_TO_TEST:-${DEFAULT_PYTHON_TO_TEST}}
+WORKDIR=$(pwd)/work-dir-${PYTHON_VERSION}
+export WORKDIR
+mkdir -p "$WORKDIR"
 
+./mirror-sdists.sh "${toplevel}"
 
-for PYTHON in $PYTHON_TO_TEST; do
-    export PYTHON
-    PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
+find wheels-repo/simple/ -name '*.whl'
 
-    WORKDIR=$(pwd)/work-dir-${PYTHON_VERSION}
-    export WORKDIR
-    mkdir -p "$WORKDIR"
-
-    ./mirror-sdists.sh "${toplevel}"
-
-    find wheels-repo/simple/ -name '*.whl'
-
-    ./install-from-mirror.sh "${toplevel}"
-done
+./install-from-mirror.sh "${toplevel}"

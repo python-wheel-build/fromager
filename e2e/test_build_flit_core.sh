@@ -1,8 +1,5 @@
 #!/bin/bash
-
-set -x
-set -e
-set -o pipefail
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
@@ -16,8 +13,8 @@ rm -rf artifacts
 "${TOPDIR}/build_wheel.sh" flit_core 3.9.0
 
 if [ ! -f artifacts/built-artifacts.tar ]; then
-    echo "Did not find built-artifacts.tar" 1>&2
-    exit 1
+  echo "Did not find built-artifacts.tar" 1>&2
+  exit 1
 fi
 
 tar -C artifacts -xvf artifacts/built-artifacts.tar
@@ -33,9 +30,9 @@ build-logs/download-source-archive.log
 
 pass=true
 for f in $EXPECTED_FILES; do
-    if [ ! -f "artifacts/$f" ]; then
-        echo "Did not find $f" 1>&2
-        pass=false
-    fi
+  if [ ! -f "artifacts/$f" ]; then
+    echo "Did not find $f" 1>&2
+    pass=false
+  fi
 done
 $pass

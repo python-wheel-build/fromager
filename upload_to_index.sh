@@ -1,14 +1,9 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
-set -x
-set -e
-set -o pipefail
-
-DEFAULT_WORKDIR="$(pwd)/work-dir"
-export WORKDIR="${WORKDIR:-${DEFAULT_WORKDIR}}"
-mkdir -p "$WORKDIR"
-
-export PYTHON=${PYTHON:-python3.11}
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck disable=SC1091
+source "$SCRIPTDIR/common.sh"
 
 VENV="${WORKDIR}/venv-twine"
 if [ -d "$VENV" ]; then
@@ -18,8 +13,8 @@ else
     "${PYTHON}" -m venv "${VENV}"
     # shellcheck disable=SC1091
     source "${VENV}/bin/activate"
-    pip install --upgrade pip
-    pip install twine
+    pip install --index-url "$TOOL_SERVER_URL" --upgrade pip
+    pip install --index-url "$TOOL_SERVER_URL" twine
 fi
 
 # We use a consistent target name so we can pass different config
