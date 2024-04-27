@@ -120,6 +120,29 @@ e2e-onboard-sdist:
     - ./pipelines/onboard_sdist.sh numpy 1.26.4
 
 
+# This test does not use its own containers and does not run any
+# portion of the build in isolation. It's useful for verifying that
+# building a base-level package works.
+e2e-build-flit-core:
+  <<: *mr_rules_template
+  stage: test-e2e
+
+  image: fedora:39
+
+  parallel:
+    matrix:
+      - PYTHON:
+          - python3.9
+          - python3.11
+          - python3.12
+
+  before_script:
+    - bash -x ./setup.sh
+
+  script:
+    - PYTHON=$PYTHON ./e2e/test_build_flit_core.sh
+
+
 # Manual pipeline to produce bootstrap artifacts for determining which
 # packages need to be included to produce a build.
 bootstrap:
