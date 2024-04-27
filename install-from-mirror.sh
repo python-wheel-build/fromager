@@ -28,8 +28,8 @@ setup() {
   $PYTHON -m venv "${VENV}"
   # shellcheck disable=SC1090
   . "./$VENV/bin/activate"
-  pip install -U pip
-  pip install devpi
+  pip install --index-url "$TOOL_SERVER_URL" -U pip
+  pip install --index-url "$TOOL_SERVER_URL" devpi
 
   # Recreate any past package index directory
   rm -rf "$TEST_SERVER_DIR"
@@ -50,9 +50,7 @@ setup() {
   devpi use "$TEST_SERVER_BASE_URL"
   devpi login root --password ''  # not secured by default
   devpi index --create "$TEST_INDEX_NAME"
-  for wheel_file in wheels-repo/downloads/*.whl; do
-      devpi upload --index "$TEST_INDEX_NAME" "$wheel_file"
-  done
+  devpi upload --index "$TEST_INDEX_NAME" wheels-repo/downloads/*.whl
 }
 
 setup
@@ -66,5 +64,3 @@ pip -vvv install \
     --upgrade \
     "${toplevel}"
 pip freeze
-
-# --dry-run --ignore-installed --report report.json

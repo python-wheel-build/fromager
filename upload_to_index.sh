@@ -13,8 +13,8 @@ else
     "${PYTHON}" -m venv "${VENV}"
     # shellcheck disable=SC1091
     source "${VENV}/bin/activate"
-    pip install --upgrade pip
-    pip install twine
+    pip install --index-url "$TOOL_SERVER_URL" --upgrade pip
+    pip install --index-url "$TOOL_SERVER_URL" twine
 fi
 
 # We use a consistent target name so we can pass different config

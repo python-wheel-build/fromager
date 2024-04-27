@@ -87,7 +87,7 @@ banner "Set up devpi"
 MIRROR_VENV=$WORKDIR/venv-mirror
 rm -rf "${MIRROR_VENV:?}"
 python3 -m venv "$MIRROR_VENV"
-"$MIRROR_VENV/bin/python3" -m pip install devpi
+"$MIRROR_VENV/bin/python3" -m pip install --index-url "$TOOL_SERVER_URL" devpi
 rm -rf "${TEST_SERVER_DIR:?}"
 "$MIRROR_VENV/bin/devpi-init" --serverdir "$TEST_SERVER_DIR" --no-root-pypi
 "$MIRROR_VENV/bin/devpi-server" --host "${IP}" --serverdir "$TEST_SERVER_DIR" &

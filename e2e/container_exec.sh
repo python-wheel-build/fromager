@@ -18,14 +18,19 @@ if [ -n "${VERBOSE}" ]; then
   VERBOSE="-v"
 fi
 
-# Make sure we have the virtualenv and it is active
+# Make sure we have the virtualenv and it is active. We don't use the
+# install_tools function in common.sh because it always recreates the
+# environment and we want to retain it between runs.
 VENV="${WORKDIR}/venv-${PYTHON}"
 if [ ! -d "${VENV}" ]; then
     "${PYTHON}" -m venv "${VENV}"
     # shellcheck disable=SC1091
     source "${VENV}/bin/activate"
-    pip install --upgrade pip
-    pip install -e .
+    pip install \
+        --disable-pip-version-check \
+        --no-cache-dir \
+        --index-url "$TOOL_SERVER_URL" \
+        -e .
 fi
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"

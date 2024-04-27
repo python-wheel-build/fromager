@@ -51,7 +51,7 @@ banner "Set up mirror tools"
 MIRROR_VENV=$WORKDIR/venv-mirror-tools
 rm -rf "${MIRROR_VENV:?}"
 python3 -m venv "$MIRROR_VENV"
-"$MIRROR_VENV/bin/python3" -m pip install python-pypi-mirror
+"$MIRROR_VENV/bin/python3" -m pip install --index-url "$TOOL_SERVER_URL" python-pypi-mirror
 rm -rf wheels-repo/simple
 "$MIRROR_VENV/bin/pypi-mirror" create -d wheels-repo/downloads/ -m wheels-repo/simple/
 
