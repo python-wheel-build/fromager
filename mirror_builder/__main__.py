@@ -152,6 +152,10 @@ def _find_sdist(sdists_repo, req, dist_version):
             # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
             # and setuptools-scm-8.0.4.tar.gz) for example
             downloads_dir / f'{canonical_name}-{dist_version}.tar.gz',
+            # If *that* didn't work, try the dist name we've been
+            # given as a dependency. That's not "correct", either but we do
+            # see it. (oslo.messaging-14.7.0.tar.gz) for example
+            downloads_dir / f'{req.name}-{dist_version}.tar.gz',
         ]
     for sdist_file in candidates:
         if sdist_file.exists():
@@ -173,6 +177,7 @@ def _find_source_dir(work_dir, req, dist_version):
         filename_based = f'{filename_prefix}-{dist_version}'
         canonical_name = canonicalize_name(req.name)
         canonical_based = f'{canonical_name}-{dist_version}'
+        name_based = f'{req.name}-{dist_version}'
         candidates = [
             # First check if the file is there using the canonically
             # transformed name.
@@ -181,13 +186,18 @@ def _find_source_dir(work_dir, req, dist_version):
             # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
             # and setuptools-scm-8.0.4.tar.gz) for example
             work_dir / canonical_based / canonical_based,
+            # If *that* didn't work, try the dist name we've been
+            # given as a dependency. That's not "correct", either but we do
+            # see it. (oslo.messaging-14.7.0.tar.gz) for example
+            work_dir / name_based / name_based,
         ]
     for source_dir in candidates:
         if source_dir.exists():
             return source_dir
 
+    work_dir_contents = list(str(e) for e in work_dir.glob('*'))
     raise RuntimeError(
-        f'Cannot find source directory for {req.name} version {dist_version} in {candidates}'
+        f'Cannot find source directory for {req.name} version {dist_version} using any of {candidates} among {work_dir_contents}'
     )
 
 

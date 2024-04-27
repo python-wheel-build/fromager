@@ -10,6 +10,7 @@ from mirror_builder import __main__ as main
 @pytest.mark.parametrize('dist_name,version_string,expected_base', [
     ('mypkg', '1.2', 'mypkg-1.2.tar.gz'),
     ('torch', '2.0', 'pytorch-v2.0.tar.gz'),
+    ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0.tar.gz'),
 ])
 def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
     sdists_repo = pathlib.Path(tmp_path)
@@ -27,6 +28,7 @@ def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
 @pytest.mark.parametrize('dist_name,version_string,expected_base', [
     ('mypkg', '1.2', 'mypkg-1.2'),
     ('torch', '2.0', 'pytorch-v2.0'),
+    ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0'),
 ])
 def test_find_source_dir(tmp_path, dist_name, version_string, expected_base):
     work_dir = pathlib.Path(tmp_path)
