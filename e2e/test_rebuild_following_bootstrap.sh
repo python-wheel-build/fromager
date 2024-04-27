@@ -24,39 +24,39 @@ TEST_SERVER_DIR="$WORKDIR/devpi-server-dir"
 
 
 bootstrap() {
-    local dist="$1"; shift
+  local dist="$1"; shift
 
-    banner "Bootstrapping $dist"
-    # Bootstrap a complex set of dependencies to get the build order. We
-    # use a simple dist here instead of langchain to avoid dependencies
-    # with rust parts so we can isolate the build environments when
-    # building one wheel at a time later.
-    podman build -f "${TOPDIR}/Containerfile.e2e-bootstrap" \
-           --tag "e2e-bootstrap-$dist" \
-           --build-arg="TOPLEVEL=$dist"
+  banner "Bootstrapping $dist"
+  # Bootstrap a complex set of dependencies to get the build order. We
+  # use a simple dist here instead of langchain to avoid dependencies
+  # with rust parts so we can isolate the build environments when
+  # building one wheel at a time later.
+  podman build -f "${TOPDIR}/Containerfile.e2e-bootstrap" \
+         --tag "e2e-bootstrap-$dist" \
+         --build-arg="TOPLEVEL=$dist"
 
-    # Create a container with the image so we can copy the
-    # build-order.json file out of it to use for the build.
-    podman create --name "e2e-extract-bootstrap-$dist" "e2e-bootstrap-$dist" ls >/dev/null 2>&1
-    podman cp "e2e-extract-bootstrap-$dist:/work-dir/build-order.json" work-dir/
-    podman rm -f "e2e-extract-bootstrap-$dist"
+  # Create a container with the image so we can copy the
+  # build-order.json file out of it to use for the build.
+  podman create --name "e2e-extract-bootstrap-$dist" "e2e-bootstrap-$dist" ls >/dev/null 2>&1
+  podman cp "e2e-extract-bootstrap-$dist:/work-dir/build-order.json" work-dir/
+  podman rm -f "e2e-extract-bootstrap-$dist"
 }
 
 banner() {
-    echo "##############################"
-    echo "$*"
-    echo "##############################"
+  echo "##############################"
+  echo "$*"
+  echo "##############################"
 }
 
 build_wheel() {
-    local dist="$1"; shift
-    local version="$1"; shift
+  local dist="$1"; shift
+  local version="$1"; shift
 
-    "$TOPDIR/build_wheel.sh" -i "$dist" "$version" "work-dir/$dist"
+  "$TOPDIR/build_wheel.sh" -i "$dist" "$version" "work-dir/$dist"
 
-    # Update the wheel server
-    tar -C "work-dir/$dist" -xvf "work-dir/$dist/built-artifacts.tar"
-    "$MIRROR_VENV/bin/devpi" upload --index "$TEST_INDEX_NAME" "work-dir/$dist/wheels-repo/build"/*.whl
+  # Update the wheel server
+  tar -C "work-dir/$dist" -xvf "work-dir/$dist/built-artifacts.tar"
+  "$MIRROR_VENV/bin/devpi" upload --index "$TEST_INDEX_NAME" "work-dir/$dist/wheels-repo/build"/*.whl
 }
 
 on_exit() {
@@ -73,7 +73,7 @@ podman build \
 
 # Bootstrap to create the build order file, if we don't have one.
 if [ ! -f work-dir/build-order.json ]; then
-    bootstrap "$TOPLEVEL"
+  bootstrap "$TOPLEVEL"
 fi
 
 # Determine the primary IP of the host because podman won't see the
@@ -96,10 +96,10 @@ HTTP_SERVER_PID=$!
 # Wait for the server to be available
 tries=3
 while [[ "$tries" -gt 0 ]]; do
-    if curl "$TEST_SERVER_BASE_URL" >/dev/null 2>&1; then
-        break
-    fi
-    sleep 1
+  if curl "$TEST_SERVER_BASE_URL" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
 done
 
 # After the server is up, configure the index we will use.

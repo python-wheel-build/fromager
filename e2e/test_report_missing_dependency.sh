@@ -25,7 +25,7 @@ trap on_exit EXIT SIGINT SIGTERM
 
 # Bootstrap to create the build order file, if we don't have one.
 if [ ! -f work-dir/build-order.json ]; then
-    "$TOPDIR/mirror-sdists.sh" "$TOPLEVEL"
+  "$TOPDIR/mirror-sdists.sh" "$TOPLEVEL"
 fi
 
 # Extract the build dependencies from the bootstrap info.
@@ -33,9 +33,9 @@ jq -r '.[] | select( .type | contains("build_") ) | .req'  "$WORKDIR/build-order
 
 # Remove all of the build dependencies from the wheels-repo.
 jq -r '.[] | select( .type | contains("build_") ) | .dist'  "$WORKDIR/build-order.json" \
-   | while read -r to_remove; do
-    echo "Removing build dependency ${to_remove}"
-    rm -f "wheels-repo/downloads/${to_remove}"*
+  | while read -r to_remove; do
+  echo "Removing build dependency ${to_remove}"
+  rm -f "wheels-repo/downloads/${to_remove}"*
 done
 
 # Start a web server for the wheels-repo. We remember the PID so we
@@ -60,10 +60,10 @@ version=$(jq -r '.[] | select ( .dist == "'$TOPLEVEL'" ) | .version' "$WORKDIR/b
 "${TOPDIR}/build_wheel.sh" "$TOPLEVEL" "$version" "$WORKDIR" || echo "Got expected build error"
 
 if grep -q MissingDependency "build-logs/prepare-build.log"; then
-    echo "Found expected error"
+  echo "Found expected error"
 else
-    echo "Did not find expected error in build-logs/prepare-build.log"
-    exit 1
+  echo "Did not find expected error in build-logs/prepare-build.log"
+  exit 1
 fi
 
 exit 0

@@ -20,18 +20,18 @@ export TOOL_SERVER_URL=https://pyai.fedorainfracloud.org/internal/tools/+simple/
 export WHEEL_SERVER_URL=${WHEEL_SERVER_URL:-https://pypi.org/simple}
 
 install_tools() {
-    local -r venv="$1"
+  local -r venv="$1"
 
-    # Create a fresh virtualenv every time since the process installs
-    # packages into it.
-    rm -rf "${venv}"
+  # Create a fresh virtualenv every time since the process installs
+  # packages into it.
+  rm -rf "${venv}"
 
-    "${PYTHON}" -m venv "${venv}"
-    # shellcheck disable=SC1091
-    source "${venv}/bin/activate"
-    pip install \
-        --disable-pip-version-check \
-        --no-cache-dir \
-        --index-url "$TOOL_SERVER_URL" \
-        -e "$SCRIPTDIR"
+  "${PYTHON}" -m venv "${venv}"
+  # shellcheck disable=SC1091
+  source "${venv}/bin/activate"
+  pip install \
+      --disable-pip-version-check \
+      --no-cache-dir \
+      --index-url "$TOOL_SERVER_URL" \
+      -e "$SCRIPTDIR"
 }

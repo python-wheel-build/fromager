@@ -1,4 +1,5 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 #
 # We could build the virtualenv inside the container, but then we
 # can't install anything into it, which we need to be able to do at
@@ -23,14 +24,14 @@ fi
 # environment and we want to retain it between runs.
 VENV="${WORKDIR}/venv-${PYTHON}"
 if [ ! -d "${VENV}" ]; then
-    "${PYTHON}" -m venv "${VENV}"
-    # shellcheck disable=SC1091
-    source "${VENV}/bin/activate"
-    pip install \
-        --disable-pip-version-check \
-        --no-cache-dir \
-        --index-url "$TOOL_SERVER_URL" \
-        -e .
+  "${PYTHON}" -m venv "${VENV}"
+  # shellcheck disable=SC1091
+  source "${VENV}/bin/activate"
+  pip install \
+      --disable-pip-version-check \
+      --no-cache-dir \
+      --index-url "$TOOL_SERVER_URL" \
+      -e .
 fi
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"

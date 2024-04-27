@@ -4,7 +4,6 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
 source "${SCRIPTDIR}/common.sh"
-TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
 
 toplevel=${1:-langchain}
 

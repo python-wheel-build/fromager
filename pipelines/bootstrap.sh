@@ -1,4 +1,5 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
@@ -8,9 +9,9 @@ source "$TOPDIR/common.sh"
 
 TOPLEVEL="${1}"
 if [ -z "$TOPLEVEL" ]; then
-    echo "Usage: $0 TOPLEVEL" 1>&2
-    echo "ERROR: No toplevel package specified." 1>&2
-    exit 1
+  echo "Usage: $0 TOPLEVEL" 1>&2
+  echo "ERROR: No toplevel package specified." 1>&2
+  exit 1
 fi
 
 mkdir -p "$WORKDIR"

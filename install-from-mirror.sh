@@ -50,7 +50,9 @@ setup() {
   devpi use "$TEST_SERVER_BASE_URL"
   devpi login root --password ''  # not secured by default
   devpi index --create "$TEST_INDEX_NAME"
-  devpi upload --index "$TEST_INDEX_NAME" wheels-repo/downloads/*.whl
+  for wheel in wheels-repo/downloads/*.whl; do
+      devpi upload --index "$TEST_INDEX_NAME" "$wheel"
+  done
 }
 
 setup
