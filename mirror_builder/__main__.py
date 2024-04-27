@@ -39,6 +39,7 @@ def main():
     parser_download.set_defaults(func=do_download_source_archive)
     parser_download.add_argument('dist_name')
     parser_download.add_argument('dist_version')
+    parser.add_argument('--sdist-server-url')
 
     parser_prepare_source = subparsers.add_parser('prepare-source')
     parser_prepare_source.set_defaults(func=do_prepare_source)
@@ -111,7 +112,7 @@ def do_bootstrap(args, ctx):
 def do_download_source_archive(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('downloading source archive for %s', req)
-    filename, _ = sources.download_source(ctx, req)
+    filename, _ = sources.download_source(ctx, req, args.sdist_server_url)
     print(filename)
 
 

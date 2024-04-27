@@ -78,7 +78,8 @@ build_wheel_isolated() {
          --tag "e2e-build-$dist" \
          --build-arg="DIST=$dist" \
          --build-arg="VERSION=$version" \
-         --build-arg="WHEEL_SERVER_URL=$WHEEL_SERVER_URL"
+         --build-arg="WHEEL_SERVER_URL=$WHEEL_SERVER_URL" \
+         --build-arg="SDIST_SERVER_URL=$SDIST_SERVER_URL"
 
   # Run the image to build the wheel.
   podman run -it \
@@ -114,6 +115,7 @@ build_wheel() {
           --work-dir "$WORKDIR" \
           --sdists-repo sdists-repo \
           --wheels-repo wheels-repo \
+          --sdist-server-url "$SDIST_SERVER_URL" \
           download-source-archive "${DIST}" "${VERSION}"
 
   # Prepare the source dir for building

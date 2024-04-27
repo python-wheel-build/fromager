@@ -76,11 +76,11 @@ class Candidate:
         return self._dependencies
 
 
-def get_project_from_pypi(project, extras):
+def get_project_from_pypi(project, extras, sdist_server_url):
     """Return candidates created from the project name and extras."""
-    logger.debug('get available versions of project %s', project)
-    url = "https://pypi.org/simple/{}".format(project)
-    data = requests.get(url).content
+    simple_index_url = sdist_server_url.rstrip('/') + '/' + project + '/'
+    logger.debug('get available versions of project %s from %s', project, simple_index_url)
+    data = requests.get(simple_index_url).content
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
         url = i.attrib["href"]
@@ -138,9 +138,10 @@ def get_metadata_for_wheel(url):
 
 
 class PyPIProvider(ExtrasProvider):
-    def __init__(self, only_sdists=False):
+    def __init__(self, only_sdists=False, sdist_server_url='https://pypi.org/simple/'):
         super().__init__()
         self.only_sdists = only_sdists
+        self.sdist_server_url = sdist_server_url
 
     def identify(self, requirement_or_candidate):
         return canonicalize_name(requirement_or_candidate.name)
@@ -164,7 +165,7 @@ class PyPIProvider(ExtrasProvider):
         # treat candidates as immutable once created.
         candidates = (
             candidate
-            for candidate in get_project_from_pypi(identifier, set())
+            for candidate in get_project_from_pypi(identifier, set(), self.sdist_server_url)
             if (candidate.is_sdist or not self.only_sdists)
             and candidate.version not in bad_versions
             and all(candidate.version in r.specifier for r in requirements)

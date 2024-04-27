@@ -9,6 +9,7 @@ ENV VERSION=${VERSION}
 
 # Where do we find dependencies?
 ARG WHEEL_SERVER_URL
+ARG SDIST_SERVER_URL
 
 ENV VIRTUAL_ENV=/venv
 ENV PATH=$VIRTUAL_ENV/bin:$PATH
@@ -21,6 +22,7 @@ RUN python3 -m mirror_builder -v \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
     --wheels-repo /wheels-repo \
+    --sdist-server-url ${SDIST_SERVER_URL} \
     download-source-archive ${DIST} ${VERSION}
 
 # Prepare the source dir for building
