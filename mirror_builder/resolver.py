@@ -10,7 +10,7 @@ from email.parser import BytesParser
 from io import BytesIO
 from operator import attrgetter
 from platform import python_version
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from zipfile import ZipFile
 
 import html5lib
@@ -83,9 +83,9 @@ def get_project_from_pypi(project, extras, sdist_server_url):
     data = requests.get(simple_index_url).content
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
-        url = i.attrib["href"]
+        candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
-        path = urlparse(url).path
+        path = urlparse(candidate_url).path
         filename = path.rpartition("/")[-1]
         # Skip items that need a different Python version
         if py_req:
@@ -117,8 +117,8 @@ def get_project_from_pypi(project, extras, sdist_server_url):
             logger.debug(f'invalid version for {filename}: {err}')
             continue
 
-        c = Candidate(name, version, url=url, extras=extras, is_sdist=is_sdist)
-        logger.debug('candidate %s (%s)', filename, c)
+        c = Candidate(name, version, url=candidate_url, extras=extras, is_sdist=is_sdist)
+        logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
         yield c
 
 
