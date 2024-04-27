@@ -100,9 +100,6 @@ def get_project_from_pypi(project, extras, sdist_server_url):
                 logger.debug(f'skipping {filename} because of python version {py_req}')
                 continue
 
-        path = urlparse(url).path
-        filename = path.rpartition("/")[-1]
-
         # TODO: Handle compatibility tags?
 
         # Very primitive sdist filename parsing
