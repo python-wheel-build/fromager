@@ -1,7 +1,8 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
-set -x
-set -ue -o pipefail
+set -eux
+set -o pipefail
 
 # shellcheck disable=SC1091
 source /venv/bin/activate

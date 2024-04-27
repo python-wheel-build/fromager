@@ -1,21 +1,15 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
-export PS4='+ ${BASH_SOURCE#$HOME/}:$LINENO \011'
-
-SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
+E2E_SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+TOPDIR="$( cd "${E2E_SCRIPTDIR}/.." && pwd )"
+# shellcheck disable=SC1091
+source "$TOPDIR/common.sh"
 
 VERBOSE=${VERBOSE:-}
 if [ -n "${VERBOSE}" ]; then
   VERBOSE="-v"
 fi
-
-DEFAULT_WORKDIR=$(pwd)/work-dir
-export WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
-
-export PYTHON=${PYTHON:-python3.11}
-PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
-export PYTHON_VERSION
 
 setup() {
     rm -rf "${WORKDIR}"

@@ -1,8 +1,5 @@
 #!/bin/bash
-
-set -x
-set -e
-set -o pipefail
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091

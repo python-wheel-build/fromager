@@ -1,6 +1,8 @@
 #!/bin/bash
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck disable=SC1091
+source "$SCRIPTDIR/common.sh"
 
 usage() {
     local err="$1"
@@ -59,18 +61,6 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-
-set -x
-set -e
-set -o pipefail
-
-export PYTHON=${PYTHON:-python3.11}
-PYTHON_VERSION=$($PYTHON --version | cut -f2 -d' ')
-export PYTHON_VERSION
-
-# Set a default URL until we have our private one running.
-export WHEEL_SERVER_URL=${WHEEL_SERVER_URL:-https://pypi.org/simple}
-
 build_wheel_isolated() {
     local dist="$1"; shift
     local version="$1"; shift
@@ -115,16 +105,7 @@ build_wheel() {
     mkdir -p build-logs
 
     VENV="${WORKDIR}/venv-build-wheel"
-    if [ -d "$VENV" ]; then
-        # shellcheck disable=SC1091
-        source "${VENV}/bin/activate"
-    else
-        "${PYTHON}" -m venv "${VENV}"
-        # shellcheck disable=SC1091
-        source "${VENV}/bin/activate"
-        pip install --upgrade pip
-        pip install -e .
-    fi
+    install_tools "$VENV"
 
     # Download the source archive
     python3 -m mirror_builder \
@@ -166,9 +147,5 @@ build_wheel() {
     mkdir -p "${artifacts_dir}"
     tar cvf "$artifacts_dir/built-artifacts.tar" wheels-repo/build sdists-repo/downloads build-logs work-dir/*/*requirements.txt
 }
-
-
-DEFAULT_WORKDIR="$(pwd)/work-dir"
-export WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 
 "$BUILDER" "${DIST}" "${VERSION}" "${ARTIFACTS_DIR}"

@@ -1,20 +1,20 @@
 #!/bin/bash
-
-set -xe
-set -o pipefail
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 # Create a separate work dir so we can save the output to compare to
-# what we get when we run the same scripts outside of the container.
+# what we get when we run the same scripts outside of the
+# container. Set this before loading common.sh to override the default
+# consistently.
 WORKDIR=$(pwd)/work-dir-container
-export WORKDIR
-mkdir -p "$WORKDIR"
 
-PYTHON=${PYTHON:-python3}
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck disable=SC1091
+source "$SCRIPTDIR/common.sh"
+
+mkdir -p "$WORKDIR"
 
 logfile="$WORKDIR/test-container-${PYTHON}.log"
 exec > >(tee "$logfile") 2>&1
-
-podman build --tag rebuilding-the-wheel -f ./Containerfile
 
 in_container() {
     podman run -it --rm \
@@ -28,6 +28,8 @@ in_container() {
            rebuilding-the-wheel \
            "$@"
 }
+
+podman build --tag rebuilding-the-wheel -f ./Containerfile
 
 in_container ./mirror-sdists.sh
 in_container ./install-from-mirror.sh

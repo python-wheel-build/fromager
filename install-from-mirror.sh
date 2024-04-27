@@ -1,12 +1,11 @@
 #!/bin/bash
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
-set -xe
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck disable=SC1091
+source "$SCRIPTDIR/common.sh"
 
-DEFAULT_WORKDIR=$(realpath "$(pwd)/work-dir")
-WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 mkdir -p "$WORKDIR"
-
-PYTHON=${PYTHON:-python3.9}
 
 # Redirect stdout/stderr to logfile
 logfile="$WORKDIR/install-mirror-${PYTHON_VERSION}.log"

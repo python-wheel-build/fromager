@@ -1,16 +1,10 @@
 #!/bin/bash
-
-set -x
-set -e
-set -o pipefail
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
 source "${SCRIPTDIR}/common.sh"
 TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
-
-# Where should the test write working files
-WORKDIR=$(pwd)/work-dir
 
 # Create the various output directories
 mkdir -p "${WORKDIR}"
@@ -23,9 +17,6 @@ TOPLEVEL=${1:-stevedore}
 # Redirect stdout/stderr to logfile
 logfile="$WORKDIR/rebuild-following-bootstrap.log"
 exec > >(tee "$logfile") 2>&1
-
-# Which version of python should the test use
-PYTHON=${PYTHON:-python3.12}
 
 # Where does the wheel server run?
 TEST_INDEX_NAME="test"

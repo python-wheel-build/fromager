@@ -1,7 +1,10 @@
 #!/bin/bash
 
-set -xe
-set -o pipefail
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck disable=SC1091
+TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
+# shellcheck disable=SC1091
+source "$TOPDIR/common.sh"
 
 TOPLEVEL="${1}"
 if [ -z "$TOPLEVEL" ]; then
@@ -10,21 +13,10 @@ if [ -z "$TOPLEVEL" ]; then
     exit 1
 fi
 
-PYTHON=${PYTHON:-python3.11}
-
-DEFAULT_WORKDIR=$(realpath "$(pwd)/work-dir")
-WORKDIR=${WORKDIR:-${DEFAULT_WORKDIR}}
 mkdir -p "$WORKDIR"
 
 VENV="${WORKDIR}/venv"
-# Create a fresh virtualenv every time since the process installs
-# packages into it.
-rm -rf "${VENV}"
-"${PYTHON}" -m venv "${VENV}"
-# shellcheck disable=SC1091
-source "${VENV}/bin/activate"
-pip install --upgrade pip
-pip install -e .
+install_tools "$VENV"
 
 # shellcheck disable=SC2086
 python3 -m mirror_builder ${VERBOSE} \

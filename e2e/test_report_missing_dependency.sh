@@ -1,16 +1,10 @@
 #!/bin/bash
-
-set -x
-set -e
-set -o pipefail
+# -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
 source "${SCRIPTDIR}/common.sh"
 TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
-
-# Where should the test write working files
-WORKDIR=$(pwd)/work-dir
 
 # Create the various output directories
 mkdir -p "${WORKDIR}"
@@ -23,10 +17,6 @@ TOPLEVEL=stevedore
 # Redirect stdout/stderr to logfile
 logfile="$WORKDIR/report-missing-dependency.log"
 exec > >(tee "$logfile") 2>&1
-
-# Which version of python should the test use
-PYTHON=${PYTHON:-python3.11}
-export PYTHON
 
 on_exit() {
   [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
