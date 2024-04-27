@@ -83,7 +83,7 @@ e2e-report-missing-dependency:
 
   parallel:
     matrix:
-      - PYTHON_TO_TEST:
+      - PYTHON:
           - python3.9
           - python3.11
           - python3.12
@@ -96,7 +96,7 @@ e2e-report-missing-dependency:
     - dnf install -y iproute
 
   script:
-    - PYTHON_TO_TEST=$PYTHON_TO_TEST ./e2e/test_report_missing_dependency.sh
+    - PYTHON=$PYTHON ./e2e/test_report_missing_dependency.sh
 
 
 # Manual pipeline to produce bootstrap artifacts for determining which
