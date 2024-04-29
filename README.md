@@ -124,4 +124,6 @@ langchain==0.1.11
 
 [How Tos](docs/howtos.md
 
+### Package customization notes
 
+Some packages have [customizations applied](docs/pkgs/).
