@@ -38,9 +38,12 @@ else
   pip install -e .
 fi
 
-# Download the source archive
+# Download the source archive. Pass pypi.org as the sdist server URL
+# because we're supposed to get new source files, not just things that
+# are available already on our package server.
 python3 -m mirror_builder \
         --log-file build-logs/download-source-archive.log \
+        --sdist-server-url https://pypi.org/simple \
         --work-dir "$WORKDIR" \
         --sdists-repo sdists-repo \
         --wheels-repo wheels-repo \
