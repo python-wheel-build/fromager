@@ -23,6 +23,7 @@ def build_cli(parser, subparsers):
     parser_job_bootstrap.add_argument('--python', '-p', default='python3.11')
     parser_job_bootstrap.add_argument('--wait', '-w', default=False, action='store_true')
     parser_job_bootstrap.add_argument('--show-progress', default=False, action='store_true')
+    parser_job_bootstrap.add_argument('--output', '-o')
 
     parser_job_onboard_sdist = job_subparsers.add_parser('onboard-sdist')
     parser_job_onboard_sdist.set_defaults(func=do_job_onboard_sdist)
@@ -65,7 +66,7 @@ def requires_client(f):
 
 @requires_client
 def do_job_bootstrap(args, client):
-    run_pipeline(
+    pipeline = run_pipeline(
         client,
         f'bootstrap {args.dist_name} {args.dist_version}',
         'bootstrap',
@@ -74,9 +75,22 @@ def do_job_bootstrap(args, client):
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
         },
-        wait=args.wait,
+        wait=args.wait or args.output,
         show_progress=args.show_progress,
     )
+    if args.wait or args.output:
+        project = client.projects.get(_project_id)
+        for ijob in pipeline.jobs.list():
+            # The iterator gives us a partial job that can't download
+            # artifacts, so get a real object.
+            job = project.jobs.get(ijob.id)
+            build_order = job.artifact('work-dir/build-order.json').decode('utf-8')
+            if args.output:
+                with open(args.output, 'w') as f:
+                    f.write(build_order)
+                print(f'wrote {args.output}')
+            else:
+                print(build_order)
 
 
 @requires_client
