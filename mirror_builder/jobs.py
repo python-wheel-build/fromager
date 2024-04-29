@@ -173,6 +173,8 @@ def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
         time.sleep(15)
     if show_progress:
         print()
+    if pipeline.status != 'success':
+        raise RuntimeError(f'Pipeline {pipeline.id} ended with status {pipeline.status} {pipeline.web_url}')
 
 
 # https://python-gitlab.readthedocs.io/en/stable/gl_objects/pipelines_and_jobs.html
