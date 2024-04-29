@@ -33,5 +33,5 @@ install_tools() {
       --disable-pip-version-check \
       --no-cache-dir \
       --index-url "$TOOL_SERVER_URL" \
-      -e "$SCRIPTDIR"
+      -e "$(dirname "${BASH_SOURCE[0]}")"
 }
