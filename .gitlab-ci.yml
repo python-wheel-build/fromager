@@ -98,6 +98,27 @@ e2e-report-missing-dependency:
   script:
     - PYTHON=$PYTHON ./e2e/test_report_missing_dependency.sh
 
+# Pre-merge pipeline for testing the onboard_sdist.sh pipeline. It
+# grabs a source archive without uploading it to the index server.
+e2e-onboard-sdist:
+  <<: *mr_rules_template
+  stage: test-e2e
+
+  artifacts:
+    paths:
+      - sdists-repo/downloads/*.tar.gz
+      - build-logs/*.log
+
+  image: fedora:39
+
+  before_script:
+    # We need a python interpreter. It doesn't matter which one, so
+    # pick the one that's going to be the default for most builds.
+    - dnf install -y python3.11
+
+  script:
+    - ./pipelines/onboard_sdist.sh numpy 1.26.4
+
 
 # Manual pipeline to produce bootstrap artifacts for determining which
 # packages need to be included to produce a build.
