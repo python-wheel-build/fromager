@@ -261,3 +261,42 @@ $ tox -e job -- build-sequence ./work-dir/build-order.json
 
 Be certain to use `--python` to pass the Python interpreter name to
 use with the list of packages in the build order file.
+
+## Updating tools
+
+When these tools run in the build pipelines, their dependencies are
+only installed from the
+[internal/tools](https://pyai.fedorainfracloud.org/internal/tools)
+repository. Adding new tools, or updating versions of existing tools,
+is a manual process and requires a token for the package server's
+"internal" user.
+
+First, clean up to ensure only tools will be uploaded:
+
+```
+$ rm -rf work-dir/ wheels-repo/ sdists-repo/
+```
+
+Then bootstrap the dependencies locally. This process does not rely on
+the build order file, so it is possible to bootstrap multiple
+dependencies at the same time by running the command more than
+once. All of the sdists and wheels will be written to the common
+output directory, from which they can be uploaded to the index.
+
+```
+$ ./mirror-sdists.sh devpi
+$ ./mirror-sdists.sh twine
+```
+
+Finally, use `twine` or `devpi` to upload those dependencies to the
+`internal/tools` repository. Include the sdist and wheel files.
+
+```
+$ devpi login internal
+password for user internal at https://pyai.fedorainfracloud.org/:
+logged in 'internal' at 'https://pyai.fedorainfracloud.org/internal/tools', credentials valid for 10.00 hours
+$ devpi use internal/tools
+current devpi index: https://pyai.fedorainfracloud.org/internal/tools (logged in as internal)
+...
+$ devpi upload wheels-repo/downloads/*.whl sdists-repo/downloads/*.tar.gz
+```
