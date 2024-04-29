@@ -10,7 +10,7 @@ from email.parser import BytesParser
 from io import BytesIO
 from operator import attrgetter
 from platform import python_version
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from zipfile import ZipFile
 
 import html5lib
@@ -76,16 +76,16 @@ class Candidate:
         return self._dependencies
 
 
-def get_project_from_pypi(project, extras):
+def get_project_from_pypi(project, extras, sdist_server_url):
     """Return candidates created from the project name and extras."""
-    logger.debug('get available versions of project %s', project)
-    url = "https://pypi.org/simple/{}".format(project)
-    data = requests.get(url).content
+    simple_index_url = sdist_server_url.rstrip('/') + '/' + project + '/'
+    logger.debug('get available versions of project %s from %s', project, simple_index_url)
+    data = requests.get(simple_index_url).content
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
-        url = i.attrib["href"]
+        candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
-        path = urlparse(url).path
+        path = urlparse(candidate_url).path
         filename = path.rpartition("/")[-1]
         # Skip items that need a different Python version
         if py_req:
@@ -99,9 +99,6 @@ def get_project_from_pypi(project, extras):
             if PYTHON_VERSION not in spec:
                 logger.debug(f'skipping {filename} because of python version {py_req}')
                 continue
-
-        path = urlparse(url).path
-        filename = path.rpartition("/")[-1]
 
         # TODO: Handle compatibility tags?
 
@@ -120,8 +117,8 @@ def get_project_from_pypi(project, extras):
             logger.debug(f'invalid version for {filename}: {err}')
             continue
 
-        c = Candidate(name, version, url=url, extras=extras, is_sdist=is_sdist)
-        logger.debug('candidate %s (%s)', filename, c)
+        c = Candidate(name, version, url=candidate_url, extras=extras, is_sdist=is_sdist)
+        logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
         yield c
 
 
@@ -138,9 +135,10 @@ def get_metadata_for_wheel(url):
 
 
 class PyPIProvider(ExtrasProvider):
-    def __init__(self, only_sdists=False):
+    def __init__(self, only_sdists=False, sdist_server_url='https://pypi.org/simple/'):
         super().__init__()
         self.only_sdists = only_sdists
+        self.sdist_server_url = sdist_server_url
 
     def identify(self, requirement_or_candidate):
         return canonicalize_name(requirement_or_candidate.name)
@@ -164,7 +162,7 @@ class PyPIProvider(ExtrasProvider):
         # treat candidates as immutable once created.
         candidates = (
             candidate
-            for candidate in get_project_from_pypi(identifier, set())
+            for candidate in get_project_from_pypi(identifier, set(), self.sdist_server_url)
             if (candidate.is_sdist or not self.only_sdists)
             and candidate.version not in bad_versions
             and all(candidate.version in r.specifier for r in requirements)
