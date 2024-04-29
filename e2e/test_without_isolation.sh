@@ -11,8 +11,8 @@ WORKDIR=$(pwd)/work-dir-${PYTHON_VERSION}
 export WORKDIR
 mkdir -p "$WORKDIR"
 
-./mirror-sdists.sh "${toplevel}"
+"${SCRIPTDIR}/../pipelines/bootstrap.sh" "${1:-langchain}"
 
 find wheels-repo/simple/ -name '*.whl'
 
-./install-from-mirror.sh "${toplevel}"
+"${SCRIPTDIR}/../install-from-mirror.sh" "${toplevel}"
