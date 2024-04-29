@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from concurrent import futures
 
 import gitlab
 
@@ -33,7 +34,6 @@ def build_cli(parser, subparsers):
     parser_job_onboard_sequence = job_subparsers.add_parser('onboard-sequence')
     parser_job_onboard_sequence.set_defaults(func=do_job_onboard_sequence)
     parser_job_onboard_sequence.add_argument('build_order_file')
-    parser_job_onboard_sequence.add_argument('--show-progress', default=False, action='store_true')
 
     parser_job_build_wheel = job_subparsers.add_parser('build-wheel')
     parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
@@ -67,6 +67,7 @@ def requires_client(f):
 def do_job_bootstrap(args, client):
     run_pipeline(
         client,
+        f'bootstrap {args.dist_name} {args.dist_version}',
         'bootstrap',
         variables={
             'PYTHON': args.python,
@@ -82,6 +83,7 @@ def do_job_bootstrap(args, client):
 def do_job_onboard_sdist(args, client):
     run_pipeline(
         client,
+        f'onboard-sdist {args.dist_name} {args.dist_version}',
         'onboard-sdist',
         variables={
             'DIST_NAME': args.dist_name,
@@ -97,27 +99,32 @@ def do_job_onboard_sequence(args, client):
     with open(args.build_order_file, 'r') as f:
         build_order = json.load(f)
 
-    for step in build_order:
+    def run_one(step):
         dist = step['dist']
         version = step['version']
-        print(f'{dist} {version}')
-
         run_pipeline(
             client,
+            f'onboard-sdist {dist} {version}',
             'onboard-sdist',
             variables={
                 'DIST_NAME': dist,
                 'DIST_VERSION': version,
             },
+            # Always wait to help enforce concurrency limits.
             wait=True,
-            show_progress=args.show_progress,
+            # Don't show dots, only start and stop messages
+            show_progress=False,
         )
+
+    executor = futures.ThreadPoolExecutor(max_workers=3)
+    executor.map(run_one, build_order)
 
 
 @requires_client
 def do_job_build_wheel(args, client):
     run_pipeline(
         client,
+        f'build-wheel {args.dist_name} {args.dist_version}',
         'build-wheel',
         variables={
             'PYTHON': args.python,
@@ -137,10 +144,10 @@ def do_job_build_sequence(args, client):
     for step in build_order:
         dist = step['dist']
         version = step['version']
-        print(f'{dist} {version}')
 
         run_pipeline(
             client,
+            f'build-wheel {dist} {version}',
             'build-wheel',
             variables={
                 'PYTHON': args.python,
@@ -152,7 +159,7 @@ def do_job_build_sequence(args, client):
         )
 
 
-def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
+def run_pipeline(client, title, job_name, variables, wait=False, show_progress=False):
     project = client.projects.get(_project_id)
     trigger = get_or_create_trigger(project, 'sequence-trigger')
     data = {}
@@ -163,7 +170,7 @@ def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
         token=trigger.token,
         variables=data,
     )
-    print(f'pipeline: {pipeline.id} {pipeline.web_url}')
+    print(f'starting {title} pipeline: {pipeline.id} {pipeline.web_url}')
     if not wait:
         return
     while not pipeline.finished_at:
@@ -175,6 +182,8 @@ def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
         print()
     if pipeline.status != 'success':
         raise RuntimeError(f'Pipeline {pipeline.id} ended with status {pipeline.status} {pipeline.web_url}')
+    print(f'finished {title}')
+    return pipeline
 
 
 # https://python-gitlab.readthedocs.io/en/stable/gl_objects/pipelines_and_jobs.html
