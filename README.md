@@ -120,10 +120,8 @@ langchain==0.1.11
 └── tenacity [required: >=8.1.0,<9.0.0, installed: 8.2.3]
 ```
 
-### Using the tools
+### Additional docs
 
-[How Tos](docs/howtos.md
-
-### Package customization notes
-
-Some packages have [customizations applied](docs/pkgs/).
+* [How Tos](docs/howtos.md)
+* Some packages have [customizations applied](docs/pkgs/)
+* [Developer Instructions](docs/develop.md)
