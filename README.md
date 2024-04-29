@@ -55,6 +55,8 @@ newly created repository of wheels.
 
 See the [currently open
 issues](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/issues)
+and the planned [development
+milestones](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/milestones)
 
 ### Langchain Dependency Tree
 
