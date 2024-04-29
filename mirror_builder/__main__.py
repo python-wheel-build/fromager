@@ -137,67 +137,98 @@ def _dist_name_to_filename(dist_name):
 def _find_sdist(sdists_repo, req, dist_version):
     downloads_dir = sdists_repo / 'downloads'
     sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
+
     if sdist_name_func:
-        candidates = [
-            downloads_dir / sdist_name_func(req, dist_version)
-        ]
+        # The file must exist exactly as given.
+        sdist_file = downloads_dir / sdist_name_func(req, dist_version)
+        if sdist_file.exists():
+            return sdist_file
+        candidates = [sdist_file]
+
     else:
         filename_prefix = _dist_name_to_filename(req.name)
         canonical_name = canonicalize_name(req.name)
-        candidates = [
+
+        candidate_bases = [
             # First check if the file is there using the canonically
             # transformed name.
-            downloads_dir / f'{filename_prefix}-{dist_version}.tar.gz',
+            f'{filename_prefix}-{dist_version}.tar.gz',
             # If that didn't work, try the canonical dist name. That's not
             # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
             # and setuptools-scm-8.0.4.tar.gz) for example
-            downloads_dir / f'{canonical_name}-{dist_version}.tar.gz',
+            f'{canonical_name}-{dist_version}.tar.gz',
             # If *that* didn't work, try the dist name we've been
             # given as a dependency. That's not "correct", either but we do
             # see it. (oslo.messaging-14.7.0.tar.gz) for example
-            downloads_dir / f'{req.name}-{dist_version}.tar.gz',
+            f'{req.name}-{dist_version}.tar.gz',
         ]
-    for sdist_file in candidates:
-        if sdist_file.exists():
-            return sdist_file
+        # Case-insensitive globbing was added to Python 3.12, but we
+        # have to run with older versions, too, so do our own name
+        # comparison.
+        for filename in downloads_dir.glob('*'):
+            for base in candidate_bases:
+                if str(filename.name).lower() == base.lower():
+                    return filename
+        candidates = [downloads_dir / c for c in candidate_bases]
+
+    dir_contents = [str(e) for e in downloads_dir.glob('*.tar.gz')]
     raise RuntimeError(
-        f'Cannot find sdist for {req.name} version {dist_version} in {candidates}'
+        f'Cannot find sdist for {req.name} version {dist_version} as any of {candidates} in {dir_contents}'
     )
 
 
 def _find_source_dir(work_dir, req, dist_version):
     sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
+
     if sdist_name_func:
+        # The directory must exist exactly as given.
         sdist_base_name = sdist_name_func(req, dist_version)[:-len('.tar.gz')]
-        candidates = [
-            work_dir / sdist_base_name / sdist_base_name,
-        ]
+        source_dir = work_dir / sdist_base_name / sdist_base_name
+        if source_dir.exists():
+            return source_dir
+        candidates = [source_dir]
+
     else:
         filename_prefix = _dist_name_to_filename(req.name)
         filename_based = f'{filename_prefix}-{dist_version}'
         canonical_name = canonicalize_name(req.name)
         canonical_based = f'{canonical_name}-{dist_version}'
         name_based = f'{req.name}-{dist_version}'
-        candidates = [
+
+        candidate_bases = [
             # First check if the file is there using the canonically
             # transformed name.
-            work_dir / filename_based / filename_based,
+            filename_based,
             # If that didn't work, try the canonical dist name. That's not
             # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
             # and setuptools-scm-8.0.4.tar.gz) for example
-            work_dir / canonical_based / canonical_based,
+            canonical_based,
             # If *that* didn't work, try the dist name we've been
             # given as a dependency. That's not "correct", either but we do
             # see it. (oslo.messaging-14.7.0.tar.gz) for example
-            work_dir / name_based / name_based,
+            name_based,
         ]
-    for source_dir in candidates:
-        if source_dir.exists():
-            return source_dir
+
+        for dirname in work_dir.glob('*'):
+            # Case-insensitive globbing was added to Python 3.12, but we
+            # have to run with older versions, too, so do our own name
+            # comparison.
+            for base in candidate_bases:
+                if str(dirname.name).lower() == base.lower():
+                    # We expect the unpack directory and the source
+                    # root directory to be the same. We don't know
+                    # what case they have, but the pattern matched, so
+                    # use the base name of the unpack directory to
+                    # extend the path 1 level.
+                    return dirname / dirname.name
+        candidates = [
+            work_dir / base / base
+            for base in candidate_bases
+        ]
 
     work_dir_contents = list(str(e) for e in work_dir.glob('*'))
     raise RuntimeError(
-        f'Cannot find source directory for {req.name} version {dist_version} using any of {candidates} among {work_dir_contents}'
+        f'Cannot find source directory for {req.name} version {dist_version} using any of {candidates} in {work_dir_contents}'
     )
 
 
