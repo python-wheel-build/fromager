@@ -145,7 +145,7 @@ onboard-sdist:
   before_script:
     # We need a python interpreter. It doesn't matter which one, so
     # pick the one that's going to be the default for most builds.
-    - dnf install python3.11
+    - dnf install -y python3.11
     # Extra dependencies needed for the secure files installer.
     - dnf install -y which curl
 
