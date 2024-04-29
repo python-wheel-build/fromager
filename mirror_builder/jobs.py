@@ -67,6 +67,7 @@ def requires_client(f):
 def do_job_bootstrap(args, client):
     run_pipeline(
         client,
+        f'bootstrap {args.dist_name} {args.dist_version}',
         'bootstrap',
         variables={
             'PYTHON': args.python,
@@ -82,6 +83,7 @@ def do_job_bootstrap(args, client):
 def do_job_onboard_sdist(args, client):
     run_pipeline(
         client,
+        f'onboard-sdist {args.dist_name} {args.dist_version}',
         'onboard-sdist',
         variables={
             'DIST_NAME': args.dist_name,
@@ -118,6 +120,7 @@ def do_job_onboard_sequence(args, client):
 def do_job_build_wheel(args, client):
     run_pipeline(
         client,
+        f'build-wheel {args.dist_name} {args.dist_version}',
         'build-wheel',
         variables={
             'PYTHON': args.python,
@@ -137,10 +140,10 @@ def do_job_build_sequence(args, client):
     for step in build_order:
         dist = step['dist']
         version = step['version']
-        print(f'{dist} {version}')
 
         run_pipeline(
             client,
+            f'build-wheel {dist} {version}',
             'build-wheel',
             variables={
                 'PYTHON': args.python,
@@ -152,7 +155,7 @@ def do_job_build_sequence(args, client):
         )
 
 
-def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
+def run_pipeline(client, title, job_name, variables, wait=False, show_progress=False):
     project = client.projects.get(_project_id)
     trigger = get_or_create_trigger(project, 'sequence-trigger')
     data = {}
@@ -163,7 +166,7 @@ def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
         token=trigger.token,
         variables=data,
     )
-    print(f'pipeline: {pipeline.id} {pipeline.web_url}')
+    print(f'starting {title} pipeline: {pipeline.id} {pipeline.web_url}')
     if not wait:
         return
     while not pipeline.finished_at:
@@ -175,6 +178,7 @@ def run_pipeline(client, job_name, variables, wait=False, show_progress=False):
         print()
     if pipeline.status != 'success':
         raise RuntimeError(f'Pipeline {pipeline.id} ended with status {pipeline.status} {pipeline.web_url}')
+    print(f'finished {title}')
 
 
 # https://python-gitlab.readthedocs.io/en/stable/gl_objects/pipelines_and_jobs.html
