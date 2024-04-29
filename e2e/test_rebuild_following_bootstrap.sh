@@ -1,6 +1,12 @@
 #!/bin/bash
 # -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
+# Test that the build order file produced by a bootstrap job gives us
+# all of the dependencies that need to be built. Bootstrap a package,
+# then use the build-order.json file rebuild those dependencies by
+# only looking at a server that has content from that build-order.json
+# file.
+
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
 source "${SCRIPTDIR}/common.sh"

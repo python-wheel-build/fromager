@@ -1,6 +1,10 @@
 #!/bin/bash
 # -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
+# Test that we can build flit_core, a low-level dependency for which
+# we know there are no other dependencies and for which we have an
+# override for how to do the actual wheel build.
+
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
 source "${SCRIPTDIR}/common.sh"
