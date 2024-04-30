@@ -16,6 +16,8 @@ mkdir -p "$WORKDIR"
 logfile="$WORKDIR/test-container-${PYTHON}.log"
 exec > >(tee "$logfile") 2>&1
 
+TOPLEVEL="${1:-langchain}"
+
 in_container() {
     podman run -it --rm \
            -e PYTHON="$PYTHON" \
@@ -31,5 +33,5 @@ in_container() {
 
 podman build --tag rebuilding-the-wheel -f ./Containerfile
 
-in_container ./mirror-sdists.sh
-in_container ./install-from-mirror.sh
+in_container ./mirror-sdists.sh "$TOPLEVEL"
+in_container ./install-from-mirror.sh "$TOPLEVEL"
