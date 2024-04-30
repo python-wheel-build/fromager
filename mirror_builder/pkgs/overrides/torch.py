@@ -1,8 +1,6 @@
 import logging
 
-import resolvelib
-
-from mirror_builder import resolver, sources
+from mirror_builder import sources
 
 logger = logging.getLogger(__name__)
 
@@ -10,29 +8,19 @@ logger = logging.getLogger(__name__)
 # Note that we're downloading a PyTorch release tarball that is not strictly an
 # sdist. Instead it's an archive of the git repo produced by the create_release
 # workflow which (crucially) includes the third_party/ submodules.
-def download_source(ctx, req):
-    provider = resolver.PyPIProvider(only_sdists=False)
-    reporter = resolvelib.BaseReporter()
-    rslvr = resolvelib.Resolver(provider, reporter)
+def download_source(ctx, req, sdist_server_url):
+    # Downloading source from upstream is the special case
+    if "pypi.org" not in sdist_server_url:
+        return sources.default_download_source(ctx, req, sdist_server_url)
 
-    logger.debug("resolving requirement %s", req)
-    try:
-        result = rslvr.resolve([req])
-    except (resolvelib.InconsistentCandidate,
-            resolvelib.RequirementsConflicted,
-            resolvelib.ResolutionImpossible) as err:
-        logger.warning(f'could not resolve {req}: {err}')
-        raise
-
-    for _, candidate in result.mapping.items():
-        logger.info(f"resolved {req} to {candidate.version}")
-        source_filename = sources.download_url(
-            ctx.sdists_downloads,
-            _get_pytorch_release_tarball_url(candidate.version),
-        )
-        logger.info('have source for %s version %s in %s',
-                    req, candidate.version, source_filename)
-        return (source_filename, candidate.version)
+    _, version = sources.resolve_sdist(req, sdist_server_url, only_sdists=False)
+    logger.info(f"resolved {req} to {version}")
+    source_filename = sources.download_url(
+        ctx.sdists_downloads,
+        _get_pytorch_release_tarball_url(version),
+    )
+    logger.info('have source for %s version %s in %s', req, version, source_filename)
+    return source_filename, version
 
 
 def _get_pytorch_release_tarball_url(version):

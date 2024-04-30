@@ -17,15 +17,15 @@ logger = logging.getLogger(__name__)
 def download_source(ctx, req, sdist_server_url='https://pypi.org/simple'):
     downloader = pkgs.find_override_method(req.name, 'download_source')
     if not downloader:
-        downloader = _default_download_source
+        downloader = default_download_source
     source_filename, version = downloader(ctx, req, sdist_server_url)
     return (source_filename, version)
 
 
-def resolve_sdist(req, sdist_server_url):
+def resolve_sdist(req, sdist_server_url, only_sdists=True):
     "Return URL to source and its version."
     # Create the (reusable) resolver. Limit to sdists.
-    provider = resolver.PyPIProvider(only_sdists=True, sdist_server_url=sdist_server_url)
+    provider = resolver.PyPIProvider(only_sdists=only_sdists, sdist_server_url=sdist_server_url)
     reporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
 
@@ -44,7 +44,7 @@ def resolve_sdist(req, sdist_server_url):
     return (None, None)
 
 
-def _default_download_source(ctx, req, sdist_server_url):
+def default_download_source(ctx, req, sdist_server_url):
     "Download the requirement and return the name of the output path."
     url, version = resolve_sdist(req, sdist_server_url)
     source_filename = download_url(ctx.sdists_downloads, url)
