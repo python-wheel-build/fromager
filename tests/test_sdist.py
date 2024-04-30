@@ -12,7 +12,7 @@ def test_missing_dependency_format(resolve_sdist):
         'flit_core': '3.9.0',
         'setuptools': '69.5.1',
     }
-    resolve_sdist.side_effect = lambda req: ('', Version(resolutions[req.name]))
+    resolve_sdist.side_effect = lambda req, url: ('', Version(resolutions[req.name]))
 
     req = Requirement('setuptools>=40.8.0')
     other_reqs = [

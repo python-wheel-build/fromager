@@ -15,7 +15,7 @@ class MissingDependency(Exception):
         resolutions = []
         for r in all_reqs:
             try:
-                url, version = sources.resolve_sdist(r)
+                url, version = sources.resolve_sdist(r, sources.PYPI_SERVER_URL)
             except Exception as err:
                 resolutions.append(f'{r} -> {err}')
             else:
@@ -29,7 +29,7 @@ class MissingDependency(Exception):
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
-    source_filename, resolved_version = sources.download_source(ctx, req)
+    source_filename, resolved_version = sources.download_source(ctx, req, sources.PYPI_SERVER_URL)
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
