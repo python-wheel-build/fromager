@@ -1,6 +1,9 @@
 #!/bin/bash
 # -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
+# Test to show that we get a detailed error message if a dependency is
+# not available when setting up to build a package.
+
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # shellcheck disable=SC1091
 source "${SCRIPTDIR}/common.sh"

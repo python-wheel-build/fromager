@@ -1,36 +1,67 @@
 # Rebuilding the Wheel
 
-This repo is a prototype of completely re-building a dependency tree of Python wheels from source.
+This repo is a prototype of completely re-building a dependency tree
+of Python wheels from source.
 
-The idea is to explore what is involved with providing a Python package index from which a user can pip install knowing:
+The idea is to explore what is involved with providing a Python
+package index from which a user can pip install knowing:
 
-1. The [binary package](https://packaging.python.org/en/latest/glossary/#term-Built-Distribution) they are installing was built from source in a known build environment compatible with their own environment
-1. All of the package’s dependencies were also built from source - any binary package installed will have been built from source
-1. All of the build tools used to build these binary packages will also have been built from source
+1. The [binary
+   package](https://packaging.python.org/en/latest/glossary/#term-Built-Distribution)
+   they are installing was built from source in a known build
+   environment compatible with their own environment
+1. All of the package’s dependencies were also built from source - any
+   binary package installed will have been built from source
+1. All of the build tools used to build these binary packages will
+   also have been built from source
 
-For the purposes of this prototype, [langchain](https://pypi.org/project/langchain/) was chosen as the top of the dependency stack.
+For the purposes of this prototype,
+[langchain](https://pypi.org/project/langchain/) was chosen as the top
+of the dependency stack.
 
 The [mirror-sdists](mirror-sdists.sh) script does the following:
 
-* Creates an empty package repository for [wheels](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
-* Downloads all [source distributions](https://packaging.python.org/en/latest/glossary/#term-Source-Distribution-or-sdist) under `sdists-repo/downloads/` using `pip download` and generates a [PEP503 “simple” package repository](https://peps.python.org/pep-0503/) using [pypi-mirror](https://pypi.org/project/python-pypi-mirror/)
+* Creates an empty package repository for
+  [wheels](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
+* Downloads all [source
+  distributions](https://packaging.python.org/en/latest/glossary/#term-Source-Distribution-or-sdist)
+  under `sdists-repo/downloads/` using `pip download` and generates a
+  [PEP503 “simple” package
+  repository](https://peps.python.org/pep-0503/) using
+  [pypi-mirror](https://pypi.org/project/python-pypi-mirror/)
 * Three types of dependencies are also downloaded:
-  * Firstly, any build system dependency specified in the pyproject.toml build-system.requires section as per [PEP517](https://peps.python.org/pep-0517)
-  * Secondly, any build backend dependency returned from the get_requires_for_build_wheel() build backend hook (PEP517 again)
-  * Lastly, any install-time dependencies of the project as per the wheel’s [core metadata](https://packaging.python.org/en/latest/specifications/core-metadata/) `Requires-Dist` list.
-* These dependencies are downloaded recursively and we record the order they will need to be built bottom-up in a build-order.json file.
-* Uses `pip wheel` to build a binary package, only downloading dependencies from the fresh wheel repository
-* Places the newly built wheel in the package repository and regenerates the repository listing
+  * Firstly, any build system dependency specified in the
+    pyproject.toml build-system.requires section as per
+    [PEP517](https://peps.python.org/pep-0517)
+  * Secondly, any build backend dependency returned from the
+    get_requires_for_build_wheel() build backend hook (PEP517 again)
+  * Lastly, any install-time dependencies of the project as per the
+    wheel’s [core
+    metadata](https://packaging.python.org/en/latest/specifications/core-metadata/)
+    `Requires-Dist` list.
+* These dependencies are downloaded recursively and we record the
+  order they will need to be built bottom-up in a build-order.json
+  file.
+* Uses `pip wheel` to build a binary package, only downloading
+  dependencies from the fresh wheel repository
+* Places the newly built wheel in the package repository and
+  regenerates the repository listing
 
-Finally, the [install-from-mirror](install-from-mirror.sh) script installs the dependency stack into a virtual environment from this newly created repository of wheels.
+Finally, the [install-from-mirror](install-from-mirror.sh) script
+installs the dependency stack into a virtual environment from this
+newly created repository of wheels.
 
 ### Current Status
 
-See the [currently open issues](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/issues)
+See the [currently open
+issues](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/issues)
+and the planned [development
+milestones](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/milestones)
 
 ### Langchain Dependency Tree
 
-For reference, here's the dependency tree we're dealing with in this prototype:
+For reference, here's the dependency tree we're dealing with in this
+prototype:
 
 ```
 $ deptree langchain
@@ -89,27 +120,21 @@ langchain==0.1.11
 └── tenacity [required: >=8.1.0,<9.0.0, installed: 8.2.3]
 ```
 
-### Running Pipelines
+### Additional docs
 
-The project uses gitlab pipelines for building. As a convenience,
-there is a command line program available for users who have access to
-a GitLab token with permission to trigger pipelines in the
-`GITLAB_TOKEN` environment variable.
+* [How Tos](docs/howtos.md)
+* Some packages have [customizations applied](docs/pkgs/)
+* [Developer Instructions](docs/develop.md)
 
-To run the bootstrap job for `setuptools` version `69.5.1`, use:
+### Using the indexes
 
-```
-$ tox -e job -- bootstrap setuptools 69.5.1
-```
-
-To run the job to build the wheel for the same package:
+The https://pyai.fedorainfracloud.org/experimental/cpu index includes
+builds without GPU-specific optimizations. Use the
+https://pyai.fedorainfracloud.org/experimental/cpu/+simple/ index with
+pip to install packages from the index.
 
 ```
-$ tox -e job -- build-wheel setuptools 69.5.1
-```
-
-To get help, use
-
-```
-$ tox -e job -- -h
+$ python3 -m venv numpy-test
+$ source numpy-test/bin/activate
+$ pip install --index-url https://pyai.fedorainfracloud.org/experimental/cpu/+simple/ numpy
 ```
