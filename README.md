@@ -51,14 +51,14 @@ Finally, the [install-from-mirror](install-from-mirror.sh) script
 installs the dependency stack into a virtual environment from this
 newly created repository of wheels.
 
-### Current Status
+## Current Status
 
 See the [currently open
 issues](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/issues)
 and the planned [development
 milestones](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/milestones)
 
-### Langchain Dependency Tree
+## Langchain Dependency Tree
 
 For reference, here's the dependency tree we're dealing with in this
 prototype:
@@ -120,13 +120,13 @@ langchain==0.1.11
 └── tenacity [required: >=8.1.0,<9.0.0, installed: 8.2.3]
 ```
 
-### Additional docs
+## Additional docs
 
 * [How Tos](docs/howtos.md)
 * Some packages have [customizations applied](docs/pkgs/)
 * [Developer Instructions](docs/develop.md)
 
-### Using the indexes
+## Using the indexes
 
 The https://pyai.fedorainfracloud.org/experimental/cpu index includes
 builds without GPU-specific optimizations. Use the

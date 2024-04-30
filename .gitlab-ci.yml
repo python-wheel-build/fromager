@@ -45,6 +45,17 @@ shellcheck:
     - ./shellcheck.sh
 
 
+markdown-lint:
+  <<: *mr_rules_template
+  stage: test-quick
+  image: fedora:39
+  before_script:
+    - dnf -y install nodejs
+    - npm install -g markdownlint@v0.25.1 markdownlint-cli2@v0.4.0
+  script:
+    - ./hack/run_markdownlint.sh
+
+
 # This test does not use its own containers and does not run any
 # portion of the build in isolation. It's useful for verifying that
 # building some of the more complex packages, with patches, works OK
