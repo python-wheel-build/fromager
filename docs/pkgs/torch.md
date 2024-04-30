@@ -14,9 +14,9 @@ The `cmake` Python package is listed as a build requirement in `pyproject.toml`.
 
 In pyproject.toml, targets like `clean` and `sdist` set the `RUN_BUILD_DEPS=False` flag, which greatly reduces the work done. We use `dist_info` during the build process, and this can be similary sped up.
 
-# Background Information
+## Background Information
 
-## Upstream build jobs
+### Upstream build jobs
 
 It can be helpful to understand how exactly upstream builds wheels.
 
@@ -38,11 +38,11 @@ Note, release-versioned wheels (like `torch-2.2.2+cpu-cp311-cp311-linux_x86_64.w
 
 The [_binary-build-linux workflow](https://github.com/pytorch/pytorch/blob/main/.github/workflows/_binary-build-linux.yml) calls the [builder/manywheel/build.sh](https://github.com/pytorch/builder/blob/main/manywheel/build.sh) which ultimately calls `python setup.py bdist`.
 
-## Fedora package
+### Fedora package
 
 Details of the Fedora RPM package can be found [here](https://packages.fedoraproject.org/pkgs/python-torch/python3-torch/). The [python-torch.spec file](https://src.fedoraproject.org/rpms/python-torch/blob/rawhide/f/python-torch.spec) and [logs from builds](https://koji.fedoraproject.org/koji/packageinfo?packageID=39050) are useful sources of information.
 
-## gcc vs clang
+### gcc vs clang
 
 The [Fedora Packaging Guidelines state](https://docs.fedoraproject.org/en-US/packaging-guidelines/#compiler):
 
@@ -68,7 +68,7 @@ or:
 -- The CXX compiler identification is Clang 18.1.1
 ```
 
-## -Wno-maybe-uninitialized
+### -Wno-maybe-uninitialized
 
 Upstream [disables](https://github.com/pytorch/pytorch/pull/9608) `-Wmaybe-unitialized` because it is seen as unreliable.
 
@@ -93,7 +93,7 @@ pytorch-v2.2.2/third_party/fbgemm/src/UtilsAvx512.cc:970:35: error: ‘r’ may 
     970 |   d[0] = _mm512_permutex2var_epi32(r[0], index1, r[1]);
 ```
 
-## FBGEMM
+### FBGEMM
 
 Given the above issue building fbgemm with newer gcc, we considered following the example of the Fedora RPM and disabling fbgemm using `USE_FBGEMM=OFF`. What would the implications of this be?
 
@@ -106,6 +106,7 @@ i.e. it's a library for quantizated inferencing on x86. See: https://pytorch.org
 (Note: torch.ao means “architecture optimization” - “it will include quantization, sparsity and pruning and other ao techniques”)
 
 > Today, PyTorch supports the following backends for running quantized operators efficiently:
+>
 > * x86 CPUs with AVX2 support or higher (without AVX2 some operations have inefficient implementations), via x86 optimized by fbgemm and onednn (see the details at RFC)
 
 This "unified quantization backend" named "x86" uses fbgemm for some operations and onednn for others, and is only enabled when built with `USE_FBGEMM=ON`.

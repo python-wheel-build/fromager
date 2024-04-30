@@ -13,3 +13,6 @@ __pycache__/
 /build-logs/
 /.pypirc
 /.tox/
+/node_modules/
+/package-lock.json
+/package.json
