@@ -76,8 +76,12 @@ def download_url(destination_dir, url):
 def unpack_source(ctx, source_filename):
     unpack_dir = ctx.work_dir / pathlib.Path(source_filename).stem[:-len('.tar')]
     if unpack_dir.exists():
-        shutil.rmtree(unpack_dir)
-        logger.debug('cleaning up %s', unpack_dir)
+        if ctx.cleanup:
+            logger.debug('cleaning up %s', unpack_dir)
+            shutil.rmtree(unpack_dir)
+        else:
+            logger.info('reusing %s', unpack_dir)
+            return (unpack_dir / unpack_dir.name, False)
     # We create a unique directory based on the sdist name, but that
     # may not be the same name as the root directory of the content in
     # the sdist (due to case, punctuation, etc.), so after we unpack
@@ -85,7 +89,7 @@ def unpack_source(ctx, source_filename):
     logger.debug('unpacking %s to %s', source_filename, unpack_dir)
     with tarfile.open(source_filename, 'r') as t:
         t.extractall(unpack_dir, filter='data')
-    return list(unpack_dir.glob('*'))[0]
+    return (list(unpack_dir.glob('*'))[0], True)
 
 
 def _patch_source(ctx, source_root_dir):
@@ -111,6 +115,7 @@ def prepare_source(ctx, req, source_filename, version):
 
 
 def _default_prepare_source(ctx, req, source_filename, version):
-    source_root_dir = unpack_source(ctx, source_filename)
-    _patch_source(ctx, source_root_dir)
+    source_root_dir, is_new = unpack_source(ctx, source_filename)
+    if is_new:
+        _patch_source(ctx, source_root_dir)
     return source_root_dir
