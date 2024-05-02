@@ -50,6 +50,6 @@ RUN dnf -y install zlib-devel libjpeg-devel
 
 # Python dependencies (last in case we want to change versions)
 # python3.12-devel needed for 3.12 builds (on CentOS Stream 9)
-RUN dnf -y install python3.9 python3.11 python3.11-devel python3.12 python3.12-devel
+RUN dnf -y install python3.11 python3.11-devel python3.12 python3.12-devel
 
 WORKDIR /src
