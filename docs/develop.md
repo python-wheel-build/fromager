@@ -19,7 +19,10 @@ $ tox -e cli -- --no-cleanup bootstrap numpy
 
 is basically the same as `mirror-sdists.sh numpy` but leaves the
 source trees for all of the packages on the filesystem to be examined,
-something that is too expensive to do normally in container builds.
+something that is too expensive to do normally in container builds. It
+also allows you to reuse any of the build artifacts between
+iterations, so you don't have to wait for expensive dependencies to
+compile again.
 
 ### Unit tests and linter
 
