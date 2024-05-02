@@ -23,6 +23,7 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
 
 
 def _default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
+    logger.debug('building wheel for %s with %s', sdist_root_dir, extra_environ)
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = [
             build_env.python, '-m', 'pip', '-vvv',
