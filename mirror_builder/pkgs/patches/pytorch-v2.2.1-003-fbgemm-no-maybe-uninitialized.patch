@@ -7,9 +7,9 @@ https://pytorch.org/FBGEMM/fbgemm-development/BuildInstructions.html
 PyTorch itself uses -Wno-maybe-uninitialized but this doesn't get passed
 through to fbgemm.
 
-diff -up pytorch-v2.2.2/third_party/fbgemm/CMakeLists.txt.003 pytorch-v2.2.2/third_party/fbgemm/CMakeLists.txt
---- pytorch-v2.2.2/third_party/fbgemm/CMakeLists.txt.003	2024-03-27 18:28:53.000000000 -0400
-+++ pytorch-v2.2.2/third_party/fbgemm/CMakeLists.txt	2024-05-02 06:26:13.875660922 -0400
+diff -up pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt.003 pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt
+--- pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt.003	2024-02-23 15:05:46.000000000 -0500
++++ pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt	2024-05-02 06:09:36.707660922 -0400
 @@ -192,6 +192,7 @@ else(MSVC)
    string(APPEND CMAKE_CXX_FLAGS " -Werror")
    string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated-declarations")

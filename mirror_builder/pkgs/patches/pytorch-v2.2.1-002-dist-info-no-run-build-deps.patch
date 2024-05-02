@@ -14,9 +14,9 @@ No such file or directory
 CMake Error: Generator: execution of make failed. Make command was: /tmp/pip-build-env-cf5cyj9m/overlay/bin/ninja install &&
 ```
 
-diff -up pytorch-v2.2.2/setup.py.002 pytorch-v2.2.2/setup.py
---- pytorch-v2.2.2/setup.py.002	2024-03-27 18:28:51.000000000 -0400
-+++ pytorch-v2.2.2/setup.py	2024-05-02 06:26:13.654660922 -0400
+diff -up pytorch-v2.2.1/setup.py.002 pytorch-v2.2.1/setup.py
+--- pytorch-v2.2.1/setup.py.002	2024-02-23 15:02:20.000000000 -0500
++++ pytorch-v2.2.1/setup.py	2024-05-02 06:08:22.756660922 -0400
 @@ -293,7 +293,7 @@ for i, arg in enumerate(sys.argv):
          break
      if arg == "-q" or arg == "--quiet":
