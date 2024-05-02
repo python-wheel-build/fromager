@@ -31,7 +31,8 @@ def test_nodist():
     ('ninja-1.11.1.1', ['ninja-1.11.1.1-wrap-system-ninja.patch']),
     ('pytorch-v2.2.2', ['pytorch-v2.2.2-001-remove-cmake-build-requirement.patch',
                         'pytorch-v2.2.2-002-dist-info-no-run-build-deps.patch',
-                        'pytorch-v2.2.2-003-fbgemm-no-maybe-uninitialized.patch']),
+                        'pytorch-v2.2.2-003-fbgemm-no-maybe-uninitialized.patch',
+                        'pytorch-v2.2.2-004-fix-release-version.patch']),
 ])
 def test_patches_for_source_dir(dir_name, expected_patches):
     patches = list(pkgs.patches_for_source_dir(dir_name))

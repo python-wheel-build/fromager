@@ -1,0 +1,37 @@
+In upstream builds, version numbers are controlled by
+the PYTORCH_BUILD_VERSION env variable, but there is a
+fallback to use git tags.
+
+If we move to use git, we should be able to generate a
+correctly versioned sdist from a tag.
+
+For now, just hack the version generation process to pull
+the version from version.txt.
+
+diff -up pytorch-v2.2.1/tools/generate_torch_version.py.004 pytorch-v2.2.1/tools/generate_torch_version.py
+--- pytorch-v2.2.1/tools/generate_torch_version.py.004	2024-02-23 15:00:56.000000000 -0500
++++ pytorch-v2.2.1/tools/generate_torch_version.py	2024-05-02 06:42:39.860660922 -0400
+@@ -42,17 +42,6 @@ def get_tag(pytorch_root: Union[str, Pat
+ def get_torch_version(sha: Optional[str] = None) -> str:
+     pytorch_root = Path(__file__).parent.parent
+     version = open(pytorch_root / "version.txt").read().strip()
+-
+-    if os.getenv("PYTORCH_BUILD_VERSION"):
+-        assert os.getenv("PYTORCH_BUILD_NUMBER") is not None
+-        build_number = int(os.getenv("PYTORCH_BUILD_NUMBER", ""))
+-        version = os.getenv("PYTORCH_BUILD_VERSION", "")
+-        if build_number > 1:
+-            version += ".post" + str(build_number)
+-    elif sha != UNKNOWN:
+-        if sha is None:
+-            sha = get_sha(pytorch_root)
+-        version += "+git" + sha[:7]
+     return version
+ 
+ 
+diff -up pytorch-v2.2.1/version.txt.004 pytorch-v2.2.1/version.txt
+--- pytorch-v2.2.1/version.txt.004	2024-05-02 06:41:51.554660922 -0400
++++ pytorch-v2.2.1/version.txt	2024-05-02 06:43:06.509660922 -0400
+@@ -1 +1 @@
+-2.2.0a0
++2.2.1
