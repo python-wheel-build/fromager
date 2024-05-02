@@ -207,14 +207,11 @@ onboard-sdist:
     - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=experimental/sources ./upload_to_index.sh sdists-repo/downloads/*.tar.gz
 
 
-.build-wheel-job-trigger: &build-wheel-job-trigger
-    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel"
-
 # Base template for a build-wheel job
 .build-wheel-base:
   stage: manual
   rules:
-    - *build-wheel-job-trigger
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel"
 
   variables:
     DIST_NAME: ""
