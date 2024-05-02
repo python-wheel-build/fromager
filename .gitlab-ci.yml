@@ -207,18 +207,20 @@ onboard-sdist:
     - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=experimental/sources ./upload_to_index.sh sdists-repo/downloads/*.tar.gz
 
 
-# Manual pipeline to produce one wheel.
-build-wheel:
+.build-wheel-job-trigger: &build-wheel-job-trigger
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel"
+
+# Base template for a build-wheel job
+.build-wheel-base:
   stage: manual
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel"
+    - *build-wheel-job-trigger
 
   variables:
     DIST_NAME: ""
     DIST_VERSION: ""
-    PYTHON: "python3.11"
+    PYTHON: ""
     SECURE_FILES_DOWNLOAD_PATH: ./config
-
 
   artifacts:
     paths:
@@ -239,3 +241,33 @@ build-wheel:
     - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
     - PYTHON=$PYTHON ./build_wheel.sh ${DIST_NAME} ${DIST_VERSION}
     - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=experimental/cpu ./upload_to_index.sh wheels-repo/build/*.whl
+
+
+# Manual pipeline to produce one wheel for python 3.11. This is also
+# the default wheel for building pure python wheels that do not have a
+# component that requires different python versions.
+build-wheel-py311:
+  extends: .build-wheel-base
+  variables:
+    PYTHON: "python3.11"
+
+
+# Manual pipeline to produce one wheel for python 3.12. This should
+# only be triggered for packages with platform-specific components
+# that need to be compiled differently for different versions of
+# python.
+build-wheel-py312:
+  extends: .build-wheel-base
+  variables:
+    PYTHON: "python3.12"
+  rules:
+    - *build-wheel-job-trigger
+    - if: $DIST_NAME == "cmake"
+    - if: $DIST_NAME == "Cython"
+    - if: $DIST_NAME == "Cython"
+    - if: $DIST_NAME == "MarkupSafe"
+    - if: $DIST_NAME == "numpy"
+    - if: $DIST_NAME == "patchelf"
+    - if: $DIST_NAME == "PyYAML"
+    - if: $DIST_NAME == "torch"
+    - if: $DIST_NAME == "vllm"
