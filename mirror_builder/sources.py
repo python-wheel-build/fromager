@@ -13,8 +13,10 @@ from . import pkgs, resolver
 
 logger = logging.getLogger(__name__)
 
+PYPI_SERVER_URL = 'https://pypi.org/simple'
 
-def download_source(ctx, req, sdist_server_url='https://pypi.org/simple'):
+
+def download_source(ctx, req, sdist_server_url):
     downloader = pkgs.find_override_method(req.name, 'download_source')
     if not downloader:
         downloader = default_download_source

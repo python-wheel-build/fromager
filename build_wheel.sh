@@ -115,8 +115,7 @@ build_wheel() {
           --work-dir "$WORKDIR" \
           --sdists-repo sdists-repo \
           --wheels-repo wheels-repo \
-          --sdist-server-url "$SDIST_SERVER_URL" \
-          download-source-archive "${DIST}" "${VERSION}"
+          download-source-archive "${DIST}" "${VERSION}" "$SDIST_SERVER_URL"
 
   # Prepare the source dir for building
   python3 -m mirror_builder \

@@ -43,8 +43,7 @@ fi
 # are available already on our package server.
 python3 -m mirror_builder \
         --log-file build-logs/download-source-archive.log \
-        --sdist-server-url https://pypi.org/simple \
         --work-dir "$WORKDIR" \
         --sdists-repo sdists-repo \
         --wheels-repo wheels-repo \
-        download-source-archive "${DIST}" "${VERSION}"
+        download-source-archive "${DIST}" "${VERSION}" https://pypi.org/simple
