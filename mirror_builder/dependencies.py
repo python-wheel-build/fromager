@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 
 import pyproject_hooks
 import tomli
@@ -42,6 +43,12 @@ def get_install_dependencies(req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml)
+
+    # Clean up any existing dist-info so we don't get an error regenerating it.
+    for info_dir in sdist_root_dir.glob('*.dist-info'):
+        logger.debug('removing existing dist-info dir %s', info_dir)
+        shutil.rmtree(info_dir)
+
     metadata_path = hook_caller.prepare_metadata_for_build_wheel(sdist_root_dir)
     with open(os.path.join(sdist_root_dir, metadata_path, "METADATA"), "r") as f:
         parsed = metadata.Metadata.from_email(f.read(), validate=False)
