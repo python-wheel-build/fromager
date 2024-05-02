@@ -20,6 +20,11 @@ stages:
   script:
     - ./tox_env/bin/tox -e $TOX_TARGET
 
+.python_versions: &python_versions
+  - PYTHON:
+    - python3.11
+    - python3.12
+
 
 tox-linter:
   stage: test-quick
@@ -69,9 +74,7 @@ e2e-without-isolation:
 
   parallel:
     matrix:
-      - PYTHON:
-          - python3.11
-          - python3.12
+      *python_versions
 
   before_script:
     - bash -x ./setup.sh
@@ -93,9 +96,7 @@ e2e-report-missing-dependency:
 
   parallel:
     matrix:
-      - PYTHON:
-          - python3.11
-          - python3.12
+      *python_versions
 
   before_script:
     - bash -x ./setup.sh
@@ -140,9 +141,7 @@ e2e-build-flit-core:
 
   parallel:
     matrix:
-      - PYTHON:
-          - python3.11
-          - python3.12
+      *python_versions
 
   before_script:
     - bash -x ./setup.sh
