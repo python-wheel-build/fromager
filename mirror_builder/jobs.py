@@ -40,14 +40,12 @@ def build_cli(parser, subparsers):
     parser_job_build_wheel.set_defaults(func=do_job_build_wheel)
     parser_job_build_wheel.add_argument('dist_name')
     parser_job_build_wheel.add_argument('dist_version')
-    parser_job_build_wheel.add_argument('--python', '-p', default='python3.11')
     parser_job_build_wheel.add_argument('--wait', '-w', default=False, action='store_true')
     parser_job_build_wheel.add_argument('--show-progress', default=False, action='store_true')
 
     parser_job_build_sequence = job_subparsers.add_parser('build-sequence')
     parser_job_build_sequence.set_defaults(func=do_job_build_sequence)
     parser_job_build_sequence.add_argument('build_order_file')
-    parser_job_build_sequence.add_argument('--python', '-p', default='python3.11')
     parser_job_build_sequence.add_argument('--show-progress', default=False, action='store_true')
 
 
@@ -141,7 +139,6 @@ def do_job_build_wheel(args, client):
         f'build-wheel {args.dist_name} {args.dist_version}',
         'build-wheel',
         variables={
-            'PYTHON': args.python,
             'DIST_NAME': args.dist_name,
             'DIST_VERSION': args.dist_version,
         },
@@ -164,7 +161,6 @@ def do_job_build_sequence(args, client):
             f'build-wheel {dist} {version}',
             'build-wheel',
             variables={
-                'PYTHON': args.python,
                 'DIST_NAME': dist,
                 'DIST_VERSION': version,
             },
