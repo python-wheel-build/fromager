@@ -261,13 +261,12 @@ build-wheel-py312:
   variables:
     PYTHON: "python3.12"
   rules:
-    - *build-wheel-job-trigger
-    - if: $DIST_NAME == "cmake"
-    - if: $DIST_NAME == "Cython"
-    - if: $DIST_NAME == "Cython"
-    - if: $DIST_NAME == "MarkupSafe"
-    - if: $DIST_NAME == "numpy"
-    - if: $DIST_NAME == "patchelf"
-    - if: $DIST_NAME == "PyYAML"
-    - if: $DIST_NAME == "torch"
-    - if: $DIST_NAME == "vllm"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "cmake"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "Cython"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "Cython"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "MarkupSafe"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "numpy"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "patchelf"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "PyYAML"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "torch"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "vllm"
