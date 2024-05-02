@@ -1,0 +1,20 @@
+With recent gcc, fbgemm doesn't build with -Wmaybe-uninitialized and upstream
+recommends building with -Wno-error=maybe-uninitialized
+
+https://github.com/pytorch/FBGEMM/issues/1666
+https://pytorch.org/FBGEMM/fbgemm-development/BuildInstructions.html
+
+PyTorch itself uses -Wno-maybe-uninitialized but this doesn't get passed
+through to fbgemm.
+
+diff -up pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt.003 pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt
+--- pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt.003	2024-02-23 15:05:46.000000000 -0500
++++ pytorch-v2.2.1/third_party/fbgemm/CMakeLists.txt	2024-05-02 06:09:36.707660922 -0400
+@@ -192,6 +192,7 @@ else(MSVC)
+   string(APPEND CMAKE_CXX_FLAGS " -Werror")
+   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated-declarations")
+   string(APPEND CMAKE_CXX_FLAGS " -Wimplicit-fallthrough")
++  append_cxx_flag_if_supported("-Wno-maybe-uninitialized" CMAKE_CXX_FLAGS)
+   target_compile_options(fbgemm_avx2 PRIVATE
+     "-m64" "-mavx2" "-mf16c" "-mfma")
+   target_compile_options(fbgemm_avx512 PRIVATE

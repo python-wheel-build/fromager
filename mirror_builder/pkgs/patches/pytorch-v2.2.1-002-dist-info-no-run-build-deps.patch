@@ -1,0 +1,28 @@
+Don't run build_deps() for dist_info
+
+Doesn't appear to be necessary, and was failing.
+
+Failure was:
+
+```
+$ python setup.py dist_info
+Building wheel torch-2.2.0a0+gitb635b77
+WARNING setuptools_scm._integration.setuptools pyproject.toml does not contain a tool.setuptools_scm section
+-- Building version 2.2.0a0+gitb635b77
+cmake3 --build . --target install --config Release
+No such file or directory
+CMake Error: Generator: execution of make failed. Make command was: /tmp/pip-build-env-cf5cyj9m/overlay/bin/ninja install &&
+```
+
+diff -up pytorch-v2.2.1/setup.py.002 pytorch-v2.2.1/setup.py
+--- pytorch-v2.2.1/setup.py.002	2024-02-23 15:02:20.000000000 -0500
++++ pytorch-v2.2.1/setup.py	2024-05-02 06:08:22.756660922 -0400
+@@ -293,7 +293,7 @@ for i, arg in enumerate(sys.argv):
+         break
+     if arg == "-q" or arg == "--quiet":
+         VERBOSE_SCRIPT = False
+-    if arg in ["clean", "egg_info", "sdist"]:
++    if arg in ["clean", "egg_info", "dist_info", "sdist"]:
+         RUN_BUILD_DEPS = False
+     filtered_args.append(arg)
+ sys.argv = filtered_args
