@@ -7,7 +7,7 @@ import tomli
 from packaging import markers, metadata
 from packaging.requirements import Requirement
 
-from . import external_commands
+from . import external_commands, pkgs
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,9 @@ def get_build_backend_dependencies(req, sdist_root_dir):
                  req, sdist_root_dir)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
-    hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml)
+    extra_environ = pkgs.extra_environ_for_pkg(req.name)
+    hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
+                                                override_environ=extra_environ)
     for r in hook_caller.get_requires_for_build_wheel():
         r = Requirement(r)
         if evaluate_marker(r):
@@ -42,7 +44,9 @@ def get_install_dependencies(req, sdist_root_dir):
                  req, sdist_root_dir)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
-    hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml)
+    extra_environ = pkgs.extra_environ_for_pkg(req.name)
+    hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
+                                                override_environ=extra_environ)
 
     # Clean up any existing dist-info so we don't get an error regenerating it.
     for info_dir in sdist_root_dir.glob('*.dist-info'):
@@ -85,13 +89,24 @@ def get_build_backend(pyproject_toml):
         }
 
 
-def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml):
+def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml, override_environ):
     backend = get_build_backend(pyproject_toml)
+
+    def _run_hook_with_extra_environ(cmd, cwd=None, extra_environ={}):
+        """The BuildBackendHookCaller is going to pass extra_environ
+        and our build system may want to set some values, too. Merge
+        the 2 sets of values before calling the actual runner function.
+        """
+        full_environ = {}
+        full_environ.update(extra_environ)
+        full_environ.update(override_environ)
+        return external_commands.run(cmd, cwd=cwd, extra_environ=full_environ)
+
     return pyproject_hooks.BuildBackendHookCaller(
         source_dir=sdist_root_dir,
         build_backend=backend['build-backend'],
         backend_path=backend['backend-path'],
-        runner=external_commands.run,
+        runner=_run_hook_with_extra_environ,
     )
 
 
