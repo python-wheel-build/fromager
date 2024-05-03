@@ -6,6 +6,7 @@ import time
 from concurrent import futures
 
 import gitlab
+from packaging.utils import canonicalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +70,14 @@ def requires_client(f):
 
 @requires_client
 def do_job_bootstrap(args, client):
+    dist_name = canonicalize_name(args.dist_name)
     pipeline = run_pipeline(
         client,
-        f'bootstrap {args.dist_name} {args.dist_version}',
+        f'bootstrap {dist_name} {args.dist_version}',
         'bootstrap',
         variables={
             'PYTHON': args.python,
-            'DIST_NAME': args.dist_name,
+            'DIST_NAME': dist_name,
             'DIST_VERSION': args.dist_version,
         },
         wait=args.wait or args.output,
@@ -98,12 +100,13 @@ def do_job_bootstrap(args, client):
 
 @requires_client
 def do_job_onboard_sdist(args, client):
+    dist_name = canonicalize_name(args.dist_name)
     run_pipeline(
         client,
-        f'onboard-sdist {args.dist_name} {args.dist_version}',
+        f'onboard-sdist {dist_name} {args.dist_version}',
         'onboard-sdist',
         variables={
-            'DIST_NAME': args.dist_name,
+            'DIST_NAME': dist_name,
             'DIST_VERSION': args.dist_version,
         },
         wait=args.wait,
@@ -117,7 +120,7 @@ def do_job_onboard_sequence(args, client):
         build_order = json.load(f)
 
     def run_one(step):
-        dist = step['dist']
+        dist = canonicalize_name(step['dist'])
         version = step['version']
         run_pipeline(
             client,
@@ -139,12 +142,13 @@ def do_job_onboard_sequence(args, client):
 
 @requires_client
 def do_job_build_wheel(args, client):
+    dist_name = canonicalize_name(args.dist_name)
     run_pipeline(
         client,
-        f'build-wheel {args.dist_name} {args.dist_version}',
+        f'build-wheel {dist_name} {args.dist_version}',
         'build-wheel',
         variables={
-            'DIST_NAME': args.dist_name,
+            'DIST_NAME': dist_name,
             'DIST_VERSION': args.dist_version,
         },
         wait=args.wait,
@@ -158,7 +162,7 @@ def do_job_build_sequence(args, client):
         build_order = json.load(f)
 
     for step in build_order:
-        dist = step['dist']
+        dist = canonicalize_name(step['dist'])
         version = step['version']
 
         run_pipeline(
