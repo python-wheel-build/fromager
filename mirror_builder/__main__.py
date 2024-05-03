@@ -5,13 +5,11 @@ import functools
 import logging
 import os
 import pathlib
-import re
 import sys
 
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
 
-from . import context, jobs, pkgs, sdist, server, sources, wheels
+from . import context, finders, jobs, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -120,116 +118,25 @@ def do_download_source_archive(args, ctx):
 def do_prepare_source(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('preparing source directory for %s', req)
-    source_filename = _find_sdist(pathlib.Path(args.sdists_repo), req, args.dist_version)
+    sdists_downloads = pathlib.Path(args.sdists_repo) / 'downloads'
+    source_filename = finders.find_sdist(sdists_downloads, req, args.dist_version)
+    if source_filename is None:
+        dir_contents = [str(e) for e in sdists_downloads.glob('*.tar.gz')]
+        raise RuntimeError(
+            f'Cannot find sdist for {req.name} version {args.dist_version} in {sdists_downloads} among {dir_contents}'
+        )
     # FIXME: Does the version need to be a Version instead of str?
     source_root_dir = sources.prepare_source(ctx, req, source_filename, args.dist_version)
     print(source_root_dir)
 
 
-def _dist_name_to_filename(dist_name):
-    """Transform the dist name into a prefix for a filename.
-
-    Following https://peps.python.org/pep-0427/
-    """
-    canonical_name = canonicalize_name(dist_name)
-    return re.sub(r"[^\w\d.]+", "_", canonical_name, re.UNICODE)
-
-
-def _find_sdist(sdists_repo, req, dist_version):
-    downloads_dir = sdists_repo / 'downloads'
-    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
-
-    if sdist_name_func:
-        # The file must exist exactly as given.
-        sdist_file = downloads_dir / sdist_name_func(req, dist_version)
-        if sdist_file.exists():
-            return sdist_file
-        candidates = [sdist_file]
-
-    else:
-        filename_prefix = _dist_name_to_filename(req.name)
-        canonical_name = canonicalize_name(req.name)
-
-        candidate_bases = [
-            # First check if the file is there using the canonically
-            # transformed name.
-            f'{filename_prefix}-{dist_version}.tar.gz',
-            # If that didn't work, try the canonical dist name. That's not
-            # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
-            # and setuptools-scm-8.0.4.tar.gz) for example
-            f'{canonical_name}-{dist_version}.tar.gz',
-            # If *that* didn't work, try the dist name we've been
-            # given as a dependency. That's not "correct", either but we do
-            # see it. (oslo.messaging-14.7.0.tar.gz) for example
-            f'{req.name}-{dist_version}.tar.gz',
-        ]
-        # Case-insensitive globbing was added to Python 3.12, but we
-        # have to run with older versions, too, so do our own name
-        # comparison.
-        for filename in downloads_dir.glob('*'):
-            for base in candidate_bases:
-                if str(filename.name).lower() == base.lower():
-                    return filename
-        candidates = [downloads_dir / c for c in candidate_bases]
-
-    dir_contents = [str(e) for e in downloads_dir.glob('*.tar.gz')]
-    raise RuntimeError(
-        f'Cannot find sdist for {req.name} version {dist_version} as any of {candidates} in {dir_contents}'
-    )
-
-
-def _find_source_dir(work_dir, req, dist_version):
-    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
-
-    if sdist_name_func:
-        # The directory must exist exactly as given.
-        sdist_base_name = sdist_name_func(req, dist_version)[:-len('.tar.gz')]
-        source_dir = work_dir / sdist_base_name / sdist_base_name
-        if source_dir.exists():
-            return source_dir
-        candidates = [source_dir]
-
-    else:
-        filename_prefix = _dist_name_to_filename(req.name)
-        filename_based = f'{filename_prefix}-{dist_version}'
-        canonical_name = canonicalize_name(req.name)
-        canonical_based = f'{canonical_name}-{dist_version}'
-        name_based = f'{req.name}-{dist_version}'
-
-        candidate_bases = [
-            # First check if the file is there using the canonically
-            # transformed name.
-            filename_based,
-            # If that didn't work, try the canonical dist name. That's not
-            # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
-            # and setuptools-scm-8.0.4.tar.gz) for example
-            canonical_based,
-            # If *that* didn't work, try the dist name we've been
-            # given as a dependency. That's not "correct", either but we do
-            # see it. (oslo.messaging-14.7.0.tar.gz) for example
-            name_based,
-        ]
-
-        for dirname in work_dir.glob('*'):
-            # Case-insensitive globbing was added to Python 3.12, but we
-            # have to run with older versions, too, so do our own name
-            # comparison.
-            for base in candidate_bases:
-                if str(dirname.name).lower() == base.lower():
-                    # We expect the unpack directory and the source
-                    # root directory to be the same. We don't know
-                    # what case they have, but the pattern matched, so
-                    # use the base name of the unpack directory to
-                    # extend the path 1 level.
-                    return dirname / dirname.name
-        candidates = [
-            work_dir / base / base
-            for base in candidate_bases
-        ]
-
+def _find_source_root_dir(work_dir, req, dist_version):
+    source_root_dir = finders.find_source_dir(pathlib.Path(work_dir), req, dist_version)
+    if source_root_dir:
+        return source_root_dir
     work_dir_contents = list(str(e) for e in work_dir.glob('*'))
     raise RuntimeError(
-        f'Cannot find source directory for {req.name} version {dist_version} using any of {candidates} in {work_dir_contents}'
+        f'Cannot find source directory for {req.name} version {dist_version} among {work_dir_contents}'
     )
 
 
@@ -237,7 +144,7 @@ def _find_source_dir(work_dir, req, dist_version):
 def do_prepare_build(args, ctx):
     server.start_wheel_server(ctx)
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
-    source_root_dir = _find_source_dir(pathlib.Path(args.work_dir), req, args.dist_version)
+    source_root_dir = _find_source_root_dir(pathlib.Path(args.work_dir), req, args.dist_version)
     logger.info('preparing build environment for %s', req)
     sdist.prepare_build_environment(ctx, req, source_root_dir)
 
@@ -246,7 +153,7 @@ def do_prepare_build(args, ctx):
 def do_build(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('building for %s', req)
-    source_root_dir = _find_source_dir(pathlib.Path(args.work_dir), req, args.dist_version)
+    source_root_dir = _find_source_root_dir(pathlib.Path(args.work_dir), req, args.dist_version)
     build_env = wheels.BuildEnvironment(ctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(ctx, req, source_root_dir, build_env)
     print(wheel_filename)

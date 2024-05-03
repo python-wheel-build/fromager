@@ -2,7 +2,7 @@ import importlib.metadata
 import logging
 import shutil
 
-from . import dependencies, external_commands, server, sources, wheels
+from . import dependencies, external_commands, finders, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +72,17 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         ctx, sdist_root_dir.parent,
         build_system_dependencies | build_backend_dependencies,
     )
-    wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
-    server.update_wheel_mirror(ctx)
-    logger.info('built wheel for %s (%s)', req.name, resolved_version)
+    # FIXME: This is a bit naive, but works for most wheels, including
+    # our more expensive ones, and there's not a way to know the
+    # actual name without doing most of the work to build the wheel.
+    existing_wheel = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
+    if existing_wheel:
+        logger.info('have wheel for %s version %s: %s',
+                    req.name, resolved_version, existing_wheel)
+    else:
+        wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
+        server.update_wheel_mirror(ctx)
+        logger.info('built wheel for %s (%s)', req.name, resolved_version)
     ctx.add_to_build_order(req_type, req, resolved_version, why)
 
     next_req_type = 'dependency'

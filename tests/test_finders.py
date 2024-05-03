@@ -4,7 +4,7 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from mirror_builder import __main__ as main
+from mirror_builder import finders
 
 
 @pytest.mark.parametrize('dist_name,version_string,expected_base', [
@@ -22,8 +22,27 @@ def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
 
     req = Requirement(dist_name)
     ver = Version(version_string)
-    actual = main._find_sdist(sdists_repo, req, ver)
+    actual = finders.find_sdist(downloads, req, ver)
     assert str(archive) == str(actual)
+
+
+@pytest.mark.parametrize('dist_name,version_string,expected_base', [
+    ('mypkg', '1.2', 'mypkg-1.2-py2.py3-none-any.whl'),
+    ('torch', '2.0', 'torch-2.0-cp311-cp311-linux_aarch64.whl'),
+    ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0-py2.py3-none-any.whl'),
+    ('cython', '3.0.10', 'Cython-3.0.10-cp311-cp311-linux_aarch64.whl'),
+])
+def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
+    wheels_repo = pathlib.Path(tmp_path)
+    downloads = wheels_repo / 'downloads'
+    downloads.mkdir()
+    wheel = downloads / expected_base
+    wheel.write_text('not-empty')
+
+    req = Requirement(dist_name)
+    ver = Version(version_string)
+    actual = finders.find_wheel(downloads, req, ver)
+    assert str(wheel) == str(actual)
 
 
 @pytest.mark.parametrize('dist_name,version_string,expected_base', [
@@ -41,5 +60,5 @@ def test_find_source_dir(tmp_path, dist_name, version_string, expected_base):
 
     req = Requirement(dist_name)
     ver = Version(version_string)
-    actual = main._find_source_dir(work_dir, req, ver)
+    actual = finders.find_source_dir(work_dir, req, ver)
     assert str(source_dir) == str(actual)
