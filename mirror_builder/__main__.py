@@ -8,6 +8,7 @@ import pathlib
 import sys
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 from . import context, finders, jobs, sdist, server, sources, wheels
 
@@ -53,6 +54,10 @@ def main():
     parser_build.set_defaults(func=do_build)
     parser_build.add_argument('dist_name')
     parser_build.add_argument('dist_version')
+
+    parser_canonicalize = subparsers.add_parser('canonicalize')
+    parser_canonicalize.set_defaults(func=do_canonicalize)
+    parser_canonicalize.add_argument('toplevel', nargs='+')
 
     # The jobs CLI is complex enough that it's in its own module
     jobs.build_cli(parser, subparsers)
@@ -157,6 +162,12 @@ def do_build(args, ctx):
     build_env = wheels.BuildEnvironment(ctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(ctx, req, source_root_dir, build_env)
     print(wheel_filename)
+
+
+@requires_context
+def do_canonicalize(args, ctx):
+    for name in args.toplevel:
+        print(canonicalize_name(name))
 
 
 if __name__ == '__main__':
