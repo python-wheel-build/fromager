@@ -48,6 +48,11 @@ def build_cli(parser, subparsers):
     parser_job_build_sequence.add_argument('build_order_file')
     parser_job_build_sequence.add_argument('--show-progress', default=False, action='store_true')
 
+    parser_job_update_tools = job_subparsers.add_parser('update-tools')
+    parser_job_update_tools.set_defaults(func=do_job_update_tools)
+    parser_job_update_tools.add_argument('--wait', '-w', default=False, action='store_true')
+    parser_job_update_tools.add_argument('--show-progress', default=False, action='store_true')
+
 
 def requires_client(f):
     "Decorate f() so that it receives the gitlab client as the second argument."
@@ -167,6 +172,18 @@ def do_job_build_sequence(args, client):
             wait=True,
             show_progress=args.show_progress,
         )
+
+
+@requires_client
+def do_job_update_tools(args, client):
+    run_pipeline(
+        client,
+        'update-tools',
+        'update-tools',
+        variables={},
+        wait=args.wait,
+        show_progress=args.show_progress,
+    )
 
 
 def run_pipeline(client, title, job_name, variables, wait=False, show_progress=False):
