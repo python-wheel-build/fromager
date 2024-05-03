@@ -198,6 +198,8 @@ update-tools:
     - dnf install -y python3.11
     # Extra dependencies needed for the secure files installer.
     - dnf install -y which curl
+    # maturin requires rust
+    - dnf -y install rust cargo
 
   script:
     # Initialize secure files, following https://docs.gitlab.com/ee/ci/secure_files/
