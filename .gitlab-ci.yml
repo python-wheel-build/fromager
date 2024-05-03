@@ -288,9 +288,12 @@ build-wheel-py312:
   variables:
     PYTHON: "python3.12"
   rules:
-    # Production packages, using packaging.utils.canonicalize_name() form
+    # Production packages, using packaging.utils.canonicalize_name() form.
+    # Use "tox -e cli -- canonicalize $DIST" to to find the name.
+    # Keep the names in alphabetical order.
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "cmake"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "cython"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "llama-cpp-python"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "markupsafe"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "numpy"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "pyyaml"
