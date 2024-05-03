@@ -176,7 +176,7 @@ bootstrap:
     - PYTHON=$PYTHON ./pipelines/bootstrap.sh ${DIST_NAME}==${DIST_VERSION}
 
 # Manual pipeline to update the tools used by the pipelines.
-onboard-sdist:
+update-tools:
   stage: manual
   rules:
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "update-tools"
