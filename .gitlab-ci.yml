@@ -175,6 +175,36 @@ bootstrap:
   script:
     - PYTHON=$PYTHON ./pipelines/bootstrap.sh ${DIST_NAME}==${DIST_VERSION}
 
+# Manual pipeline to update the tools used by the pipelines.
+onboard-sdist:
+  stage: manual
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "update-tools"
+
+  variables:
+    DIST_NAME: ""
+    DIST_VERSION: ""
+    SECURE_FILES_DOWNLOAD_PATH: ./config
+
+  artifacts:
+    paths:
+      - build-logs/*.log
+
+  image: fedora:39
+
+  before_script:
+    # We need a python interpreter. It doesn't matter which one, so
+    # pick the one that's going to be the default for most builds.
+    - dnf install -y python3.11
+    # Extra dependencies needed for the secure files installer.
+    - dnf install -y which curl
+
+  script:
+    # Initialize secure files, following https://docs.gitlab.com/ee/ci/secure_files/
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - ./pipelines/update_tools.sh
+    - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=internal/tools ./upload_to_index.sh wheels-repo/downloads/*.whl sdists-repo/downloads/*.tar.gz
+
 # Manual pipeline to copy the sdist for 1 package to the index server.
 onboard-sdist:
   stage: manual
@@ -258,6 +288,7 @@ build-wheel-py312:
   variables:
     PYTHON: "python3.12"
   rules:
+    # Production packages
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "cmake"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "Cython"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "MarkupSafe"
@@ -265,3 +296,11 @@ build-wheel-py312:
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "PyYAML"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "torch"
     - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "vllm"
+    # Tools
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "argon2_cffi_bindings"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "cffi"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "cmarkgfm"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "cryptography"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "maturin"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "ruamel.yaml.clib"
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "zope.interface"
