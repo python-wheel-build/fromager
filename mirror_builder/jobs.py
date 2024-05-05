@@ -49,11 +49,13 @@ def build_cli(parser, subparsers):
     parser_job_build_wheel.add_argument('dist_version')
     parser_job_build_wheel.add_argument('--wait', '-w', default=False, action='store_true')
     parser_job_build_wheel.add_argument('--show-progress', default=False, action='store_true')
+    parser_job_build_wheel.add_argument('--force', default=False, action='store_true')
 
     parser_job_build_sequence = job_subparsers.add_parser('build-sequence')
     parser_job_build_sequence.set_defaults(func=do_job_build_sequence)
     parser_job_build_sequence.add_argument('build_order_file')
     parser_job_build_sequence.add_argument('--show-progress', default=False, action='store_true')
+    parser_job_build_sequence.add_argument('--force', default=False, action='store_true')
 
     parser_job_update_tools = job_subparsers.add_parser('update-tools')
     parser_job_update_tools.set_defaults(func=do_job_update_tools)
@@ -170,9 +172,25 @@ def do_job_onboard_sequence(args, client):
             print(result)
 
 
+def _wheel_exists(dist_name, dist_version):
+    req = Requirement(f'{dist_name}=={dist_version}')
+    try:
+        url, _ = sources.resolve_sdist(
+            req,
+            'https://pyai.fedorainfracloud.org/experimental/cpu/+simple/',
+            only_sdists=False,
+        )
+    except resolvelib.resolvers.ResolutionImpossible:
+        return False
+    return bool(url)
+
+
 @requires_client
 def do_job_build_wheel(args, client):
     dist_name = canonicalize_name(args.dist_name)
+    if not args.force and _wheel_exists(dist_name, args.dist_version):
+        print(f'already have a wheel for {dist_name} {args.dist_version}')
+        return
     run_pipeline(
         client,
         f'build-wheel {dist_name} {args.dist_version}',
@@ -194,6 +212,10 @@ def do_job_build_sequence(args, client):
     for step in build_order:
         dist = canonicalize_name(step['dist'])
         version = step['version']
+
+        if not args.force and _wheel_exists(dist, version):
+            print(f'already have a wheel for {dist} {version}')
+            continue
 
         run_pipeline(
             client,
