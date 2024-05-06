@@ -14,13 +14,13 @@ export WORKDIR="${WORKDIR:-${DEFAULT_WORKDIR}}"
 
 # Index server where we have packages with the tools used by this
 # repo.
-export TOOL_SERVER_URL=https://pyai.fedorainfracloud.org/internal/tools/+simple/
+export TOOL_SERVER_URL="${TOOL_SERVER_URL:-https://pyai.fedorainfracloud.org/internal/tools/+simple/}"
 
 # Index server where we have sdists for the software we are building.
-export SDIST_SERVER_URL=https://pyai.fedorainfracloud.org/experimental/sources/+simple/
+export SDIST_SERVER_URL="${SDIST_SERVER_URL:-https://pyai.fedorainfracloud.org/experimental/sources/+simple/}"
 
 # Set a default URL until we have our private one running.
-export WHEEL_SERVER_URL=${WHEEL_SERVER_URL:-https://pypi.org/simple}
+export WHEEL_SERVER_URL="${WHEEL_SERVER_URL:-https://pypi.org/simple}"
 
 install_tools() {
   local -r venv="$1"
