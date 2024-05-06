@@ -1,6 +1,7 @@
 import importlib.metadata
 import logging
 import shutil
+import sys
 
 from . import dependencies, external_commands, finders, server, sources, wheels
 
@@ -173,7 +174,8 @@ def _maybe_install(ctx, req, req_type, resolved_version):
 def safe_install(ctx, req, req_type):
     logger.debug('installing %s %s', req_type, req)
     external_commands.run([
-        'pip', '-vvv',
+        sys.executable, '-m', 'pip',
+        '-vvv',
         'install',
         '--disable-pip-version-check',
         '--no-cache-dir',
