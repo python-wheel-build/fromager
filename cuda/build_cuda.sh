@@ -37,11 +37,8 @@ outside_of_container() {
 }
 
 inside_of_container() {
-    export CMAKE_ARGS="-DLLAMA_CUBLAS=on"
-    export CFLAGS="-mno-avx"
-
     jq -r '.[] | .dist + " " + .version' "$BUILD_ORDER_FILE" | while read -r dist version; do
-        ./build_wheel.sh "$dist" "$version"
+        ./build_wheel.sh -d "$dist" -v "$version" -V cuda
         # FIXME: After this loop, artifacts/build-artifacts.tar
         # includes all of the wheels and sdists, but only the logs for
         # the last thing built.

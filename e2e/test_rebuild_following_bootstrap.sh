@@ -58,7 +58,7 @@ build_wheel() {
   local dist="$1"; shift
   local version="$1"; shift
 
-  "$TOPDIR/build_wheel.sh" -i "$dist" "$version" "work-dir/$dist"
+  "$TOPDIR/build_wheel.sh" -i -d "$dist" -v "$version" -a "work-dir/$dist"
 
   # Update the wheel server
   tar -C "work-dir/$dist" -xvf "work-dir/$dist/built-artifacts.tar"
