@@ -111,37 +111,37 @@ build_wheel() {
 
   # Download the source archive
   "$PYTHON" -m mirror_builder \
-            --log-file build-logs/download-source-archive.log \
+            --log-file "build-logs/${dist}-download-source-archive.log" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
-            download-source-archive "${DIST}" "${VERSION}" "$SDIST_SERVER_URL"
+            download-source-archive "${dist}" "${version}" "$SDIST_SERVER_URL"
 
   # Prepare the source dir for building
   "$PYTHON" -m mirror_builder \
-            --log-file build-logs/prepare-source.log \
+            --log-file "build-logs/${dist}-prepare-source.log" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
-            prepare-source "${DIST}" "${VERSION}"
+            prepare-source "${dist}" "${version}"
 
   # Prepare the build environment
   "$PYTHON" -m mirror_builder \
-            --log-file build-logs/prepare-build.log \
+            --log-file "build-logs/${dist}-prepare-build.log" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
             --wheel-server-url "${WHEEL_SERVER_URL}" \
-            prepare-build "${DIST}" "${VERSION}"
+            prepare-build "${dist}" "${version}"
 
   # Build the wheel.
   "$PYTHON" -m mirror_builder \
-            --log-file build-logs/build.log \
+            --log-file "build-logs/${dist}-build.log" \
             --wheel-server-url "$WHEEL_SERVER_URL" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
-            build "$DIST" "$VERSION"
+            build "$dist" "$version"
 
   # Copy the results of the build to the artifacts directory in a
   # tarball as is done when extracting content from the container

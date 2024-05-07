@@ -26,10 +26,10 @@ tar -C artifacts -xvf artifacts/built-artifacts.tar
 EXPECTED_FILES="
 wheels-repo/build/flit_core-3.9.0-py3-none-any.whl
 sdists-repo/downloads/flit_core-3.9.0.tar.gz
-build-logs/build.log
-build-logs/prepare-build.log
-build-logs/prepare-source.log
-build-logs/download-source-archive.log
+build-logs/flit_core-build.log
+build-logs/flit_core-prepare-build.log
+build-logs/flit_core-prepare-source.log
+build-logs/flit_core-download-source-archive.log
 "
 
 pass=true
