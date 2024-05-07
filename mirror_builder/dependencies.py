@@ -12,7 +12,7 @@ from . import external_commands, pkgs
 logger = logging.getLogger(__name__)
 
 
-def get_build_system_dependencies(req, sdist_root_dir):
+def get_build_system_dependencies(ctx, req, sdist_root_dir):
     logger.debug('getting build system dependencies for %s in %s',
                  req, sdist_root_dir)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
@@ -24,12 +24,12 @@ def get_build_system_dependencies(req, sdist_root_dir):
     return requires
 
 
-def get_build_backend_dependencies(req, sdist_root_dir):
+def get_build_backend_dependencies(ctx, req, sdist_root_dir):
     logger.debug('getting build backend dependencies for %s in %s',
                  req, sdist_root_dir)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
-    extra_environ = pkgs.extra_environ_for_pkg(req.name)
+    extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
                                                 override_environ=extra_environ)
     for r in hook_caller.get_requires_for_build_wheel():
@@ -39,12 +39,12 @@ def get_build_backend_dependencies(req, sdist_root_dir):
     return requires
 
 
-def get_install_dependencies(req, sdist_root_dir):
+def get_install_dependencies(ctx, req, sdist_root_dir):
     logger.debug('getting installation dependencies for %s in %s',
                  req, sdist_root_dir)
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
-    extra_environ = pkgs.extra_environ_for_pkg(req.name)
+    extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
                                                 override_environ=extra_environ)
 

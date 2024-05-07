@@ -44,7 +44,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
     next_why = f'{why} -> {req.name}({resolved_version})'
     next_req_type = 'build_system'
-    build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
+    build_system_dependencies = dependencies.get_build_system_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_system_dependencies,
         sdist_root_dir.parent / 'build-system-requirements.txt',
@@ -57,7 +57,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         _maybe_install(ctx, dep, next_req_type, resolved)
 
     next_req_type = 'build_backend'
-    build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
+    build_backend_dependencies = dependencies.get_build_backend_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_backend_dependencies,
         sdist_root_dir.parent / 'build-backend-requirements.txt',
@@ -87,7 +87,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     ctx.add_to_build_order(req_type, req, resolved_version, why)
 
     next_req_type = 'dependency'
-    install_dependencies = dependencies.get_install_dependencies(req, sdist_root_dir)
+    install_dependencies = dependencies.get_install_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         install_dependencies,
         sdist_root_dir.parent / 'requirements.txt',
@@ -112,7 +112,7 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
     logger.info('preparing build environment for %s', req.name)
 
     next_req_type = 'build_system'
-    build_system_dependencies = dependencies.get_build_system_dependencies(req, sdist_root_dir)
+    build_system_dependencies = dependencies.get_build_system_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_system_dependencies,
         sdist_root_dir.parent / 'build-system-requirements.txt',
@@ -128,7 +128,7 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
             raise MissingDependency(next_req_type, dep, build_system_dependencies) from err
 
     next_req_type = 'build_backend'
-    build_backend_dependencies = dependencies.get_build_backend_dependencies(req, sdist_root_dir)
+    build_backend_dependencies = dependencies.get_build_backend_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_backend_dependencies,
         sdist_root_dir.parent / 'build-backend-requirements.txt',

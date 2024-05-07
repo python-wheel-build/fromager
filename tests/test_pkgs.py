@@ -45,7 +45,7 @@ def test_patches_for_source_dir(dir_name, expected_patches):
     ('noexist', {}),
 ])
 def test_extra_environ_for_pkg(pkgname, expected_environ):
-    extra_environ = pkgs.extra_environ_for_pkg(pkgname)
+    extra_environ = pkgs.extra_environ_for_pkg(pkgname, 'test')
     assert expected_environ == extra_environ
 
 

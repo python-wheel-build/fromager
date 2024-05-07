@@ -60,7 +60,7 @@ rm -rf wheels-repo/simple
 
 # Rebuild the original toplevel wheel, expecting a failure.
 version=$(jq -r '.[] | select ( .dist == "'$TOPLEVEL'" ) | .version' "$WORKDIR/build-order.json")
-"${TOPDIR}/build_wheel.sh" "$TOPLEVEL" "$version" "$WORKDIR" || echo "Got expected build error"
+"${TOPDIR}/build_wheel.sh" -d "$TOPLEVEL" -v "$version" -a "$WORKDIR" || echo "Got expected build error"
 
 if grep -q MissingDependency "build-logs/${TOPLEVEL}-prepare-build.log"; then
   echo "Found expected error"

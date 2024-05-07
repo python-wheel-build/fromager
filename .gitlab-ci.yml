@@ -266,7 +266,7 @@ onboard-sdist:
   script:
     # Initialize secure files, following https://docs.gitlab.com/ee/ci/secure_files/
     - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
-    - PYTHON=$PYTHON ./build_wheel.sh ${DIST_NAME} ${DIST_VERSION}
+    - PYTHON=$PYTHON ./build_wheel.sh -d ${DIST_NAME} -v ${DIST_VERSION} -V cpu
     - CONFIG=$SECURE_FILES_DOWNLOAD_PATH/pypirc.ini INDEX=experimental/cpu ./upload_to_index.sh wheels-repo/build/*.whl
 
 

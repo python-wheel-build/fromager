@@ -13,45 +13,54 @@ usage() {
   fi
   cat - <<EOF
 build_wheel.sh [-h]
-build_wheel.sh [-i] DIST VERSION [artifacts-dir]
+build_wheel.sh [-i] -d dist -v version [-a artifacts-dir] [-V variant]
 
-  DIST            The name of the distribution to build.
+  -d DIST            The name of the distribution to build.
 
-  VERSION         The version of DIST to build.
+  -v VERSION         The version of DIST to build.
 
-  ARTIFACTS-DIR   Where to put the build artifacts. Defaults to "artifacts".
+  -V VARIANT         The variant (cpu, cuda, etc.) of DIST to build.
 
-  -i              Use build isolation, running everything in containers.
+  -a ARTIFACTS-DIR   Where to put the build artifacts. Defaults to "artifacts".
 
-  -h              This help message.
+  -i                 Use build isolation, running everything in containers.
+
+  -h                 This help message.
 EOF
 }
 
-DO_SHIFT=false
 BUILDER=build_wheel
-while getopts "ih" opt; do
+ARTIFACTS_DIR=artifacts
+DIST=""
+VERSION=""
+VARIANT="cpu"
+
+while getopts "a:d:hiv:V:" opt; do
   case "$opt" in
+    a)
+      ARTIFACTS_DIR="$OPTARG";
+      ;;
+    d)
+      DIST="$OPTARG";
+      ;;
     i)
       BUILDER=build_wheel_isolated
-      DO_SHIFT=true
       ;;
     h)
       usage
       exit 0
+      ;;
+    v)
+      VERSION="$OPTARG";
+      ;;
+    V)
+      VARIANT="$OPTARG";
       ;;
     *)
       break
       ;;
   esac
 done
-
-if "$DO_SHIFT"; then
-  shift
-fi
-
-DIST="$1"
-VERSION="$2"
-ARTIFACTS_DIR="${3:-artifacts}"
 
 if [ -z "$DIST" ]; then
   usage "Specify a DIST to build"
@@ -78,6 +87,7 @@ build_wheel_isolated() {
          --tag "e2e-build-$dist" \
          --build-arg="DIST=$dist" \
          --build-arg="VERSION=$version" \
+         --build-arg="VARIANT=$VARIANT" \
          --build-arg="WHEEL_SERVER_URL=$WHEEL_SERVER_URL" \
          --build-arg="SDIST_SERVER_URL=$SDIST_SERVER_URL"
 
@@ -112,6 +122,7 @@ build_wheel() {
   # Download the source archive
   "$PYTHON" -m mirror_builder \
             --log-file "build-logs/${dist}-download-source-archive.log" \
+            --variant "$VARIANT" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
@@ -120,6 +131,7 @@ build_wheel() {
   # Prepare the source dir for building
   "$PYTHON" -m mirror_builder \
             --log-file "build-logs/${dist}-prepare-source.log" \
+            --variant "$VARIANT" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
@@ -128,6 +140,7 @@ build_wheel() {
   # Prepare the build environment
   "$PYTHON" -m mirror_builder \
             --log-file "build-logs/${dist}-prepare-build.log" \
+            --variant "$VARIANT" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
             --wheels-repo wheels-repo \
@@ -137,6 +150,7 @@ build_wheel() {
   # Build the wheel.
   "$PYTHON" -m mirror_builder \
             --log-file "build-logs/${dist}-build.log" \
+            --variant "$VARIANT" \
             --wheel-server-url "$WHEEL_SERVER_URL" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \

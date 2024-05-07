@@ -14,7 +14,7 @@ TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
 rm -rf artifacts
 
 # Build flit_core. We know this doesn't require anything else.
-"${TOPDIR}/build_wheel.sh" flit_core 3.9.0
+"${TOPDIR}/build_wheel.sh" -d flit_core -v 3.9.0
 
 if [ ! -f artifacts/built-artifacts.tar ]; then
   echo "Did not find built-artifacts.tar" 1>&2
