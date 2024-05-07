@@ -2,6 +2,8 @@ import fnmatch
 import logging
 from importlib import resources
 
+from packaging.utils import canonicalize_name
+
 from . import overrides
 
 # An interface for reretrieving per-package information which influences
@@ -30,6 +32,7 @@ def _files_for_pkg(anchor, pkg_base, ext):
     # look through the list of files in the path ourselves.
     files_dir = resources.files(anchor)
     pattern = pkg_base + '*' + ext
+    logger.debug('looking in %s for files matching %s', files_dir, pattern)
     for p in sorted(files_dir.iterdir()):
         if not fnmatch.fnmatch(p.name, '*' + ext):
             # ignore things like python files so we don't log excessively
@@ -60,8 +63,12 @@ def extra_environ_for_pkg(pkgname):
     envs package, with a key=value per line.
 
     """
+    pkgname = canonicalize_name(pkgname)
     extra_environ = {}
+    logger.debug('looking for environment settings for %s', pkgname)
     for env_file in _files_for_pkg('mirror_builder.pkgs.envs', pkgname, '.env'):
+        logger.debug('found environment settings for %s in %s',
+                     pkgname, env_file)
         with open(env_file, 'r') as f:
             for line in f:
                 key, _, value = line.strip().partition('=')
