@@ -41,7 +41,7 @@ def test_patches_for_source_dir(dir_name, expected_patches):
 
 
 @pytest.mark.parametrize('pkgname,expected_environ', [
-    ('testenv', {'FOO': '1', 'BAR': '2'}),
+    ('testenv', {'FOO': '1', 'BAR': '2', 'MULTI': '-opt1=value1 -opt2=value2'}),
     ('noexist', {}),
 ])
 def test_extra_environ_for_pkg(pkgname, expected_environ):
