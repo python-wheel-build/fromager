@@ -19,7 +19,7 @@ TEST_INDEX_URL="${TEST_SERVER_BASE_URL}/root/${TEST_INDEX_NAME}/+simple/"
 TEST_SERVER_DIR="$WORKDIR/devpi-serving-dir"
 
 on_exit() {
-  [ "$HTTP_SERVER_PID" ] && kill $HTTP_SERVER_PID
+  [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
   rm -rf "${VENV:?}"
 }
 trap on_exit EXIT SIGINT SIGTERM
