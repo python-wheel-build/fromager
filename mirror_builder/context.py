@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 
 class WorkContext:
 
-    def __init__(self, sdists_repo, wheels_repo, work_dir, wheel_server_url, cleanup=True):
+    def __init__(self, sdists_repo, wheels_repo, work_dir, wheel_server_url,
+                 cleanup=True,
+                 variant='cpu'):
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / 'downloads'
         self.wheels_repo = pathlib.Path(wheels_repo).absolute()
@@ -20,6 +22,7 @@ class WorkContext:
         self.work_dir = pathlib.Path(work_dir).absolute()
         self.wheel_server_url = wheel_server_url
         self.cleanup = cleanup
+        self.variant = variant
 
         self._build_order_filename = self.work_dir / 'build-order.json'
 
