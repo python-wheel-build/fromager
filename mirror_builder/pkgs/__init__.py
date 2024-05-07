@@ -64,6 +64,6 @@ def extra_environ_for_pkg(pkgname):
     for env_file in _files_for_pkg('mirror_builder.pkgs.envs', pkgname, '.env'):
         with open(env_file, 'r') as f:
             for line in f:
-                key, value = line.strip().split('=')
-                extra_environ[key] = value
+                key, _, value = line.strip().partition('=')
+                extra_environ[key.strip()] = value.strip()
     return extra_environ
