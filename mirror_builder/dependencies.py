@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import shutil
@@ -78,15 +79,19 @@ _DEFAULT_BACKEND = {
 
 
 def get_build_backend(pyproject_toml):
-    if ('build-system' not in pyproject_toml or
-        'build-backend' not in pyproject_toml['build-system']):
-        return _DEFAULT_BACKEND
-    else:
-        return {
-            'build-backend': pyproject_toml['build-system']['build-backend'],
-            'backend-path': pyproject_toml['build-system'].get('backend-path', None),
-            'requires': pyproject_toml['build-system'].get('requires', []),
-        }
+    # Build a set of defaults. Use a copy to ensure that if anything
+    # modifies the values returned by this function our defaults are
+    # not changed.
+    backend_settings = copy.deepcopy(_DEFAULT_BACKEND)
+
+    # Override it with local settings. This allows for some projects
+    # like pyarrow, that don't have 'build-backend' set but *do* have
+    # 'requires' set.
+    for key in ['build-backend', 'backend-path', 'requires']:
+        if key in pyproject_toml.get('build-system', {}):
+            backend_settings[key] = pyproject_toml['build-system'][key]
+
+    return backend_settings
 
 
 def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml, override_environ):
