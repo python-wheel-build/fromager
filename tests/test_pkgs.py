@@ -43,6 +43,16 @@ def test_patches_for_source_dir(dir_name, expected_patches):
 @pytest.mark.parametrize('pkgname,expected_environ', [
     ('testenv', {'FOO': '1', 'BAR': '2', 'MULTI': '-opt1=value1 -opt2=value2'}),
     ('noexist', {}),
+    # Look for llama-cpp-python using cannonical name form
+    ('llama-cpp-python', {
+        'CMAKE_ARGS': '-DLLAMA_CUBLAS=on',
+        'CFLAGS': '-mno-avx',
+    }),
+    # Look for llama-cpp-python using non-cannonical name form
+    ('llama_cpp_python', {
+        'CMAKE_ARGS': '-DLLAMA_CUBLAS=on',
+        'CFLAGS': '-mno-avx',
+    }),
 ])
 def test_extra_environ_for_pkg(pkgname, expected_environ):
     extra_environ = pkgs.extra_environ_for_pkg(pkgname, 'test')
