@@ -105,7 +105,7 @@ def get_project_from_pypi(project, extras, sdist_server_url):
         # Very primitive sdist filename parsing
         name_and_version = NAME_VERSION_PATTERN.search(filename)
         if not name_and_version:
-            logger.debug(f'skipping {filename} because could not extract version info')
+            # logger.debug(f'skipping {filename} because could not extract version info')
             continue
         name = name_and_version.groups()[0]
         version = name_and_version.groups()[1]
