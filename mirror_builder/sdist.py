@@ -30,7 +30,8 @@ class MissingDependency(Exception):
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
-    source_filename, resolved_version = sources.download_source(ctx, req, sources.PYPI_SERVER_URL)
+    source_filename, resolved_version = sources.download_source(
+        ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):

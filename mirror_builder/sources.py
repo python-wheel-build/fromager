@@ -14,14 +14,27 @@ from . import pkgs, resolver
 logger = logging.getLogger(__name__)
 
 PYPI_SERVER_URL = 'https://pypi.org/simple'
+PYAI_SOURCE_SERVER_URL = 'https://pyai.fedorainfracloud.org/experimental/sources/+simple/'
+DEFAULT_SDIST_SERVER_URLS = [
+    PYPI_SERVER_URL,
+    PYAI_SOURCE_SERVER_URL,
+]
 
 
-def download_source(ctx, req, sdist_server_url):
+def download_source(ctx, req, sdist_server_urls):
     downloader = pkgs.find_override_method(req.name, 'download_source')
     if not downloader:
         downloader = default_download_source
-    source_filename, version = downloader(ctx, req, sdist_server_url)
-    return (source_filename, version)
+    for url in sdist_server_urls:
+        try:
+            logger.debug('trying to resolve and download %s using %s', req, url)
+            source_filename, version = downloader(ctx, req, url)
+        except Exception as err:
+            logger.debug('failed to resolve %s using %s: %s', req, url, err)
+            continue
+        return (source_filename, version)
+    servers = ', '.join(sdist_server_urls)
+    raise ValueError(f'failed to find source for {req} at {servers}')
 
 
 def resolve_sdist(req, sdist_server_url, only_sdists=True):
@@ -50,7 +63,7 @@ def default_download_source(ctx, req, sdist_server_url):
     "Download the requirement and return the name of the output path."
     url, version = resolve_sdist(req, sdist_server_url)
     source_filename = download_url(ctx.sdists_downloads, url)
-    logger.info('have source for %s version %s in %s', req, version, source_filename)
+    logger.debug('have source for %s version %s in %s', req, version, source_filename)
     return (source_filename, version)
 
 
