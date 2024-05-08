@@ -118,7 +118,7 @@ def get_project_from_pypi(project, extras, sdist_server_url):
             continue
 
         c = Candidate(name, version, url=candidate_url, extras=extras, is_sdist=is_sdist)
-        logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
+        # logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
         yield c
 
 
