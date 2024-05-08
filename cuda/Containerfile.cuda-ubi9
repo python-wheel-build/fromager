@@ -47,11 +47,9 @@ RUN dnf -y install openssl-devel
 RUN dnf -y install zlib-devel libjpeg-devel
 
 # The python interpreter we want, with dev libraries
-RUN dnf -y install $PYTHON ${PYTHON}-devel
+RUN dnf -y install $PYTHON ${PYTHON}-devel ${PYTHON}-pip
 
 ## From instructlab/containers/cuda/Containerfile
-
-RUN $PYTHON -m ensurepip
 
 RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
