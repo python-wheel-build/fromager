@@ -47,14 +47,14 @@ RUN dnf -y install openssl-devel
 RUN dnf -y install zlib-devel libjpeg-devel
 
 # The python interpreter we want, with dev libraries
-RUN dnf -y install $PYTHON ${PYTHON}-devel
+RUN dnf -y install $PYTHON ${PYTHON}-devel ${PYTHON}-pip
 
 ## From instructlab/containers/cuda/Containerfile
 
-RUN $PYTHON -m ensurepip
-
+# Add EPEL repo for $WHY
 RUN rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
+# Add Nvidia repo for CUDA libraries
 RUN dnf config-manager \
     --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo \
     && dnf repolist \
@@ -63,11 +63,16 @@ RUN dnf config-manager \
     && dnf config-manager --set-enabled epel \
     && dnf update -y
 
+# Install those CUDA libraries
 RUN dnf install -y libcudnn8 nvidia-driver-NVML nvidia-driver-cuda-libs
 
+# We don't want to worry about pip reporting that there are newer
+# versions, just use the version in the RPM installed earlier.
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install CUDA wheel from PyPI
 RUN $PYTHON -m pip install \
     --no-cache-dir \
-    --disable-pip-version-check \
     --force-reinstall nvidia-cuda-nvcc-cu12 \
     && $PYTHON -m pip freeze
 
@@ -78,18 +83,22 @@ RUN export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cu
     && export XLA_TARGET=cuda120 \
     && export XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/local/cuda
 
+# Configure the package index URLs. All need to point to the *simple*
+# index, as these values are passed to pip via `--index-url`.
 ARG TOOL_SERVER_URL=https://pyai.fedorainfracloud.org/internal/tools/+simple/
 ARG SDIST_SERVER_URL=https://pyai.fedorainfracloud.org/experimental/sources/+simple/
 # FIXME: We need to update this to a cuda-specific repo. Maybe experimental/cuda-ubi9?
 ARG WHEEL_SERVER_URL=https://pyai.fedorainfracloud.org/experimental/cpu/+simple/
 
+# The build script reports on the link status of binary wheels using
+# audit wheel.
 RUN $PYTHON -m pip install auditwheel
 
 WORKDIR /src
 
+# Install the build tools
 COPY . /mirror-builder
 RUN $PYTHON -m pip install \
-    --disable-pip-version-check \
     --no-cache-dir \
     --index-url $TOOL_SERVER_URL \
     /mirror-builder
