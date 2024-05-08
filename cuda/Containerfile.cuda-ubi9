@@ -63,9 +63,11 @@ RUN dnf config-manager \
 
 RUN dnf install -y libcudnn8 nvidia-driver-NVML nvidia-driver-cuda-libs
 
+# We don't want to worry about pip reporting that there are newer
+# versions, just use the version in the RPM installed earlier.
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN $PYTHON -m pip install \
     --no-cache-dir \
-    --disable-pip-version-check \
     --force-reinstall nvidia-cuda-nvcc-cu12 \
     && $PYTHON -m pip freeze
 
@@ -87,7 +89,6 @@ WORKDIR /src
 
 COPY . /mirror-builder
 RUN $PYTHON -m pip install \
-    --disable-pip-version-check \
     --no-cache-dir \
     --index-url $TOOL_SERVER_URL \
     /mirror-builder
