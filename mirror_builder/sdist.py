@@ -70,6 +70,11 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         # installed.
         _maybe_install(ctx, dep, next_req_type, resolved)
 
+    # Add the new package to the build order list before trying to
+    # build it so we have a record of the dependency even if the build
+    # fails.
+    ctx.add_to_build_order(req_type, req, resolved_version, why)
+
     build_env = wheels.BuildEnvironment(
         ctx, sdist_root_dir.parent,
         build_system_dependencies | build_backend_dependencies,
@@ -85,7 +90,6 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
         server.update_wheel_mirror(ctx)
         logger.info('built wheel for %s (%s)', req.name, resolved_version)
-    ctx.add_to_build_order(req_type, req, resolved_version, why)
 
     next_req_type = 'dependency'
     install_dependencies = dependencies.get_install_dependencies(ctx, req, sdist_root_dir)
