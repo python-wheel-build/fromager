@@ -8,9 +8,9 @@ import pathlib
 import sys
 
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
 
 from . import context, finders, jobs, sdist, server, sources, wheels
+from .pkgs import overrides
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ def do_build(args, ctx):
 @requires_context
 def do_canonicalize(args, ctx):
     for name in args.toplevel:
-        print(canonicalize_name(name))
+        print(overrides.pkgname_to_override_module(name))
 
 
 if __name__ == '__main__':

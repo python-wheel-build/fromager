@@ -3,6 +3,8 @@ import importlib.util
 import logging
 import sys
 
+from packaging.utils import canonicalize_name
+
 logger = logging.getLogger(__name__)
 
 # The interface for overriding the wheel build process is to provide a
@@ -16,6 +18,12 @@ logger = logging.getLogger(__name__)
 _dists_without_overrides = set()
 
 
+def pkgname_to_override_module(pkgname):
+    canonical_name = canonicalize_name(pkgname)
+    module_name = canonical_name.replace('-', '_')
+    return module_name
+
+
 def find_override_method(distname, method):
     """Given a distname and method name, look for an override implementation of the method.
 
@@ -23,6 +31,7 @@ def find_override_method(distname, method):
 
     If the module exists and cannot be imported, propagate the exception.
     """
+    distname = pkgname_to_override_module(distname)
     if distname in _dists_without_overrides:
         return None
     module_fullname = __name__ + '.' + (distname.replace('.', '_'))
