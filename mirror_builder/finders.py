@@ -79,8 +79,8 @@ def find_wheel(downloads_dir, req, dist_version):
     # have to run with older versions, too, so do our own name
     # comparison.
     for base in candidate_bases:
+        logger.debug('looking for %s wheel as "%s"', req.name, base)
         for filename in downloads_dir.glob('*'):
-            logger.debug('looking for %s wheel as "%s"', req.name, base)
             if str(filename.name).lower().startswith(base.lower()):
                 return filename
 
