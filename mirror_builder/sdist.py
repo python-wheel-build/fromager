@@ -51,7 +51,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         sdist_root_dir.parent / 'build-system-requirements.txt',
     )
     for dep in build_system_dependencies:
-        resolved = handle_requirement(ctx, dep, next_req_type, next_why)
+        try:
+            resolved = handle_requirement(ctx, dep, next_req_type, next_why)
+        except Exception as err:
+            raise ValueError(f'could not handle {next_req_type} dependency {dep} for {next_why}') from err
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
@@ -64,7 +67,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         sdist_root_dir.parent / 'build-backend-requirements.txt',
     )
     for dep in build_backend_dependencies:
-        resolved = handle_requirement(ctx, dep, next_req_type, next_why)
+        try:
+            resolved = handle_requirement(ctx, dep, next_req_type, next_why)
+        except Exception as err:
+            raise ValueError(f'could not handle {next_req_type} dependency {dep} for {next_why}') from err
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
@@ -98,7 +104,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         sdist_root_dir.parent / 'requirements.txt',
     )
     for dep in install_dependencies:
-        handle_requirement(ctx, dep, next_req_type, next_why)
+        try:
+            handle_requirement(ctx, dep, next_req_type, next_why)
+        except Exception as err:
+            raise ValueError(f'could not handle {next_req_type} dependency {dep} for {next_why}') from err
 
     # Cleanup the source tree and build environment, leaving any other
     # artifacts that were created.
