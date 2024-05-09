@@ -119,9 +119,11 @@ build_wheel() {
   VENV="${WORKDIR}/venv-build-wheel"
   install_tools "$VENV"
 
+  canonical_dist=$("$PYTHON" -m mirror_builder canonicalize "$dist")
+
   # Download the source archive
   "$PYTHON" -m mirror_builder \
-            --log-file "build-logs/${dist}-download-source-archive.log" \
+            --log-file "build-logs/${canonical_dist}-download-source-archive.log" \
             --variant "$VARIANT" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
@@ -130,7 +132,7 @@ build_wheel() {
 
   # Prepare the source dir for building
   "$PYTHON" -m mirror_builder \
-            --log-file "build-logs/${dist}-prepare-source.log" \
+            --log-file "build-logs/${canonical_dist}-prepare-source.log" \
             --variant "$VARIANT" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
@@ -139,7 +141,7 @@ build_wheel() {
 
   # Prepare the build environment
   "$PYTHON" -m mirror_builder \
-            --log-file "build-logs/${dist}-prepare-build.log" \
+            --log-file "build-logs/${canonical_dist}-prepare-build.log" \
             --variant "$VARIANT" \
             --work-dir "$WORKDIR" \
             --sdists-repo sdists-repo \
@@ -149,7 +151,7 @@ build_wheel() {
 
   # Build the wheel.
   "$PYTHON" -m mirror_builder \
-            --log-file "build-logs/${dist}-build.log" \
+            --log-file "build-logs/${canonical_dist}-build.log" \
             --variant "$VARIANT" \
             --wheel-server-url "$WHEEL_SERVER_URL" \
             --work-dir "$WORKDIR" \
