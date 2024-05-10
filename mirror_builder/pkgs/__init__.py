@@ -2,8 +2,6 @@ import fnmatch
 import logging
 from importlib import resources
 
-from packaging.utils import canonicalize_name
-
 from . import overrides
 
 # An interface for reretrieving per-package information which influences
@@ -63,7 +61,7 @@ def extra_environ_for_pkg(pkgname, variant):
     envs package, with a key=value per line.
 
     """
-    pkgname = canonicalize_name(pkgname)
+    pkgname = overrides.pkgname_to_override_module(pkgname)
     extra_environ = {}
     logger.debug('looking for %s environment settings for %s', variant, pkgname)
     for env_file in _files_for_pkg(f'mirror_builder.pkgs.envs.{variant}', pkgname, '.env'):
