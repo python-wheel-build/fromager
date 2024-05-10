@@ -88,48 +88,56 @@ def find_wheel(downloads_dir, req, dist_version):
 
 
 def find_source_dir(work_dir, req, dist_version):
-    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
 
+    sdir_name_func = pkgs.find_override_method(req.name, 'expected_source_directory_name')
+    if sdir_name_func:
+        # The directory must exist exactly as given, inside the work_dir.
+        source_dir = work_dir / sdir_name_func(req, dist_version)
+        if source_dir.exists():
+            return source_dir
+        raise ValueError(f'looked for {source_dir} and did not find')
+
+    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
     if sdist_name_func:
         # The directory must exist exactly as given.
         sdist_base_name = sdist_name_func(req, dist_version)[:-len('.tar.gz')]
         source_dir = work_dir / sdist_base_name / sdist_base_name
         if source_dir.exists():
             return source_dir
+        raise ValueError(f'looked for {source_dir} and did not find')
 
-    else:
-        filename_prefix = _dist_name_to_filename(req.name)
-        filename_based = f'{filename_prefix}-{dist_version}'
-        canonical_name = canonicalize_name(req.name)
-        canonical_based = f'{canonical_name}-{dist_version}'
-        name_based = f'{req.name}-{dist_version}'
+    filename_prefix = _dist_name_to_filename(req.name)
+    filename_based = f'{filename_prefix}-{dist_version}'
+    canonical_name = canonicalize_name(req.name)
+    canonical_based = f'{canonical_name}-{dist_version}'
+    name_based = f'{req.name}-{dist_version}'
 
-        candidate_bases = [
-            # First check if the file is there using the canonically
-            # transformed name.
-            filename_based,
-            # If that didn't work, try the canonical dist name. That's not
-            # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
-            # and setuptools-scm-8.0.4.tar.gz) for example
-            canonical_based,
-            # If *that* didn't work, try the dist name we've been
-            # given as a dependency. That's not "correct", either but we do
-            # see it. (oslo.messaging-14.7.0.tar.gz) for example
-            name_based,
-        ]
+    candidate_bases = [
+        # First check if the file is there using the canonically
+        # transformed name.
+        filename_based,
+        # If that didn't work, try the canonical dist name. That's not
+        # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
+        # and setuptools-scm-8.0.4.tar.gz) for example
+        canonical_based,
+        # If *that* didn't work, try the dist name we've been
+        # given as a dependency. That's not "correct", either but we do
+        # see it. (oslo.messaging-14.7.0.tar.gz) for example
+        name_based,
+    ]
 
-        # Case-insensitive globbing was added to Python 3.12, but we
-        # have to run with older versions, too, so do our own name
-        # comparison.
-        for base in candidate_bases:
-            logger.debug('looking for source directory for %s as %s', req.name, base)
-            for dirname in work_dir.glob('*'):
-                if str(dirname.name).lower() == base.lower():
-                    # We expect the unpack directory and the source
-                    # root directory to be the same. We don't know
-                    # what case they have, but the pattern matched, so
-                    # use the base name of the unpack directory to
-                    # extend the path 1 level.
-                    return dirname / dirname.name
+    # Case-insensitive globbing was added to Python 3.12, but we
+    # have to run with older versions, too, so do our own name
+    # comparison.
+    for base in candidate_bases:
+        logger.debug('looking for source directory for %s as %s', req.name, base)
+        for dirname in work_dir.glob('*'):
+            if str(dirname.name).lower() == base.lower():
+                # We expect the unpack directory and the source
+                # root directory to be the same. We don't know
+                # what case they have, but the pattern matched, so
+                # use the base name of the unpack directory to
+                # extend the path 1 level.
+                return dirname / dirname.name
 
-        return None
+    return None

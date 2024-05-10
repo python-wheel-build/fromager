@@ -12,6 +12,7 @@ from mirror_builder import finders
     ('torch', '2.0', 'pytorch-v2.0.tar.gz'),
     ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0.tar.gz'),
     ('cython', '3.0.10', 'Cython-3.0.10.tar.gz'),
+    ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9.tar.gz'),
 ])
 def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
     sdists_repo = pathlib.Path(tmp_path)
@@ -31,6 +32,7 @@ def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
     ('torch', '2.0', 'torch-2.0-cp311-cp311-linux_aarch64.whl'),
     ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0-py2.py3-none-any.whl'),
     ('cython', '3.0.10', 'Cython-3.0.10-cp311-cp311-linux_aarch64.whl'),
+    ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9-cp311-cp311-linux_aarch64.whl'),
 ])
 def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
     wheels_repo = pathlib.Path(tmp_path)
@@ -45,18 +47,21 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
     assert str(wheel) == str(actual)
 
 
-@pytest.mark.parametrize('dist_name,version_string,expected_base', [
-    ('mypkg', '1.2', 'mypkg-1.2'),
-    ('torch', '2.0', 'pytorch-v2.0'),
-    ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0'),
-    ('cython', '3.0.10', 'Cython-3.0.10'),
+@pytest.mark.parametrize('dist_name,version_string,unpack_base,source_base', [
+    ('mypkg', '1.2', 'mypkg-1.2', 'mypkg-1.2'),
+    ('torch', '2.0', 'pytorch-v2.0', 'pytorch-v2.0'),
+    ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0', 'oslo.messaging-14.7.0'),
+    ('cython', '3.0.10', 'Cython-3.0.10', 'Cython-3.0.10'),
+    ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9',
+     'different-prefix-mirror-builder-test-9.9.9'),
 ])
-def test_find_source_dir(tmp_path, dist_name, version_string, expected_base):
+def test_find_source_dir(tmp_path, dist_name, version_string, unpack_base, source_base):
     work_dir = pathlib.Path(tmp_path)
-    unpack_dir = work_dir / expected_base
+    unpack_dir = work_dir / unpack_base
     unpack_dir.mkdir()
-    source_dir = unpack_dir / expected_base
+    source_dir = unpack_dir / source_base
     source_dir.mkdir()
+    print(f'created {source_dir}')
 
     req = Requirement(dist_name)
     ver = Version(version_string)
