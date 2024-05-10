@@ -14,9 +14,10 @@ def run(cmd, cwd=None, extra_environ={}, log_filename=None):
     env.update(extra_environ)
 
     logger.debug(
-        'running: %s %s',
+        'running: %s %s in %s',
         ' '.join('%s=%s' % x for x in extra_environ.items()),
-        ' '.join(shlex.quote(str(s)) for s in cmd)
+        ' '.join(shlex.quote(str(s)) for s in cmd),
+        cwd or '.',
     )
     if log_filename:
         with open(log_filename, 'w') as log_file:
