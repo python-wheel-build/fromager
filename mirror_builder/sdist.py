@@ -81,10 +81,6 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     # fails.
     ctx.add_to_build_order(req_type, req, resolved_version, why)
 
-    build_env = wheels.BuildEnvironment(
-        ctx, sdist_root_dir.parent,
-        build_system_dependencies | build_backend_dependencies,
-    )
     # FIXME: This is a bit naive, but works for most wheels, including
     # our more expensive ones, and there's not a way to know the
     # actual name without doing most of the work to build the wheel.
@@ -92,7 +88,13 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     if wheel_filename:
         logger.info('have wheel for %s version %s: %s',
                     req.name, resolved_version, wheel_filename)
+        build_env = None  # for cleanup
     else:
+        logger.info('preparing to build wheel for %s version %s', req, resolved_version)
+        build_env = wheels.BuildEnvironment(
+            ctx, sdist_root_dir.parent,
+            build_system_dependencies | build_backend_dependencies,
+        )
         built_filename = wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
         server.update_wheel_mirror(ctx)
         # When we update the mirror, the built file moves to the
@@ -119,9 +121,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         logger.debug('cleaning up source tree %s', sdist_root_dir)
         shutil.rmtree(sdist_root_dir)
         logger.debug('cleaned up source tree %s', sdist_root_dir)
-        logger.debug('cleaning up build environment %s', build_env.path)
-        shutil.rmtree(build_env.path)
-        logger.debug('cleaned up build environment %s', build_env.path)
+        if build_env:
+            logger.debug('cleaning up build environment %s', build_env.path)
+            shutil.rmtree(build_env.path)
+            logger.debug('cleaned up build environment %s', build_env.path)
 
     return resolved_version
 
