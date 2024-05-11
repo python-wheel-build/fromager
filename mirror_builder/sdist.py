@@ -88,17 +88,21 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     # FIXME: This is a bit naive, but works for most wheels, including
     # our more expensive ones, and there's not a way to know the
     # actual name without doing most of the work to build the wheel.
-    existing_wheel = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
-    if existing_wheel:
+    wheel_filename = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
+    if wheel_filename:
         logger.info('have wheel for %s version %s: %s',
-                    req.name, resolved_version, existing_wheel)
+                    req.name, resolved_version, wheel_filename)
     else:
-        wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
+        built_filename = wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
         server.update_wheel_mirror(ctx)
-        logger.info('built wheel for %s (%s)', req.name, resolved_version)
+        # When we update the mirror, the built file moves to the
+        # downloads directory.
+        wheel_filename = ctx.wheels_downloads / built_filename.name
+        logger.info('built wheel for %s version %s: %s',
+                    req.name, resolved_version, wheel_filename)
 
     next_req_type = 'dependency'
-    install_dependencies = dependencies.get_install_dependencies(ctx, req, sdist_root_dir)
+    install_dependencies = dependencies.get_install_dependencies_of_wheel(wheel_filename)
     _write_requirements_file(
         install_dependencies,
         sdist_root_dir.parent / 'requirements.txt',
