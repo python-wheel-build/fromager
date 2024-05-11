@@ -133,7 +133,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         logger.info('built wheel for %s version %s: %s',
                     req.name, resolved_version, wheel_filename)
 
-    next_req_type = 'dependency'
+    next_req_type = 'install'
     next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
     install_dependencies = dependencies.get_install_dependencies_of_wheel(wheel_filename)
     _write_requirements_file(
