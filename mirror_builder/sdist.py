@@ -29,9 +29,33 @@ class MissingDependency(Exception):
         super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
 
 
+# These pre-built wheels aren't built from source and must be acquired
+# from another package index.
+PRE_BUILT = set([
+    'nvidia-cublas-cu12',
+    'nvidia-cuda-cupti-cu12',
+    'nvidia-cuda-nvrtc-cu12',
+    'nvidia-cuda-runtime-cu12',
+    'nvidia-cudnn-cu12',
+    'nvidia-cufft-cu12',
+    'nvidia-curand-cu12',
+    'nvidia-cusolver-cu12',
+    'nvidia-cusparse-cu12',
+    'nvidia-nccl-cu12',
+    'nvidia-nvtx-cu12',
+])
+
+
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
-    source_filename, resolved_version = sources.download_source(
-        ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
+    if req.name in PRE_BUILT:
+        logger.info(f'{req_type} requirement {why} -> {req} uses a pre-built wheel')
+        # FIXME: Do we need an option for prebuilt wheel server in
+        # case these do not come from PyPI?
+        _, resolved_version = sources.resolve_sdist(
+            req, sources.PYPI_SERVER_URL, only_sdists=False)
+    else:
+        source_filename, resolved_version = sources.download_source(
+            ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
@@ -40,6 +64,11 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     ctx.mark_as_seen(req, resolved_version)
 
     logger.info('new dependency (%s) %s -> %s resolves to %s', req_type, why, req, resolved_version)
+
+    # If the wheel is pre-built, we don't process its dependencies.
+    # FIXME: Maybe we need to look at the install dependencies?
+    if req.name in PRE_BUILT:
+        return resolved_version
 
     sdist_root_dir = sources.prepare_source(ctx, req, source_filename, resolved_version)
 
