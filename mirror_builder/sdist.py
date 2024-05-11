@@ -43,8 +43,8 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
     sdist_root_dir = sources.prepare_source(ctx, req, source_filename, resolved_version)
 
-    next_why = f'{why} -> {req.name}({resolved_version})'
     next_req_type = 'build_system'
+    next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
     build_system_dependencies = dependencies.get_build_system_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_system_dependencies,
@@ -61,6 +61,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         _maybe_install(ctx, dep, next_req_type, resolved)
 
     next_req_type = 'build_backend'
+    next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
     build_backend_dependencies = dependencies.get_build_backend_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_backend_dependencies,
@@ -104,6 +105,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
                     req.name, resolved_version, wheel_filename)
 
     next_req_type = 'dependency'
+    next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
     install_dependencies = dependencies.get_install_dependencies_of_wheel(wheel_filename)
     _write_requirements_file(
         install_dependencies,
