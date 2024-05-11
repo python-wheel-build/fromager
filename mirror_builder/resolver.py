@@ -4,6 +4,7 @@
 # resolve any dependencies.
 #
 import logging
+import os
 from email.message import EmailMessage
 from email.parser import BytesParser
 from io import BytesIO
@@ -25,6 +26,7 @@ from .extras_provider import ExtrasProvider
 logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
+DEBUG_RESOLVER = os.environ.get('DEBUG_RESOLVER', '')
 
 
 class Candidate:
@@ -84,6 +86,8 @@ def get_project_from_pypi(project, extras, sdist_server_url):
         py_req = i.attrib.get("data-requires-python")
         path = urlparse(candidate_url).path
         filename = path.rpartition("/")[-1]
+        if DEBUG_RESOLVER:
+            logger.debug("candidate %r -> %r", candidate_url, filename)
         # Skip items that need a different Python version
         if py_req:
             try:
@@ -91,10 +95,12 @@ def get_project_from_pypi(project, extras, sdist_server_url):
             except InvalidSpecifier as err:
                 # Ignore files with invalid python specifiers
                 # e.g. shellingham has files with ">= '2.7'"
-                logger.debug(f'skipping {filename} because of an invalid python version specifier {py_req}: {err}')
+                if DEBUG_RESOLVER:
+                    logger.debug(f'skipping {filename} because of an invalid python version specifier {py_req}: {err}')
                 continue
             if PYTHON_VERSION not in spec:
-                logger.debug(f'skipping {filename} because of python version {py_req}')
+                if DEBUG_RESOLVER:
+                    logger.debug(f'skipping {filename} because of python version {py_req}')
                 continue
 
         # TODO: Handle compatibility tags?
@@ -108,7 +114,8 @@ def get_project_from_pypi(project, extras, sdist_server_url):
                 name, version, _, _ = parse_wheel_filename(filename)
         except Exception as err:
             # Ignore files with invalid versions
-            logger.debug(f'could not determine version for {filename}: {err}')
+            if DEBUG_RESOLVER:
+                logger.debug(f'could not determine version for "{filename}": {err}')
             continue
         # Look for and ignore cases like `cffi-1.0.2-2.tar.gz` which
         # produces the name `cffi-1-0-2`. We can't just compare the
@@ -118,10 +125,13 @@ def get_project_from_pypi(project, extras, sdist_server_url):
         # filenames consistently, so we compare the length for this
         # case.
         if len(name) != len(project):
+            if DEBUG_RESOLVER:
+                logger.debug(f'skipping invalid filename "{filename}"')
             continue
 
         c = Candidate(name, version, url=candidate_url, extras=extras, is_sdist=is_sdist)
-        # logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
+        if DEBUG_RESOLVER:
+            logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
         yield c
 
 
