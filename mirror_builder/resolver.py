@@ -4,7 +4,6 @@
 # resolve any dependencies.
 #
 import logging
-import re
 from email.message import EmailMessage
 from email.parser import BytesParser
 from io import BytesIO
@@ -17,17 +16,15 @@ import html5lib
 import requests
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.utils import canonicalize_name
-from packaging.version import InvalidVersion, Version
+from packaging.utils import (canonicalize_name, parse_sdist_filename,
+                             parse_wheel_filename)
+from packaging.version import Version
 
 from .extras_provider import ExtrasProvider
 
 logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
-
-# Note we are deliberately skipping pre-release versions like 4.10.0rc1
-NAME_VERSION_PATTERN = re.compile(r'(.*)-((\d+\.)+(\d+))(-.*\.whl|\.tar\.gz)')
 
 
 class Candidate:
@@ -102,19 +99,16 @@ def get_project_from_pypi(project, extras, sdist_server_url):
 
         # TODO: Handle compatibility tags?
 
-        # Very primitive sdist filename parsing
-        name_and_version = NAME_VERSION_PATTERN.search(filename)
-        if not name_and_version:
-            # logger.debug(f'skipping {filename} because could not extract version info')
-            continue
-        name = name_and_version.groups()[0]
-        version = name_and_version.groups()[1]
-        is_sdist = name_and_version.groups()[-1] == '.tar.gz'
         try:
-            version = Version(version)
-        except InvalidVersion as err:
+            if filename.endswith('.tar.gz'):
+                is_sdist = True
+                name, version = parse_sdist_filename(filename)
+            else:
+                is_sdist = False
+                name, version, _, _ = parse_wheel_filename(filename)
+        except Exception as err:
             # Ignore files with invalid versions
-            logger.debug(f'invalid version for {filename}: {err}')
+            logger.debug(f'could not determine version for {filename}: {err}')
             continue
 
         c = Candidate(name, version, url=candidate_url, extras=extras, is_sdist=is_sdist)
