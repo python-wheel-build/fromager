@@ -35,7 +35,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
-        logger.debug(f'redundant requirement {req} resolves to {resolved_version}')
+        logger.debug(f'redundant {req_type} requirement {why} -> {req} resolves to {resolved_version}')
         return resolved_version
     ctx.mark_as_seen(req, resolved_version)
 
@@ -43,8 +43,8 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
     sdist_root_dir = sources.prepare_source(ctx, req, source_filename, resolved_version)
 
-    next_why = f'{why} -> {req.name}({resolved_version})'
     next_req_type = 'build_system'
+    next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
     build_system_dependencies = dependencies.get_build_system_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_system_dependencies,
@@ -61,6 +61,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         _maybe_install(ctx, dep, next_req_type, resolved)
 
     next_req_type = 'build_backend'
+    next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
     build_backend_dependencies = dependencies.get_build_backend_dependencies(ctx, req, sdist_root_dir)
     _write_requirements_file(
         build_backend_dependencies,
@@ -81,24 +82,31 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     # fails.
     ctx.add_to_build_order(req_type, req, resolved_version, why)
 
-    build_env = wheels.BuildEnvironment(
-        ctx, sdist_root_dir.parent,
-        build_system_dependencies | build_backend_dependencies,
-    )
     # FIXME: This is a bit naive, but works for most wheels, including
     # our more expensive ones, and there's not a way to know the
     # actual name without doing most of the work to build the wheel.
-    existing_wheel = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
-    if existing_wheel:
+    wheel_filename = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
+    if wheel_filename:
         logger.info('have wheel for %s version %s: %s',
-                    req.name, resolved_version, existing_wheel)
+                    req.name, resolved_version, wheel_filename)
+        build_env = None  # for cleanup
     else:
-        wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
+        logger.info('preparing to build wheel for %s version %s', req, resolved_version)
+        build_env = wheels.BuildEnvironment(
+            ctx, sdist_root_dir.parent,
+            build_system_dependencies | build_backend_dependencies,
+        )
+        built_filename = wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
         server.update_wheel_mirror(ctx)
-        logger.info('built wheel for %s (%s)', req.name, resolved_version)
+        # When we update the mirror, the built file moves to the
+        # downloads directory.
+        wheel_filename = ctx.wheels_downloads / built_filename.name
+        logger.info('built wheel for %s version %s: %s',
+                    req.name, resolved_version, wheel_filename)
 
     next_req_type = 'dependency'
-    install_dependencies = dependencies.get_install_dependencies(ctx, req, sdist_root_dir)
+    next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
+    install_dependencies = dependencies.get_install_dependencies_of_wheel(wheel_filename)
     _write_requirements_file(
         install_dependencies,
         sdist_root_dir.parent / 'requirements.txt',
@@ -115,9 +123,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         logger.debug('cleaning up source tree %s', sdist_root_dir)
         shutil.rmtree(sdist_root_dir)
         logger.debug('cleaned up source tree %s', sdist_root_dir)
-        logger.debug('cleaning up build environment %s', build_env.path)
-        shutil.rmtree(build_env.path)
-        logger.debug('cleaned up build environment %s', build_env.path)
+        if build_env:
+            logger.debug('cleaning up build environment %s', build_env.path)
+            shutil.rmtree(build_env.path)
+            logger.debug('cleaned up build environment %s', build_env.path)
 
     return resolved_version
 
@@ -181,7 +190,7 @@ def _maybe_install(ctx, req, req_type, resolved_version):
             logger.info('found %s %s installed, updating to %s',
                         req.name, actual_version, resolved_version)
         except importlib.metadata.PackageNotFoundError as err:
-            logger.debug('could not determine version of %s: %s', req.name, err)
+            logger.debug('could not determine version of %s, will install: %s', req.name, err)
     safe_install(ctx, req, req_type)
 
 

@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 
+import pkginfo
 import pyproject_hooks
 import tomli
 from packaging import markers, metadata
@@ -64,6 +65,12 @@ def get_install_dependencies(ctx, req, sdist_root_dir):
         dep_func = default_get_install_dependencies
     deps = _filter_requirements(dep_func(ctx, req, sdist_root_dir))
     return deps
+
+
+def get_install_dependencies_of_wheel(wheel_filename):
+    logger.info('getting installation dependencies from %s', wheel_filename)
+    wheel = pkginfo.Wheel(wheel_filename)
+    return _filter_requirements(wheel.requires_dist)
 
 
 def default_get_install_dependencies(ctx, req, sdist_root_dir):
