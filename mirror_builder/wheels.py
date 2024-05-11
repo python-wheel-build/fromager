@@ -13,7 +13,7 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
                 ctx.wheels_build)
     builder = pkgs.find_override_method(req.name, 'build_wheel')
     if not builder:
-        builder = _default_build_wheel
+        builder = default_build_wheel
     extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
     wheels = list(ctx.wheels_build.glob('*.whl'))
@@ -22,7 +22,7 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
     return None
 
 
-def _default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
+def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
     logger.debug('building wheel for %s with %s', sdist_root_dir, extra_environ)
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = [
