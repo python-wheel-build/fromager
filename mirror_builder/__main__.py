@@ -8,6 +8,7 @@ import pathlib
 import sys
 
 from packaging.requirements import Requirement
+from packaging.utils import parse_wheel_filename
 
 from . import context, finders, jobs, sdist, server, sources, wheels
 from .pkgs import overrides
@@ -59,6 +60,9 @@ def main():
     parser_canonicalize = subparsers.add_parser('canonicalize')
     parser_canonicalize.set_defaults(func=do_canonicalize)
     parser_canonicalize.add_argument('toplevel', nargs='+')
+
+    parser_pipeline_rules = subparsers.add_parser('pipeline-rules')
+    parser_pipeline_rules.set_defaults(func=do_pipeline_rules)
 
     # The jobs CLI is complex enough that it's in its own module
     jobs.build_cli(parser, subparsers)
@@ -166,10 +170,21 @@ def do_build(args, ctx):
     print(wheel_filename)
 
 
-@requires_context
-def do_canonicalize(args, ctx):
+def do_canonicalize(args):
     for name in args.toplevel:
         print(overrides.pkgname_to_override_module(name))
+
+
+@requires_context
+def do_pipeline_rules(args, ctx):
+    rule_template = '    - if: $CI_PIPELINE_SOURCE == "trigger" && $JOB == "build-wheel" && $DIST_NAME == "{dist_name}"'
+
+    dist_names = sorted(
+        overrides.pkgname_to_override_module(parse_wheel_filename(filename.name)[0])
+        for filename in sorted(ctx.wheels_downloads.glob('*.whl'))
+    )
+    for dist_name in dist_names:
+        print(rule_template.format(dist_name=dist_name))
 
 
 if __name__ == '__main__':
