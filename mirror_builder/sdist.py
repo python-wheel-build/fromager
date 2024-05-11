@@ -35,7 +35,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
-        logger.debug(f'redundant requirement {req} resolves to {resolved_version}')
+        logger.debug(f'redundant {req_type} requirement {why} -> {req} resolves to {resolved_version}')
         return resolved_version
     ctx.mark_as_seen(req, resolved_version)
 
@@ -188,7 +188,7 @@ def _maybe_install(ctx, req, req_type, resolved_version):
             logger.info('found %s %s installed, updating to %s',
                         req.name, actual_version, resolved_version)
         except importlib.metadata.PackageNotFoundError as err:
-            logger.debug('could not determine version of %s: %s', req.name, err)
+            logger.debug('could not determine version of %s, will install: %s', req.name, err)
     safe_install(ctx, req, req_type)
 
 
