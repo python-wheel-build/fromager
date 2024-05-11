@@ -110,6 +110,15 @@ def get_project_from_pypi(project, extras, sdist_server_url):
             # Ignore files with invalid versions
             logger.debug(f'could not determine version for {filename}: {err}')
             continue
+        # Look for and ignore cases like `cffi-1.0.2-2.tar.gz` which
+        # produces the name `cffi-1-0-2`. We can't just compare the
+        # names directly because of case and punctuation changes in
+        # making names canonical and the way requirements are
+        # expressed and there seems to be *no* way of producing sdist
+        # filenames consistently, so we compare the length for this
+        # case.
+        if len(name) != len(project):
+            continue
 
         c = Candidate(name, version, url=candidate_url, extras=extras, is_sdist=is_sdist)
         # logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
