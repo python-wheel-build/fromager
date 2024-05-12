@@ -29,7 +29,6 @@ def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
             build_env.python, '-m', 'pip', '-vvv',
             '--disable-pip-version-check',
             'wheel',
-            '--no-cache-dir',
             '--no-build-isolation',
             '--only-binary', ':all:',
             '--wheel-dir', ctx.wheels_build,
@@ -73,7 +72,6 @@ class BuildEnvironment:
             [self.python, '-m', 'pip',
              'install',
              '--disable-pip-version-check',
-             '--no-cache-dir',
              '--only-binary', ':all:',
              ] + self._ctx.pip_wheel_server_args + [
                  '-r', req_filename.absolute(),

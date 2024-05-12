@@ -215,7 +215,6 @@ def build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
             build_env.python, '-m', 'pip', '-vvv',
             '--disable-pip-version-check',
             'wheel',
-            '--no-cache-dir',
             '--no-build-isolation',
             '--only-binary', ':all:',
             '--wheel-dir', ctx.wheels_build,
