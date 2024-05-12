@@ -1,6 +1,6 @@
 import logging
 
-from mirror_builder import sources
+from mirror_builder import sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -29,3 +29,17 @@ def _get_pytorch_release_tarball_url(version):
 
 def expected_source_archive_name(req, dist_version):
     return f'pytorch-v{dist_version}.tar.gz'
+
+
+def build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
+    # Force the version to match so we don't get alpha and git tag
+    # info included.
+    metadata = sources.read_build_meta(sdist_root_dir.parent)
+    extra_environ['PYTORCH_BUILD_VERSION'] = metadata['version']
+    # The build number must be set if build version is set. Using a
+    # number greater than 1 triggers appending a '.post'
+    # version. Refer to 'get_torch_version' in
+    # tools/generate_torch_version.py in the torch source tree for
+    # details.
+    extra_environ['PYTORCH_BUILD_NUMBER'] = '0'
+    return wheels.default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir)
