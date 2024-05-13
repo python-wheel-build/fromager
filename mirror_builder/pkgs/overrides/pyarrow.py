@@ -112,7 +112,7 @@ def build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
         except Exception as err:
             logger.debug('defaulting to 1 cpu (%s)', err)
             cpu_count = 1
-            wheel_build_parallel_level = max([cpu_count, 4])
+        wheel_build_parallel_level = max([cpu_count, 4])
 
     # FIXME: Review settings at https://src.fedoraproject.org/rpms/libarrow/blob/rawhide/f/libarrow.spec#_759
     environ_vars = {
