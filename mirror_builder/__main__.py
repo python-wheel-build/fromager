@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
+import csv
 import functools
+import json
 import logging
 import os
 import pathlib
@@ -63,6 +65,11 @@ def main():
 
     parser_pipeline_rules = subparsers.add_parser('pipeline-rules')
     parser_pipeline_rules.set_defaults(func=do_pipeline_rules)
+
+    parser_csv = subparsers.add_parser('build-order-csv')
+    parser_csv.set_defaults(func=do_build_order_csv)
+    parser_csv.add_argument('build_order_file', default='work-dir/build-order.json', nargs='?')
+    parser_csv.add_argument('--output', '-o')
 
     # The jobs CLI is complex enough that it's in its own module
     jobs.build_cli(parser, subparsers)
@@ -185,6 +192,40 @@ def do_pipeline_rules(args, ctx):
     )
     for dist_name in dist_names:
         print(rule_template.format(dist_name=dist_name))
+
+
+def do_build_order_csv(args):
+    fields = [
+        ('dist', 'Distribution Name'),
+        ('version', 'Version'),
+        ('req', 'Original Requirement'),
+        ('type', 'Dependency Type'),
+        ('why', 'Dependency Chain'),
+    ]
+    headers = {n: v for n, v in fields}
+    fieldkeys = [f[0] for f in fields]
+    fieldnames = [f[1] for f in fields]
+
+    # Read the build-order.json file and replace the short keys with
+    # the longer human-readable headers we want in the CSV output.
+    with open(args.build_order_file, 'r') as f:
+        build_order = [
+            {headers[f]: entry[f] for f in fieldkeys}
+            for entry in json.load(f)
+        ]
+
+    if args.output:
+        outfile = open(args.output, 'w')
+    else:
+        outfile = sys.stdout
+
+    try:
+        writer = csv.DictWriter(outfile, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+        writer.writeheader()
+        writer.writerows(build_order)
+    finally:
+        if args.output:
+            outfile.close()
 
 
 if __name__ == '__main__':
