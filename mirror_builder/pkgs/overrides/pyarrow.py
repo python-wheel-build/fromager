@@ -25,6 +25,7 @@ line option to cmake for the initial library build.
 
 import logging
 import os
+import platform
 import tempfile
 
 from mirror_builder import dependencies, external_commands, sources
@@ -99,15 +100,19 @@ def build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
     ld_library_path = os.environ.get('LD_LIBRARY_PATH', '')
     cmake_prefix_path = os.environ.get('CMAKE_PREFIX_PATH', '')
 
-    # Try to encourage the build to use all of the CPUs available to
-    # this process. If we can't get that set of CPUs, default to at
-    # least 4 parallel threads.
-    try:
-        cpu_count = len(os.sched_getaffinity(0))
-    except Exception as err:
-        logger.debug('defaulting to 1 cpu (%s)', err)
-        cpu_count = 1
-    wheel_build_parallel_level = max([cpu_count, 4])
+    if platform.uname().machine == 'aarch64':
+        # The VM on aarch64 dies if we do to much at once.
+        wheel_build_parallel_level = 4
+    else:
+        # Try to encourage the build to use all of the CPUs available to
+        # this process. If we can't get that set of CPUs, default to at
+        # least 4 parallel threads.
+        try:
+            cpu_count = len(os.sched_getaffinity(0))
+        except Exception as err:
+            logger.debug('defaulting to 1 cpu (%s)', err)
+            cpu_count = 1
+            wheel_build_parallel_level = max([cpu_count, 4])
 
     # FIXME: Review settings at https://src.fedoraproject.org/rpms/libarrow/blob/rawhide/f/libarrow.spec#_759
     environ_vars = {
@@ -191,7 +196,7 @@ def build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
     make_log = unpack_dir / 'make.log'
     logger.info('running make [2/4] (logs in %s)', make_log)
     external_commands.run(
-        ['make', '-j'],
+        ['make', f'-j{wheel_build_parallel_level}'],
         cwd=build_dir,
         extra_environ=environ_vars,
         log_filename=make_log,
