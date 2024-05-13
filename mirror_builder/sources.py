@@ -1,3 +1,4 @@
+import json
 import logging
 import os.path
 import pathlib
@@ -116,12 +117,34 @@ def _patch_source(ctx, source_root_dir):
             )
 
 
+def write_build_meta(unpack_dir, req, source_filename, version):
+    meta_file = unpack_dir / 'build-meta.json'
+    with open(meta_file, 'w') as f:
+        json.dump(
+            {
+                "req": str(req),
+                "source-filename": str(source_filename),
+                "version": str(version),
+            },
+            f,
+        )
+    logger.debug('wrote build metadata to %s', meta_file)
+    return meta_file
+
+
+def read_build_meta(unpack_dir):
+    meta_file = unpack_dir / 'build-meta.json'
+    with open(meta_file, 'r') as f:
+        return json.load(f)
+
+
 def prepare_source(ctx, req, source_filename, version):
     logger.info('preparing source for %s from %s', req, source_filename)
     preparer = pkgs.find_override_method(req.name, 'prepare_source')
     if not preparer:
         preparer = _default_prepare_source
     source_root_dir = preparer(ctx, req, source_filename, version)
+    write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
         logger.info('prepared source for %s at %s', req, source_root_dir)
     return source_root_dir
