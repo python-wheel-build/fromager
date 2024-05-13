@@ -147,9 +147,15 @@ def do_job_onboard_sequence(args, client):
         try:
             dist = canonicalize_name(step['dist'])
             version = step['version']
+
+            if step.get('prebuilt'):
+                print(f'skipping pre-built package {dist} {version}', flush=True)
+                return
+
             if not args.force and _sdist_exists(dist, version):
                 print(f'already have a source archive for {dist} {version}', flush=True)
                 return
+
             run_pipeline(
                 client,
                 f'onboard-sdist {dist} {version}',
@@ -212,6 +218,10 @@ def do_job_build_sequence(args, client):
     for step in build_order:
         dist = canonicalize_name(step['dist'])
         version = step['version']
+
+        if step.get('prebuilt'):
+            print(f'skipping pre-built package {dist} {version}', flush=True)
+            continue
 
         if not args.force and _wheel_exists(dist, version):
             print(f'already have a wheel for {dist} {version}')

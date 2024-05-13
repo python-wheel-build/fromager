@@ -68,6 +68,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     # If the wheel is pre-built, we don't process its dependencies.
     # FIXME: Maybe we need to look at the install dependencies?
     if req.name in PRE_BUILT:
+        ctx.add_to_build_order(req_type, req, resolved_version, why, prebuilt=True)
         return resolved_version
 
     sdist_root_dir = sources.prepare_source(ctx, req, source_filename, resolved_version)

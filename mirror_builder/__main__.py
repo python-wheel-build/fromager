@@ -200,6 +200,7 @@ def do_build_order_csv(args):
         ('version', 'Version'),
         ('req', 'Original Requirement'),
         ('type', 'Dependency Type'),
+        ('prebuilt', 'Pre-built Package'),
         ('order', 'Build Order'),
         ('why', 'Dependency Chain'),
     ]

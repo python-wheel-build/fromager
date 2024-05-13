@@ -33,6 +33,7 @@ def test_build_order(tmp_context):
             'dist': 'buildme',
             'version': '6.0',
             'why': ' -> buildme',
+            'prebuilt': False,
         },
         {
             'type': 'dependency',
@@ -40,6 +41,7 @@ def test_build_order(tmp_context):
             'dist': 'testdist',
             'version': '1.2',
             'why': ' -> testdist',
+            'prebuilt': False,
         },
     ]
     assert expected == contents
@@ -59,6 +61,7 @@ def test_build_order_repeats(tmp_context):
             'dist': 'buildme',
             'version': '6.0',
             'why': ' -> buildme',
+            'prebuilt': False,
         },
     ]
     assert expected == contents
@@ -78,6 +81,7 @@ def test_build_order_name_canonicalization(tmp_context):
             'dist': 'flit-core',
             'version': '3.9.0',
             'why': ' -> buildme',
+            'prebuilt': False,
         },
     ]
     assert expected == contents

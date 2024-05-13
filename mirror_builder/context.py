@@ -59,7 +59,7 @@ class WorkContext:
     def has_been_seen(self, req, version):
         return self._resolved_key(req, version) in self._seen_requirements
 
-    def add_to_build_order(self, req_type, req, version, why):
+    def add_to_build_order(self, req_type, req, version, why, prebuilt=False):
         key = self._resolved_key(req, version)
         if key in self._build_requirements:
             return
@@ -71,6 +71,7 @@ class WorkContext:
             'dist': canonicalize_name(req.name),
             'version': str(version),
             'why': why,
+            'prebuilt': prebuilt,
         }
         self._build_stack.append(info)
         with open(self._build_order_filename, 'w') as f:
