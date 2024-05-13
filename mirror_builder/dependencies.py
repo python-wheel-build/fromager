@@ -20,16 +20,16 @@ def get_build_system_dependencies(ctx, req, sdist_root_dir):
     dep_func = pkgs.find_override_method(req.name, 'get_build_system_dependencies')
     if not dep_func:
         dep_func = default_get_build_system_dependencies
-    deps = _filter_requirements(dep_func(ctx, req, sdist_root_dir))
+    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
     return deps
 
 
-def _filter_requirements(requirements):
+def _filter_requirements(req, requirements):
     requires = set()
     for r in requirements:
         if not isinstance(r, Requirement):
             r = Requirement(r)
-        if evaluate_marker(r):
+        if evaluate_marker(r, req.extras):
             requires.add(r)
     return requires
 
@@ -45,7 +45,7 @@ def get_build_backend_dependencies(ctx, req, sdist_root_dir):
     dep_func = pkgs.find_override_method(req.name, 'get_build_backend_dependencies')
     if not dep_func:
         dep_func = default_get_build_backend_dependencies
-    deps = _filter_requirements(dep_func(ctx, req, sdist_root_dir))
+    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
     return deps
 
 
@@ -63,14 +63,14 @@ def get_install_dependencies(ctx, req, sdist_root_dir):
     dep_func = pkgs.find_override_method(req.name, 'get_install_dependencies')
     if not dep_func:
         dep_func = default_get_install_dependencies
-    deps = _filter_requirements(dep_func(ctx, req, sdist_root_dir))
+    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
     return deps
 
 
-def get_install_dependencies_of_wheel(wheel_filename):
+def get_install_dependencies_of_wheel(req, wheel_filename):
     logger.info('getting installation dependencies from %s', wheel_filename)
     wheel = pkginfo.Wheel(wheel_filename)
-    return _filter_requirements(wheel.requires_dist)
+    return _filter_requirements(req, wheel.requires_dist)
 
 
 def default_get_install_dependencies(ctx, req, sdist_root_dir):
