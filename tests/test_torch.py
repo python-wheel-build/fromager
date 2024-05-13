@@ -1,6 +1,7 @@
 import os.path
 from unittest.mock import patch
 
+import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -32,6 +33,7 @@ def test_torch_download_source_from_upstream(resolve_sdist, download_url, tmp_co
     assert os.path.basename(f) == 'pytorch-v2.2.1.tar.gz'
 
 
+@pytest.mark.skip(reason="we always download from upstream, there is no cache, yet")
 @patch('mirror_builder.sources.download_url')
 @patch('mirror_builder.sources.resolve_sdist')
 def test_torch_download_source_from_cache(resolve_sdist, download_url, tmp_context):
