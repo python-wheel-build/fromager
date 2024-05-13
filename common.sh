@@ -34,7 +34,6 @@ install_tools() {
   source "${venv}/bin/activate"
   pip install \
       --disable-pip-version-check \
-      --no-cache-dir \
       --index-url "$TOOL_SERVER_URL" \
       -e "$(dirname "${BASH_SOURCE[0]}")"
 }

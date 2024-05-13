@@ -72,7 +72,6 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Install CUDA wheel from PyPI
 RUN $PYTHON -m pip install \
-    --no-cache-dir \
     --force-reinstall nvidia-cuda-nvcc-cu12 \
     && $PYTHON -m pip freeze
 
@@ -99,7 +98,6 @@ WORKDIR /src
 # Install the build tools
 COPY . /mirror-builder
 RUN $PYTHON -m pip install \
-    --no-cache-dir \
     --index-url $TOOL_SERVER_URL \
     /mirror-builder
 

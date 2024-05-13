@@ -230,7 +230,6 @@ def safe_install(ctx, req, req_type):
         '-vvv',
         'install',
         '--disable-pip-version-check',
-        '--no-cache-dir',
         '--upgrade',
         '--only-binary', ':all:',
     ] + ctx.pip_wheel_server_args + [

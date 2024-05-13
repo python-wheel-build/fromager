@@ -59,7 +59,6 @@ ENV TOOL_SERVER_URL=https://pyai.fedorainfracloud.org/internal/tools/+simple/
 COPY . /mirror-builder
 RUN pip install \
     --disable-pip-version-check \
-    --no-cache-dir \
     --index-url $TOOL_SERVER_URL \
     /mirror-builder
 
