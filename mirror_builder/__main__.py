@@ -200,19 +200,22 @@ def do_build_order_csv(args):
         ('version', 'Version'),
         ('req', 'Original Requirement'),
         ('type', 'Dependency Type'),
+        ('order', 'Build Order'),
         ('why', 'Dependency Chain'),
     ]
     headers = {n: v for n, v in fields}
     fieldkeys = [f[0] for f in fields]
     fieldnames = [f[1] for f in fields]
 
-    # Read the build-order.json file and replace the short keys with
-    # the longer human-readable headers we want in the CSV output.
+    build_order = []
     with open(args.build_order_file, 'r') as f:
-        build_order = [
-            {headers[f]: entry[f] for f in fieldkeys}
-            for entry in json.load(f)
-        ]
+        for i, entry in enumerate(json.load(f), 1):
+            # Add an order column, not in the original source file, in
+            # case someone wants to sort the output on another field.
+            entry['order'] = i
+            # Replace the short keys with the longer human-readable
+            # headers we want in the CSV output.
+            build_order.append({headers[f]: entry[f] for f in fieldkeys})
 
     if args.output:
         outfile = open(args.output, 'w')
@@ -220,7 +223,7 @@ def do_build_order_csv(args):
         outfile = sys.stdout
 
     try:
-        writer = csv.DictWriter(outfile, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+        writer = csv.DictWriter(outfile, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
         writer.writeheader()
         writer.writerows(build_order)
     finally:
