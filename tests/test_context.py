@@ -65,6 +65,8 @@ def test_build_order_repeats(tmp_context):
         'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
     tmp_context.add_to_build_order(
         'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
+    tmp_context.add_to_build_order(
+        'build_backend', Requirement('buildme[extra]>1.0'), '6.0', ' -> buildme[extra]')
     contents_str = tmp_context._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
