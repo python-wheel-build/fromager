@@ -46,9 +46,9 @@ inside_of_container() {
     # something that is pure python produces an error, so look for
     # packages with the arch in them so we only get binary wheels.
     # shellcheck disable=SC2231
-    for wheel in wheels-repo/downloads/*$(uname -m)*.whl; do
+    (for wheel in wheels-repo/downloads/*$(uname -m)*.whl; do
         auditwheel show "$wheel" || true
-    done
+    done) 2>&1 | tee build-logs/auditwheel.log
 }
 
 IN_CONTAINER=${IN_CONTAINER:-false}
