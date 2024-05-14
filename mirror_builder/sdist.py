@@ -1,7 +1,9 @@
 import importlib.metadata
 import logging
+import os.path
 import shutil
 import sys
+from urllib.parse import urlparse
 
 from . import dependencies, external_commands, finders, server, sources, wheels
 
@@ -62,8 +64,12 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         # case these do not come from PyPI?
         wheel_url, resolved_version = sources.resolve_sdist(
             req, sources.PYPI_SERVER_URL, only_sdists=False)
-        logger.info(f'downloading pre-built wheel {wheel_url}')
-        wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
+        wheel_filename = ctx.wheels_prebuilt / os.path.basename(urlparse(wheel_url).path)
+        if not wheel_filename.exists():
+            logger.info(f'downloading pre-built wheel {wheel_url}')
+            wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
+        else:
+            logger.info(f'have pre-built wheel {wheel_filename}')
         unpack_dir = ctx.work_dir / f'{req.name}-{resolved_version}'
         if not unpack_dir.exists():
             unpack_dir.mkdir()
