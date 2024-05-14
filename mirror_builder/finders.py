@@ -44,6 +44,9 @@ def find_sdist(downloads_dir, req, dist_version):
             # given as a dependency. That's not "correct", either but we do
             # see it. (oslo.messaging-14.7.0.tar.gz) for example
             f'{req.name}-{dist_version}.tar.gz',
+            # Sometimes the sdist uses '.' instead of '-' in the
+            # package name portion.
+            f'{req.name.replace("-", ".")}-{dist_version}.tar.gz',
         ]
         # Case-insensitive globbing was added to Python 3.12, but we
         # have to run with older versions, too, so do our own name
@@ -74,6 +77,9 @@ def find_wheel(downloads_dir, req, dist_version):
         # given as a dependency. That's not "correct", either but we do
         # see it. (oslo.messaging-14.7.0-) for example
         f'{req.name}-{dist_version}-',
+        # Sometimes the sdist uses '.' instead of '-' in the
+        # package name portion.
+        f'{req.name.replace("-", ".")}-{dist_version}-',
     ]
     # Case-insensitive globbing was added to Python 3.12, but we
     # have to run with older versions, too, so do our own name
@@ -111,6 +117,7 @@ def find_source_dir(work_dir, req, dist_version):
     canonical_name = canonicalize_name(req.name)
     canonical_based = f'{canonical_name}-{dist_version}'
     name_based = f'{req.name}-{dist_version}'
+    dotted_name = f'{req.name.replace("-", ".")}-{dist_version}'
 
     candidate_bases = [
         # First check if the file is there using the canonically
@@ -124,6 +131,9 @@ def find_source_dir(work_dir, req, dist_version):
         # given as a dependency. That's not "correct", either but we do
         # see it. (oslo.messaging-14.7.0.tar.gz) for example
         name_based,
+        # Sometimes the sdist uses '.' instead of '-' in the
+        # package name portion.
+        dotted_name,
     ]
 
     # Case-insensitive globbing was added to Python 3.12, but we
