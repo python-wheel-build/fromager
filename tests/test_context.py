@@ -11,6 +11,19 @@ def test_seen(tmp_context):
     assert tmp_context.has_been_seen(req, version)
 
 
+def test_seen_extras(tmp_context):
+    req1 = Requirement('testdist')
+    req2 = Requirement('testdist[extra]')
+    version = '1.2'
+    assert not tmp_context.has_been_seen(req1, version)
+    tmp_context.mark_as_seen(req1, version)
+    assert tmp_context.has_been_seen(req1, version)
+    assert not tmp_context.has_been_seen(req2, version)
+    tmp_context.mark_as_seen(req2, version)
+    assert tmp_context.has_been_seen(req1, version)
+    assert tmp_context.has_been_seen(req2, version)
+
+
 def test_seen_name_canonicalization(tmp_context):
     req = Requirement('flit_core')
     version = '1.2'

@@ -51,7 +51,7 @@ class WorkContext:
         return args
 
     def _resolved_key(self, req, version):
-        return (canonicalize_name(req.name), str(version))
+        return (canonicalize_name(req.name), tuple(sorted(req.extras)), str(version))
 
     def mark_as_seen(self, req, version):
         logger.debug('remembering seen sdist %s', self._resolved_key(req, version))

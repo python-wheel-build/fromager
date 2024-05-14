@@ -95,11 +95,11 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         unpack_dir = sdist_root_dir.parent
 
         next_req_type = 'build_system'
-        next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
+        next_why = f'{why} -{next_req_type}-> {req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}({resolved_version})'
         build_system_dependencies = _handle_build_system_requirements(ctx, req, next_why, sdist_root_dir)
 
         next_req_type = 'build_backend'
-        next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
+        next_why = f'{why} -{next_req_type}-> {req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}({resolved_version})'
         build_backend_dependencies = _handle_build_backend_requirements(ctx, req, next_why, sdist_root_dir)
 
     # Add the new package to the build order list before trying to
@@ -131,7 +131,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
     # Process installation dependencies for all wheels.
     next_req_type = 'install'
-    next_why = f'{why} -{next_req_type}-> {req.name}({resolved_version})'
+    next_why = f'{why} -{next_req_type}-> {req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}({resolved_version})'
     install_dependencies = dependencies.get_install_dependencies_of_wheel(req, wheel_filename)
     _write_requirements_file(
         install_dependencies,
