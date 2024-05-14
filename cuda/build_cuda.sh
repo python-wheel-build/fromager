@@ -47,7 +47,7 @@ inside_of_container() {
     # packages with the arch in them so we only get binary wheels.
     # shellcheck disable=SC2231
     for wheel in wheels-repo/downloads/*$(uname -m)*.whl; do
-        auditwheel show "$wheel"
+        auditwheel show "$wheel" || true
     done
 }
 
