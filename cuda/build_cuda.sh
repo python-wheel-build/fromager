@@ -37,8 +37,9 @@ outside_of_container() {
 }
 
 inside_of_container() {
-    jq -r '.[] | .dist + " " + .version' "$BUILD_ORDER_FILE" | while read -r dist version; do
-        ./build_wheel.sh -d "$dist" -v "$version" -V cuda
+    jq -r '.[] | select(.prebuilt == false) | .dist + " " + .version' "$BUILD_ORDER_FILE" \
+      | while read -r dist version; do
+      ./build_wheel.sh -d "$dist" -v "$version" -V cuda
     done
 
     # Show what all the binary wheels linked to. Using auditwheel on
