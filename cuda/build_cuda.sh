@@ -39,9 +39,6 @@ outside_of_container() {
 inside_of_container() {
     jq -r '.[] | .dist + " " + .version' "$BUILD_ORDER_FILE" | while read -r dist version; do
         ./build_wheel.sh -d "$dist" -v "$version" -V cuda
-        # FIXME: After this loop, artifacts/build-artifacts.tar
-        # includes all of the wheels and sdists, but only the logs for
-        # the last thing built.
     done
 
     # Show what all the binary wheels linked to. Using auditwheel on
