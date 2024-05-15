@@ -143,6 +143,8 @@ def do_job_onboard_sequence(args, client):
     with open(args.build_order_file, 'r') as f:
         build_order = json.load(f)
 
+    errors = []
+
     def run_one(step):
         try:
             dist = canonicalize_name(step['dist'])
@@ -170,12 +172,17 @@ def do_job_onboard_sequence(args, client):
                 show_progress=False,
             )
         except Exception as err:
-            raise RuntimeError(f'failed to onboard {dist} {version}: {err}') from err
+            errors.append((dist, version, err))
 
     executor = futures.ThreadPoolExecutor(max_workers=3)
     for result in executor.map(run_one, build_order):
         if result:
             print(result)
+
+    for dist, version, err in errors:
+        logger.error(f'failed to onboard {dist} {version}: {err}')
+    if errors:
+        raise RuntimeError(f'failed to onboard {len(errors)} package(s)')
 
 
 def _wheel_exists(dist_name, dist_version):
