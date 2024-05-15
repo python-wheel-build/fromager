@@ -37,17 +37,18 @@ outside_of_container() {
 }
 
 inside_of_container() {
-    jq -r '.[] | .dist + " " + .version' "$BUILD_ORDER_FILE" | while read -r dist version; do
-        ./build_wheel.sh -d "$dist" -v "$version" -V cuda
+    jq -r '.[] | select(.prebuilt == false) | .dist + " " + .version' "$BUILD_ORDER_FILE" \
+      | while read -r dist version; do
+      ./build_wheel.sh -d "$dist" -v "$version" -V cuda
     done
 
     # Show what all the binary wheels linked to. Using auditwheel on
     # something that is pure python produces an error, so look for
     # packages with the arch in them so we only get binary wheels.
     # shellcheck disable=SC2231
-    for wheel in wheels-repo/downloads/*$(uname -m)*.whl; do
-        auditwheel show "$wheel"
-    done
+    (for wheel in wheels-repo/downloads/*$(uname -m)*.whl; do
+        auditwheel show "$wheel" || true
+    done) 2>&1 | tee build-logs/auditwheel.log
 }
 
 IN_CONTAINER=${IN_CONTAINER:-false}
