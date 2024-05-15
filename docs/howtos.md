@@ -273,6 +273,13 @@ $ tox -e job -- build-sequence ./work-dir/build-order.json
 Be certain to use `--python` to pass the Python interpreter name to
 use with the list of packages in the build order file.
 
+### Building CUDA wheels
+
+The CUDA variant cannot be built in the pipeline, yet. To build it
+locally, run the bootstrap process, then use `cuda/build_cuda.sh` with
+the `build-order.json` to build the actual packages using the base
+container with the necessary libraries.
+
 ## Updating tools
 
 When these tools run in the build pipelines, their dependencies are
