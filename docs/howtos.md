@@ -223,7 +223,18 @@ $ ./mirror-sdists.sh NumPy==1.26.4
 
 The output is written to `work-dir/build-order.json`.
 
-**NOTE:** The dependencies of a package may vary based on the version
+The dependencies of a package _will_ vary based on the build variant
+requested. The default is `cpu`. The set of dependencies for `cuda`
+include some "pre-built" wheels that are not built by the tool chain
+and are expected to come from elsewhere.
+
+Pass the variant as the second argument to `mirror-sdists.sh`:
+
+```
+$ ./mirror-sdists.sh instructlab==0.14.1 cuda
+```
+
+**NOTE:** The dependencies of a package _may_ vary based on the version
 of Python used to calculate those dependencies. For example, as new
 features are added to the standard library, some external libraries
 are no longer needed. Requirement "environment markers", as described
