@@ -13,6 +13,7 @@ from mirror_builder import finders
     ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0.tar.gz'),
     ('cython', '3.0.10', 'Cython-3.0.10.tar.gz'),
     ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9.tar.gz'),
+    ('ruamel-yaml', '0.18.6', 'ruamel.yaml-0.18.6.tar.gz'),
 ])
 def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
     sdists_repo = pathlib.Path(tmp_path)
@@ -33,6 +34,7 @@ def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
     ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0-py2.py3-none-any.whl'),
     ('cython', '3.0.10', 'Cython-3.0.10-cp311-cp311-linux_aarch64.whl'),
     ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9-cp311-cp311-linux_aarch64.whl'),
+    ('ruamel-yaml', '0.18.6', 'ruamel.yaml-0.18.6-py3-none-any.whl'),
 ])
 def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
     wheels_repo = pathlib.Path(tmp_path)
@@ -54,6 +56,7 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
     ('cython', '3.0.10', 'Cython-3.0.10', 'Cython-3.0.10'),
     ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9',
      'different-prefix-mirror-builder-test-9.9.9'),
+    ('ruamel-yaml', '0.18.6', 'ruamel.yaml-0.18.6', 'ruamel.yaml-0.18.6'),
 ])
 def test_find_source_dir(tmp_path, dist_name, version_string, unpack_base, source_base):
     work_dir = pathlib.Path(tmp_path)
