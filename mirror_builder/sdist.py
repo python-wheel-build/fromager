@@ -53,7 +53,9 @@ PRE_BUILT = {
 }
 
 
-def handle_requirement(ctx, req, req_type='toplevel', why=''):
+def handle_requirement(ctx, req, req_type='toplevel', why=None):
+    if why is None:
+        why = []
 
     pre_built = req.name in PRE_BUILT.get(ctx.variant, set())
 
@@ -85,8 +87,12 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         return resolved_version
     ctx.mark_as_seen(req, resolved_version)
 
-    logger.info('new dependency (%s) %s -> %s resolves to %s',
-                req_type, why, req, resolved_version)
+    logger.info('new %s dependency %s resolves to %s', req_type, req, resolved_version)
+
+    # Build the dependency chain up to the point of this new
+    # requirement using a new list so we can avoid modifying the list
+    # we're given.
+    why = why[:] + [(req_type, req, resolved_version)]
 
     # for cleanup
     build_env = None
@@ -97,12 +103,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
         unpack_dir = sdist_root_dir.parent
 
         next_req_type = 'build_system'
-        next_why = f'{why} -{next_req_type}-> {req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}({resolved_version})'
-        build_system_dependencies = _handle_build_system_requirements(ctx, req, next_why, sdist_root_dir)
+        build_system_dependencies = _handle_build_system_requirements(ctx, req, why, sdist_root_dir)
 
         next_req_type = 'build_backend'
-        next_why = f'{why} -{next_req_type}-> {req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}({resolved_version})'
-        build_backend_dependencies = _handle_build_backend_requirements(ctx, req, next_why, sdist_root_dir)
+        build_backend_dependencies = _handle_build_backend_requirements(ctx, req, why, sdist_root_dir)
 
     # Add the new package to the build order list before trying to
     # build it so we have a record of the dependency even if the build
@@ -133,7 +137,6 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
     # Process installation dependencies for all wheels.
     next_req_type = 'install'
-    next_why = f'{why} -{next_req_type}-> {req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}({resolved_version})'
     install_dependencies = dependencies.get_install_dependencies_of_wheel(req, wheel_filename)
     _write_requirements_file(
         install_dependencies,
@@ -141,9 +144,9 @@ def handle_requirement(ctx, req, req_type='toplevel', why=''):
     )
     for dep in install_dependencies:
         try:
-            handle_requirement(ctx, dep, next_req_type, next_why)
+            handle_requirement(ctx, dep, next_req_type, why)
         except Exception as err:
-            raise ValueError(f'could not handle {next_req_type} dependency {dep} for {next_why}') from err
+            raise ValueError(f'could not handle {next_req_type} dependency {dep} for {why}') from err
 
     # Cleanup the source tree and build environment, leaving any other
     # artifacts that were created.

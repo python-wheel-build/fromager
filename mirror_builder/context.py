@@ -81,7 +81,10 @@ class WorkContext:
         }
         self._build_stack.append(info)
         with open(self._build_order_filename, 'w') as f:
-            json.dump(self._build_stack, f, indent=2)
+            # Set default=str because the why value includes
+            # Requirement and Version instances that can't be
+            # converted to JSON without help.
+            json.dump(self._build_stack, f, indent=2, default=str)
 
     def setup(self):
         # The work dir must already exist, so don't try to create it.

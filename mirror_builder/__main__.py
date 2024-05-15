@@ -3,6 +3,7 @@
 import argparse
 import csv
 import functools
+import itertools
 import json
 import logging
 import os
@@ -70,6 +71,11 @@ def main():
     parser_csv.set_defaults(func=do_build_order_csv)
     parser_csv.add_argument('build_order_file', default='work-dir/build-order.json', nargs='?')
     parser_csv.add_argument('--output', '-o')
+
+    parser_graph = subparsers.add_parser('build-order-graph')
+    parser_graph.set_defaults(func=do_build_order_graph)
+    parser_graph.add_argument('build_order_file', default='work-dir/build-order.json', nargs='?')
+    parser_graph.add_argument('--output', '-o')
 
     # The jobs CLI is complex enough that it's in its own module
     jobs.build_cli(parser, subparsers)
@@ -227,6 +233,75 @@ def do_build_order_csv(args):
         writer = csv.DictWriter(outfile, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
         writer.writeheader()
         writer.writerows(build_order)
+    finally:
+        if args.output:
+            outfile.close()
+
+
+def do_build_order_graph(args):
+    build_order = []
+    with open(args.build_order_file, 'r') as f:
+        build_order = json.load(f)
+
+    def fmt_req(req, version):
+        req = Requirement(req)
+        return f'{req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}=={version}'
+
+    def mk_edge(parent, parent_version, child, child_version):
+        if not parent:
+            return ('', fmt_req(child, child_version))
+        return (fmt_req(parent, parent_version), fmt_req(child, child_version))
+
+    edges = []
+    for step in build_order:
+        why = step['why']
+        if len(why) == 0:
+            # should not happen
+            continue
+        elif len(why) == 1:
+            node = why[0]
+            # toplevel
+            edge = mk_edge(None, None, node[1], node[2])
+            if edge not in edges:
+                edges.append(edge)
+        else:
+            parent = why[0]
+            for child in why[1:]:
+                edge = mk_edge(parent[1], parent[2],
+                               child[1], child[2])
+                if edge not in edges:
+                    edges.append(edge)
+                parent = child
+
+    if args.output:
+        outfile = open(args.output, 'w')
+    else:
+        outfile = sys.stdout
+    try:
+
+        # Track unique ids for nodes since the labels may not be
+        # syntactically correct.
+        node_ids = itertools.count(1)
+        nodes = {}
+
+        def node_id(node):
+            if node not in nodes:
+                nodes[node] = 'node' + str(next(node_ids))
+            return nodes[node]
+
+        def new_node(node):
+            if node in nodes:
+                return
+            outfile.write(f'  {node_id(node)} [label="{node}"];\n')
+
+        outfile.write('digraph {\n')
+
+        for parent, child in edges:
+            new_node(parent)
+            new_node(child)
+            outfile.write(f'  {node_id(parent)} -> {node_id(child)};\n')
+
+        outfile.write('}\n')
     finally:
         if args.output:
             outfile.close()
