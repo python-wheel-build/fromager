@@ -18,6 +18,7 @@ class WorkContext:
         self.wheels_repo = pathlib.Path(wheels_repo).absolute()
         self.wheels_build = self.wheels_repo / 'build'
         self.wheels_downloads = self.wheels_repo / 'downloads'
+        self.wheels_prebuilt = self.wheels_repo / 'prebuilt'
         self.wheel_server_dir = self.wheels_repo / 'simple'
         self.work_dir = pathlib.Path(work_dir).absolute()
         self.wheel_server_url = wheel_server_url
@@ -83,7 +84,7 @@ class WorkContext:
         # already exist.
         for p in [self.work_dir,
                   self.sdists_repo, self.sdists_downloads,
-                  self.wheels_repo, self.wheels_downloads]:
+                  self.wheels_repo, self.wheels_downloads, self.wheels_prebuilt]:
             if not p.exists():
                 logger.debug('creating %s', p)
                 p.mkdir(parents=True)
