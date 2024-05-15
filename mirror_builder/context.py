@@ -51,7 +51,7 @@ class WorkContext:
         return args
 
     def _resolved_key(self, req, version):
-        return (canonicalize_name(req.name), str(version))
+        return (canonicalize_name(req.name), tuple(sorted(req.extras)), str(version))
 
     def mark_as_seen(self, req, version):
         logger.debug('remembering seen sdist %s', self._resolved_key(req, version))
@@ -61,10 +61,15 @@ class WorkContext:
         return self._resolved_key(req, version) in self._seen_requirements
 
     def add_to_build_order(self, req_type, req, version, why, prebuilt=False):
-        key = self._resolved_key(req, version)
+        # We only care if this version of this package has been built,
+        # and don't want to trigger building it twice. The "extras"
+        # value, included in the _resolved_key() output, can confuse
+        # that so we ignore itand build our own key using just the
+        # name and version.
+        key = (canonicalize_name(req.name), str(version))
         if key in self._build_requirements:
             return
-        logger.info('adding %s %s to build order', *key)
+        logger.info(f'adding {key} to build order')
         self._build_requirements.add(key)
         info = {
             'type': req_type,
