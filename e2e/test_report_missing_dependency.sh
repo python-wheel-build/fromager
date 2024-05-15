@@ -32,10 +32,10 @@ if [ ! -f work-dir/build-order.json ]; then
 fi
 
 # Extract the build dependencies from the bootstrap info.
-jq -r '.[] | select( .type | contains("build_") ) | .req'  "$WORKDIR/build-order.json" > "$WORKDIR/expected_build_requirements.txt"
+jq -r '.[] | select( .type | contains("build-") ) | .req'  "$WORKDIR/build-order.json" > "$WORKDIR/expected_build_requirements.txt"
 
 # Remove all of the build dependencies from the wheels-repo.
-jq -r '.[] | select( .type | contains("build_") ) | .dist'  "$WORKDIR/build-order.json" \
+jq -r '.[] | select( .type | contains("build-") ) | .dist'  "$WORKDIR/build-order.json" \
   | while read -r to_remove; do
   echo "Removing build dependency ${to_remove}"
   rm -f "wheels-repo/downloads/${to_remove}"*
