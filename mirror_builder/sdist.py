@@ -42,7 +42,10 @@ PRE_BUILT = set([
     'nvidia-cusolver-cu12',
     'nvidia-cusparse-cu12',
     'nvidia-nccl-cu12',
+    'nvidia-nvjitlink-cu12',
     'nvidia-nvtx-cu12',
+    'torch',
+    'triton',
 ])
 
 
