@@ -12,6 +12,7 @@ logfile="$WORKDIR/mirror-sdists.log"
 exec > >(tee "$logfile") 2>&1
 
 TOPLEVEL="${1:-langchain}"
+VARIANT="${2:-cpu}"
 
 VERBOSE=${VERBOSE:-}
 if [ -n "${VERBOSE}" ]; then
@@ -23,5 +24,6 @@ install_tools "$VENV"
 
 # shellcheck disable=SC2086
 python3 -m mirror_builder ${VERBOSE} \
+        --variant "$VARIANT" \
         --log-file "$WORKDIR/mirror-sdists-debug.log" \
         bootstrap "${TOPLEVEL}"

@@ -31,29 +31,31 @@ class MissingDependency(Exception):
         super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
 
 
-# These pre-built wheels aren't built from source and must be acquired
-# from another package index.
-PRE_BUILT = set([
-    'nvidia-cublas-cu12',
-    'nvidia-cuda-cupti-cu12',
-    'nvidia-cuda-nvrtc-cu12',
-    'nvidia-cuda-runtime-cu12',
-    'nvidia-cudnn-cu12',
-    'nvidia-cufft-cu12',
-    'nvidia-curand-cu12',
-    'nvidia-cusolver-cu12',
-    'nvidia-cusparse-cu12',
-    'nvidia-nccl-cu12',
-    'nvidia-nvjitlink-cu12',
-    'nvidia-nvtx-cu12',
-    'torch',
-    'triton',
-])
+# Depending on the variant, some pre-built wheels aren't built from
+# source and must be acquired from another package index.
+PRE_BUILT = {
+    'cuda': set([
+        'nvidia-cublas-cu12',
+        'nvidia-cuda-cupti-cu12',
+        'nvidia-cuda-nvrtc-cu12',
+        'nvidia-cuda-runtime-cu12',
+        'nvidia-cudnn-cu12',
+        'nvidia-cufft-cu12',
+        'nvidia-curand-cu12',
+        'nvidia-cusolver-cu12',
+        'nvidia-cusparse-cu12',
+        'nvidia-nccl-cu12',
+        'nvidia-nvjitlink-cu12',
+        'nvidia-nvtx-cu12',
+        'torch',
+        'triton',
+    ]),
+}
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=''):
 
-    pre_built = req.name in PRE_BUILT
+    pre_built = req.name in PRE_BUILT.get(ctx.variant, set())
 
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
