@@ -105,8 +105,6 @@ RUN $PYTHON -m pip install \
 # it uses the correct mode.
 ENV IN_CONTAINER=true
 
-CMD ["/mirror-builder/cuda/build_cuda.sh"]
-
 # RUN tar cvf /work-dir/built-artifacts.tar /wheels-repo/build /sdists-repo/downloads /build-logs
 
 #ARG GIT_TAG=stable
