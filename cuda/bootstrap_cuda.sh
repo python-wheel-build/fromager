@@ -33,11 +33,11 @@ outside_of_container() {
            --security-opt label=disable \
            --volume .:/src:rw,exec \
            "$image_tag" \
-           "/mirror-builder/cuda/bootstrap_cuda.sh" "$TOPLEVEL" cuda
+           "/mirror-builder/cuda/bootstrap_cuda.sh" "$@"
 }
 
 inside_of_container() {
-    ./mirror-sdists.sh "$TOPLEVEL" cuda
+    VARIANT=cuda ./mirror-sdists.sh "$@"
 
     # Show what all the binary wheels linked to. Using auditwheel on
     # something that is pure python produces an error, so look for
@@ -50,14 +50,8 @@ inside_of_container() {
 
 IN_CONTAINER=${IN_CONTAINER:-false}
 
-TOPLEVEL="$1"
-if [ -z "$TOPLEVEL" ]; then
-  echo "Usage: $0 <toplevel-requirement> [<variant>]" 1>&2
-  exit 1
-fi
-
 if "${IN_CONTAINER}"; then
-    inside_of_container
+    inside_of_container "$@"
 else
-    outside_of_container
+    outside_of_container "$@"
 fi
