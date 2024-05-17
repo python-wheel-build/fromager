@@ -69,11 +69,11 @@ def default_download_source(ctx, req, sdist_server_url):
 
 
 def download_url(destination_dir, url):
-    outfile = os.path.join(destination_dir, os.path.basename(urlparse(url).path))
+    outfile = pathlib.Path(destination_dir) / os.path.basename(urlparse(url).path)
     logger.debug('looking for %s %s',
                  outfile,
-                 '(exists)' if os.path.exists(outfile) else '(not there)')
-    if os.path.exists(outfile):
+                 '(exists)' if outfile.exists() else '(not there)')
+    if outfile.exists():
         logger.debug(f'already have {outfile}')
         return outfile
     # Open the URL first in case that fails, so we don't end up with an empty file.
@@ -83,8 +83,8 @@ def download_url(destination_dir, url):
             logger.debug(f'writing to {outfile}')
             for chunk in r.iter_content(chunk_size=1024*1024):
                 f.write(chunk)
-        logger.info(f'saved {outfile}')
-        return outfile
+    logger.info(f'saved {outfile}')
+    return outfile
 
 
 def unpack_source(ctx, source_filename):
