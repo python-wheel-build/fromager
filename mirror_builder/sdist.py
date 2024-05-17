@@ -47,6 +47,7 @@ PRE_BUILT = {
         'nvidia-nccl-cu12',
         'nvidia-nvjitlink-cu12',
         'nvidia-nvtx-cu12',
+        'pydantic-core',  # requires rustc 1.76 or newer, not available in UBI9
         'torch',
         'triton',
     ]),
