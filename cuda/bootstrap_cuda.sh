@@ -32,6 +32,7 @@ outside_of_container() {
            --replace \
            --security-opt label=disable \
            --volume .:/src:rw,exec \
+           --env "DEBUG_RESOLVER=${DEBUG_RESOLVER:-}" \
            "$image_tag" \
            "/mirror-builder/cuda/bootstrap_cuda.sh" "$@"
 }
