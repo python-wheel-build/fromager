@@ -31,17 +31,13 @@ outside_of_container() {
            --name="$image_tag" \
            --replace \
            --security-opt label=disable \
-           -e "BUILD_ORDER_FILE=$BUILD_ORDER_FILE" \
            --volume .:/src:rw,exec \
            "$image_tag" \
-           "/mirror-builder/cuda/build_cuda.sh"
+           "/mirror-builder/cuda/bootstrap_cuda.sh" "$TOPLEVEL" cuda
 }
 
 inside_of_container() {
-    jq -r '.[] | select(.prebuilt == false) | .dist + " " + .version' "$BUILD_ORDER_FILE" \
-      | while read -r dist version; do
-      ./build_wheel.sh -d "$dist" -v "$version" -V cuda
-    done
+    ./mirror-sdists.sh "$TOPLEVEL" cuda
 
     # Show what all the binary wheels linked to. Using auditwheel on
     # something that is pure python produces an error, so look for
@@ -53,10 +49,11 @@ inside_of_container() {
 }
 
 IN_CONTAINER=${IN_CONTAINER:-false}
-if [ -n "$1" ]; then
-   BUILD_ORDER_FILE="$1"
-else
-    BUILD_ORDER_FILE="${BUILD_ORDER_FILE:-llama-cpp-build-order.json}"
+
+TOPLEVEL="$1"
+if [ -z "$TOPLEVEL" ]; then
+  echo "Usage: $0 <toplevel-requirement> [<variant>]" 1>&2
+  exit 1
 fi
 
 if "${IN_CONTAINER}"; then
