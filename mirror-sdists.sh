@@ -11,8 +11,13 @@ mkdir -p "$WORKDIR"
 logfile="$WORKDIR/mirror-sdists.log"
 exec > >(tee "$logfile") 2>&1
 
-TOPLEVEL="${1:-langchain}"
+TOPLEVEL="${1}"
 VARIANT="${2:-cpu}"
+
+if [ -z "$TOPLEVEL" ]; then
+  echo "Usage: $0 <toplevel-requirement> [<variant>]" 1>&2
+  exit 1
+fi
 
 VERBOSE=${VERBOSE:-}
 if [ -n "${VERBOSE}" ]; then
