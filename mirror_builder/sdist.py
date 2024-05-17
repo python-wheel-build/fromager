@@ -55,6 +55,7 @@ PRE_BUILT = {
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=None):
+    logger.info(f'*** handling {req_type} requirement {req} {why}')
     if why is None:
         why = []
 
@@ -67,7 +68,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
             ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
 
     else:
-        logger.info(f'{req_type} requirement {why} -> {req} uses a pre-built wheel')
+        logger.info(f'{req_type} requirement {req} uses a pre-built wheel')
         # FIXME: Do we need an option for prebuilt wheel server in
         # case these do not come from PyPI?
         wheel_url, resolved_version = sources.resolve_sdist(
