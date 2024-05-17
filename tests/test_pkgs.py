@@ -40,22 +40,28 @@ def test_patches_for_source_dir(dir_name, expected_patches):
     assert expected_patches == actual_patches
 
 
-@pytest.mark.parametrize('pkgname,expected_environ', [
-    ('testenv', {'FOO': '1', 'BAR': '2', 'MULTI': '-opt1=value1 -opt2=value2'}),
-    ('noexist', {}),
-    # Look for llama-cpp-python using cannonical name form
+@pytest.mark.parametrize('pkgname,expected_environ,variant', [
+    ('testenv', {'FOO': '1', 'BAR': '2', 'MULTI': '-opt1=value1 -opt2=value2'}, 'test'),
+    ('noexist', {}, 'test'),
+    # Look for llama-cpp-python using cannonical name form. Use the
+    # cuda variant file because that is the one we want to make sure
+    # we can fine.
     ('llama-cpp-python', {
-        'CMAKE_ARGS': '-DLLAMA_CUBLAS=on',
+        'CMAKE_ARGS': '-DLLAMA_CUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major -DLLAMA_NATIVE=off',
         'CFLAGS': '-mno-avx',
-    }),
-    # Look for llama-cpp-python using non-cannonical name form
+        'FORCE_CMAKE': '1',
+    }, 'cuda'),
+    # Look for llama-cpp-python using non-cannonical name form. Use
+    # the cuda variant file because that is the one we want to make
+    # sure we can fine.
     ('llama_cpp_python', {
-        'CMAKE_ARGS': '-DLLAMA_CUBLAS=on',
+        'CMAKE_ARGS': '-DLLAMA_CUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major -DLLAMA_NATIVE=off',
         'CFLAGS': '-mno-avx',
-    }),
+        'FORCE_CMAKE': '1',
+    }, 'cuda'),
 ])
-def test_extra_environ_for_pkg(pkgname, expected_environ):
-    extra_environ = pkgs.extra_environ_for_pkg(pkgname, 'test')
+def test_extra_environ_for_pkg(pkgname, expected_environ, variant):
+    extra_environ = pkgs.extra_environ_for_pkg(pkgname, variant)
     assert expected_environ == extra_environ
 
 
