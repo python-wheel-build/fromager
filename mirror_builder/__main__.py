@@ -37,7 +37,8 @@ def main():
 
     parser_bootstrap = subparsers.add_parser('bootstrap')
     parser_bootstrap.set_defaults(func=do_bootstrap)
-    parser_bootstrap.add_argument('toplevel', nargs='+')
+    parser_bootstrap.add_argument('--requirements', '-r')
+    parser_bootstrap.add_argument('toplevel', nargs='*')
 
     parser_download = subparsers.add_parser('download-source-archive')
     parser_download.set_defaults(func=do_download_source_archive)
@@ -123,10 +124,27 @@ def requires_context(f):
     return provides_context
 
 
+def _get_requirements_from_args(args):
+    to_build = []
+    to_build.extend(args.toplevel)
+    if args.requirements:
+        with open(args.requirements, 'r') as f:
+            to_build.extend(
+                line.strip()
+                for line in f
+                if line.strip() and not line.startswith('#')
+            )
+    return to_build
+
+
 @requires_context
 def do_bootstrap(args, ctx):
     server.start_wheel_server(ctx)
-    for toplevel in args.toplevel:
+
+    to_build = _get_requirements_from_args(args)
+    if not to_build:
+        raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
+    for toplevel in to_build:
         sdist.handle_requirement(ctx, Requirement(toplevel))
 
 
