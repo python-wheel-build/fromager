@@ -1,0 +1,13 @@
+packaging
+wheel
+flash-attn==2.5.7
+deepspeed==0.14.2
+transformers==4.40.1
+ipdb
+jupyterlab
+gpustat
+matplotlib
+hydra-core
+datasets
+rich
+numba
