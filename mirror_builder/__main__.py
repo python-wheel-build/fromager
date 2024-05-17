@@ -173,7 +173,9 @@ def do_prepare_source(args, ctx):
     sdists_downloads = pathlib.Path(args.sdists_repo) / 'downloads'
     source_filename = finders.find_sdist(sdists_downloads, req, args.dist_version)
     if source_filename is None:
-        dir_contents = [str(e) for e in sdists_downloads.glob('*.tar.gz')]
+        dir_contents = []
+        for ext in ['*.tar.gz', '*.zip']:
+            dir_contents.extend(str(e) for e in sdists_downloads.glob(ext))
         raise RuntimeError(
             f'Cannot find sdist for {req.name} version {args.dist_version} in {sdists_downloads} among {dir_contents}'
         )

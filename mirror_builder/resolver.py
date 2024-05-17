@@ -108,7 +108,7 @@ def get_project_from_pypi(project, extras, sdist_server_url):
         # TODO: Handle compatibility tags?
 
         try:
-            if filename.endswith('.tar.gz'):
+            if filename.endswith('.tar.gz') or filename.endswith('.zip'):
                 is_sdist = True
                 name, version = parse_sdist_filename(filename)
                 tags = set()

@@ -5,6 +5,7 @@ import pathlib
 import shutil
 import subprocess
 import tarfile
+import zipfile
 from urllib.parse import urlparse
 
 import requests
@@ -87,8 +88,19 @@ def download_url(destination_dir, url):
     return outfile
 
 
+def _sdist_root_name(source_filename):
+    base_name = pathlib.Path(source_filename).name
+    if base_name.endswith('.tar.gz'):
+        ext_to_strip = '.tar.gz'
+    elif base_name.endswith('.zip'):
+        ext_to_strip = '.zip'
+    else:
+        raise ValueError(f'Do not know how to work with {source_filename}')
+    return base_name[:-len(ext_to_strip)]
+
+
 def unpack_source(ctx, source_filename):
-    unpack_dir = ctx.work_dir / pathlib.Path(source_filename).stem[:-len('.tar')]
+    unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
     if unpack_dir.exists():
         if ctx.cleanup:
             logger.debug('cleaning up %s', unpack_dir)
@@ -101,8 +113,14 @@ def unpack_source(ctx, source_filename):
     # the sdist (due to case, punctuation, etc.), so after we unpack
     # it look for what was created.
     logger.debug('unpacking %s to %s', source_filename, unpack_dir)
-    with tarfile.open(source_filename, 'r') as t:
-        t.extractall(unpack_dir, filter='data')
+    if str(source_filename).endswith('.tar.gz'):
+        with tarfile.open(source_filename, 'r') as t:
+            t.extractall(unpack_dir, filter='data')
+    elif str(source_filename).endswith('.zip'):
+        with zipfile.ZipFile(source_filename) as zf:
+            zf.extractall(path=unpack_dir)
+    else:
+        raise ValueError(f'Do not know how to unpack source archive {source_filename}')
     return (list(unpack_dir.glob('*'))[0], True)
 
 
