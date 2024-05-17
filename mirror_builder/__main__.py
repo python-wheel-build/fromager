@@ -148,6 +148,15 @@ def do_bootstrap(args, ctx):
     for toplevel in to_build:
         sdist.handle_requirement(ctx, Requirement(toplevel))
 
+    # If we put pre-built wheels in the downloads directory, we should
+    # remove them so we can treat that directory as a source of wheels
+    # to upload to an index.
+    for prebuilt_wheel in ctx.wheels_prebuilt.glob('*.whl'):
+        filename = ctx.wheels_downloads / prebuilt_wheel.name
+        if filename.exists():
+            logger.info(f'removing prebuilt wheel {prebuilt_wheel.name} from download cache')
+            filename.unlink()
+
 
 @requires_context
 def do_download_source_archive(args, ctx):
