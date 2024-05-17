@@ -222,7 +222,14 @@ def do_build_order_csv(args):
             entry['order'] = i
             # Replace the short keys with the longer human-readable
             # headers we want in the CSV output.
-            build_order.append({headers[f]: entry[f] for f in fieldkeys})
+            new_entry = {headers[f]: entry[f] for f in fieldkeys}
+            # Reformat the why field
+            new_entry['Dependency Chain'] = ' '.join(
+                f'-{dep_type}-> {Requirement(req).name}({version})'
+                for dep_type, req, version
+                in entry['why']
+            )
+            build_order.append(new_entry)
 
     if args.output:
         outfile = open(args.output, 'w')
