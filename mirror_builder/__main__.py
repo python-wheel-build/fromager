@@ -144,6 +144,7 @@ def do_bootstrap(args, ctx):
     to_build = _get_requirements_from_args(args)
     if not to_build:
         raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
+    logger.debug('bootstrapping %s', to_build)
     for toplevel in to_build:
         sdist.handle_requirement(ctx, Requirement(toplevel))
 
