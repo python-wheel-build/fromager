@@ -55,9 +55,9 @@ PRE_BUILT = {
 
 
 def handle_requirement(ctx, req, req_type='toplevel', why=None):
-    logger.info(f'*** handling {req_type} requirement {req} {why}')
     if why is None:
         why = []
+    logger.info(f'{"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}')
 
     pre_built = req.name in PRE_BUILT.get(ctx.variant, set())
 
