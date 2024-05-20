@@ -75,7 +75,7 @@ def main():
 
     parser_graph = subparsers.add_parser('build-order-graph')
     parser_graph.set_defaults(func=do_build_order_graph)
-    parser_graph.add_argument('build_order_file', default='work-dir/build-order.json', nargs='?')
+    parser_graph.add_argument('build_order_file', nargs='+')
     parser_graph.add_argument('--output', '-o')
 
     parser_find_rpms = subparsers.add_parser('find-rpms')
@@ -281,39 +281,59 @@ def do_build_order_csv(args):
 
 
 def do_build_order_graph(args):
-    build_order = []
-    with open(args.build_order_file, 'r') as f:
-        build_order = json.load(f)
 
     def fmt_req(req, version):
         req = Requirement(req)
-        return f'{req.name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}=={version}'
+        name = overrides.pkgname_to_override_module(req.name)
+        return f'{name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}=={version}'
 
-    def mk_edge(parent, parent_version, child, child_version):
-        if not parent:
-            return ('', fmt_req(child, child_version))
-        return (fmt_req(parent, parent_version), fmt_req(child, child_version))
+    def new_node(req):
+        if req not in nodes:
+            nodes[req] = {
+                'nid': 'node' + str(next(node_ids)),
+                'prebuilt': False,
+            }
+        return nodes[req]
 
+    def update_node(req, prebuilt=False):
+        node_details = new_node(req)
+        if (not node_details['prebuilt']) and prebuilt:
+            node_details['prebuilt'] = True
+        return req
+
+    # Track unique ids for nodes since the labels may not be
+    # syntactically correct.
+    node_ids = itertools.count(1)
+    # Map formatted requirement text to node details
+    nodes = {}
     edges = []
-    for step in build_order:
-        why = step['why']
-        if len(why) == 0:
-            # should not happen
-            continue
-        elif len(why) == 1:
-            node = why[0]
-            # toplevel
-            edge = mk_edge(None, None, node[1], node[2])
-            if edge not in edges:
-                edges.append(edge)
-        else:
-            parent = why[0]
-            for child in why[1:]:
-                edge = mk_edge(parent[1], parent[2],
-                               child[1], child[2])
-                if edge not in edges:
-                    edges.append(edge)
-                parent = child
+
+    for filename in args.build_order_file:
+        with open(filename, 'r') as f:
+            build_order = json.load(f)
+
+        for step in build_order:
+            update_node(fmt_req(step['dist'], step['version']), prebuilt=step['prebuilt'])
+            try:
+                why = step['why']
+                if len(why) == 0:
+                    # should not happen
+                    continue
+                elif len(why) == 1:
+                    # Lone node requiring nothing to build.
+                    pass
+                else:
+                    parent_info = why[0]
+                    for child_info in why[1:]:
+                        parent = update_node(fmt_req(parent_info[1], parent_info[2]))
+                        child = update_node(fmt_req(child_info[1], child_info[2]))
+                        edge = (parent, child)
+                        # print(edge, nodes[edge[0]], nodes[edge[1]])
+                        if edge not in edges:
+                            edges.append(edge)
+                        parent_info = child_info
+            except Exception as err:
+                raise Exception(f'Error processing {filename} at {step}') from err
 
     if args.output:
         outfile = open(args.output, 'w')
@@ -321,27 +341,53 @@ def do_build_order_graph(args):
         outfile = sys.stdout
     try:
 
-        # Track unique ids for nodes since the labels may not be
-        # syntactically correct.
-        node_ids = itertools.count(1)
-        nodes = {}
-
-        def node_id(node):
-            if node not in nodes:
-                nodes[node] = 'node' + str(next(node_ids))
-            return nodes[node]
-
-        def new_node(node):
-            if node in nodes:
-                return
-            outfile.write(f'  {node_id(node)} [label="{node}"];\n')
-
         outfile.write('digraph {\n')
 
-        for parent, child in edges:
-            new_node(parent)
-            new_node(child)
-            outfile.write(f'  {node_id(parent)} -> {node_id(child)};\n')
+        # Determine some nodes with special characteristics
+        all_nodes = set(n['nid'] for n in nodes.values())
+        # left = set(nodes[p]['nid'] for p, _ in edges)
+        right = set(nodes[c]['nid'] for _, c in edges)
+        # Toplevel nodes have no incoming connections
+        toplevel_nodes = all_nodes - right
+        # Leaves have no outgoing connections
+        # leaves = all_nodes - left
+
+        for req, node_details in nodes.items():
+            nid = node_details['nid']
+
+            node_attrs = [('label', req)]
+            if node_details['prebuilt']:
+                node_attrs.extend([
+                    ('style', 'filled'),
+                    ('color', 'darkred'),
+                    ('fontcolor', 'white'),
+                    ('tooltip', 'pre-built package'),
+                ])
+            elif nid in toplevel_nodes:
+                node_attrs.extend([
+                    ('style', 'filled'),
+                    ('color', 'darkgreen'),
+                    ('fontcolor', 'white'),
+                    ('tooltip', 'toplevel package'),
+                ])
+            node_attr_text = ','.join('%s="%s"' % a for a in node_attrs)
+
+            outfile.write(f'  {nid} [{node_attr_text}];\n')
+
+        outfile.write('\n')
+        if len(toplevel_nodes) > 1:
+            outfile.write('  /* toplevel nodes should all be at the same level */\n')
+            outfile.write('  {rank=same; %s;}\n\n' % " ".join(toplevel_nodes))
+        # if len(leaves) > 1:
+        #     outfile.write('  /* leaf nodes should all be at the same level */\n')
+        #     outfile.write('  {rank=same; %s;}\n\n' % " ".join(leaves))
+
+        for parent_req, child_req in edges:
+            parent_node = nodes[parent_req]
+            parent_nid = parent_node['nid']
+            child_node = nodes[child_req]
+            child_nid = child_node['nid']
+            outfile.write(f'  {parent_nid} -> {child_nid};\n')
 
         outfile.write('}\n')
     finally:
