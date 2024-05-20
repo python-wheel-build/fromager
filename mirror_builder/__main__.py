@@ -13,7 +13,7 @@ import sys
 from packaging.requirements import Requirement
 from packaging.utils import parse_wheel_filename
 
-from . import context, finders, jobs, sdist, server, sources, wheels
+from . import context, finders, jobs, rpms, sdist, server, sources, wheels
 from .pkgs import overrides
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,11 @@ def main():
     parser_graph.set_defaults(func=do_build_order_graph)
     parser_graph.add_argument('build_order_file', default='work-dir/build-order.json', nargs='?')
     parser_graph.add_argument('--output', '-o')
+
+    parser_find_rpms = subparsers.add_parser('find-rpms')
+    parser_find_rpms.set_defaults(func=rpms.do_find_rpms)
+    parser_find_rpms.add_argument('build_order_file', default='work-dir/build-order.json')
+    parser_find_rpms.add_argument('--output', '-o')
 
     # The jobs CLI is complex enough that it's in its own module
     jobs.build_cli(parser, subparsers)
