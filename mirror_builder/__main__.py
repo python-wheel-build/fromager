@@ -144,8 +144,18 @@ def do_bootstrap(args, ctx):
     to_build = _get_requirements_from_args(args)
     if not to_build:
         raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
+    logger.debug('bootstrapping %s', to_build)
     for toplevel in to_build:
         sdist.handle_requirement(ctx, Requirement(toplevel))
+
+    # If we put pre-built wheels in the downloads directory, we should
+    # remove them so we can treat that directory as a source of wheels
+    # to upload to an index.
+    for prebuilt_wheel in ctx.wheels_prebuilt.glob('*.whl'):
+        filename = ctx.wheels_downloads / prebuilt_wheel.name
+        if filename.exists():
+            logger.info(f'removing prebuilt wheel {prebuilt_wheel.name} from download cache')
+            filename.unlink()
 
 
 @requires_context
@@ -163,7 +173,9 @@ def do_prepare_source(args, ctx):
     sdists_downloads = pathlib.Path(args.sdists_repo) / 'downloads'
     source_filename = finders.find_sdist(sdists_downloads, req, args.dist_version)
     if source_filename is None:
-        dir_contents = [str(e) for e in sdists_downloads.glob('*.tar.gz')]
+        dir_contents = []
+        for ext in ['*.tar.gz', '*.zip']:
+            dir_contents.extend(str(e) for e in sdists_downloads.glob(ext))
         raise RuntimeError(
             f'Cannot find sdist for {req.name} version {args.dist_version} in {sdists_downloads} among {dir_contents}'
         )

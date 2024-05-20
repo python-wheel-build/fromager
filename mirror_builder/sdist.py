@@ -35,6 +35,7 @@ class MissingDependency(Exception):
 # source and must be acquired from another package index.
 PRE_BUILT = {
     'cuda': set([
+        'llvmlite',
         'nvidia-cublas-cu12',
         'nvidia-cuda-cupti-cu12',
         'nvidia-cuda-nvrtc-cu12',
@@ -47,6 +48,7 @@ PRE_BUILT = {
         'nvidia-nccl-cu12',
         'nvidia-nvjitlink-cu12',
         'nvidia-nvtx-cu12',
+        'pydantic-core',  # requires rustc 1.76 or newer, not available in UBI9
         'torch',
         'triton',
     ]),
@@ -56,6 +58,7 @@ PRE_BUILT = {
 def handle_requirement(ctx, req, req_type='toplevel', why=None):
     if why is None:
         why = []
+    logger.info(f'{"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}')
 
     pre_built = req.name in PRE_BUILT.get(ctx.variant, set())
 
@@ -66,7 +69,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
             ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
 
     else:
-        logger.info(f'{req_type} requirement {why} -> {req} uses a pre-built wheel')
+        logger.info(f'{req_type} requirement {req} uses a pre-built wheel')
         # FIXME: Do we need an option for prebuilt wheel server in
         # case these do not come from PyPI?
         wheel_url, resolved_version = sources.resolve_sdist(
@@ -77,6 +80,16 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
             wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
         else:
             logger.info(f'have pre-built wheel {wheel_filename}')
+        # Add the wheel to the mirror so it is available to anything
+        # that needs to install it. We leave a copy in the prebuilt
+        # directory to make it easy to remove the wheel from the
+        # downloads directory before uploading to a proper package
+        # index.
+        dest_name = ctx.wheels_downloads / wheel_filename.name
+        if not dest_name.exists():
+            logger.info('updating temporary mirror with pre-built wheel')
+            shutil.copy(wheel_filename, dest_name)
+            server.update_wheel_mirror(ctx)
         unpack_dir = ctx.work_dir / f'{req.name}-{resolved_version}'
         if not unpack_dir.exists():
             unpack_dir.mkdir()

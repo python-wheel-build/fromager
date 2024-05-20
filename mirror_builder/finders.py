@@ -35,27 +35,28 @@ def find_sdist(downloads_dir, req, dist_version):
         candidate_bases = [
             # First check if the file is there using the canonically
             # transformed name.
-            f'{filename_prefix}-{dist_version}.tar.gz',
+            f'{filename_prefix}-{dist_version}',
             # If that didn't work, try the canonical dist name. That's not
             # "correct" but we do see it. (charset-normalizer-3.3.2.tar.gz
             # and setuptools-scm-8.0.4.tar.gz) for example
-            f'{canonical_name}-{dist_version}.tar.gz',
+            f'{canonical_name}-{dist_version}',
             # If *that* didn't work, try the dist name we've been
             # given as a dependency. That's not "correct", either but we do
             # see it. (oslo.messaging-14.7.0.tar.gz) for example
-            f'{req.name}-{dist_version}.tar.gz',
+            f'{req.name}-{dist_version}',
             # Sometimes the sdist uses '.' instead of '-' in the
             # package name portion.
-            f'{req.name.replace("-", ".")}-{dist_version}.tar.gz',
+            f'{req.name.replace("-", ".")}-{dist_version}',
         ]
         # Case-insensitive globbing was added to Python 3.12, but we
         # have to run with older versions, too, so do our own name
         # comparison.
         for base in candidate_bases:
-            logger.debug('looking for %s sdist as "%s"', req.name, base)
-            for filename in downloads_dir.glob('*'):
-                if str(filename.name).lower() == base.lower():
-                    return filename
+            for ext in ['.tar.gz', '.zip']:
+                logger.debug('looking for %s sdist as "%s%s"', req.name, base, ext)
+                for filename in downloads_dir.glob('*' + ext):
+                    if str(filename.name).lower()[:-len(ext)] == base.lower():
+                        return filename
 
     return None
 
@@ -106,7 +107,14 @@ def find_source_dir(work_dir, req, dist_version):
     sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
     if sdist_name_func:
         # The directory must exist exactly as given.
-        sdist_base_name = sdist_name_func(req, dist_version)[:-len('.tar.gz')]
+        sdist_name = sdist_name_func(req, dist_version)
+        if sdist_name.endswith('.tar.gz'):
+            ext_to_strip = '.tar.gz'
+        elif sdist_name.endswith('.zip'):
+            ext_to_strip = '.zip'
+        else:
+            raise ValueError(f'Unrecognized extension on {sdist_name}')
+        sdist_base_name = sdist_name[:-len(ext_to_strip)]
         source_dir = work_dir / sdist_base_name / sdist_base_name
         if source_dir.exists():
             return source_dir

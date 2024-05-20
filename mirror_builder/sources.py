@@ -5,6 +5,7 @@ import pathlib
 import shutil
 import subprocess
 import tarfile
+import zipfile
 from urllib.parse import urlparse
 
 import requests
@@ -69,11 +70,11 @@ def default_download_source(ctx, req, sdist_server_url):
 
 
 def download_url(destination_dir, url):
-    outfile = os.path.join(destination_dir, os.path.basename(urlparse(url).path))
+    outfile = pathlib.Path(destination_dir) / os.path.basename(urlparse(url).path)
     logger.debug('looking for %s %s',
                  outfile,
-                 '(exists)' if os.path.exists(outfile) else '(not there)')
-    if os.path.exists(outfile):
+                 '(exists)' if outfile.exists() else '(not there)')
+    if outfile.exists():
         logger.debug(f'already have {outfile}')
         return outfile
     # Open the URL first in case that fails, so we don't end up with an empty file.
@@ -83,12 +84,23 @@ def download_url(destination_dir, url):
             logger.debug(f'writing to {outfile}')
             for chunk in r.iter_content(chunk_size=1024*1024):
                 f.write(chunk)
-        logger.info(f'saved {outfile}')
-        return outfile
+    logger.info(f'saved {outfile}')
+    return outfile
+
+
+def _sdist_root_name(source_filename):
+    base_name = pathlib.Path(source_filename).name
+    if base_name.endswith('.tar.gz'):
+        ext_to_strip = '.tar.gz'
+    elif base_name.endswith('.zip'):
+        ext_to_strip = '.zip'
+    else:
+        raise ValueError(f'Do not know how to work with {source_filename}')
+    return base_name[:-len(ext_to_strip)]
 
 
 def unpack_source(ctx, source_filename):
-    unpack_dir = ctx.work_dir / pathlib.Path(source_filename).stem[:-len('.tar')]
+    unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
     if unpack_dir.exists():
         if ctx.cleanup:
             logger.debug('cleaning up %s', unpack_dir)
@@ -101,8 +113,14 @@ def unpack_source(ctx, source_filename):
     # the sdist (due to case, punctuation, etc.), so after we unpack
     # it look for what was created.
     logger.debug('unpacking %s to %s', source_filename, unpack_dir)
-    with tarfile.open(source_filename, 'r') as t:
-        t.extractall(unpack_dir, filter='data')
+    if str(source_filename).endswith('.tar.gz'):
+        with tarfile.open(source_filename, 'r') as t:
+            t.extractall(unpack_dir, filter='data')
+    elif str(source_filename).endswith('.zip'):
+        with zipfile.ZipFile(source_filename) as zf:
+            zf.extractall(path=unpack_dir)
+    else:
+        raise ValueError(f'Do not know how to unpack source archive {source_filename}')
     return (list(unpack_dir.glob('*'))[0], True)
 
 

@@ -1,0 +1,1250 @@
+[
+  {
+    "type": "build-system",
+    "req": "flit_core<4,>=3.8",
+    "dist": "flit-core",
+    "version": "3.9.0",
+    "why": " -build_system-> instructlab(0.14.1) -build_backend-> setuptools(69.5.1) -build_system-> wheel(0.43.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-backend",
+    "req": "wheel",
+    "dist": "wheel",
+    "version": "0.43.0",
+    "why": " -build_system-> instructlab(0.14.1) -build_backend-> setuptools(69.5.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "setuptools>=64",
+    "dist": "setuptools",
+    "version": "69.5.1",
+    "why": " -build_system-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "setuptools_scm>=8",
+    "dist": "setuptools-scm",
+    "version": "8.1.0",
+    "why": " -build_system-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "packaging>=20",
+    "dist": "packaging",
+    "version": "24.0",
+    "why": " -build_system-> instructlab(0.14.1) -install-> setuptools_scm(8.1.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "instructlab==0.14.1",
+    "dist": "instructlab",
+    "version": "0.14.1",
+    "why": "",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "toml<0.11.0,>=0.10.2",
+    "dist": "toml",
+    "version": "0.10.2",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "peft<0.10.0,>=0.9.0",
+    "dist": "peft",
+    "version": "0.9.0",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "accelerate>=0.21.0",
+    "dist": "accelerate",
+    "version": "0.30.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "setuptools-rust>=1.4.0",
+    "dist": "setuptools-rust",
+    "version": "1.9.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> safetensors(0.4.3) -build_system-> maturin(1.5.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "semantic-version<3,>=2.8.2",
+    "dist": "semantic-version",
+    "version": "2.10.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> safetensors(0.4.3) -build_system-> maturin(1.5.1) -install-> setuptools-rust(1.9.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "maturin<2.0,>=1.0",
+    "dist": "maturin",
+    "version": "1.5.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> safetensors(0.4.3)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "safetensors>=0.3.1",
+    "dist": "safetensors",
+    "version": "0.4.3",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson>=0.63.3; python_version < \"3.12\"",
+    "dist": "meson",
+    "version": "1.4.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_system-> meson-python(0.15.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "pyproject-metadata>=0.7.1",
+    "dist": "pyproject-metadata",
+    "version": "0.8.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_system-> meson-python(0.15.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-backend",
+    "req": "pluggy>=1.0.0",
+    "dist": "pluggy",
+    "version": "1.5.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -build_system-> scikit-build(0.17.6) -build_system-> hatch-vcs(0.4.0) -build_backend-> hatchling(1.24.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-backend",
+    "req": "pathspec>=0.10.1",
+    "dist": "pathspec",
+    "version": "0.12.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -build_system-> scikit-build(0.17.6) -build_system-> hatch-vcs(0.4.0) -build_backend-> hatchling(1.24.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "calver",
+    "dist": "calver",
+    "version": "2022.6.26",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -build_system-> scikit-build(0.17.6) -build_system-> hatch-vcs(0.4.0) -build_backend-> hatchling(1.24.2) -build_system-> trove-classifiers(2024.4.10)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-backend",
+    "req": "trove-classifiers",
+    "dist": "trove-classifiers",
+    "version": "2024.4.10",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -build_system-> scikit-build(0.17.6) -build_system-> hatch-vcs(0.4.0) -build_backend-> hatchling(1.24.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "hatchling>=1.1.0",
+    "dist": "hatchling",
+    "version": "1.24.2",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -build_system-> scikit-build(0.17.6) -build_system-> hatch-vcs(0.4.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "hatch-vcs",
+    "dist": "hatch-vcs",
+    "version": "0.4.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -build_system-> scikit-build(0.17.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "hatch-fancy-pypi-readme",
+    "dist": "hatch-fancy-pypi-readme",
+    "version": "24.1.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -build_system-> scikit-build(0.17.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "scikit-build>=0.12",
+    "dist": "scikit-build",
+    "version": "0.17.6",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "distro",
+    "dist": "distro",
+    "version": "1.9.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0) -build_system-> patchelf(0.18.0.0) -install-> scikit-build(0.17.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-backend",
+    "req": "patchelf>=0.11.0",
+    "dist": "patchelf",
+    "version": "0.18.0.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4) -build_backend-> meson-python(0.15.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson-python<0.16.0,>=0.15.0",
+    "dist": "meson-python",
+    "version": "0.15.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "Cython<3.1,>=0.29.34",
+    "dist": "cython",
+    "version": "3.0.10",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> numpy(1.26.4)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "numpy>=1.17",
+    "dist": "numpy",
+    "version": "1.26.4",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "typing-extensions",
+    "dist": "typing-extensions",
+    "version": "4.11.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "ninja",
+    "dist": "ninja",
+    "version": "1.11.1.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "scikit-build-core",
+    "dist": "scikit-build-core",
+    "version": "0.9.4",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0) -build_system-> cmake(3.29.3)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "cmake",
+    "dist": "cmake",
+    "version": "3.29.3",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "requests",
+    "dist": "requests",
+    "version": "2.31.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "certifi>=2017.4.17",
+    "dist": "certifi",
+    "version": "2024.2.2",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0) -install-> requests(2.31.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "charset-normalizer<4,>=2",
+    "dist": "charset-normalizer",
+    "version": "3.3.2",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0) -install-> requests(2.31.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "urllib3<3,>=1.21.1",
+    "dist": "urllib3",
+    "version": "2.2.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0) -install-> requests(2.31.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "idna<4,>=2.5",
+    "dist": "idna",
+    "version": "3.7",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0) -install-> requests(2.31.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "Cython<3.0",
+    "dist": "cython",
+    "version": "0.29.37",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0) -build_system-> pyyaml(6.0.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "pyyaml",
+    "dist": "pyyaml",
+    "version": "6.0.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "astunparse",
+    "dist": "astunparse",
+    "version": "1.6.3",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "six<2.0,>=1.6.1",
+    "dist": "six",
+    "version": "1.16.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -build_system-> torch(2.3.0) -install-> astunparse(1.6.3)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "torch>=1.10.0",
+    "dist": "torch",
+    "version": "2.3.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fsspec",
+    "dist": "fsspec",
+    "version": "2024.3.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jinja2",
+    "dist": "jinja2",
+    "version": "3.1.4",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "MarkupSafe>=2.0",
+    "dist": "markupsafe",
+    "version": "2.1.5",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> torch(2.3.0) -install-> jinja2(3.1.4)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "filelock",
+    "dist": "filelock",
+    "version": "3.14.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sympy",
+    "dist": "sympy",
+    "version": "1.12",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "mpmath>=0.19",
+    "dist": "mpmath",
+    "version": "1.3.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> torch(2.3.0) -install-> sympy(1.12)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "networkx",
+    "dist": "networkx",
+    "version": "3.3",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> torch(2.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "huggingface-hub",
+    "dist": "huggingface-hub",
+    "version": "0.23.0",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tqdm>=4.42.1",
+    "dist": "tqdm",
+    "version": "4.66.4",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1) -install-> huggingface-hub(0.23.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "psutil",
+    "dist": "psutil",
+    "version": "5.9.8",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> accelerate(0.30.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "transformers",
+    "dist": "transformers",
+    "version": "4.40.2",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "regex!=2019.12.17",
+    "dist": "regex",
+    "version": "2024.5.10",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> transformers(4.40.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tokenizers<0.20,>=0.19",
+    "dist": "tokenizers",
+    "version": "0.19.1",
+    "why": " -install-> instructlab(0.14.1) -install-> peft(0.9.0) -install-> transformers(4.40.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonschema<5.0.0,>=4.21.1",
+    "dist": "jsonschema",
+    "version": "4.22.0",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonschema-specifications>=2023.03.6",
+    "dist": "jsonschema-specifications",
+    "version": "2023.12.1",
+    "why": " -install-> instructlab(0.14.1) -install-> jsonschema(4.22.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "referencing>=0.31.0",
+    "dist": "referencing",
+    "version": "0.35.1",
+    "why": " -install-> instructlab(0.14.1) -install-> jsonschema(4.22.0) -install-> jsonschema-specifications(2023.12.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "rpds-py>=0.7.0",
+    "dist": "rpds-py",
+    "version": "0.18.1",
+    "why": " -install-> instructlab(0.14.1) -install-> jsonschema(4.22.0) -install-> jsonschema-specifications(2023.12.1) -install-> referencing(0.35.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "attrs>=22.2.0",
+    "dist": "attrs",
+    "version": "23.2.0",
+    "why": " -install-> instructlab(0.14.1) -install-> jsonschema(4.22.0) -install-> jsonschema-specifications(2023.12.1) -install-> referencing(0.35.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "rouge-score<0.2.0,>=0.1.2",
+    "dist": "rouge-score",
+    "version": "0.1.2",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nltk",
+    "dist": "nltk",
+    "version": "3.2.5",
+    "why": " -install-> instructlab(0.14.1) -install-> rouge-score(0.1.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "absl-py",
+    "dist": "absl-py",
+    "version": "2.1.0",
+    "why": " -install-> instructlab(0.14.1) -install-> rouge-score(0.1.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "datasets<3.0.0,>=2.18.0",
+    "dist": "datasets",
+    "version": "2.19.1",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pyarrow>=12.0.0",
+    "dist": "pyarrow",
+    "version": "16.1.0",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+    "dist": "aiohttp",
+    "version": "3.9.5",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> fsspec[http](2024.3.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "aiosignal>=1.1.2",
+    "dist": "aiosignal",
+    "version": "1.3.1",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> fsspec[http](2024.3.1) -install-> aiohttp(3.9.5)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "expandvars",
+    "dist": "expandvars",
+    "version": "0.12.0",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> fsspec[http](2024.3.1) -install-> aiohttp(3.9.5) -install-> aiosignal(1.3.1) -build_system-> frozenlist(1.4.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "frozenlist>=1.1.0",
+    "dist": "frozenlist",
+    "version": "1.4.1",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> fsspec[http](2024.3.1) -install-> aiohttp(3.9.5) -install-> aiosignal(1.3.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "multidict<7.0,>=4.5",
+    "dist": "multidict",
+    "version": "6.0.5",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> fsspec[http](2024.3.1) -install-> aiohttp(3.9.5)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "yarl<2.0,>=1.0",
+    "dist": "yarl",
+    "version": "1.9.4",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> fsspec[http](2024.3.1) -install-> aiohttp(3.9.5)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson==1.2.1",
+    "dist": "meson",
+    "version": "1.2.1",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -build_system-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson-python>=0.15.0",
+    "dist": "meson-python",
+    "version": "0.16.0",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -build_system-> pandas(2.2.2) -build_system-> numpy(2.0.0rc2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "numpy>=2.0.0rc1",
+    "dist": "numpy",
+    "version": "2.0.0rc2",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -build_system-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson-python==0.13.1",
+    "dist": "meson-python",
+    "version": "0.13.1",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -build_system-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "Cython==3.0.5",
+    "dist": "cython",
+    "version": "3.0.5",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -build_system-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "versioneer[toml]",
+    "dist": "versioneer",
+    "version": "0.29",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -build_system-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pandas",
+    "dist": "pandas",
+    "version": "2.2.2",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pytz>=2020.1",
+    "dist": "pytz",
+    "version": "2024.1",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "setuptools_scm<8.0",
+    "dist": "setuptools-scm",
+    "version": "7.1.0",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> pandas(2.2.2) -build_system-> python-dateutil(2.9.0.post0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "python-dateutil>=2.8.2",
+    "dist": "python-dateutil",
+    "version": "2.9.0.post0",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tzdata>=2022.7",
+    "dist": "tzdata",
+    "version": "2024.1",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1) -install-> pandas(2.2.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "dill<0.3.9,>=0.3.0",
+    "dist": "dill",
+    "version": "0.3.8",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pyarrow-hotfix",
+    "dist": "pyarrow-hotfix",
+    "version": "0.6",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "xxhash",
+    "dist": "xxhash",
+    "version": "3.4.1",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "multiprocess",
+    "dist": "multiprocess",
+    "version": "0.70.16",
+    "why": " -install-> instructlab(0.14.1) -install-> datasets(2.19.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "importlib_metadata>=4.2.0",
+    "dist": "importlib-metadata",
+    "version": "7.1.0",
+    "why": " -install-> instructlab(0.14.1) -build_system-> pydantic-yaml(1.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "zipp>=0.5",
+    "dist": "zipp",
+    "version": "3.18.1",
+    "why": " -install-> instructlab(0.14.1) -build_system-> pydantic-yaml(1.3.0) -install-> importlib_metadata(7.1.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic-yaml",
+    "dist": "pydantic-yaml",
+    "version": "1.3.0",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic>=1.8",
+    "dist": "pydantic",
+    "version": "2.7.1",
+    "why": " -install-> instructlab(0.14.1) -install-> pydantic-yaml(1.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "annotated-types>=0.4.0",
+    "dist": "annotated-types",
+    "version": "0.6.0",
+    "why": " -install-> instructlab(0.14.1) -install-> pydantic-yaml(1.3.0) -install-> pydantic(2.7.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic-core==2.18.2",
+    "dist": "pydantic-core",
+    "version": "2.18.2",
+    "why": " -install-> instructlab(0.14.1) -install-> pydantic-yaml(1.3.0) -install-> pydantic(2.7.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ruamel.yaml<0.19.0,>=0.16.0",
+    "dist": "ruamel-yaml",
+    "version": "0.18.6",
+    "why": " -install-> instructlab(0.14.1) -install-> pydantic-yaml(1.3.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ruamel.yaml.clib>=0.2.7; platform_python_implementation == \"CPython\" and python_version < \"3.13\"",
+    "dist": "ruamel-yaml-clib",
+    "version": "0.2.8",
+    "why": " -install-> instructlab(0.14.1) -install-> pydantic-yaml(1.3.0) -install-> ruamel.yaml(0.18.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "llama-cpp-python[server]==0.2.55",
+    "dist": "llama-cpp-python",
+    "version": "0.2.55",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "uvicorn>=0.22.0; extra == \"server\"",
+    "dist": "uvicorn",
+    "version": "0.29.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "click>=7.0",
+    "dist": "click",
+    "version": "8.1.7",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> uvicorn(0.29.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "h11>=0.8",
+    "dist": "h11",
+    "version": "0.14.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> uvicorn(0.29.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "diskcache>=5.6.1",
+    "dist": "diskcache",
+    "version": "5.6.3",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "pdm-backend",
+    "dist": "pdm-backend",
+    "version": "2.3.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -build_system-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fastapi>=0.100.0; extra == \"server\"",
+    "dist": "fastapi",
+    "version": "0.111.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "httpx>=0.23.0",
+    "dist": "httpx",
+    "version": "0.27.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sniffio",
+    "dist": "sniffio",
+    "version": "1.3.1",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> httpx(0.27.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "anyio",
+    "dist": "anyio",
+    "version": "4.3.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> httpx(0.27.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "httpcore==1.*",
+    "dist": "httpcore",
+    "version": "1.0.5",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> httpx(0.27.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "python-multipart>=0.0.7",
+    "dist": "python-multipart",
+    "version": "0.0.9",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "email_validator>=2.0.0",
+    "dist": "email-validator",
+    "version": "2.1.1",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "dnspython>=2.0.0",
+    "dist": "dnspython",
+    "version": "2.6.1",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> email_validator(2.1.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "orjson>=3.2.1",
+    "dist": "orjson",
+    "version": "3.10.3",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "starlette<0.38.0,>=0.37.2",
+    "dist": "starlette",
+    "version": "0.37.2",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1",
+    "dist": "ujson",
+    "version": "5.10.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fastapi-cli>=0.0.2",
+    "dist": "fastapi-cli",
+    "version": "0.0.3",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "typer>=0.12.3",
+    "dist": "typer",
+    "version": "0.12.3",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "shellingham>=1.3.0",
+    "dist": "shellingham",
+    "version": "1.5.4",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> typer(0.12.3)",
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "poetry-core>=1.0.0",
+    "dist": "poetry-core",
+    "version": "1.9.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> typer(0.12.3) -build_system-> rich(13.7.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "rich>=10.11.0",
+    "dist": "rich",
+    "version": "13.7.1",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> typer(0.12.3)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "markdown-it-py>=2.2.0",
+    "dist": "markdown-it-py",
+    "version": "3.0.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> typer(0.12.3) -install-> rich(13.7.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "mdurl~=0.1",
+    "dist": "mdurl",
+    "version": "0.1.2",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> typer(0.12.3) -install-> rich(13.7.1) -install-> markdown-it-py(3.0.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pygments<3.0.0,>=2.13.0",
+    "dist": "pygments",
+    "version": "2.18.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> typer(0.12.3) -install-> rich(13.7.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "websockets>=10.4; extra == \"standard\"",
+    "dist": "websockets",
+    "version": "12.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> uvicorn[standard](0.29.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "httptools>=0.5.0; extra == \"standard\"",
+    "dist": "httptools",
+    "version": "0.6.1",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> uvicorn[standard](0.29.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "watchfiles>=0.13; extra == \"standard\"",
+    "dist": "watchfiles",
+    "version": "0.21.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> uvicorn[standard](0.29.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "uvloop!=0.15.0,!=0.15.1,>=0.14.0; (sys_platform != \"win32\" and (sys_platform != \"cygwin\" and platform_python_implementation != \"PyPy\")) and extra == \"standard\"",
+    "dist": "uvloop",
+    "version": "0.19.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> uvicorn[standard](0.29.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "python-dotenv>=0.13; extra == \"standard\"",
+    "dist": "python-dotenv",
+    "version": "1.0.1",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55) -install-> fastapi(0.111.0) -install-> fastapi-cli(0.0.3) -install-> uvicorn[standard](0.29.0)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic-settings>=2.0.1; extra == \"server\"",
+    "dist": "pydantic-settings",
+    "version": "2.2.1",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "starlette-context<0.4,>=0.3.6; extra == \"server\"",
+    "dist": "starlette-context",
+    "version": "0.3.6",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sse-starlette>=1.6.1; extra == \"server\"",
+    "dist": "sse-starlette",
+    "version": "2.1.0",
+    "why": " -install-> instructlab(0.14.1) -install-> llama-cpp-python[server](0.2.55)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "yamllint<1.36.0,>=1.35.1",
+    "dist": "yamllint",
+    "version": "1.35.1",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "GitPython<4.0.0,>=3.1.42",
+    "dist": "gitpython",
+    "version": "3.1.43",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "gitdb<5,>=4.0.1",
+    "dist": "gitdb",
+    "version": "4.0.11",
+    "why": " -install-> instructlab(0.14.1) -install-> GitPython(3.1.43)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "smmap<6,>=3.0.1",
+    "dist": "smmap",
+    "version": "5.0.1",
+    "why": " -install-> instructlab(0.14.1) -install-> GitPython(3.1.43) -install-> gitdb(4.0.11)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "wandb<0.17.0,>=0.16.4",
+    "dist": "wandb",
+    "version": "0.16.6",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "appdirs>=1.4.3",
+    "dist": "appdirs",
+    "version": "1.4.4",
+    "why": " -install-> instructlab(0.14.1) -install-> wandb(0.16.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "docker-pycreds>=0.4.0",
+    "dist": "docker-pycreds",
+    "version": "0.4.0",
+    "why": " -install-> instructlab(0.14.1) -install-> wandb(0.16.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "protobuf!=4.21.0,<5,>=3.19.0; python_version > \"3.9\" and sys_platform == \"linux\"",
+    "dist": "protobuf",
+    "version": "4.25.3",
+    "why": " -install-> instructlab(0.14.1) -install-> wandb(0.16.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sentry-sdk>=1.0.0",
+    "dist": "sentry-sdk",
+    "version": "2.1.1",
+    "why": " -install-> instructlab(0.14.1) -install-> wandb(0.16.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "setproctitle",
+    "dist": "setproctitle",
+    "version": "1.3.3",
+    "why": " -install-> instructlab(0.14.1) -install-> wandb(0.16.6)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "transformers<=4.38.2,>=4.30.0",
+    "dist": "transformers",
+    "version": "4.38.2",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tokenizers<0.19,>=0.14",
+    "dist": "tokenizers",
+    "version": "0.15.2",
+    "why": " -install-> instructlab(0.14.1) -install-> transformers(4.38.2)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "click-didyoumean<0.4.0,>=0.3.0",
+    "dist": "click-didyoumean",
+    "version": "0.3.1",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "prompt-toolkit<4.0.0,>=3.0.38",
+    "dist": "prompt-toolkit",
+    "version": "3.0.43",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "wcwidth",
+    "dist": "wcwidth",
+    "version": "0.2.13",
+    "why": " -install-> instructlab(0.14.1) -install-> prompt-toolkit(3.0.43)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "langchain-text-splitters",
+    "dist": "langchain-text-splitters",
+    "version": "0.0.1",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "langchain-core<0.2.0,>=0.1.28",
+    "dist": "langchain-core",
+    "version": "0.1.52",
+    "why": " -install-> instructlab(0.14.1) -install-> langchain-text-splitters(0.0.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tenacity<9.0.0,>=8.1.0",
+    "dist": "tenacity",
+    "version": "8.3.0",
+    "why": " -install-> instructlab(0.14.1) -install-> langchain-text-splitters(0.0.1) -install-> langchain-core(0.1.52)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonpatch<2.0,>=1.33",
+    "dist": "jsonpatch",
+    "version": "1.33",
+    "why": " -install-> instructlab(0.14.1) -install-> langchain-text-splitters(0.0.1) -install-> langchain-core(0.1.52)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonpointer>=1.9",
+    "dist": "jsonpointer",
+    "version": "2.4",
+    "why": " -install-> instructlab(0.14.1) -install-> langchain-text-splitters(0.0.1) -install-> langchain-core(0.1.52) -install-> jsonpatch(1.33)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "langsmith<0.2.0,>=0.1.0",
+    "dist": "langsmith",
+    "version": "0.1.57",
+    "why": " -install-> instructlab(0.14.1) -install-> langchain-text-splitters(0.0.1) -install-> langchain-core(0.1.52)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "packaging<24.0,>=23.2",
+    "dist": "packaging",
+    "version": "23.2",
+    "why": " -install-> instructlab(0.14.1) -install-> langchain-text-splitters(0.0.1) -install-> langchain-core(0.1.52)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "gguf<0.7.0,>=0.6.0",
+    "dist": "gguf",
+    "version": "0.6.0",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "trl<0.8.0,>=0.7.11",
+    "dist": "trl",
+    "version": "0.7.11",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tyro>=0.5.11",
+    "dist": "tyro",
+    "version": "0.8.4",
+    "why": " -install-> instructlab(0.14.1) -install-> trl(0.7.11)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "shtab>=1.5.6",
+    "dist": "shtab",
+    "version": "1.7.1",
+    "why": " -install-> instructlab(0.14.1) -install-> trl(0.7.11) -install-> tyro(0.8.4)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "docstring-parser>=0.14.1",
+    "dist": "docstring-parser",
+    "version": "0.16",
+    "why": " -install-> instructlab(0.14.1) -install-> trl(0.7.11) -install-> tyro(0.8.4)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "openai<2.0.0,>=1.13.3",
+    "dist": "openai",
+    "version": "1.30.1",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sentencepiece<0.3.0,>=0.2.0",
+    "dist": "sentencepiece",
+    "version": "0.2.0",
+    "why": " -install-> instructlab(0.14.1)",
+    "prebuilt": false
+  }
+]

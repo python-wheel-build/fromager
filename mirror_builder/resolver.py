@@ -17,6 +17,7 @@ import html5lib
 import requests
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.tags import sys_tags
 from packaging.utils import (canonicalize_name, parse_sdist_filename,
                              parse_wheel_filename)
 from packaging.version import Version
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get('DEBUG_RESOLVER', '')
+SUPPORTED_TAGS = set(sys_tags())
 
 
 class Candidate:
@@ -106,12 +108,21 @@ def get_project_from_pypi(project, extras, sdist_server_url):
         # TODO: Handle compatibility tags?
 
         try:
-            if filename.endswith('.tar.gz'):
+            if filename.endswith('.tar.gz') or filename.endswith('.zip'):
                 is_sdist = True
                 name, version = parse_sdist_filename(filename)
+                tags = set()
             else:
                 is_sdist = False
-                name, version, _, _ = parse_wheel_filename(filename)
+                name, version, _, tags = parse_wheel_filename(filename)
+            if tags:
+                # FIXME: This doesn't take into account precedence of
+                # the supported tags for best fit.
+                matching_tags = SUPPORTED_TAGS.intersection(tags)
+                if not matching_tags:
+                    if DEBUG_RESOLVER:
+                        logger.debug(f'ignoring {filename} with tags {tags}')
+                    continue
         except Exception as err:
             # Ignore files with invalid versions
             if DEBUG_RESOLVER:

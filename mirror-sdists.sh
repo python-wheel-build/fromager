@@ -16,10 +16,13 @@ if [ -n "${VERBOSE}" ]; then
   VERBOSE="-v"
 fi
 
+VARIANT=${VARIANT:-cpu}
+
 VENV="${WORKDIR}/venv-mirror-sdists"
 install_tools "$VENV"
 
 # shellcheck disable=SC2086
 python3 -m mirror_builder ${VERBOSE} \
         --log-file "$WORKDIR/mirror-sdists-debug.log" \
+        --variant "$VARIANT" \
         bootstrap "$@"
