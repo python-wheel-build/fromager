@@ -35,7 +35,7 @@ class MissingDependency(Exception):
 # source and must be acquired from another package index.
 PRE_BUILT = {
     'cuda': set([
-        'llvmlite',
+        'llvmlite',  # requires aligning versions with external tools
         'nvidia-cublas-cu12',
         'nvidia-cuda-cupti-cu12',
         'nvidia-cuda-nvrtc-cu12',
