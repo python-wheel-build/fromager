@@ -40,7 +40,10 @@ def _pkg_name_set(names):
 # source and must be acquired from another package index.
 PRE_BUILT = {
     'cuda': _pkg_name_set([
-        'llvmlite',  # requires aligning versions with external tools
+        # requires aligning versions with external tools
+        'llvmlite',
+
+        # Not open source?
         'nvidia-cublas-cu12',
         'nvidia-cuda-cupti-cu12',
         'nvidia-cuda-nvrtc-cu12',
@@ -53,7 +56,11 @@ PRE_BUILT = {
         'nvidia-nccl-cu12',
         'nvidia-nvjitlink-cu12',
         'nvidia-nvtx-cu12',
-        'pydantic-core',  # requires rustc 1.76 or newer, not available in UBI9
+
+        # requires rustc 1.76 or newer, not available in UBI9
+        'pydantic-core',
+
+        # The builds work for older versions, but not for 2.3, yet.
         'torch',
         'triton',
     ]),
