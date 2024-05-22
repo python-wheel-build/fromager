@@ -46,6 +46,10 @@ RUN dnf -y install openssl-devel
 # Needed for pillow build
 RUN dnf -y install zlib-devel libjpeg-devel
 
+# Needed for hf_transfer to be able to build openssl. Refer to
+# https://github.com/openssl/openssl/issues/13761 for more details.
+RUN dnf -y install perl-FindBin
+
 # The python interpreter we want, with dev libraries
 RUN dnf -y install $PYTHON ${PYTHON}-devel ${PYTHON}-pip
 
