@@ -50,6 +50,13 @@ RUN dnf -y install zlib-devel libjpeg-devel
 # https://github.com/openssl/openssl/issues/13761 for more details.
 RUN dnf -y install perl-FindBin
 
+# Needed for SciPy for vllm
+# https://docs.scipy.org/doc/scipy/building/index.html#building-from-source
+RUN dnf -y install gcc-gfortran openblas lapack pkgconfig
+# Suggests using `yum-builddep scipy` as an alternative but that
+# reports an error due to missing packages.
+# RUN dnf -y install yum-utils && yum-builddep -y scipy
+
 # The python interpreter we want, with dev libraries
 RUN dnf -y install $PYTHON ${PYTHON}-devel ${PYTHON}-pip
 

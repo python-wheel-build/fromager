@@ -63,11 +63,18 @@ PRE_BUILT = {
         # The builds work for older versions, but not for 2.3, yet.
         'torch',
         'triton',
+
         # vllm's setup.py computes the CUDA dependencies dynamically
         # based on the CUDA version it gets from importing torch. The
         # container image knows how to build vllm with all sorts of
         # pre-build setup steps, so we don't try to do it ourself.
         'vllm',
+
+        # SciPy requires fortran and some other custom libraries that
+        # need more investigation.
+        # https://docs.scipy.org/doc/scipy/building/blas_lapack.html
+        # https://pkgs.devel.redhat.com/git/rpms/scipy/tree/scipy.spec?h=rhel-9.0.0
+        'SciPy',
     ]),
 }
 
