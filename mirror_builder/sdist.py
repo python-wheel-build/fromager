@@ -6,6 +6,7 @@ import sys
 from urllib.parse import urlparse
 
 from . import dependencies, external_commands, finders, server, sources, wheels
+from .pkgs import overrides
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,18 @@ class MissingDependency(Exception):
         super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
 
 
+def _pkg_name_set(names):
+    return set(overrides.pkgname_to_override_module(n) for n in names)
+
+
 # Depending on the variant, some pre-built wheels aren't built from
 # source and must be acquired from another package index.
 PRE_BUILT = {
-    'cuda': set([
-        'llvmlite',  # requires aligning versions with external tools
+    'cuda': _pkg_name_set([
+        # requires aligning versions with external tools
+        'llvmlite',
+
+        # Not open source?
         'nvidia-cublas-cu12',
         'nvidia-cuda-cupti-cu12',
         'nvidia-cuda-nvrtc-cu12',
@@ -48,7 +56,11 @@ PRE_BUILT = {
         'nvidia-nccl-cu12',
         'nvidia-nvjitlink-cu12',
         'nvidia-nvtx-cu12',
-        'pydantic-core',  # requires rustc 1.76 or newer, not available in UBI9
+
+        # requires rustc 1.76 or newer, not available in UBI9
+        'pydantic-core',
+
+        # The builds work for older versions, but not for 2.3, yet.
         'torch',
         'triton',
     ]),
@@ -60,7 +72,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
         why = []
     logger.info(f'{"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}')
 
-    pre_built = req.name in PRE_BUILT.get(ctx.variant, set())
+    pre_built = overrides.pkgname_to_override_module(req.name) in PRE_BUILT.get(ctx.variant, set())
 
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
