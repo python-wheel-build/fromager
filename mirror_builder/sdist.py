@@ -75,6 +75,11 @@ PRE_BUILT = {
         # https://docs.scipy.org/doc/scipy/building/blas_lapack.html
         # https://pkgs.devel.redhat.com/git/rpms/scipy/tree/scipy.spec?h=rhel-9.0.0
         'SciPy',
+
+        # ray has no source distributions published and a complicated build process.
+        # https://github.com/ray-project/ray
+        # https://docs.ray.io/en/latest/ray-contribute/development.html#building-ray
+        'ray',
     ]),
 }
 
