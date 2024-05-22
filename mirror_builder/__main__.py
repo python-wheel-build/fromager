@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import collections
 import csv
 import functools
 import itertools
@@ -82,6 +83,11 @@ def main():
     parser_find_rpms.set_defaults(func=rpms.do_find_rpms)
     parser_find_rpms.add_argument('build_order_file', default='work-dir/build-order.json')
     parser_find_rpms.add_argument('--output', '-o')
+
+    parser_summary = subparsers.add_parser('build-order-summary')
+    parser_summary.set_defaults(func=do_build_order_summary)
+    parser_summary.add_argument('build_order_file', nargs='+')
+    parser_summary.add_argument('--output', '-o')
 
     # The jobs CLI is complex enough that it's in its own module
     jobs.build_cli(parser, subparsers)
@@ -280,6 +286,44 @@ def do_build_order_csv(args):
     finally:
         if args.output:
             outfile.close()
+
+
+def do_build_order_summary(args):
+    dist_to_input_file = collections.defaultdict(dict)
+    for filename in args.build_order_file:
+        with open(filename, 'r') as f:
+            build_order = json.load(f)
+        for step in build_order:
+            key = overrides.pkgname_to_override_module(step['dist'])
+            dist_to_input_file[key][filename] = step['version']
+
+    if args.output:
+        outfile = open(args.output, 'w')
+    else:
+        outfile = sys.stdout
+
+    # The build order files are organized in directories named for the
+    # image. Pull those names out of the files given.
+    image_column_names = tuple(
+        pathlib.Path(filename).parent.name
+        for filename in args.build_order_file
+    )
+
+    writer = csv.writer(outfile, quoting=csv.QUOTE_NONNUMERIC)
+    writer.writerow(("Distribution Name",) + image_column_names + ("Same Version",))
+    for dist, present_in_files in sorted(dist_to_input_file.items()):
+        all_versions = set()
+        row = [dist]
+        for filename in args.build_order_file:
+            v = present_in_files.get(filename, "")
+            row.append(v)
+            if v:
+                all_versions.add(v)
+        row.append(len(all_versions) == 1)
+        writer.writerow(row)
+
+    if args.output:
+        outfile.close()
 
 
 def do_build_order_graph(args):
