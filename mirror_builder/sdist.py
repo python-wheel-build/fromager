@@ -6,6 +6,7 @@ import sys
 from urllib.parse import urlparse
 
 from . import dependencies, external_commands, finders, server, sources, wheels
+from .pkgs import overrides
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,14 @@ class MissingDependency(Exception):
         super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
 
 
+def _pkg_name_set(names):
+    return set(overrides.pkgname_to_override_module(n) for n in names)
+
+
 # Depending on the variant, some pre-built wheels aren't built from
 # source and must be acquired from another package index.
 PRE_BUILT = {
-    'cuda': set([
+    'cuda': _pkg_name_set([
         'llvmlite',  # requires aligning versions with external tools
         'nvidia-cublas-cu12',
         'nvidia-cuda-cupti-cu12',
@@ -60,7 +65,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
         why = []
     logger.info(f'{"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}')
 
-    pre_built = req.name in PRE_BUILT.get(ctx.variant, set())
+    pre_built = overrides.pkgname_to_override_module(req.name) in PRE_BUILT.get(ctx.variant, set())
 
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
