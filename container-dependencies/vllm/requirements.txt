@@ -1,0 +1,94 @@
+# Taken from https://github.com/opendatahub-io/vllm/blob/ibm_main/Dockerfile.ubi in the ibm_main branch
+
+
+# At least get the installation dependencies of vllm, if the package provides any.
+vllm==0.4.2
+
+
+
+## Dockerfile.ubi
+wheel
+
+# From the python-install image build step in the Dockerfile:
+
+# vllm requires a specific nccl version built from source distribution
+# See https://github.com/NVIDIA/nccl/issues/1234
+vllm-nccl-cu12==2.18.1.0.4.0
+
+# additional dependencies for the TGIS gRPC server
+grpcio-tools==1.63.0
+# additional dependencies for openai api_server
+accelerate==0.30.0
+# hf_transfer for faster HF hub downloads
+hf_transfer==0.1.6
+
+
+
+## requirements-common.txt
+cmake >= 3.21
+ninja  # For faster builds.
+psutil
+sentencepiece  # Required for LLaMA tokenizer.
+numpy
+requests
+py-cpuinfo
+transformers >= 4.40.0  # Required for StarCoder2 & Llava, Llama 3.
+tokenizers >= 0.19.1  # Required for Llama 3.
+fastapi
+openai
+uvicorn[standard]
+pydantic >= 2.0  # Required for OpenAI server.
+prometheus_client >= 0.18.0
+prometheus-fastapi-instrumentator >= 7.0.0
+tiktoken == 0.6.0  # Required for DBRX tokenizer
+lm-format-enforcer == 0.9.8
+outlines == 0.0.34 # Requires torch >= 2.1.0
+typing_extensions
+filelock >= 3.10.4 # filelock starts to support `mode` argument from 3.10.4
+
+
+
+# requirements-cuda.txt
+# Dependencies for NVIDIA GPUs
+ray >= 2.9
+nvidia-ml-py # for pynvml package
+vllm-nccl-cu12>=2.18,<2.19  # for downloading nccl library
+torch == 2.3.0
+xformers == 0.0.26.post1  # Requires PyTorch 2.3.0
+
+
+
+# requirements-dev.txt (used in the build image, maybe not needed?)
+# formatting
+yapf==0.32.0
+toml==0.10.2
+tomli==2.0.1
+ruff==0.1.5
+codespell==2.2.6
+isort==5.13.2
+
+# type checking
+mypy==1.9.0
+types-PyYAML
+types-requests
+types-setuptools
+
+# testing
+pytest
+tensorizer==2.9.0
+pytest-forked
+pytest-asyncio
+pytest-rerunfailures
+pytest-shard
+httpx
+einops # required for MPT
+requests
+ray
+peft
+awscli
+
+# Benchmarking
+aiohttp
+
+# Multimodal
+pillow

@@ -1,0 +1,14 @@
+# Similar to https://github.com/facebookresearch/xformers/pull/743 without "wheel" dependency.
+#
+# From that PR, it looks like the community is not inclined to add the file.
+
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..dc450d8
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,3 @@
++[build-system]
++requires = ["setuptools", "torch"]
++build-backend = "setuptools.build_meta"
+\ No newline at end of file
