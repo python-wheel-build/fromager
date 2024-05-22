@@ -63,6 +63,11 @@ PRE_BUILT = {
         # The builds work for older versions, but not for 2.3, yet.
         'torch',
         'triton',
+        # vllm's setup.py computes the CUDA dependencies dynamically
+        # based on the CUDA version it gets from importing torch. The
+        # container image knows how to build vllm with all sorts of
+        # pre-build setup steps, so we don't try to do it ourself.
+        'vllm',
     ]),
 }
 
