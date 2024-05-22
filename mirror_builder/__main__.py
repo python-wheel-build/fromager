@@ -134,11 +134,13 @@ def _get_requirements_from_args(args):
     to_build.extend(args.toplevel)
     if args.requirements:
         with open(args.requirements, 'r') as f:
-            to_build.extend(
-                line.strip()
-                for line in f
-                if line.strip() and not line.startswith('#')
-            )
+            for line in f:
+                useful, _, _ = line.partition('#')
+                useful = useful.strip()
+                logger.debug('line %r useful %r', line, useful)
+                if not useful:
+                    continue
+                to_build.append(useful)
     return to_build
 
 
