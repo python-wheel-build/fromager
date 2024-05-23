@@ -48,7 +48,10 @@ RUN dnf -y install zlib-devel libjpeg-devel
 
 # Needed for hf_transfer to be able to build openssl. Refer to
 # https://github.com/openssl/openssl/issues/13761 for more details.
-RUN dnf -y install perl-FindBin
+# The first missing package was perl-FindBin, bug attempting to
+# specify only perl-FindBin produced other errors for other missing
+# packages so just install the whole perl system.
+RUN dnf -y install perl
 
 # Needed for SciPy for vllm
 # https://docs.scipy.org/doc/scipy/building/index.html#building-from-source
