@@ -3,7 +3,7 @@ import platform
 import tempfile
 import venv
 
-from . import external_commands, pkgs
+from . import external_commands, overrides
 
 logger = logging.getLogger(__name__)
 
@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 def build_wheel(ctx, req, sdist_root_dir, build_env):
     logger.info('building wheel for %s in %s writing to %s', req.name, sdist_root_dir,
                 ctx.wheels_build)
-    builder = pkgs.find_override_method(req.name, 'build_wheel')
+    builder = overrides.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = default_build_wheel
-    extra_environ = pkgs.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
     wheels = list(ctx.wheels_build.glob('*.whl'))
     if wheels:

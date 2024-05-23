@@ -14,8 +14,8 @@ import sys
 from packaging.requirements import Requirement
 from packaging.utils import parse_wheel_filename
 
-from . import context, finders, jobs, rpms, sdist, server, sources, wheels
-from .pkgs import overrides
+from . import (context, finders, jobs, overrides, rpms, sdist, server, sources,
+               wheels)
 
 logger = logging.getLogger(__name__)
 

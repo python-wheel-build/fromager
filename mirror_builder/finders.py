@@ -5,7 +5,7 @@ import re
 
 from packaging.utils import canonicalize_name
 
-from . import pkgs
+from . import overrides
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def _dist_name_to_filename(dist_name):
 
 
 def find_sdist(downloads_dir, req, dist_version):
-    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
+    sdist_name_func = overrides.find_override_method(req.name, 'expected_source_archive_name')
 
     if sdist_name_func:
         # The file must exist exactly as given.
@@ -96,7 +96,7 @@ def find_wheel(downloads_dir, req, dist_version):
 
 def find_source_dir(work_dir, req, dist_version):
 
-    sdir_name_func = pkgs.find_override_method(req.name, 'expected_source_directory_name')
+    sdir_name_func = overrides.find_override_method(req.name, 'expected_source_directory_name')
     if sdir_name_func:
         # The directory must exist exactly as given, inside the work_dir.
         source_dir = work_dir / sdir_name_func(req, dist_version)
@@ -104,7 +104,7 @@ def find_source_dir(work_dir, req, dist_version):
             return source_dir
         raise ValueError(f'looked for {source_dir} and did not find')
 
-    sdist_name_func = pkgs.find_override_method(req.name, 'expected_source_archive_name')
+    sdist_name_func = overrides.find_override_method(req.name, 'expected_source_archive_name')
     if sdist_name_func:
         # The directory must exist exactly as given.
         sdist_name = sdist_name_func(req, dist_version)

@@ -49,7 +49,7 @@ test = [
 
 [project.entry-points."mirror_builder.project_overrides"]
 # This test plugin should stay in the package.
-mirror_builder_test = "mirror_builder.pkgs.mirror_builder_test"
+mirror_builder_test = "mirror_builder.example_override"
 
 flit_core = "package_plugins.flit_core"
 pyarrow = "package_plugins.pyarrow"
@@ -59,7 +59,6 @@ triton = "package_plugins.triton"
 [tool.setuptools]
 packages = [
     "mirror_builder",
-    "mirror_builder.pkgs",
     "package_plugins",
 ]
 

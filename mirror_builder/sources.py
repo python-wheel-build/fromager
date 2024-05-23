@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import requests
 import resolvelib
 
-from . import pkgs, resolver
+from . import overrides, resolver
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ DEFAULT_SDIST_SERVER_URLS = [
 
 
 def download_source(ctx, req, sdist_server_urls):
-    downloader = pkgs.find_override_method(req.name, 'download_source')
+    downloader = overrides.find_override_method(req.name, 'download_source')
     if not downloader:
         downloader = default_download_source
     for url in sdist_server_urls:
@@ -125,7 +125,7 @@ def unpack_source(ctx, source_filename):
 
 
 def _patch_source(ctx, source_root_dir):
-    for p in pkgs.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
+    for p in overrides.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
         logger.info('applying patch file %s to %s', p, source_root_dir)
         with open(p, 'r') as f:
             subprocess.check_call(
@@ -158,7 +158,7 @@ def read_build_meta(unpack_dir):
 
 def prepare_source(ctx, req, source_filename, version):
     logger.info('preparing source for %s from %s', req, source_filename)
-    preparer = pkgs.find_override_method(req.name, 'prepare_source')
+    preparer = overrides.find_override_method(req.name, 'prepare_source')
     if not preparer:
         preparer = _default_prepare_source
     source_root_dir = preparer(ctx, req, source_filename, version)

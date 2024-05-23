@@ -2,7 +2,8 @@ import fnmatch
 import logging
 from importlib import resources
 
-from . import overrides
+from packaging.utils import canonicalize_name
+from stevedore import driver
 
 # An interface for reretrieving per-package information which influences
 # the build process for a particular package - i.e. for a given package
@@ -10,8 +11,6 @@ from . import overrides
 # should we set, etc.
 
 logger = logging.getLogger(__name__)
-
-find_override_method = overrides.find_override_method
 
 
 def _files_for_pkg(anchor, pkg_base, ext):
@@ -63,7 +62,7 @@ def extra_environ_for_pkg(envs_dir, pkgname, variant):
     """
     extra_environ = {}
 
-    pkgname = overrides.pkgname_to_override_module(pkgname)
+    pkgname = pkgname_to_override_module(pkgname)
     variant_dir = envs_dir / variant
     env_file = variant_dir / (pkgname + '.env')
 
@@ -75,3 +74,32 @@ def extra_environ_for_pkg(envs_dir, pkgname, variant):
                 key, _, value = line.strip().partition('=')
                 extra_environ[key.strip()] = value.strip()
     return extra_environ
+
+
+def pkgname_to_override_module(pkgname):
+    canonical_name = canonicalize_name(pkgname)
+    module_name = canonical_name.replace('-', '_')
+    return module_name
+
+
+def find_override_method(distname, method):
+    """Given a distname and method name, look for an override implementation of the method.
+
+    If there is no module or no method, return None.
+
+    If the module exists and cannot be imported, propagate the exception.
+    """
+    distname = pkgname_to_override_module(distname)
+    try:
+        plugin = driver.DriverManager(
+            namespace='mirror_builder.project_overrides',
+            name=distname,
+            invoke_on_load=False,
+        )
+    except driver.NoMatches:
+        return None
+    mod = plugin.driver
+    if not hasattr(mod, method):
+        logger.debug('no %s override for %s', method, distname)
+        return None
+    return getattr(mod, method)
