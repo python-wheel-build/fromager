@@ -3,12 +3,18 @@ import logging
 from importlib import resources
 
 from packaging.utils import canonicalize_name
-from stevedore import driver
+from stevedore import extension
 
 # An interface for reretrieving per-package information which influences
 # the build process for a particular package - i.e. for a given package
 # and build target, what patches should we apply, what environment variables
 # should we set, etc.
+
+_mgr = extension.ExtensionManager(
+    namespace='mirror_builder.project_overrides',
+    invoke_on_load=False,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -91,14 +97,10 @@ def find_override_method(distname, method):
     """
     distname = pkgname_to_override_module(distname)
     try:
-        plugin = driver.DriverManager(
-            namespace='mirror_builder.project_overrides',
-            name=distname,
-            invoke_on_load=False,
-        )
-    except driver.NoMatches:
+        mod = _mgr[distname].plugin
+    except KeyError:
+        logger.debug('no override module for %s', distname)
         return None
-    mod = plugin.driver
     if not hasattr(mod, method):
         logger.debug('no %s override for %s', method, distname)
         return None
