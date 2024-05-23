@@ -27,7 +27,7 @@ def patches_for_source_dir(patches_dir, source_dir_name):
     the filenames.
 
     """
-    return patches_dir.glob(source_dir_name + '*.patch')
+    return sorted(patches_dir.glob(source_dir_name + '*.patch'))
 
 
 def extra_environ_for_pkg(envs_dir, pkgname, variant):
