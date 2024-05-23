@@ -1,3 +1,5 @@
+import pathlib
+
 import pytest
 
 from mirror_builder import pkgs
@@ -35,7 +37,7 @@ def test_nodist():
                         'pytorch-v2.2.2-004-fix-release-version.patch']),
 ])
 def test_patches_for_source_dir(dir_name, expected_patches):
-    patches = list(pkgs.patches_for_source_dir(dir_name))
+    patches = list(pkgs.patches_for_source_dir(pathlib.Path('overrides/patches'), dir_name))
     actual_patches = [p.name for p in patches]
     assert expected_patches == actual_patches
 

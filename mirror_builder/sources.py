@@ -125,7 +125,7 @@ def unpack_source(ctx, source_filename):
 
 
 def _patch_source(ctx, source_root_dir):
-    for p in pkgs.patches_for_source_dir(source_root_dir.name):
+    for p in pkgs.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
         logger.info('applying patch file %s to %s', p, source_root_dir)
         with open(p, 'r') as f:
             subprocess.check_call(

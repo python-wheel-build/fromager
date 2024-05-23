@@ -41,7 +41,7 @@ def _files_for_pkg(anchor, pkg_base, ext):
         yield p
 
 
-def patches_for_source_dir(source_dir_name):
+def patches_for_source_dir(patches_dir, source_dir_name):
     """Iterator producing patches to apply to the source dir.
 
     Input should be the base directory name, not a full path.
@@ -51,7 +51,7 @@ def patches_for_source_dir(source_dir_name):
     the filenames.
 
     """
-    return _files_for_pkg('mirror_builder.pkgs.patches', source_dir_name, '.patch')
+    return patches_dir.glob(source_dir_name + '*.patch')
 
 
 def extra_environ_for_pkg(pkgname, variant):
