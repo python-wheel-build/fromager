@@ -63,7 +63,7 @@ def test_patches_for_source_dir(dir_name, expected_patches):
     }, 'cuda'),
 ])
 def test_extra_environ_for_pkg(pkgname, expected_environ, variant):
-    extra_environ = pkgs.extra_environ_for_pkg(pkgname, variant)
+    extra_environ = pkgs.extra_environ_for_pkg(pathlib.Path('overrides/envs'), pkgname, variant)
     assert expected_environ == extra_environ
 
 

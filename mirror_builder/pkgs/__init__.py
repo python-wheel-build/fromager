@@ -54,17 +54,20 @@ def patches_for_source_dir(patches_dir, source_dir_name):
     return patches_dir.glob(source_dir_name + '*.patch')
 
 
-def extra_environ_for_pkg(pkgname, variant):
+def extra_environ_for_pkg(envs_dir, pkgname, variant):
     """Return a dict of extra environment variables for a particular package.
 
     Extra environment variables are stored in per-package .env files in the
     envs package, with a key=value per line.
 
     """
-    pkgname = overrides.pkgname_to_override_module(pkgname)
     extra_environ = {}
-    logger.debug('looking for %s environment settings for %s', variant, pkgname)
-    for env_file in _files_for_pkg(f'mirror_builder.pkgs.envs.{variant}', pkgname, '.env'):
+
+    pkgname = overrides.pkgname_to_override_module(pkgname)
+    variant_dir = envs_dir / variant
+    env_file = variant_dir / (pkgname + '.env')
+
+    if env_file.exists():
         logger.debug('found %s environment settings for %s in %s',
                      variant, pkgname, env_file)
         with open(env_file, 'r') as f:

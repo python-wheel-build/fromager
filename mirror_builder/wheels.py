@@ -14,7 +14,7 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
     builder = pkgs.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = default_build_wheel
-    extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
+    extra_environ = pkgs.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
     wheels = list(ctx.wheels_build.glob('*.whl'))
     if wheels:

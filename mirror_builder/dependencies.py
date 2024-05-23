@@ -51,7 +51,7 @@ def get_build_backend_dependencies(ctx, req, sdist_root_dir):
 
 def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
-    extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
+    extra_environ = pkgs.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
                                                 override_environ=extra_environ)
     return hook_caller.get_requires_for_build_wheel()
@@ -76,7 +76,7 @@ def get_install_dependencies_of_wheel(req, wheel_filename):
 def default_get_install_dependencies(ctx, req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
-    extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
+    extra_environ = pkgs.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
                                                 override_environ=extra_environ)
 

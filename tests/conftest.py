@@ -7,6 +7,7 @@ from mirror_builder import context
 def tmp_context(tmp_path):
     ctx = context.WorkContext(
         patches_dir='overrides/patches',
+        envs_dir='overrides/envs',
         sdists_repo=tmp_path / 'sdists-repo',
         wheels_repo=tmp_path / 'wheels-repo',
         work_dir=tmp_path / 'work-dir',

@@ -12,6 +12,7 @@ class WorkContext:
 
     def __init__(self,
                  patches_dir,
+                 envs_dir,
                  sdists_repo,
                  wheels_repo,
                  work_dir,
@@ -19,6 +20,7 @@ class WorkContext:
                  cleanup=True,
                  variant='cpu'):
         self.patches_dir = pathlib.Path(patches_dir).absolute()
+        self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / 'downloads'
         self.wheels_repo = pathlib.Path(wheels_repo).absolute()

@@ -50,10 +50,6 @@ test = [
 packages = [
     "mirror_builder",
     "mirror_builder.pkgs",
-    "mirror_builder.pkgs.envs",
-    "mirror_builder.pkgs.envs.cpu",
-    "mirror_builder.pkgs.envs.cuda",
-    "mirror_builder.pkgs.envs.test",
     "mirror_builder.pkgs.overrides",
 ]
 
