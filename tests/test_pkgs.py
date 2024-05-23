@@ -3,7 +3,7 @@ import pathlib
 import pytest
 
 from mirror_builder import pkgs
-from mirror_builder.pkgs.overrides import flit_core
+from package_plugins import flit_core
 
 
 def test_flit_core_build_wheel():

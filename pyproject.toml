@@ -36,6 +36,7 @@ dependencies = [
     "python-pypi-mirror",
     "requests",
     "resolvelib",
+    "stevedore",
     "tomli",
 ]
 
@@ -46,11 +47,20 @@ test = [
     "coverage!=4.4,>=4.0",
 ]
 
+[project.entry-points."mirror_builder.project_overrides"]
+# This test plugin should stay in the package.
+mirror_builder_test = "mirror_builder.pkgs.mirror_builder_test"
+
+flit_core = "package_plugins.flit_core"
+pyarrow = "package_plugins.pyarrow"
+torch = "package_plugins.torch"
+triton = "package_plugins.triton"
+
 [tool.setuptools]
 packages = [
     "mirror_builder",
     "mirror_builder.pkgs",
-    "mirror_builder.pkgs.overrides",
+    "package_plugins",
 ]
 
 [tool.isort]
