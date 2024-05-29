@@ -68,7 +68,8 @@ def _get_argument_parser():
 
     parser_bootstrap = subparsers.add_parser('bootstrap')
     parser_bootstrap.set_defaults(func=do_bootstrap)
-    parser_bootstrap.add_argument('--requirements', '-r')
+    parser_bootstrap.add_argument('--requirements-file', '-r', action='append', default=[],
+                                  dest='requirements_files')
     parser_bootstrap.add_argument('toplevel', nargs='*')
 
     parser_download = subparsers.add_parser('download-source-archive')
@@ -147,8 +148,8 @@ def requires_context(f):
 def _get_requirements_from_args(args):
     to_build = []
     to_build.extend(args.toplevel)
-    if args.requirements:
-        with open(args.requirements, 'r') as f:
+    for filename in args.requirements_files:
+        with open(filename, 'r') as f:
             for line in f:
                 useful, _, _ = line.partition('#')
                 useful = useful.strip()

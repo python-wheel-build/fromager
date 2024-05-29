@@ -45,6 +45,16 @@ def test_get_requirements_requirements_file_comments(parser, tmp_path):
     assert ['c', 'd'] == requirements
 
 
+def test_get_requirements_requirements_file_multiple(parser, tmp_path):
+    requirements1_file = tmp_path / 'requirements1.txt'
+    requirements1_file.write_text('a\n')
+    requirements2_file = tmp_path / 'requirements2.txt'
+    requirements2_file.write_text('b\n')
+    args = parser.parse_args(['bootstrap', '-r', str(requirements1_file), '-r', str(requirements2_file)])
+    requirements = main._get_requirements_from_args(args)
+    assert ['a', 'b'] == requirements
+
+
 def test_get_requirements_file_with_comments_and_blanks(parser, tmp_path):
     requirements_file = tmp_path / 'requirements.txt'
     requirements_file.write_text('a\n\n# ignore\nb\nc\n')
