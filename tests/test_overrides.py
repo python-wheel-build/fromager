@@ -1,28 +1,30 @@
+import pathlib
+
 import pytest
 
-from mirror_builder import pkgs
-from mirror_builder.pkgs.overrides import flit_core
+from mirror_builder import overrides
+from package_plugins import flit_core
 
 
 def test_flit_core_build_wheel():
-    build_wheel = pkgs.find_override_method('flit_core', 'build_wheel')
+    build_wheel = overrides.find_override_method('flit_core', 'build_wheel')
     assert flit_core.build_wheel == build_wheel
 
 
 def test_flit_core_build_wheel_repeat():
-    build_wheel = pkgs.find_override_method('flit_core', 'build_wheel')
+    build_wheel = overrides.find_override_method('flit_core', 'build_wheel')
     assert flit_core.build_wheel == build_wheel
-    build_wheel2 = pkgs.find_override_method('flit_core', 'build_wheel')
+    build_wheel2 = overrides.find_override_method('flit_core', 'build_wheel')
     assert flit_core.build_wheel == build_wheel2
 
 
 def test_flit_core_no_such_override():
-    build_wheel = pkgs.find_override_method('flit_core', 'no_such_override')
+    build_wheel = overrides.find_override_method('flit_core', 'no_such_override')
     assert None is build_wheel
 
 
 def test_nodist():
-    build_wheel = pkgs.find_override_method('nodist', 'no_such_override')
+    build_wheel = overrides.find_override_method('nodist', 'no_such_override')
     assert None is build_wheel
 
 
@@ -35,7 +37,7 @@ def test_nodist():
                         'pytorch-v2.2.2-004-fix-release-version.patch']),
 ])
 def test_patches_for_source_dir(dir_name, expected_patches):
-    patches = list(pkgs.patches_for_source_dir(dir_name))
+    patches = list(overrides.patches_for_source_dir(pathlib.Path('overrides/patches'), dir_name))
     actual_patches = [p.name for p in patches]
     assert expected_patches == actual_patches
 
@@ -61,10 +63,10 @@ def test_patches_for_source_dir(dir_name, expected_patches):
     }, 'cuda'),
 ])
 def test_extra_environ_for_pkg(pkgname, expected_environ, variant):
-    extra_environ = pkgs.extra_environ_for_pkg(pkgname, variant)
+    extra_environ = overrides.extra_environ_for_pkg(pathlib.Path('overrides/envs'), pkgname, variant)
     assert expected_environ == extra_environ
 
 
 def test_lookup_package_with_dot():
-    build_wheel = pkgs.find_override_method('my.package', 'build_wheel')
+    build_wheel = overrides.find_override_method('my.package', 'build_wheel')
     assert None is build_wheel

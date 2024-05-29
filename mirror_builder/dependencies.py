@@ -9,7 +9,7 @@ import tomli
 from packaging import markers, metadata
 from packaging.requirements import Requirement
 
-from . import external_commands, pkgs
+from . import external_commands, overrides
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def get_build_system_dependencies(ctx, req, sdist_root_dir):
     logger.info('getting build system dependencies for %s in %s',
                 req, sdist_root_dir)
-    dep_func = pkgs.find_override_method(req.name, 'get_build_system_dependencies')
+    dep_func = overrides.find_override_method(req.name, 'get_build_system_dependencies')
     if not dep_func:
         dep_func = default_get_build_system_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
@@ -42,7 +42,7 @@ def default_get_build_system_dependencies(ctx, req, sdist_root_dir):
 def get_build_backend_dependencies(ctx, req, sdist_root_dir):
     logger.info('getting build backend dependencies for %s in %s',
                 req, sdist_root_dir)
-    dep_func = pkgs.find_override_method(req.name, 'get_build_backend_dependencies')
+    dep_func = overrides.find_override_method(req.name, 'get_build_backend_dependencies')
     if not dep_func:
         dep_func = default_get_build_backend_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
@@ -51,7 +51,7 @@ def get_build_backend_dependencies(ctx, req, sdist_root_dir):
 
 def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
-    extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
+    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
                                                 override_environ=extra_environ)
     return hook_caller.get_requires_for_build_wheel()
@@ -60,7 +60,7 @@ def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
 def get_install_dependencies(ctx, req, sdist_root_dir):
     logger.info('getting installation dependencies for %s in %s',
                 req, sdist_root_dir)
-    dep_func = pkgs.find_override_method(req.name, 'get_install_dependencies')
+    dep_func = overrides.find_override_method(req.name, 'get_install_dependencies')
     if not dep_func:
         dep_func = default_get_install_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
@@ -76,7 +76,7 @@ def get_install_dependencies_of_wheel(req, wheel_filename):
 def default_get_install_dependencies(ctx, req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
-    extra_environ = pkgs.extra_environ_for_pkg(req.name, ctx.variant)
+    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
                                                 override_environ=extra_environ)
 

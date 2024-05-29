@@ -6,10 +6,12 @@ from mirror_builder import context
 @pytest.fixture
 def tmp_context(tmp_path):
     ctx = context.WorkContext(
-        tmp_path / 'sdists-repo',
-        tmp_path / 'wheels-repo',
-        tmp_path / 'work-dir',
-        0,
+        patches_dir='overrides/patches',
+        envs_dir='overrides/envs',
+        sdists_repo=tmp_path / 'sdists-repo',
+        wheels_repo=tmp_path / 'wheels-repo',
+        work_dir=tmp_path / 'work-dir',
+        wheel_server_url='',
     )
     ctx.setup()
     return ctx

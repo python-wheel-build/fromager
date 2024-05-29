@@ -5,8 +5,8 @@ import shutil
 import sys
 from urllib.parse import urlparse
 
-from . import dependencies, external_commands, finders, server, sources, wheels
-from .pkgs import overrides
+from . import (dependencies, external_commands, finders, overrides, server,
+               sources, wheels)
 
 logger = logging.getLogger(__name__)
 

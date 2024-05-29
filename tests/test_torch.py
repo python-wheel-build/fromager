@@ -5,7 +5,7 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from mirror_builder.pkgs.overrides import torch
+from package_plugins import torch
 
 
 @patch('mirror_builder.sources.download_url')
