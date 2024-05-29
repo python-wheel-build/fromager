@@ -80,4 +80,5 @@ $ pip install --index-url https://pyai.fedorainfracloud.org/experimental/cuda-ub
 
 * [How Tos](docs/howtos.md)
 * Some packages have [customizations applied](overrides/)
+* [Customization instructions](docs/customization.md)
 * [Developer Instructions](docs/develop.md)
