@@ -1,62 +1,5 @@
 [
   {
-    "type": "toplevel",
-    "req": "vllm==0.4.2",
-    "dist": "vllm",
-    "version": "0.4.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "build-system",
-    "req": "pdm-backend",
-    "dist": "pdm-backend",
-    "version": "2.3.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "build-system",
-        "pdm-backend",
-        "2.3.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "fastapi",
-    "dist": "fastapi",
-    "version": "0.111.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
     "type": "build-system",
     "req": "flit_core>=3.3",
     "dist": "flit-core",
@@ -64,27 +7,7 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ],
-      [
-        "build-system",
-        "hatchling",
-        "1.24.2"
-      ],
-      [
-        "build-backend",
-        "packaging>=23.2",
+        "packaging",
         "24.0"
       ],
       [
@@ -96,77 +19,27 @@
     "prebuilt": false
   },
   {
-    "type": "build-backend",
-    "req": "packaging>=23.2",
+    "type": "toplevel",
+    "req": "packaging",
     "dist": "packaging",
     "version": "24.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ],
-      [
-        "build-system",
-        "hatchling",
-        "1.24.2"
-      ],
-      [
-        "build-backend",
-        "packaging>=23.2",
+        "packaging",
         "24.0"
       ]
     ],
     "prebuilt": false
   },
   {
-    "type": "build-backend",
+    "type": "toplevel",
     "req": "wheel",
     "dist": "wheel",
     "version": "0.43.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ],
-      [
-        "build-system",
-        "hatchling",
-        "1.24.2"
-      ],
-      [
-        "build-backend",
-        "pluggy>=1.0.0",
-        "1.5.0"
-      ],
-      [
-        "build-system",
-        "setuptools>=45.0",
-        "70.0.0"
-      ],
-      [
-        "build-backend",
         "wheel",
         "0.43.0"
       ]
@@ -175,42 +48,267 @@
   },
   {
     "type": "build-system",
-    "req": "setuptools>=45.0",
+    "req": "setuptools",
     "dist": "setuptools",
     "version": "70.0.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "hatchling",
-        "1.24.2"
-      ],
-      [
-        "build-backend",
-        "pluggy>=1.0.0",
-        "1.5.0"
-      ],
-      [
-        "build-system",
-        "setuptools>=45.0",
+        "setuptools",
         "70.0.0"
       ]
     ],
     "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "torch",
+    "dist": "torch",
+    "version": "2.3.0",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-nvtx-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-nvtx-cu12",
+    "version": "12.1.105",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-nvtx-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "12.1.105"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "typing-extensions>=4.8.0",
+    "dist": "typing-extensions",
+    "version": "4.12.0",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "typing-extensions>=4.8.0",
+        "4.12.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nvidia-cudnn-cu12==8.9.2.26; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cudnn-cu12",
+    "version": "8.9.2.26",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cudnn-cu12==8.9.2.26; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "8.9.2.26"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-cublas-cu12",
+    "dist": "nvidia-cublas-cu12",
+    "version": "12.5.2.13",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cudnn-cu12==8.9.2.26; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "8.9.2.26"
+      ],
+      [
+        "install",
+        "nvidia-cublas-cu12",
+        "12.5.2.13"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-cusparse-cu12==12.1.0.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cusparse-cu12",
+    "version": "12.1.0.106",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cusparse-cu12==12.1.0.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "12.1.0.106"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-nvjitlink-cu12",
+    "dist": "nvidia-nvjitlink-cu12",
+    "version": "12.5.40",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cusparse-cu12==12.1.0.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "12.1.0.106"
+      ],
+      [
+        "install",
+        "nvidia-nvjitlink-cu12",
+        "12.5.40"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-cuda-runtime-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cuda-runtime-cu12",
+    "version": "12.1.105",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cuda-runtime-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "12.1.105"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "networkx",
+    "dist": "networkx",
+    "version": "3.3",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "networkx",
+        "3.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+    "dist": "triton",
+    "version": "2.3.0",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ]
+    ],
+    "prebuilt": true
   },
   {
     "type": "build-system",
@@ -220,22 +318,27 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "hatchling",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
+      ],
+      [
+        "build-system",
+        "hatchling>=1.18",
         "1.24.2"
       ],
       [
@@ -259,62 +362,33 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "hatchling",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
+      ],
+      [
+        "build-system",
+        "hatchling>=1.18",
         "1.24.2"
       ],
       [
         "build-backend",
         "pluggy>=1.0.0",
         "1.5.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-backend",
-    "req": "pathspec>=0.10.1",
-    "dist": "pathspec",
-    "version": "0.12.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ],
-      [
-        "build-system",
-        "hatchling",
-        "1.24.2"
-      ],
-      [
-        "build-backend",
-        "pathspec>=0.10.1",
-        "0.12.1"
       ]
     ],
     "prebuilt": false
@@ -327,22 +401,27 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "hatchling",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
+      ],
+      [
+        "build-system",
+        "hatchling>=1.18",
         "1.24.2"
       ],
       [
@@ -366,22 +445,27 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "hatchling",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
+      ],
+      [
+        "build-system",
+        "hatchling>=1.18",
         "1.24.2"
       ],
       [
@@ -393,833 +477,213 @@
     "prebuilt": false
   },
   {
+    "type": "build-backend",
+    "req": "pathspec>=0.10.1",
+    "dist": "pathspec",
+    "version": "0.12.1",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
+      ],
+      [
+        "build-system",
+        "hatchling>=1.18",
+        "1.24.2"
+      ],
+      [
+        "build-backend",
+        "pathspec>=0.10.1",
+        "0.12.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
     "type": "build-system",
-    "req": "hatchling",
+    "req": "hatchling>=1.18",
     "dist": "hatchling",
     "version": "1.24.2",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "hatchling",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
+      ],
+      [
+        "build-system",
+        "hatchling>=1.18",
         "1.24.2"
       ]
     ],
     "prebuilt": false
   },
   {
-    "type": "install",
-    "req": "starlette<0.38.0,>=0.37.2",
-    "dist": "starlette",
-    "version": "0.37.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "anyio<5,>=3.4.0",
-    "dist": "anyio",
-    "version": "4.3.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ],
-      [
-        "install",
-        "anyio<5,>=3.4.0",
-        "4.3.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "sniffio>=1.1",
-    "dist": "sniffio",
-    "version": "1.3.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ],
-      [
-        "install",
-        "anyio<5,>=3.4.0",
-        "4.3.0"
-      ],
-      [
-        "install",
-        "sniffio>=1.1",
-        "1.3.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "idna>=2.8",
-    "dist": "idna",
-    "version": "3.7",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "starlette<0.38.0,>=0.37.2",
-        "0.37.2"
-      ],
-      [
-        "install",
-        "anyio<5,>=3.4.0",
-        "4.3.0"
-      ],
-      [
-        "install",
-        "idna>=2.8",
-        "3.7"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "python-multipart>=0.0.7",
-    "dist": "python-multipart",
-    "version": "0.0.9",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "python-multipart>=0.0.7",
-        "0.0.9"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "email_validator>=2.0.0",
-    "dist": "email-validator",
-    "version": "2.1.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "email_validator>=2.0.0",
-        "2.1.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "dnspython>=2.0.0",
-    "dist": "dnspython",
-    "version": "2.6.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "email_validator>=2.0.0",
-        "2.1.1"
-      ],
-      [
-        "install",
-        "dnspython>=2.0.0",
-        "2.6.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
     "type": "build-system",
-    "req": "setuptools-rust>=1.4.0",
-    "dist": "setuptools-rust",
-    "version": "1.9.0",
+    "req": "hatch-vcs>=0.4",
+    "dist": "hatch-vcs",
+    "version": "0.4.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "orjson>=3.2.1",
-        "3.10.3"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "maturin<2,>=1",
-        "1.5.1"
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
       ],
       [
         "build-system",
-        "setuptools-rust>=1.4.0",
-        "1.9.0"
+        "hatch-vcs>=0.4",
+        "0.4.0"
       ]
     ],
     "prebuilt": false
   },
   {
     "type": "install",
-    "req": "semantic-version<3,>=2.8.2",
-    "dist": "semantic-version",
-    "version": "2.10.0",
+    "req": "filelock",
+    "dist": "filelock",
+    "version": "3.14.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "orjson>=3.2.1",
-        "3.10.3"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "maturin<2,>=1",
-        "1.5.1"
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "filelock",
+        "3.14.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sympy",
+    "dist": "sympy",
+    "version": "1.12.1",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "setuptools-rust>=1.4.0",
-        "1.9.0"
+        "torch",
+        "2.3.0"
       ],
       [
         "install",
-        "semantic-version<3,>=2.8.2",
-        "2.10.0"
+        "sympy",
+        "1.12.1"
       ]
     ],
     "prebuilt": false
   },
   {
-    "type": "build-system",
-    "req": "maturin<2,>=1",
-    "dist": "maturin",
-    "version": "1.5.1",
+    "type": "install",
+    "req": "mpmath<1.4.0,>=1.1.0",
+    "dist": "mpmath",
+    "version": "1.3.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "orjson>=3.2.1",
-        "3.10.3"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "maturin<2,>=1",
-        "1.5.1"
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "sympy",
+        "1.12.1"
+      ],
+      [
+        "install",
+        "mpmath<1.4.0,>=1.1.0",
+        "1.3.0"
       ]
     ],
     "prebuilt": false
   },
   {
     "type": "install",
-    "req": "orjson>=3.2.1",
-    "dist": "orjson",
-    "version": "3.10.3",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "orjson>=3.2.1",
-        "3.10.3"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "hatch-fancy-pypi-readme>=22.5.0",
-    "dist": "hatch-fancy-pypi-readme",
-    "version": "24.1.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4",
-        "2.7.1"
-      ],
-      [
-        "build-system",
-        "hatch-fancy-pypi-readme>=22.5.0",
-        "24.1.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4",
-    "dist": "pydantic",
-    "version": "2.7.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4",
-        "2.7.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "typing-extensions>=4.6.1",
-    "dist": "typing-extensions",
-    "version": "4.11.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4",
-        "2.7.1"
-      ],
-      [
-        "install",
-        "typing-extensions>=4.6.1",
-        "4.11.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "annotated-types>=0.4.0",
-    "dist": "annotated-types",
-    "version": "0.7.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4",
-        "2.7.1"
-      ],
-      [
-        "install",
-        "annotated-types>=0.4.0",
-        "0.7.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "pydantic-core==2.18.2",
-    "dist": "pydantic-core",
-    "version": "2.18.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4",
-        "2.7.1"
-      ],
-      [
-        "install",
-        "pydantic-core==2.18.2",
-        "2.18.2"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "fastapi-cli>=0.0.2",
-    "dist": "fastapi-cli",
-    "version": "0.0.4",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "typer>=0.12.3",
-    "dist": "typer",
-    "version": "0.12.3",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "click>=8.0.0",
-    "dist": "click",
-    "version": "8.1.7",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ],
-      [
-        "install",
-        "click>=8.0.0",
-        "8.1.7"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "poetry-core>=1.0.0",
-    "dist": "poetry-core",
-    "version": "1.9.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ],
-      [
-        "install",
-        "rich>=10.11.0",
-        "13.7.1"
-      ],
-      [
-        "build-system",
-        "poetry-core>=1.0.0",
-        "1.9.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "rich>=10.11.0",
-    "dist": "rich",
-    "version": "13.7.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ],
-      [
-        "install",
-        "rich>=10.11.0",
-        "13.7.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "pygments<3.0.0,>=2.13.0",
-    "dist": "pygments",
-    "version": "2.18.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ],
-      [
-        "install",
-        "rich>=10.11.0",
-        "13.7.1"
-      ],
-      [
-        "install",
-        "pygments<3.0.0,>=2.13.0",
-        "2.18.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "markdown-it-py>=2.2.0",
-    "dist": "markdown-it-py",
-    "version": "3.0.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ],
-      [
-        "install",
-        "rich>=10.11.0",
-        "13.7.1"
-      ],
-      [
-        "install",
-        "markdown-it-py>=2.2.0",
-        "3.0.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "mdurl~=0.1",
-    "dist": "mdurl",
-    "version": "0.1.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ],
-      [
-        "install",
-        "rich>=10.11.0",
-        "13.7.1"
-      ],
-      [
-        "install",
-        "markdown-it-py>=2.2.0",
-        "3.0.0"
-      ],
-      [
-        "install",
-        "mdurl~=0.1",
-        "0.1.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "shellingham>=1.3.0",
-    "dist": "shellingham",
-    "version": "1.5.4",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "fastapi-cli>=0.0.2",
-        "0.0.4"
-      ],
-      [
-        "install",
-        "typer>=0.12.3",
-        "0.12.3"
-      ],
-      [
-        "install",
-        "shellingham>=1.3.0",
-        "1.5.4"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "jinja2>=2.11.2",
+    "req": "jinja2",
     "dist": "jinja2",
     "version": "3.1.4",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
       ],
       [
         "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "jinja2>=2.11.2",
+        "jinja2",
         "3.1.4"
       ]
     ],
@@ -1233,17 +697,17 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
       ],
       [
         "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "jinja2>=2.11.2",
+        "jinja2",
         "3.1.4"
       ],
       [
@@ -1256,582 +720,71 @@
   },
   {
     "type": "install",
-    "req": "httpx>=0.23.0",
-    "dist": "httpx",
-    "version": "0.27.0",
+    "req": "nvidia-cublas-cu12==12.1.3.1; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cublas-cu12",
+    "version": "12.1.3.1",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "httpx>=0.23.0",
-        "0.27.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "httpcore==1.*",
-    "dist": "httpcore",
-    "version": "1.0.5",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "httpx>=0.23.0",
-        "0.27.0"
-      ],
-      [
-        "install",
-        "httpcore==1.*",
-        "1.0.5"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "certifi",
-    "dist": "certifi",
-    "version": "2024.2.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "httpx>=0.23.0",
-        "0.27.0"
-      ],
-      [
-        "install",
-        "httpcore==1.*",
-        "1.0.5"
-      ],
-      [
-        "install",
-        "certifi",
-        "2024.2.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "h11<0.15,>=0.13",
-    "dist": "h11",
-    "version": "0.14.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "httpx>=0.23.0",
-        "0.27.0"
-      ],
-      [
-        "install",
-        "httpcore==1.*",
-        "1.0.5"
-      ],
-      [
-        "install",
-        "h11<0.15,>=0.13",
-        "0.14.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1",
-    "dist": "ujson",
-    "version": "5.10.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1",
-        "5.10.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "uvicorn[standard]>=0.12.0",
-    "dist": "uvicorn",
-    "version": "0.29.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "watchfiles>=0.13; extra == \"standard\"",
-    "dist": "watchfiles",
-    "version": "0.21.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ],
-      [
-        "install",
-        "watchfiles>=0.13; extra == \"standard\"",
-        "0.21.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "python-dotenv>=0.13; extra == \"standard\"",
-    "dist": "python-dotenv",
-    "version": "1.0.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ],
-      [
-        "install",
-        "python-dotenv>=0.13; extra == \"standard\"",
-        "1.0.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "Cython<3.0",
-    "dist": "cython",
-    "version": "0.29.37",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ],
-      [
-        "install",
-        "pyyaml>=5.1; extra == \"standard\"",
-        "6.0.1"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "Cython<3.0",
-        "0.29.37"
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cublas-cu12==12.1.3.1; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "12.1.3.1"
       ]
     ],
-    "prebuilt": false
+    "prebuilt": true
   },
   {
     "type": "install",
-    "req": "pyyaml>=5.1; extra == \"standard\"",
-    "dist": "pyyaml",
-    "version": "6.0.1",
+    "req": "nvidia-cuda-nvrtc-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cuda-nvrtc-cu12",
+    "version": "12.1.105",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ],
-      [
-        "install",
-        "pyyaml>=5.1; extra == \"standard\"",
-        "6.0.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "websockets>=10.4; extra == \"standard\"",
-    "dist": "websockets",
-    "version": "12.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ],
-      [
-        "install",
-        "websockets>=10.4; extra == \"standard\"",
-        "12.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "httptools>=0.5.0; extra == \"standard\"",
-    "dist": "httptools",
-    "version": "0.6.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ],
-      [
-        "install",
-        "httptools>=0.5.0; extra == \"standard\"",
-        "0.6.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "uvloop!=0.15.0,!=0.15.1,>=0.14.0; (sys_platform != \"win32\" and (sys_platform != \"cygwin\" and platform_python_implementation != \"PyPy\")) and extra == \"standard\"",
-    "dist": "uvloop",
-    "version": "0.19.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "fastapi",
-        "0.111.0"
-      ],
-      [
-        "install",
-        "uvicorn[standard]>=0.12.0",
-        "0.29.0"
-      ],
-      [
-        "install",
-        "uvloop!=0.15.0,!=0.15.1,>=0.14.0; (sys_platform != \"win32\" and (sys_platform != \"cygwin\" and platform_python_implementation != \"PyPy\")) and extra == \"standard\"",
-        "0.19.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "prometheus-fastapi-instrumentator>=7.0.0",
-    "dist": "prometheus-fastapi-instrumentator",
-    "version": "7.0.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "prometheus-fastapi-instrumentator>=7.0.0",
-        "7.0.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "prometheus-client<1.0.0,>=0.8.0",
-    "dist": "prometheus-client",
-    "version": "0.20.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "prometheus-fastapi-instrumentator>=7.0.0",
-        "7.0.0"
-      ],
-      [
-        "install",
-        "prometheus-client<1.0.0,>=0.8.0",
-        "0.20.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "nvidia-ml-py",
-    "dist": "nvidia-ml-py",
-    "version": "12.550.52",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "nvidia-ml-py",
-        "12.550.52"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "vllm-nccl-cu12<2.19,>=2.18",
-    "dist": "vllm-nccl-cu12",
-    "version": "2.18.1.0.4.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "vllm-nccl-cu12<2.19,>=2.18",
-        "2.18.1.0.4.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "py-cpuinfo",
-    "dist": "py-cpuinfo",
-    "version": "9.0.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "py-cpuinfo",
-        "9.0.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "transformers>=4.40.0",
-    "dist": "transformers",
-    "version": "4.41.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "huggingface-hub<1.0,>=0.23.0",
-    "dist": "huggingface-hub",
-    "version": "0.23.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "hatch-vcs",
-    "dist": "hatch-vcs",
-    "version": "0.4.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ],
-      [
-        "install",
-        "fsspec>=2023.5.0",
-        "2024.5.0"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "hatch-vcs",
-        "0.4.0"
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cuda-nvrtc-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "12.1.105"
       ]
     ],
-    "prebuilt": false
+    "prebuilt": true
   },
   {
     "type": "install",
-    "req": "fsspec>=2023.5.0",
+    "req": "fsspec",
     "dist": "fsspec",
     "version": "2024.5.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ],
-      [
-        "install",
-        "fsspec>=2023.5.0",
+        "fsspec",
         "2024.5.0"
       ]
     ],
@@ -1839,242 +792,354 @@
   },
   {
     "type": "install",
-    "req": "tqdm>=4.42.1",
-    "dist": "tqdm",
-    "version": "4.66.4",
+    "req": "nvidia-cuda-cupti-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cuda-cupti-cu12",
+    "version": "12.1.105",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ],
-      [
-        "install",
-        "tqdm>=4.42.1",
-        "4.66.4"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "requests",
-    "dist": "requests",
-    "version": "2.32.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ],
-      [
-        "install",
-        "requests",
-        "2.32.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "urllib3<3,>=1.21.1",
-    "dist": "urllib3",
-    "version": "2.2.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ],
-      [
-        "install",
-        "requests",
-        "2.32.2"
-      ],
-      [
-        "install",
-        "urllib3<3,>=1.21.1",
-        "2.2.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "charset-normalizer<4,>=2",
-    "dist": "charset-normalizer",
-    "version": "3.3.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ],
-      [
-        "install",
-        "requests",
-        "2.32.2"
-      ],
-      [
-        "install",
-        "charset-normalizer<4,>=2",
-        "3.3.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "filelock",
-    "dist": "filelock",
-    "version": "3.14.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "huggingface-hub<1.0,>=0.23.0",
-        "0.23.1"
-      ],
-      [
-        "install",
-        "filelock",
-        "3.14.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "regex!=2019.12.17",
-    "dist": "regex",
-    "version": "2024.5.15",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "regex!=2019.12.17",
-        "2024.5.15"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "Cython<3.1,>=0.29.34",
-    "dist": "cython",
-    "version": "3.0.10",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
-        "1.26.4"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "build-system",
-        "Cython<3.1,>=0.29.34",
-        "3.0.10"
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cuda-cupti-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "12.1.105"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-curand-cu12==10.3.2.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-curand-cu12",
+    "version": "10.3.2.106",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-curand-cu12==10.3.2.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "10.3.2.106"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-nccl-cu12==2.20.5; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-nccl-cu12",
+    "version": "2.20.5",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-nccl-cu12==2.20.5; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "2.20.5"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-cufft-cu12==11.0.2.54; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cufft-cu12",
+    "version": "11.0.2.54",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cufft-cu12==11.0.2.54; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "11.0.2.54"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-cusolver-cu12==11.4.5.107; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+    "dist": "nvidia-cusolver-cu12",
+    "version": "11.4.5.107",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cusolver-cu12==11.4.5.107; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "11.4.5.107"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "nvidia-cusparse-cu12",
+    "dist": "nvidia-cusparse-cu12",
+    "version": "12.4.1.24",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "torch",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "nvidia-cusolver-cu12==11.4.5.107; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
+        "11.4.5.107"
+      ],
+      [
+        "install",
+        "nvidia-cusparse-cu12",
+        "12.4.1.24"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "build-system",
+    "req": "psutil",
+    "dist": "psutil",
+    "version": "5.9.8",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "psutil",
+        "5.9.8"
       ]
     ],
     "prebuilt": false
   },
   {
     "type": "build-system",
-    "req": "pyproject-metadata>=0.7.1",
-    "dist": "pyproject-metadata",
+    "req": "hatch-fancy-pypi-readme",
+    "dist": "hatch-fancy-pypi-readme",
+    "version": "24.1.0",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "ninja",
+        "1.11.1.1"
+      ],
+      [
+        "build-system",
+        "scikit-build",
+        "0.17.6"
+      ],
+      [
+        "build-system",
+        "hatch-fancy-pypi-readme",
+        "24.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "scikit-build",
+    "dist": "scikit-build",
+    "version": "0.17.6",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "ninja",
+        "1.11.1.1"
+      ],
+      [
+        "build-system",
+        "scikit-build",
+        "0.17.6"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "distro",
+    "dist": "distro",
+    "version": "1.9.0",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "ninja",
+        "1.11.1.1"
+      ],
+      [
+        "build-system",
+        "scikit-build",
+        "0.17.6"
+      ],
+      [
+        "install",
+        "distro",
+        "1.9.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "ninja",
+    "dist": "ninja",
+    "version": "1.11.1.1",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ],
+      [
+        "build-system",
+        "ninja",
+        "1.11.1.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "flash-attn==2.5.7",
+    "dist": "flash-attn",
+    "version": "2.5.7",
+    "why": [
+      [
+        "toplevel",
+        "flash-attn==2.5.7",
+        "2.5.7"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "einops",
+    "dist": "einops",
     "version": "0.8.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "flash-attn==2.5.7",
+        "2.5.7"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
-        "1.26.4"
-      ],
-      [
-        "build-system",
-        "meson-python<0.16.0,>=0.15.0",
-        "0.15.0"
-      ],
-      [
-        "build-system",
-        "pyproject-metadata>=0.7.1",
+        "einops",
         "0.8.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "deepspeed==0.14.2",
+    "dist": "deepspeed",
+    "version": "0.14.2",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pynvml",
+    "dist": "pynvml",
+    "version": "11.5.0",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
+      ],
+      [
+        "install",
+        "pynvml",
+        "11.5.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "hjson",
+    "dist": "hjson",
+    "version": "3.1.0",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
+      ],
+      [
+        "install",
+        "hjson",
+        "3.1.0"
       ]
     ],
     "prebuilt": false
@@ -2087,17 +1152,12 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "deepspeed==0.14.2",
+        "0.14.2"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
+        "numpy",
         "1.26.4"
       ],
       [
@@ -2115,23 +1175,18 @@
   },
   {
     "type": "build-system",
-    "req": "scikit-build>=0.12",
-    "dist": "scikit-build",
-    "version": "0.17.6",
+    "req": "pyproject-metadata>=0.7.1",
+    "dist": "pyproject-metadata",
+    "version": "0.8.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "deepspeed==0.14.2",
+        "0.14.2"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
+        "numpy",
         "1.26.4"
       ],
       [
@@ -2140,58 +1195,9 @@
         "0.15.0"
       ],
       [
-        "build-backend",
-        "patchelf>=0.11.0",
-        "0.18.0.0"
-      ],
-      [
         "build-system",
-        "scikit-build>=0.12",
-        "0.17.6"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "distro",
-    "dist": "distro",
-    "version": "1.9.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
-        "1.26.4"
-      ],
-      [
-        "build-system",
-        "meson-python<0.16.0,>=0.15.0",
-        "0.15.0"
-      ],
-      [
-        "build-backend",
-        "patchelf>=0.11.0",
-        "0.18.0.0"
-      ],
-      [
-        "build-system",
-        "scikit-build>=0.12",
-        "0.17.6"
-      ],
-      [
-        "install",
-        "distro",
-        "1.9.0"
+        "pyproject-metadata>=0.7.1",
+        "0.8.0"
       ]
     ],
     "prebuilt": false
@@ -2204,17 +1210,12 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "deepspeed==0.14.2",
+        "0.14.2"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
+        "numpy",
         "1.26.4"
       ],
       [
@@ -2238,17 +1239,12 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "deepspeed==0.14.2",
+        "0.14.2"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
+        "numpy",
         "1.26.4"
       ],
       [
@@ -2260,24 +1256,43 @@
     "prebuilt": false
   },
   {
+    "type": "build-system",
+    "req": "Cython<3.1,>=0.29.34",
+    "dist": "cython",
+    "version": "3.0.10",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
+      ],
+      [
+        "install",
+        "numpy",
+        "1.26.4"
+      ],
+      [
+        "build-system",
+        "Cython<3.1,>=0.29.34",
+        "3.0.10"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
     "type": "install",
-    "req": "numpy>=1.17",
+    "req": "numpy",
     "dist": "numpy",
     "version": "1.26.4",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "deepspeed==0.14.2",
+        "0.14.2"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
-      ],
-      [
-        "install",
-        "numpy>=1.17",
+        "numpy",
         "1.26.4"
       ]
     ],
@@ -2285,24 +1300,268 @@
   },
   {
     "type": "install",
-    "req": "tokenizers<0.20,>=0.19",
-    "dist": "tokenizers",
-    "version": "0.19.1",
+    "req": "py-cpuinfo",
+    "dist": "py-cpuinfo",
+    "version": "9.0.0",
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
+        "deepspeed==0.14.2",
+        "0.14.2"
       ],
       [
         "install",
-        "transformers>=4.40.0",
-        "4.41.1"
+        "py-cpuinfo",
+        "9.0.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic",
+    "dist": "pydantic",
+    "version": "2.7.2",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
       ],
       [
         "install",
-        "tokenizers<0.20,>=0.19",
-        "0.19.1"
+        "pydantic",
+        "2.7.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "annotated-types>=0.4.0",
+    "dist": "annotated-types",
+    "version": "0.7.0",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
+      ],
+      [
+        "install",
+        "pydantic",
+        "2.7.2"
+      ],
+      [
+        "install",
+        "annotated-types>=0.4.0",
+        "0.7.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic-core==2.18.3",
+    "dist": "pydantic-core",
+    "version": "2.18.3",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
+      ],
+      [
+        "install",
+        "pydantic",
+        "2.7.2"
+      ],
+      [
+        "install",
+        "pydantic-core==2.18.3",
+        "2.18.3"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "tqdm",
+    "dist": "tqdm",
+    "version": "4.66.4",
+    "why": [
+      [
+        "toplevel",
+        "deepspeed==0.14.2",
+        "0.14.2"
+      ],
+      [
+        "install",
+        "tqdm",
+        "4.66.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "transformers==4.40.1",
+    "dist": "transformers",
+    "version": "4.40.1",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "regex!=2019.12.17",
+    "dist": "regex",
+    "version": "2024.5.15",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "regex!=2019.12.17",
+        "2024.5.15"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "Cython<3.0",
+    "dist": "cython",
+    "version": "0.29.37",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "pyyaml>=5.1",
+        "6.0.1"
+      ],
+      [
+        "build-system",
+        "Cython<3.0",
+        "0.29.37"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pyyaml>=5.1",
+    "dist": "pyyaml",
+    "version": "6.0.1",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "pyyaml>=5.1",
+        "6.0.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "setuptools-rust>=1.4.0",
+    "dist": "setuptools-rust",
+    "version": "1.9.0",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "safetensors>=0.4.1",
+        "0.4.3"
+      ],
+      [
+        "build-system",
+        "maturin<2.0,>=1.0",
+        "1.5.1"
+      ],
+      [
+        "build-system",
+        "setuptools-rust>=1.4.0",
+        "1.9.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "semantic-version<3,>=2.8.2",
+    "dist": "semantic-version",
+    "version": "2.10.0",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "safetensors>=0.4.1",
+        "0.4.3"
+      ],
+      [
+        "build-system",
+        "maturin<2.0,>=1.0",
+        "1.5.1"
+      ],
+      [
+        "build-system",
+        "setuptools-rust>=1.4.0",
+        "1.9.0"
+      ],
+      [
+        "install",
+        "semantic-version<3,>=2.8.2",
+        "2.10.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "maturin<2.0,>=1.0",
+    "dist": "maturin",
+    "version": "1.5.1",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "safetensors>=0.4.1",
+        "0.4.3"
+      ],
+      [
+        "build-system",
+        "maturin<2.0,>=1.0",
+        "1.5.1"
       ]
     ],
     "prebuilt": false
@@ -2315,18 +1574,5243 @@
     "why": [
       [
         "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "transformers>=4.40.0",
-        "4.41.1"
+        "transformers==4.40.1",
+        "4.40.1"
       ],
       [
         "install",
         "safetensors>=0.4.1",
         "0.4.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "requests",
+    "dist": "requests",
+    "version": "2.32.3",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "requests",
+        "2.32.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "urllib3<3,>=1.21.1",
+    "dist": "urllib3",
+    "version": "2.2.1",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "requests",
+        "2.32.3"
+      ],
+      [
+        "install",
+        "urllib3<3,>=1.21.1",
+        "2.2.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "charset-normalizer<4,>=2",
+    "dist": "charset-normalizer",
+    "version": "3.3.2",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "requests",
+        "2.32.3"
+      ],
+      [
+        "install",
+        "charset-normalizer<4,>=2",
+        "3.3.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "certifi>=2017.4.17",
+    "dist": "certifi",
+    "version": "2024.2.2",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "requests",
+        "2.32.3"
+      ],
+      [
+        "install",
+        "certifi>=2017.4.17",
+        "2024.2.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "idna<4,>=2.5",
+    "dist": "idna",
+    "version": "3.7",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "requests",
+        "2.32.3"
+      ],
+      [
+        "install",
+        "idna<4,>=2.5",
+        "3.7"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "huggingface-hub<1.0,>=0.19.3",
+    "dist": "huggingface-hub",
+    "version": "0.23.2",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "huggingface-hub<1.0,>=0.19.3",
+        "0.23.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tokenizers<0.20,>=0.19",
+    "dist": "tokenizers",
+    "version": "0.19.1",
+    "why": [
+      [
+        "toplevel",
+        "transformers==4.40.1",
+        "4.40.1"
+      ],
+      [
+        "install",
+        "tokenizers<0.20,>=0.19",
+        "0.19.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "ipdb",
+    "dist": "ipdb",
+    "version": "0.13.13",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ipython>=7.31.1; python_version >= \"3.11\"",
+    "dist": "ipython",
+    "version": "8.24.0",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "stack-data",
+    "dist": "stack-data",
+    "version": "0.6.3",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "stack-data",
+        "0.6.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "asttokens>=2.1.0",
+    "dist": "asttokens",
+    "version": "2.4.1",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "stack-data",
+        "0.6.3"
+      ],
+      [
+        "install",
+        "asttokens>=2.1.0",
+        "2.4.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "six>=1.12.0",
+    "dist": "six",
+    "version": "1.16.0",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "stack-data",
+        "0.6.3"
+      ],
+      [
+        "install",
+        "asttokens>=2.1.0",
+        "2.4.1"
+      ],
+      [
+        "install",
+        "six>=1.12.0",
+        "1.16.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pure-eval",
+    "dist": "pure-eval",
+    "version": "0.2.2",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "stack-data",
+        "0.6.3"
+      ],
+      [
+        "install",
+        "pure-eval",
+        "0.2.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "executing>=1.2.0",
+    "dist": "executing",
+    "version": "2.0.1",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "stack-data",
+        "0.6.3"
+      ],
+      [
+        "install",
+        "executing>=1.2.0",
+        "2.0.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "decorator",
+    "dist": "decorator",
+    "version": "5.1.1",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "decorator",
+        "5.1.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "matplotlib-inline",
+    "dist": "matplotlib-inline",
+    "version": "0.1.7",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "matplotlib-inline",
+        "0.1.7"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "traitlets",
+    "dist": "traitlets",
+    "version": "5.14.3",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "matplotlib-inline",
+        "0.1.7"
+      ],
+      [
+        "install",
+        "traitlets",
+        "5.14.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jedi>=0.16",
+    "dist": "jedi",
+    "version": "0.19.1",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "jedi>=0.16",
+        "0.19.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "parso<0.9.0,>=0.8.3",
+    "dist": "parso",
+    "version": "0.8.4",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "jedi>=0.16",
+        "0.19.1"
+      ],
+      [
+        "install",
+        "parso<0.9.0,>=0.8.3",
+        "0.8.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pygments>=2.4.0",
+    "dist": "pygments",
+    "version": "2.18.0",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "pygments>=2.4.0",
+        "2.18.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "prompt-toolkit<3.1.0,>=3.0.41",
+    "dist": "prompt-toolkit",
+    "version": "3.0.45",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "prompt-toolkit<3.1.0,>=3.0.41",
+        "3.0.45"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "wcwidth",
+    "dist": "wcwidth",
+    "version": "0.2.13",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "prompt-toolkit<3.1.0,>=3.0.41",
+        "3.0.45"
+      ],
+      [
+        "install",
+        "wcwidth",
+        "0.2.13"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pexpect>4.3; sys_platform != \"win32\" and sys_platform != \"emscripten\"",
+    "dist": "pexpect",
+    "version": "4.9.0",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "pexpect>4.3; sys_platform != \"win32\" and sys_platform != \"emscripten\"",
+        "4.9.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ptyprocess>=0.5",
+    "dist": "ptyprocess",
+    "version": "0.7.0",
+    "why": [
+      [
+        "toplevel",
+        "ipdb",
+        "0.13.13"
+      ],
+      [
+        "install",
+        "ipython>=7.31.1; python_version >= \"3.11\"",
+        "8.24.0"
+      ],
+      [
+        "install",
+        "pexpect>4.3; sys_platform != \"win32\" and sys_platform != \"emscripten\"",
+        "4.9.0"
+      ],
+      [
+        "install",
+        "ptyprocess>=0.5",
+        "0.7.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-backend",
+    "req": "hatch-jupyter-builder>=0.3.2",
+    "dist": "hatch-jupyter-builder",
+    "version": "0.9.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "build-backend",
+        "hatch-jupyter-builder>=0.3.2",
+        "0.9.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "jupyterlab",
+    "dist": "jupyterlab",
+    "version": "4.2.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jupyter-core",
+    "dist": "jupyter-core",
+    "version": "5.7.2",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-core",
+        "5.7.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "platformdirs>=2.5",
+    "dist": "platformdirs",
+    "version": "4.2.2",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-core",
+        "5.7.2"
+      ],
+      [
+        "install",
+        "platformdirs>=2.5",
+        "4.2.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tornado>=6.2.0",
+    "dist": "tornado",
+    "version": "6.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "tornado>=6.2.0",
+        "6.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "jupyter_client>=6",
+    "dist": "jupyter-client",
+    "version": "8.6.2",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "build-system",
+        "jupyter_client>=6",
+        "8.6.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "scikit-build-core",
+    "dist": "scikit-build-core",
+    "version": "0.9.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "build-system",
+        "jupyter_client>=6",
+        "8.6.2"
+      ],
+      [
+        "install",
+        "pyzmq>=23.0",
+        "26.0.3"
+      ],
+      [
+        "build-system",
+        "scikit-build-core",
+        "0.9.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pyzmq>=23.0",
+    "dist": "pyzmq",
+    "version": "26.0.3",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "build-system",
+        "jupyter_client>=6",
+        "8.6.2"
+      ],
+      [
+        "install",
+        "pyzmq>=23.0",
+        "26.0.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "setuptools_scm<8.0",
+    "dist": "setuptools-scm",
+    "version": "7.1.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "build-system",
+        "jupyter_client>=6",
+        "8.6.2"
+      ],
+      [
+        "install",
+        "python-dateutil>=2.8.2",
+        "2.9.0.post0"
+      ],
+      [
+        "build-system",
+        "setuptools_scm<8.0",
+        "7.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "python-dateutil>=2.8.2",
+    "dist": "python-dateutil",
+    "version": "2.9.0.post0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "build-system",
+        "jupyter_client>=6",
+        "8.6.2"
+      ],
+      [
+        "install",
+        "python-dateutil>=2.8.2",
+        "2.9.0.post0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ipykernel>=6.5.0",
+    "dist": "ipykernel",
+    "version": "6.29.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "comm>=0.1.1",
+    "dist": "comm",
+    "version": "0.2.2",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "install",
+        "comm>=0.1.1",
+        "0.2.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "debugpy>=1.6.5",
+    "dist": "debugpy",
+    "version": "1.8.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "install",
+        "debugpy>=1.6.5",
+        "1.8.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nest-asyncio",
+    "dist": "nest-asyncio",
+    "version": "1.6.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "ipykernel>=6.5.0",
+        "6.29.4"
+      ],
+      [
+        "install",
+        "nest-asyncio",
+        "1.6.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jupyter-lsp>=2.0.0",
+    "dist": "jupyter-lsp",
+    "version": "2.2.5",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jupyter-server>=1.1.2",
+    "dist": "jupyter-server",
+    "version": "2.14.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "terminado>=0.8.3",
+    "dist": "terminado",
+    "version": "0.18.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "terminado>=0.8.3",
+        "0.18.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "websocket-client>=1.7",
+    "dist": "websocket-client",
+    "version": "1.8.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "websocket-client>=1.7",
+        "1.8.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "send2trash>=1.8.2",
+    "dist": "send2trash",
+    "version": "1.8.3",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "send2trash>=1.8.2",
+        "1.8.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "hatch-nodejs-version",
+    "dist": "hatch-nodejs-version",
+    "version": "0.3.2",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ],
+      [
+        "build-system",
+        "hatch-nodejs-version",
+        "0.3.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nbformat>=5.3.0",
+    "dist": "nbformat",
+    "version": "5.10.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fastjsonschema>=2.15",
+    "dist": "fastjsonschema",
+    "version": "2.19.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ],
+      [
+        "install",
+        "fastjsonschema>=2.15",
+        "2.19.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonschema>=2.6",
+    "dist": "jsonschema",
+    "version": "4.22.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ],
+      [
+        "install",
+        "jsonschema>=2.6",
+        "4.22.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonschema-specifications>=2023.03.6",
+    "dist": "jsonschema-specifications",
+    "version": "2023.12.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ],
+      [
+        "install",
+        "jsonschema>=2.6",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "jsonschema-specifications>=2023.03.6",
+        "2023.12.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "referencing>=0.31.0",
+    "dist": "referencing",
+    "version": "0.35.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ],
+      [
+        "install",
+        "jsonschema>=2.6",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "jsonschema-specifications>=2023.03.6",
+        "2023.12.1"
+      ],
+      [
+        "install",
+        "referencing>=0.31.0",
+        "0.35.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "rpds-py>=0.7.0",
+    "dist": "rpds-py",
+    "version": "0.18.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ],
+      [
+        "install",
+        "jsonschema>=2.6",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "jsonschema-specifications>=2023.03.6",
+        "2023.12.1"
+      ],
+      [
+        "install",
+        "referencing>=0.31.0",
+        "0.35.1"
+      ],
+      [
+        "install",
+        "rpds-py>=0.7.0",
+        "0.18.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "attrs>=22.2.0",
+    "dist": "attrs",
+    "version": "23.2.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbformat>=5.3.0",
+        "5.10.4"
+      ],
+      [
+        "install",
+        "jsonschema>=2.6",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "jsonschema-specifications>=2023.03.6",
+        "2023.12.1"
+      ],
+      [
+        "install",
+        "referencing>=0.31.0",
+        "0.35.1"
+      ],
+      [
+        "install",
+        "attrs>=22.2.0",
+        "23.2.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jupyter-events>=0.9.0",
+    "dist": "jupyter-events",
+    "version": "0.10.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "rfc3339-validator",
+    "dist": "rfc3339-validator",
+    "version": "0.1.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "rfc3339-validator",
+        "0.1.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-backend",
+    "req": "pytest-runner",
+    "dist": "pytest-runner",
+    "version": "6.0.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "rfc3986-validator>=0.1.1",
+        "0.1.1"
+      ],
+      [
+        "build-backend",
+        "pytest-runner",
+        "6.0.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "rfc3986-validator>=0.1.1",
+    "dist": "rfc3986-validator",
+    "version": "0.1.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "rfc3986-validator>=0.1.1",
+        "0.1.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "python-json-logger>=2.0.4",
+    "dist": "python-json-logger",
+    "version": "2.0.7",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "python-json-logger>=2.0.4",
+        "2.0.7"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "webcolors>=1.11; extra == \"format-nongpl\"",
+    "dist": "webcolors",
+    "version": "1.13",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "jsonschema[format-nongpl]>=4.18.0",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "webcolors>=1.11; extra == \"format-nongpl\"",
+        "1.13"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "uri-template; extra == \"format-nongpl\"",
+    "dist": "uri-template",
+    "version": "1.3.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "jsonschema[format-nongpl]>=4.18.0",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "uri-template; extra == \"format-nongpl\"",
+        "1.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonpointer>1.13; extra == \"format-nongpl\"",
+    "dist": "jsonpointer",
+    "version": "2.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "jsonschema[format-nongpl]>=4.18.0",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "jsonpointer>1.13; extra == \"format-nongpl\"",
+        "2.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "isoduration; extra == \"format-nongpl\"",
+    "dist": "isoduration",
+    "version": "20.11.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "jsonschema[format-nongpl]>=4.18.0",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "isoduration; extra == \"format-nongpl\"",
+        "20.11.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "arrow>=0.15.0",
+    "dist": "arrow",
+    "version": "1.3.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "jsonschema[format-nongpl]>=4.18.0",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "isoduration; extra == \"format-nongpl\"",
+        "20.11.0"
+      ],
+      [
+        "install",
+        "arrow>=0.15.0",
+        "1.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "types-python-dateutil>=2.8.10",
+    "dist": "types-python-dateutil",
+    "version": "2.9.0.20240316",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "jsonschema[format-nongpl]>=4.18.0",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "isoduration; extra == \"format-nongpl\"",
+        "20.11.0"
+      ],
+      [
+        "install",
+        "arrow>=0.15.0",
+        "1.3.0"
+      ],
+      [
+        "install",
+        "types-python-dateutil>=2.8.10",
+        "2.9.0.20240316"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fqdn; extra == \"format-nongpl\"",
+    "dist": "fqdn",
+    "version": "1.5.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-events>=0.9.0",
+        "0.10.0"
+      ],
+      [
+        "install",
+        "jsonschema[format-nongpl]>=4.18.0",
+        "4.22.0"
+      ],
+      [
+        "install",
+        "fqdn; extra == \"format-nongpl\"",
+        "1.5.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "anyio>=3.1.0",
+    "dist": "anyio",
+    "version": "4.4.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "anyio>=3.1.0",
+        "4.4.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sniffio>=1.1",
+    "dist": "sniffio",
+    "version": "1.3.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "anyio>=3.1.0",
+        "4.4.0"
+      ],
+      [
+        "install",
+        "sniffio>=1.1",
+        "1.3.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jupyter-server-terminals>=0.4.4",
+    "dist": "jupyter-server-terminals",
+    "version": "0.5.3",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "jupyter-server-terminals>=0.4.4",
+        "0.5.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "overrides>=5.0",
+    "dist": "overrides",
+    "version": "7.7.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "overrides>=5.0",
+        "7.7.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "prometheus-client>=0.9",
+    "dist": "prometheus-client",
+    "version": "0.20.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "prometheus-client>=0.9",
+        "0.20.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "argon2-cffi>=21.1",
+    "dist": "argon2-cffi",
+    "version": "23.1.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "argon2-cffi>=21.1",
+        "23.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "cffi>=1.0.1",
+    "dist": "cffi",
+    "version": "1.16.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "argon2-cffi>=21.1",
+        "23.1.0"
+      ],
+      [
+        "install",
+        "argon2-cffi-bindings",
+        "21.2.0"
+      ],
+      [
+        "build-system",
+        "cffi>=1.0.1",
+        "1.16.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pycparser",
+    "dist": "pycparser",
+    "version": "2.22",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "argon2-cffi>=21.1",
+        "23.1.0"
+      ],
+      [
+        "install",
+        "argon2-cffi-bindings",
+        "21.2.0"
+      ],
+      [
+        "build-system",
+        "cffi>=1.0.1",
+        "1.16.0"
+      ],
+      [
+        "install",
+        "pycparser",
+        "2.22"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "argon2-cffi-bindings",
+    "dist": "argon2-cffi-bindings",
+    "version": "21.2.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "argon2-cffi>=21.1",
+        "23.1.0"
+      ],
+      [
+        "install",
+        "argon2-cffi-bindings",
+        "21.2.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nbconvert>=6.4.4",
+    "dist": "nbconvert",
+    "version": "7.16.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "mistune<4,>=2.0.3",
+    "dist": "mistune",
+    "version": "3.0.2",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "mistune<4,>=2.0.3",
+        "3.0.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "defusedxml",
+    "dist": "defusedxml",
+    "version": "0.7.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "defusedxml",
+        "0.7.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jupyterlab-pygments",
+    "dist": "jupyterlab-pygments",
+    "version": "0.3.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "jupyterlab-pygments",
+        "0.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pandocfilters>=1.4.1",
+    "dist": "pandocfilters",
+    "version": "1.5.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "pandocfilters>=1.4.1",
+        "1.5.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "bleach!=5.0.0",
+    "dist": "bleach",
+    "version": "6.1.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "bleach!=5.0.0",
+        "6.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "webencodings",
+    "dist": "webencodings",
+    "version": "0.5.1",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "bleach!=5.0.0",
+        "6.1.0"
+      ],
+      [
+        "install",
+        "webencodings",
+        "0.5.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nbclient>=0.5.0",
+    "dist": "nbclient",
+    "version": "0.10.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "nbclient>=0.5.0",
+        "0.10.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "beautifulsoup4",
+    "dist": "beautifulsoup4",
+    "version": "4.12.3",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "beautifulsoup4",
+        "4.12.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "soupsieve>1.2",
+    "dist": "soupsieve",
+    "version": "2.5",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "beautifulsoup4",
+        "4.12.3"
+      ],
+      [
+        "install",
+        "soupsieve>1.2",
+        "2.5"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tinycss2",
+    "dist": "tinycss2",
+    "version": "1.3.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyter-lsp>=2.0.0",
+        "2.2.5"
+      ],
+      [
+        "install",
+        "jupyter-server>=1.1.2",
+        "2.14.0"
+      ],
+      [
+        "install",
+        "nbconvert>=6.4.4",
+        "7.16.4"
+      ],
+      [
+        "install",
+        "tinycss2",
+        "1.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "notebook-shim>=0.2",
+    "dist": "notebook-shim",
+    "version": "0.2.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "notebook-shim>=0.2",
+        "0.2.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "async-lru>=1.0.0",
+    "dist": "async-lru",
+    "version": "2.0.4",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "async-lru>=1.0.0",
+        "2.0.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "httpx>=0.25.0",
+    "dist": "httpx",
+    "version": "0.27.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "httpx>=0.25.0",
+        "0.27.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "httpcore==1.*",
+    "dist": "httpcore",
+    "version": "1.0.5",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "httpx>=0.25.0",
+        "0.27.0"
+      ],
+      [
+        "install",
+        "httpcore==1.*",
+        "1.0.5"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "h11<0.15,>=0.13",
+    "dist": "h11",
+    "version": "0.14.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "httpx>=0.25.0",
+        "0.27.0"
+      ],
+      [
+        "install",
+        "httpcore==1.*",
+        "1.0.5"
+      ],
+      [
+        "install",
+        "h11<0.15,>=0.13",
+        "0.14.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jupyterlab-server<3,>=2.27.1",
+    "dist": "jupyterlab-server",
+    "version": "2.27.2",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyterlab-server<3,>=2.27.1",
+        "2.27.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "babel>=2.10",
+    "dist": "babel",
+    "version": "2.15.0",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyterlab-server<3,>=2.27.1",
+        "2.27.2"
+      ],
+      [
+        "install",
+        "babel>=2.10",
+        "2.15.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "json5>=0.9.0",
+    "dist": "json5",
+    "version": "0.9.25",
+    "why": [
+      [
+        "toplevel",
+        "jupyterlab",
+        "4.2.1"
+      ],
+      [
+        "install",
+        "jupyterlab-server<3,>=2.27.1",
+        "2.27.2"
+      ],
+      [
+        "install",
+        "json5>=0.9.0",
+        "0.9.25"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "gpustat",
+    "dist": "gpustat",
+    "version": "1.1.1",
+    "why": [
+      [
+        "toplevel",
+        "gpustat",
+        "1.1.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nvidia-ml-py>=11.450.129",
+    "dist": "nvidia-ml-py",
+    "version": "12.550.52",
+    "why": [
+      [
+        "toplevel",
+        "gpustat",
+        "1.1.1"
+      ],
+      [
+        "install",
+        "nvidia-ml-py>=11.450.129",
+        "12.550.52"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "blessed>=1.17.1",
+    "dist": "blessed",
+    "version": "1.20.0",
+    "why": [
+      [
+        "toplevel",
+        "gpustat",
+        "1.1.1"
+      ],
+      [
+        "install",
+        "blessed>=1.17.1",
+        "1.20.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "pybind11>=2.6",
+    "dist": "pybind11",
+    "version": "2.12.0",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "build-system",
+        "pybind11>=2.6",
+        "2.12.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson-python>=0.13.1",
+    "dist": "meson-python",
+    "version": "0.16.0",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "build-system",
+        "meson-python>=0.13.1",
+        "0.16.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "numpy<2.3,>=2.0.0rc1",
+    "dist": "numpy",
+    "version": "2.0.0rc2",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "build-system",
+        "numpy<2.3,>=2.0.0rc1",
+        "2.0.0rc2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "matplotlib",
+    "dist": "matplotlib",
+    "version": "3.9.0",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fonttools>=4.22.0",
+    "dist": "fonttools",
+    "version": "4.52.4",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "install",
+        "fonttools>=4.22.0",
+        "4.52.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "contourpy>=1.0.1",
+    "dist": "contourpy",
+    "version": "1.2.1",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "install",
+        "contourpy>=1.0.1",
+        "1.2.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pillow>=8",
+    "dist": "pillow",
+    "version": "10.3.0",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "install",
+        "pillow>=8",
+        "10.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "cycler>=0.10",
+    "dist": "cycler",
+    "version": "0.12.1",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "install",
+        "cycler>=0.10",
+        "0.12.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "cppy>=1.2.0",
+    "dist": "cppy",
+    "version": "1.2.1",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "install",
+        "kiwisolver>=1.3.1",
+        "1.4.5"
+      ],
+      [
+        "build-system",
+        "cppy>=1.2.0",
+        "1.2.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "kiwisolver>=1.3.1",
+    "dist": "kiwisolver",
+    "version": "1.4.5",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "install",
+        "kiwisolver>=1.3.1",
+        "1.4.5"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pyparsing>=2.3.1",
+    "dist": "pyparsing",
+    "version": "3.1.2",
+    "why": [
+      [
+        "toplevel",
+        "matplotlib",
+        "3.9.0"
+      ],
+      [
+        "install",
+        "pyparsing>=2.3.1",
+        "3.1.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "hydra-core",
+    "dist": "hydra-core",
+    "version": "1.3.2",
+    "why": [
+      [
+        "toplevel",
+        "hydra-core",
+        "1.3.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "omegaconf<2.4,>=2.2",
+    "dist": "omegaconf",
+    "version": "2.3.0",
+    "why": [
+      [
+        "toplevel",
+        "hydra-core",
+        "1.3.2"
+      ],
+      [
+        "install",
+        "omegaconf<2.4,>=2.2",
+        "2.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "antlr4-python3-runtime==4.9.*",
+    "dist": "antlr4-python3-runtime",
+    "version": "4.9.3",
+    "why": [
+      [
+        "toplevel",
+        "hydra-core",
+        "1.3.2"
+      ],
+      [
+        "install",
+        "omegaconf<2.4,>=2.2",
+        "2.3.0"
+      ],
+      [
+        "install",
+        "antlr4-python3-runtime==4.9.*",
+        "4.9.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "datasets",
+    "dist": "datasets",
+    "version": "2.19.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "dill<0.3.9,>=0.3.0",
+    "dist": "dill",
+    "version": "0.3.8",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "dill<0.3.9,>=0.3.0",
+        "0.3.8"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "multiprocess",
+    "dist": "multiprocess",
+    "version": "0.70.16",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "multiprocess",
+        "0.70.16"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "xxhash",
+    "dist": "xxhash",
+    "version": "3.4.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "xxhash",
+        "3.4.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fsspec[http]<=2024.3.1,>=2023.1.0",
+    "dist": "fsspec",
+    "version": "2024.3.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "fsspec[http]<=2024.3.1,>=2023.1.0",
+        "2024.3.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+    "dist": "aiohttp",
+    "version": "3.9.5",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "fsspec[http]<=2024.3.1,>=2023.1.0",
+        "2024.3.1"
+      ],
+      [
+        "install",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+        "3.9.5"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "expandvars",
+    "dist": "expandvars",
+    "version": "0.12.0",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "fsspec[http]<=2024.3.1,>=2023.1.0",
+        "2024.3.1"
+      ],
+      [
+        "install",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+        "3.9.5"
+      ],
+      [
+        "install",
+        "frozenlist>=1.1.1",
+        "1.4.1"
+      ],
+      [
+        "build-system",
+        "expandvars",
+        "0.12.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "frozenlist>=1.1.1",
+    "dist": "frozenlist",
+    "version": "1.4.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "fsspec[http]<=2024.3.1,>=2023.1.0",
+        "2024.3.1"
+      ],
+      [
+        "install",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+        "3.9.5"
+      ],
+      [
+        "install",
+        "frozenlist>=1.1.1",
+        "1.4.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "aiosignal>=1.1.2",
+    "dist": "aiosignal",
+    "version": "1.3.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "fsspec[http]<=2024.3.1,>=2023.1.0",
+        "2024.3.1"
+      ],
+      [
+        "install",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+        "3.9.5"
+      ],
+      [
+        "install",
+        "aiosignal>=1.1.2",
+        "1.3.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "multidict<7.0,>=4.5",
+    "dist": "multidict",
+    "version": "6.0.5",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "fsspec[http]<=2024.3.1,>=2023.1.0",
+        "2024.3.1"
+      ],
+      [
+        "install",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+        "3.9.5"
+      ],
+      [
+        "install",
+        "multidict<7.0,>=4.5",
+        "6.0.5"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "yarl<2.0,>=1.0",
+    "dist": "yarl",
+    "version": "1.9.4",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "fsspec[http]<=2024.3.1,>=2023.1.0",
+        "2024.3.1"
+      ],
+      [
+        "install",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == \"http\"",
+        "3.9.5"
+      ],
+      [
+        "install",
+        "yarl<2.0,>=1.0",
+        "1.9.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "Cython==3.0.5",
+    "dist": "cython",
+    "version": "3.0.5",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pandas",
+        "2.2.2"
+      ],
+      [
+        "build-system",
+        "Cython==3.0.5",
+        "3.0.5"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson-python==0.13.1",
+    "dist": "meson-python",
+    "version": "0.13.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pandas",
+        "2.2.2"
+      ],
+      [
+        "build-system",
+        "meson-python==0.13.1",
+        "0.13.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "versioneer[toml]",
+    "dist": "versioneer",
+    "version": "0.29",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pandas",
+        "2.2.2"
+      ],
+      [
+        "build-system",
+        "versioneer[toml]",
+        "0.29"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "meson==1.2.1",
+    "dist": "meson",
+    "version": "1.2.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pandas",
+        "2.2.2"
+      ],
+      [
+        "build-system",
+        "meson==1.2.1",
+        "1.2.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pandas",
+    "dist": "pandas",
+    "version": "2.2.2",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pandas",
+        "2.2.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pytz>=2020.1",
+    "dist": "pytz",
+    "version": "2024.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pandas",
+        "2.2.2"
+      ],
+      [
+        "install",
+        "pytz>=2020.1",
+        "2024.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tzdata>=2022.7",
+    "dist": "tzdata",
+    "version": "2024.1",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pandas",
+        "2.2.2"
+      ],
+      [
+        "install",
+        "tzdata>=2022.7",
+        "2024.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pyarrow-hotfix",
+    "dist": "pyarrow-hotfix",
+    "version": "0.6",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pyarrow-hotfix",
+        "0.6"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pyarrow>=12.0.0",
+    "dist": "pyarrow",
+    "version": "16.1.0",
+    "why": [
+      [
+        "toplevel",
+        "datasets",
+        "2.19.1"
+      ],
+      [
+        "install",
+        "pyarrow>=12.0.0",
+        "16.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "poetry-core>=1.0.0",
+    "dist": "poetry-core",
+    "version": "1.9.0",
+    "why": [
+      [
+        "toplevel",
+        "rich",
+        "13.7.1"
+      ],
+      [
+        "build-system",
+        "poetry-core>=1.0.0",
+        "1.9.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "rich",
+    "dist": "rich",
+    "version": "13.7.1",
+    "why": [
+      [
+        "toplevel",
+        "rich",
+        "13.7.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "markdown-it-py>=2.2.0",
+    "dist": "markdown-it-py",
+    "version": "3.0.0",
+    "why": [
+      [
+        "toplevel",
+        "rich",
+        "13.7.1"
+      ],
+      [
+        "install",
+        "markdown-it-py>=2.2.0",
+        "3.0.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "mdurl~=0.1",
+    "dist": "mdurl",
+    "version": "0.1.2",
+    "why": [
+      [
+        "toplevel",
+        "rich",
+        "13.7.1"
+      ],
+      [
+        "install",
+        "markdown-it-py>=2.2.0",
+        "3.0.0"
+      ],
+      [
+        "install",
+        "mdurl~=0.1",
+        "0.1.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "numba",
+    "dist": "numba",
+    "version": "0.59.1",
+    "why": [
+      [
+        "toplevel",
+        "numba",
+        "0.59.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "llvmlite<0.43,>=0.42.0dev0",
+    "dist": "llvmlite",
+    "version": "0.42.0",
+    "why": [
+      [
+        "toplevel",
+        "numba",
+        "0.59.1"
+      ],
+      [
+        "install",
+        "llvmlite<0.43,>=0.42.0dev0",
+        "0.42.0"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "toplevel",
+    "req": "instructlab==0.14.1",
+    "dist": "instructlab",
+    "version": "0.14.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "langchain-text-splitters",
+    "dist": "langchain-text-splitters",
+    "version": "0.2.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "langchain-text-splitters",
+        "0.2.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "langchain-core<0.3.0,>=0.2.0",
+    "dist": "langchain-core",
+    "version": "0.2.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "langchain-text-splitters",
+        "0.2.0"
+      ],
+      [
+        "install",
+        "langchain-core<0.3.0,>=0.2.0",
+        "0.2.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jsonpatch<2.0,>=1.33",
+    "dist": "jsonpatch",
+    "version": "1.33",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "langchain-text-splitters",
+        "0.2.0"
+      ],
+      [
+        "install",
+        "langchain-core<0.3.0,>=0.2.0",
+        "0.2.2"
+      ],
+      [
+        "install",
+        "jsonpatch<2.0,>=1.33",
+        "1.33"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tenacity<9.0.0,>=8.1.0",
+    "dist": "tenacity",
+    "version": "8.3.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "langchain-text-splitters",
+        "0.2.0"
+      ],
+      [
+        "install",
+        "langchain-core<0.3.0,>=0.2.0",
+        "0.2.2"
+      ],
+      [
+        "install",
+        "tenacity<9.0.0,>=8.1.0",
+        "8.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "langsmith<0.2.0,>=0.1.0",
+    "dist": "langsmith",
+    "version": "0.1.63",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "langchain-text-splitters",
+        "0.2.0"
+      ],
+      [
+        "install",
+        "langchain-core<0.3.0,>=0.2.0",
+        "0.2.2"
+      ],
+      [
+        "install",
+        "langsmith<0.2.0,>=0.1.0",
+        "0.1.63"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "orjson<4.0.0,>=3.9.14",
+    "dist": "orjson",
+    "version": "3.10.3",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "langchain-text-splitters",
+        "0.2.0"
+      ],
+      [
+        "install",
+        "langchain-core<0.3.0,>=0.2.0",
+        "0.2.2"
+      ],
+      [
+        "install",
+        "langsmith<0.2.0,>=0.1.0",
+        "0.1.63"
+      ],
+      [
+        "install",
+        "orjson<4.0.0,>=3.9.14",
+        "3.10.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "packaging<24.0,>=23.2",
+    "dist": "packaging",
+    "version": "23.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "langchain-text-splitters",
+        "0.2.0"
+      ],
+      [
+        "install",
+        "langchain-core<0.3.0,>=0.2.0",
+        "0.2.2"
+      ],
+      [
+        "install",
+        "packaging<24.0,>=23.2",
+        "23.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "GitPython<4.0.0,>=3.1.42",
+    "dist": "gitpython",
+    "version": "3.1.43",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "GitPython<4.0.0,>=3.1.42",
+        "3.1.43"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "gitdb<5,>=4.0.1",
+    "dist": "gitdb",
+    "version": "4.0.11",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "GitPython<4.0.0,>=3.1.42",
+        "3.1.43"
+      ],
+      [
+        "install",
+        "gitdb<5,>=4.0.1",
+        "4.0.11"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "smmap<6,>=3.0.1",
+    "dist": "smmap",
+    "version": "5.0.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "GitPython<4.0.0,>=3.1.42",
+        "3.1.43"
+      ],
+      [
+        "install",
+        "gitdb<5,>=4.0.1",
+        "4.0.11"
+      ],
+      [
+        "install",
+        "smmap<6,>=3.0.1",
+        "5.0.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "peft<0.10.0,>=0.9.0",
+    "dist": "peft",
+    "version": "0.9.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "peft<0.10.0,>=0.9.0",
+        "0.9.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "transformers",
+    "dist": "transformers",
+    "version": "4.41.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "peft<0.10.0,>=0.9.0",
+        "0.9.0"
+      ],
+      [
+        "install",
+        "transformers",
+        "4.41.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "accelerate>=0.21.0",
+    "dist": "accelerate",
+    "version": "0.30.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "peft<0.10.0,>=0.9.0",
+        "0.9.0"
+      ],
+      [
+        "install",
+        "accelerate>=0.21.0",
+        "0.30.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "click-didyoumean<0.4.0,>=0.3.0",
+    "dist": "click-didyoumean",
+    "version": "0.3.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "click-didyoumean<0.4.0,>=0.3.0",
+        "0.3.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "click>=7",
+    "dist": "click",
+    "version": "8.1.7",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "click-didyoumean<0.4.0,>=0.3.0",
+        "0.3.1"
+      ],
+      [
+        "install",
+        "click>=7",
+        "8.1.7"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sentencepiece<0.3.0,>=0.2.0",
+    "dist": "sentencepiece",
+    "version": "0.2.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "sentencepiece<0.3.0,>=0.2.0",
+        "0.2.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "yamllint<1.36.0,>=1.35.1",
+    "dist": "yamllint",
+    "version": "1.35.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "yamllint<1.36.0,>=1.35.1",
+        "1.35.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "rouge-score<0.2.0,>=0.1.2",
+    "dist": "rouge-score",
+    "version": "0.1.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "rouge-score<0.2.0,>=0.1.2",
+        "0.1.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "nltk",
+    "dist": "nltk",
+    "version": "3.8.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "rouge-score<0.2.0,>=0.1.2",
+        "0.1.2"
+      ],
+      [
+        "install",
+        "nltk",
+        "3.8.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "joblib",
+    "dist": "joblib",
+    "version": "1.4.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "rouge-score<0.2.0,>=0.1.2",
+        "0.1.2"
+      ],
+      [
+        "install",
+        "nltk",
+        "3.8.1"
+      ],
+      [
+        "install",
+        "joblib",
+        "1.4.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "absl-py",
+    "dist": "absl-py",
+    "version": "2.1.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "rouge-score<0.2.0,>=0.1.2",
+        "0.1.2"
+      ],
+      [
+        "install",
+        "absl-py",
+        "2.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "openai<2.0.0,>=1.13.3",
+    "dist": "openai",
+    "version": "1.30.4",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "openai<2.0.0,>=1.13.3",
+        "1.30.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "wandb<0.17.0,>=0.16.4",
+    "dist": "wandb",
+    "version": "0.16.6",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "wandb<0.17.0,>=0.16.4",
+        "0.16.6"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "setproctitle",
+    "dist": "setproctitle",
+    "version": "1.3.3",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "wandb<0.17.0,>=0.16.4",
+        "0.16.6"
+      ],
+      [
+        "install",
+        "setproctitle",
+        "1.3.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sentry-sdk>=1.0.0",
+    "dist": "sentry-sdk",
+    "version": "2.3.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "wandb<0.17.0,>=0.16.4",
+        "0.16.6"
+      ],
+      [
+        "install",
+        "sentry-sdk>=1.0.0",
+        "2.3.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "protobuf!=4.21.0,<5,>=3.19.0; python_version > \"3.9\" and sys_platform == \"linux\"",
+    "dist": "protobuf",
+    "version": "4.25.3",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "wandb<0.17.0,>=0.16.4",
+        "0.16.6"
+      ],
+      [
+        "install",
+        "protobuf!=4.21.0,<5,>=3.19.0; python_version > \"3.9\" and sys_platform == \"linux\"",
+        "4.25.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "appdirs>=1.4.3",
+    "dist": "appdirs",
+    "version": "1.4.4",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "wandb<0.17.0,>=0.16.4",
+        "0.16.6"
+      ],
+      [
+        "install",
+        "appdirs>=1.4.3",
+        "1.4.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "docker-pycreds>=0.4.0",
+    "dist": "docker-pycreds",
+    "version": "0.4.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "wandb<0.17.0,>=0.16.4",
+        "0.16.6"
+      ],
+      [
+        "install",
+        "docker-pycreds>=0.4.0",
+        "0.4.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "toml<0.11.0,>=0.10.2",
+    "dist": "toml",
+    "version": "0.10.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "toml<0.11.0,>=0.10.2",
+        "0.10.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "transformers<=4.38.2,>=4.30.0",
+    "dist": "transformers",
+    "version": "4.38.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "transformers<=4.38.2,>=4.30.0",
+        "4.38.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tokenizers<0.19,>=0.14",
+    "dist": "tokenizers",
+    "version": "0.15.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "transformers<=4.38.2,>=4.30.0",
+        "4.38.2"
+      ],
+      [
+        "install",
+        "tokenizers<0.19,>=0.14",
+        "0.15.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "llama-cpp-python[server]==0.2.55",
+    "dist": "llama-cpp-python",
+    "version": "0.2.55",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "pdm-backend",
+    "dist": "pdm-backend",
+    "version": "2.3.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "build-system",
+        "pdm-backend",
+        "2.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fastapi>=0.100.0; extra == \"server\"",
+    "dist": "fastapi",
+    "version": "0.111.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "starlette<0.38.0,>=0.37.2",
+    "dist": "starlette",
+    "version": "0.37.2",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "starlette<0.38.0,>=0.37.2",
+        "0.37.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "email_validator>=2.0.0",
+    "dist": "email-validator",
+    "version": "2.1.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "email_validator>=2.0.0",
+        "2.1.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "dnspython>=2.0.0",
+    "dist": "dnspython",
+    "version": "2.6.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "email_validator>=2.0.0",
+        "2.1.1"
+      ],
+      [
+        "install",
+        "dnspython>=2.0.0",
+        "2.6.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "python-multipart>=0.0.7",
+    "dist": "python-multipart",
+    "version": "0.0.9",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "python-multipart>=0.0.7",
+        "0.0.9"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1",
+    "dist": "ujson",
+    "version": "5.10.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1",
+        "5.10.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "uvicorn[standard]>=0.12.0",
+    "dist": "uvicorn",
+    "version": "0.30.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "uvicorn[standard]>=0.12.0",
+        "0.30.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "uvloop!=0.15.0,!=0.15.1,>=0.14.0; (sys_platform != \"win32\" and (sys_platform != \"cygwin\" and platform_python_implementation != \"PyPy\")) and extra == \"standard\"",
+    "dist": "uvloop",
+    "version": "0.19.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "uvicorn[standard]>=0.12.0",
+        "0.30.0"
+      ],
+      [
+        "install",
+        "uvloop!=0.15.0,!=0.15.1,>=0.14.0; (sys_platform != \"win32\" and (sys_platform != \"cygwin\" and platform_python_implementation != \"PyPy\")) and extra == \"standard\"",
+        "0.19.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "websockets>=10.4; extra == \"standard\"",
+    "dist": "websockets",
+    "version": "12.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "uvicorn[standard]>=0.12.0",
+        "0.30.0"
+      ],
+      [
+        "install",
+        "websockets>=10.4; extra == \"standard\"",
+        "12.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "httptools>=0.5.0; extra == \"standard\"",
+    "dist": "httptools",
+    "version": "0.6.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "uvicorn[standard]>=0.12.0",
+        "0.30.0"
+      ],
+      [
+        "install",
+        "httptools>=0.5.0; extra == \"standard\"",
+        "0.6.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "python-dotenv>=0.13; extra == \"standard\"",
+    "dist": "python-dotenv",
+    "version": "1.0.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "uvicorn[standard]>=0.12.0",
+        "0.30.0"
+      ],
+      [
+        "install",
+        "python-dotenv>=0.13; extra == \"standard\"",
+        "1.0.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "watchfiles>=0.13; extra == \"standard\"",
+    "dist": "watchfiles",
+    "version": "0.22.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "uvicorn[standard]>=0.12.0",
+        "0.30.0"
+      ],
+      [
+        "install",
+        "watchfiles>=0.13; extra == \"standard\"",
+        "0.22.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "fastapi-cli>=0.0.2",
+    "dist": "fastapi-cli",
+    "version": "0.0.4",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "fastapi-cli>=0.0.2",
+        "0.0.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "typer>=0.12.3",
+    "dist": "typer",
+    "version": "0.12.3",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "fastapi-cli>=0.0.2",
+        "0.0.4"
+      ],
+      [
+        "install",
+        "typer>=0.12.3",
+        "0.12.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "shellingham>=1.3.0",
+    "dist": "shellingham",
+    "version": "1.5.4",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "fastapi>=0.100.0; extra == \"server\"",
+        "0.111.0"
+      ],
+      [
+        "install",
+        "fastapi-cli>=0.0.2",
+        "0.0.4"
+      ],
+      [
+        "install",
+        "typer>=0.12.3",
+        "0.12.3"
+      ],
+      [
+        "install",
+        "shellingham>=1.3.0",
+        "1.5.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "sse-starlette>=1.6.1; extra == \"server\"",
+    "dist": "sse-starlette",
+    "version": "2.1.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "sse-starlette>=1.6.1; extra == \"server\"",
+        "2.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "starlette-context<0.4,>=0.3.6; extra == \"server\"",
+    "dist": "starlette-context",
+    "version": "0.3.6",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "starlette-context<0.4,>=0.3.6; extra == \"server\"",
+        "0.3.6"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "diskcache>=5.6.1",
+    "dist": "diskcache",
+    "version": "5.6.3",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "diskcache>=5.6.1",
+        "5.6.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic-settings>=2.0.1; extra == \"server\"",
+    "dist": "pydantic-settings",
+    "version": "2.2.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "llama-cpp-python[server]==0.2.55",
+        "0.2.55"
+      ],
+      [
+        "install",
+        "pydantic-settings>=2.0.1; extra == \"server\"",
+        "2.2.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "trl<0.8.0,>=0.7.11",
+    "dist": "trl",
+    "version": "0.7.11",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "trl<0.8.0,>=0.7.11",
+        "0.7.11"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tyro>=0.5.11",
+    "dist": "tyro",
+    "version": "0.8.4",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "trl<0.8.0,>=0.7.11",
+        "0.7.11"
+      ],
+      [
+        "install",
+        "tyro>=0.5.11",
+        "0.8.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "docstring-parser>=0.14.1",
+    "dist": "docstring-parser",
+    "version": "0.16",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "trl<0.8.0,>=0.7.11",
+        "0.7.11"
+      ],
+      [
+        "install",
+        "tyro>=0.5.11",
+        "0.8.4"
+      ],
+      [
+        "install",
+        "docstring-parser>=0.14.1",
+        "0.16"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "shtab>=1.5.6",
+    "dist": "shtab",
+    "version": "1.7.1",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "trl<0.8.0,>=0.7.11",
+        "0.7.11"
+      ],
+      [
+        "install",
+        "tyro>=0.5.11",
+        "0.8.4"
+      ],
+      [
+        "install",
+        "shtab>=1.5.6",
+        "1.7.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "gguf<0.7.0,>=0.6.0",
+    "dist": "gguf",
+    "version": "0.6.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "gguf<0.7.0,>=0.6.0",
+        "0.6.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
+    "req": "importlib_metadata>=4.2.0",
+    "dist": "importlib-metadata",
+    "version": "7.1.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "pydantic-yaml",
+        "1.3.0"
+      ],
+      [
+        "build-system",
+        "importlib_metadata>=4.2.0",
+        "7.1.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "zipp>=0.5",
+    "dist": "zipp",
+    "version": "3.19.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "pydantic-yaml",
+        "1.3.0"
+      ],
+      [
+        "build-system",
+        "importlib_metadata>=4.2.0",
+        "7.1.0"
+      ],
+      [
+        "install",
+        "zipp>=0.5",
+        "3.19.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "pydantic-yaml",
+    "dist": "pydantic-yaml",
+    "version": "1.3.0",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "pydantic-yaml",
+        "1.3.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ruamel.yaml<0.19.0,>=0.16.0",
+    "dist": "ruamel-yaml",
+    "version": "0.18.6",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "pydantic-yaml",
+        "1.3.0"
+      ],
+      [
+        "install",
+        "ruamel.yaml<0.19.0,>=0.16.0",
+        "0.18.6"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "ruamel.yaml.clib>=0.2.7; platform_python_implementation == \"CPython\" and python_version < \"3.13\"",
+    "dist": "ruamel-yaml-clib",
+    "version": "0.2.8",
+    "why": [
+      [
+        "toplevel",
+        "instructlab==0.14.1",
+        "0.14.1"
+      ],
+      [
+        "install",
+        "pydantic-yaml",
+        "1.3.0"
+      ],
+      [
+        "install",
+        "ruamel.yaml<0.19.0,>=0.16.0",
+        "0.18.6"
+      ],
+      [
+        "install",
+        "ruamel.yaml.clib>=0.2.7; platform_python_implementation == \"CPython\" and python_version < \"3.13\"",
+        "0.2.8"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "toplevel",
+    "req": "vllm==0.4.2",
+    "dist": "vllm",
+    "version": "0.4.2",
+    "why": [
+      [
+        "toplevel",
+        "vllm==0.4.2",
+        "0.4.2"
+      ]
+    ],
+    "prebuilt": true
+  },
+  {
+    "type": "install",
+    "req": "vllm-nccl-cu12<2.19,>=2.18",
+    "dist": "vllm-nccl-cu12",
+    "version": "2.18.1.0.4.0",
+    "why": [
+      [
+        "toplevel",
+        "vllm==0.4.2",
+        "0.4.2"
+      ],
+      [
+        "install",
+        "vllm-nccl-cu12<2.19,>=2.18",
+        "2.18.1.0.4.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "tiktoken==0.6.0",
+    "dist": "tiktoken",
+    "version": "0.6.0",
+    "why": [
+      [
+        "toplevel",
+        "vllm==0.4.2",
+        "0.4.2"
+      ],
+      [
+        "install",
+        "tiktoken==0.6.0",
+        "0.6.0"
       ]
     ],
     "prebuilt": false
@@ -2352,6 +6836,30 @@
   },
   {
     "type": "install",
+    "req": "protobuf!=3.19.5,>=3.15.3",
+    "dist": "protobuf",
+    "version": "5.27.0",
+    "why": [
+      [
+        "toplevel",
+        "vllm==0.4.2",
+        "0.4.2"
+      ],
+      [
+        "install",
+        "ray>=2.9",
+        "2.23.0"
+      ],
+      [
+        "install",
+        "protobuf!=3.19.5,>=3.15.3",
+        "5.27.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
     "req": "msgpack<2.0.0,>=1.0.0",
     "dist": "msgpack",
     "version": "1.0.8",
@@ -2370,866 +6878,6 @@
         "install",
         "msgpack<2.0.0,>=1.0.0",
         "1.0.8"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "protobuf!=3.19.5,>=3.15.3",
-    "dist": "protobuf",
-    "version": "5.26.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "protobuf!=3.19.5,>=3.15.3",
-        "5.26.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "jsonschema",
-    "dist": "jsonschema",
-    "version": "4.22.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "jsonschema",
-        "4.22.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "attrs>=22.2.0",
-    "dist": "attrs",
-    "version": "23.2.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "jsonschema",
-        "4.22.0"
-      ],
-      [
-        "install",
-        "attrs>=22.2.0",
-        "23.2.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "referencing>=0.28.4",
-    "dist": "referencing",
-    "version": "0.35.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "jsonschema",
-        "4.22.0"
-      ],
-      [
-        "install",
-        "referencing>=0.28.4",
-        "0.35.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "rpds-py>=0.7.0",
-    "dist": "rpds-py",
-    "version": "0.18.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "jsonschema",
-        "4.22.0"
-      ],
-      [
-        "install",
-        "referencing>=0.28.4",
-        "0.35.1"
-      ],
-      [
-        "install",
-        "rpds-py>=0.7.0",
-        "0.18.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "jsonschema-specifications>=2023.03.6",
-    "dist": "jsonschema-specifications",
-    "version": "2023.12.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "jsonschema",
-        "4.22.0"
-      ],
-      [
-        "install",
-        "jsonschema-specifications>=2023.03.6",
-        "2023.12.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "expandvars",
-    "dist": "expandvars",
-    "version": "0.12.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "frozenlist",
-        "1.4.1"
-      ],
-      [
-        "build-system",
-        "expandvars",
-        "0.12.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "frozenlist",
-    "dist": "frozenlist",
-    "version": "1.4.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "frozenlist",
-        "1.4.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "aiosignal",
-    "dist": "aiosignal",
-    "version": "1.3.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ray>=2.9",
-        "2.23.0"
-      ],
-      [
-        "install",
-        "aiosignal",
-        "1.3.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "openai",
-    "dist": "openai",
-    "version": "1.30.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "openai",
-        "1.30.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "lm-format-enforcer==0.9.8",
-    "dist": "lm-format-enforcer",
-    "version": "0.9.8",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "lm-format-enforcer==0.9.8",
-        "0.9.8"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "interegular>=0.3.2",
-    "dist": "interegular",
-    "version": "0.3.3",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "lm-format-enforcer==0.9.8",
-        "0.9.8"
-      ],
-      [
-        "install",
-        "interegular>=0.3.2",
-        "0.3.3"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "torch==2.3.0",
-    "dist": "torch",
-    "version": "2.3.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cuda-cupti-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cuda-cupti-cu12",
-    "version": "12.1.105",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cuda-cupti-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "12.1.105"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "networkx",
-    "dist": "networkx",
-    "version": "3.3",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "networkx",
-        "3.3"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cudnn-cu12==8.9.2.26; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cudnn-cu12",
-    "version": "8.9.2.26",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cudnn-cu12==8.9.2.26; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "8.9.2.26"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cublas-cu12",
-    "dist": "nvidia-cublas-cu12",
-    "version": "12.5.2.13",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cudnn-cu12==8.9.2.26; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "8.9.2.26"
-      ],
-      [
-        "install",
-        "nvidia-cublas-cu12",
-        "12.5.2.13"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cublas-cu12==12.1.3.1; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cublas-cu12",
-    "version": "12.1.3.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cublas-cu12==12.1.3.1; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "12.1.3.1"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-nccl-cu12==2.20.5; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-nccl-cu12",
-    "version": "2.20.5",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-nccl-cu12==2.20.5; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "2.20.5"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-curand-cu12==10.3.2.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-curand-cu12",
-    "version": "10.3.2.106",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-curand-cu12==10.3.2.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "10.3.2.106"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-nvtx-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-nvtx-cu12",
-    "version": "12.1.105",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-nvtx-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "12.1.105"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cufft-cu12==11.0.2.54; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cufft-cu12",
-    "version": "11.0.2.54",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cufft-cu12==11.0.2.54; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "11.0.2.54"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cusparse-cu12==12.1.0.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cusparse-cu12",
-    "version": "12.1.0.106",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cusparse-cu12==12.1.0.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "12.1.0.106"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-nvjitlink-cu12",
-    "dist": "nvidia-nvjitlink-cu12",
-    "version": "12.5.40",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cusparse-cu12==12.1.0.106; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "12.1.0.106"
-      ],
-      [
-        "install",
-        "nvidia-nvjitlink-cu12",
-        "12.5.40"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cusolver-cu12==11.4.5.107; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cusolver-cu12",
-    "version": "11.4.5.107",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cusolver-cu12==11.4.5.107; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "11.4.5.107"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cusparse-cu12",
-    "dist": "nvidia-cusparse-cu12",
-    "version": "12.4.1.24",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cusolver-cu12==11.4.5.107; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "11.4.5.107"
-      ],
-      [
-        "install",
-        "nvidia-cusparse-cu12",
-        "12.4.1.24"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cuda-runtime-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cuda-runtime-cu12",
-    "version": "12.1.105",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cuda-runtime-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "12.1.105"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "nvidia-cuda-nvrtc-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-    "dist": "nvidia-cuda-nvrtc-cu12",
-    "version": "12.1.105",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "nvidia-cuda-nvrtc-cu12==12.1.105; platform_system == \"Linux\" and platform_machine == \"x86_64\"",
-        "12.1.105"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
-    "dist": "triton",
-    "version": "2.3.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "triton==2.3.0; platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.12\"",
-        "2.3.0"
-      ]
-    ],
-    "prebuilt": true
-  },
-  {
-    "type": "install",
-    "req": "sympy",
-    "dist": "sympy",
-    "version": "1.12",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "sympy",
-        "1.12"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "mpmath>=0.19",
-    "dist": "mpmath",
-    "version": "1.3.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "torch==2.3.0",
-        "2.3.0"
-      ],
-      [
-        "install",
-        "sympy",
-        "1.12"
-      ],
-      [
-        "install",
-        "mpmath>=0.19",
-        "1.3.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "ninja",
-    "dist": "ninja",
-    "version": "1.11.1.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "ninja",
-        "1.11.1.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "tiktoken==0.6.0",
-    "dist": "tiktoken",
-    "version": "0.6.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "tiktoken==0.6.0",
-        "0.6.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "scikit-build-core",
-    "dist": "scikit-build-core",
-    "version": "0.9.4",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "cmake>=3.21",
-        "3.29.3"
-      ],
-      [
-        "build-system",
-        "scikit-build-core",
-        "0.9.4"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "cmake>=3.21",
-    "dist": "cmake",
-    "version": "3.29.3",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "cmake>=3.21",
-        "3.29.3"
       ]
     ],
     "prebuilt": false
@@ -3271,155 +6919,6 @@
       ]
     ],
     "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "nest-asyncio",
-    "dist": "nest-asyncio",
-    "version": "1.6.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "outlines==0.0.34",
-        "0.0.34"
-      ],
-      [
-        "install",
-        "nest-asyncio",
-        "1.6.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "lark",
-    "dist": "lark",
-    "version": "1.1.9",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "outlines==0.0.34",
-        "0.0.34"
-      ],
-      [
-        "install",
-        "lark",
-        "1.1.9"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "diskcache",
-    "dist": "diskcache",
-    "version": "5.6.3",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "outlines==0.0.34",
-        "0.0.34"
-      ],
-      [
-        "install",
-        "diskcache",
-        "5.6.3"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "joblib",
-    "dist": "joblib",
-    "version": "1.4.2",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "outlines==0.0.34",
-        "0.0.34"
-      ],
-      [
-        "install",
-        "joblib",
-        "1.4.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "numba",
-    "dist": "numba",
-    "version": "0.59.1",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "outlines==0.0.34",
-        "0.0.34"
-      ],
-      [
-        "install",
-        "numba",
-        "0.59.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "llvmlite<0.43,>=0.42.0dev0",
-    "dist": "llvmlite",
-    "version": "0.42.0",
-    "why": [
-      [
-        "toplevel",
-        "vllm==0.4.2",
-        "0.4.2"
-      ],
-      [
-        "install",
-        "outlines==0.0.34",
-        "0.0.34"
-      ],
-      [
-        "install",
-        "numba",
-        "0.59.1"
-      ],
-      [
-        "install",
-        "llvmlite<0.43,>=0.42.0dev0",
-        "0.42.0"
-      ]
-    ],
-    "prebuilt": true
   },
   {
     "type": "install",
@@ -3471,9 +6970,9 @@
   },
   {
     "type": "install",
-    "req": "sentencepiece",
-    "dist": "sentencepiece",
-    "version": "0.2.0",
+    "req": "interegular",
+    "dist": "interegular",
+    "version": "0.3.3",
     "why": [
       [
         "toplevel",
@@ -3482,17 +6981,22 @@
       ],
       [
         "install",
-        "sentencepiece",
-        "0.2.0"
+        "outlines==0.0.34",
+        "0.0.34"
+      ],
+      [
+        "install",
+        "interegular",
+        "0.3.3"
       ]
     ],
     "prebuilt": false
   },
   {
     "type": "install",
-    "req": "psutil",
-    "dist": "psutil",
-    "version": "5.9.8",
+    "req": "lark",
+    "dist": "lark",
+    "version": "1.1.9",
     "why": [
       [
         "toplevel",
@@ -3501,8 +7005,70 @@
       ],
       [
         "install",
-        "psutil",
-        "5.9.8"
+        "outlines==0.0.34",
+        "0.0.34"
+      ],
+      [
+        "install",
+        "lark",
+        "1.1.9"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "cmake>=3.21",
+    "dist": "cmake",
+    "version": "3.29.3",
+    "why": [
+      [
+        "toplevel",
+        "vllm==0.4.2",
+        "0.4.2"
+      ],
+      [
+        "install",
+        "cmake>=3.21",
+        "3.29.3"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "prometheus-fastapi-instrumentator>=7.0.0",
+    "dist": "prometheus-fastapi-instrumentator",
+    "version": "7.0.0",
+    "why": [
+      [
+        "toplevel",
+        "vllm==0.4.2",
+        "0.4.2"
+      ],
+      [
+        "install",
+        "prometheus-fastapi-instrumentator>=7.0.0",
+        "7.0.0"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "lm-format-enforcer==0.9.8",
+    "dist": "lm-format-enforcer",
+    "version": "0.9.8",
+    "why": [
+      [
+        "toplevel",
+        "vllm==0.4.2",
+        "0.4.2"
+      ],
+      [
+        "install",
+        "lm-format-enforcer==0.9.8",
+        "0.9.8"
       ]
     ],
     "prebuilt": false
@@ -3584,20 +7150,6 @@
   },
   {
     "type": "toplevel",
-    "req": "toml==0.10.2",
-    "dist": "toml",
-    "version": "0.10.2",
-    "why": [
-      [
-        "toplevel",
-        "toml==0.10.2",
-        "0.10.2"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "toplevel",
     "req": "tomli==2.0.1",
     "dist": "tomli",
     "version": "2.0.1",
@@ -3654,6 +7206,25 @@
   },
   {
     "type": "build-system",
+    "req": "types-setuptools",
+    "dist": "types-setuptools",
+    "version": "70.0.0.20240524",
+    "why": [
+      [
+        "toplevel",
+        "mypy==1.9.0",
+        "1.9.0"
+      ],
+      [
+        "build-system",
+        "types-setuptools",
+        "70.0.0.20240524"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "build-system",
     "req": "types-psutil",
     "dist": "types-psutil",
     "version": "5.9.5.20240516",
@@ -3667,25 +7238,6 @@
         "build-system",
         "types-psutil",
         "5.9.5.20240516"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "types-setuptools",
-    "dist": "types-setuptools",
-    "version": "70.0.0.20240523",
-    "why": [
-      [
-        "toplevel",
-        "mypy==1.9.0",
-        "1.9.0"
-      ],
-      [
-        "build-system",
-        "types-setuptools",
-        "70.0.0.20240523"
       ]
     ],
     "prebuilt": false
@@ -3800,218 +7352,6 @@
   },
   {
     "type": "install",
-    "req": "boto3>=1.26.0",
-    "dist": "boto3",
-    "version": "1.34.111",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "boto3>=1.26.0",
-        "1.34.111"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "botocore<1.35.0,>=1.34.111",
-    "dist": "botocore",
-    "version": "1.34.111",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "boto3>=1.26.0",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "botocore<1.35.0,>=1.34.111",
-        "1.34.111"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "jmespath<2.0.0,>=0.7.1",
-    "dist": "jmespath",
-    "version": "1.0.1",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "boto3>=1.26.0",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "botocore<1.35.0,>=1.34.111",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "jmespath<2.0.0,>=0.7.1",
-        "1.0.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "build-system",
-    "req": "setuptools_scm<8.0",
-    "dist": "setuptools-scm",
-    "version": "7.1.0",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "boto3>=1.26.0",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "botocore<1.35.0,>=1.34.111",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "python-dateutil<3.0.0,>=2.1",
-        "2.9.0.post0"
-      ],
-      [
-        "build-system",
-        "setuptools_scm<8.0",
-        "7.1.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "python-dateutil<3.0.0,>=2.1",
-    "dist": "python-dateutil",
-    "version": "2.9.0.post0",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "boto3>=1.26.0",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "botocore<1.35.0,>=1.34.111",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "python-dateutil<3.0.0,>=2.1",
-        "2.9.0.post0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "six>=1.5",
-    "dist": "six",
-    "version": "1.16.0",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "boto3>=1.26.0",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "botocore<1.35.0,>=1.34.111",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "python-dateutil<3.0.0,>=2.1",
-        "2.9.0.post0"
-      ],
-      [
-        "install",
-        "six>=1.5",
-        "1.16.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "s3transfer<0.11.0,>=0.10.0",
-    "dist": "s3transfer",
-    "version": "0.10.1",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "boto3>=1.26.0",
-        "1.34.111"
-      ],
-      [
-        "install",
-        "s3transfer<0.11.0,>=0.10.0",
-        "0.10.1"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "redis>=4.5.5",
-    "dist": "redis",
-    "version": "5.0.4",
-    "why": [
-      [
-        "toplevel",
-        "tensorizer==2.9.0",
-        "2.9.0"
-      ],
-      [
-        "install",
-        "redis>=4.5.5",
-        "5.0.4"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
     "req": "libnacl>=2.1.0",
     "dist": "libnacl",
     "version": "2.1.0",
@@ -4044,6 +7384,121 @@
         "install",
         "hiredis>=2.2.0",
         "2.3.2"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "redis>=4.5.5",
+    "dist": "redis",
+    "version": "5.0.4",
+    "why": [
+      [
+        "toplevel",
+        "tensorizer==2.9.0",
+        "2.9.0"
+      ],
+      [
+        "install",
+        "redis>=4.5.5",
+        "5.0.4"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "boto3>=1.26.0",
+    "dist": "boto3",
+    "version": "1.34.115",
+    "why": [
+      [
+        "toplevel",
+        "tensorizer==2.9.0",
+        "2.9.0"
+      ],
+      [
+        "install",
+        "boto3>=1.26.0",
+        "1.34.115"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "botocore<1.35.0,>=1.34.115",
+    "dist": "botocore",
+    "version": "1.34.115",
+    "why": [
+      [
+        "toplevel",
+        "tensorizer==2.9.0",
+        "2.9.0"
+      ],
+      [
+        "install",
+        "boto3>=1.26.0",
+        "1.34.115"
+      ],
+      [
+        "install",
+        "botocore<1.35.0,>=1.34.115",
+        "1.34.115"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "jmespath<2.0.0,>=0.7.1",
+    "dist": "jmespath",
+    "version": "1.0.1",
+    "why": [
+      [
+        "toplevel",
+        "tensorizer==2.9.0",
+        "2.9.0"
+      ],
+      [
+        "install",
+        "boto3>=1.26.0",
+        "1.34.115"
+      ],
+      [
+        "install",
+        "botocore<1.35.0,>=1.34.115",
+        "1.34.115"
+      ],
+      [
+        "install",
+        "jmespath<2.0.0,>=0.7.1",
+        "1.0.1"
+      ]
+    ],
+    "prebuilt": false
+  },
+  {
+    "type": "install",
+    "req": "s3transfer<0.11.0,>=0.10.0",
+    "dist": "s3transfer",
+    "version": "0.10.1",
+    "why": [
+      [
+        "toplevel",
+        "tensorizer==2.9.0",
+        "2.9.0"
+      ],
+      [
+        "install",
+        "boto3>=1.26.0",
+        "1.34.115"
+      ],
+      [
+        "install",
+        "s3transfer<0.11.0,>=0.10.0",
+        "0.10.1"
       ]
     ],
     "prebuilt": false
@@ -4125,20 +7580,6 @@
   },
   {
     "type": "toplevel",
-    "req": "einops",
-    "dist": "einops",
-    "version": "0.8.0",
-    "why": [
-      [
-        "toplevel",
-        "einops",
-        "0.8.0"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "toplevel",
     "req": "peft",
     "dist": "peft",
     "version": "0.11.1",
@@ -4152,34 +7593,34 @@
     "prebuilt": false
   },
   {
-    "type": "install",
-    "req": "accelerate>=0.21.0",
-    "dist": "accelerate",
-    "version": "0.30.1",
+    "type": "toplevel",
+    "req": "awscli",
+    "dist": "awscli",
+    "version": "1.32.115",
     "why": [
       [
         "toplevel",
-        "peft",
-        "0.11.1"
-      ],
-      [
-        "install",
-        "accelerate>=0.21.0",
-        "0.30.1"
+        "awscli",
+        "1.32.115"
       ]
     ],
     "prebuilt": false
   },
   {
-    "type": "toplevel",
-    "req": "awscli",
-    "dist": "awscli",
-    "version": "1.32.111",
+    "type": "install",
+    "req": "docutils<0.17,>=0.10",
+    "dist": "docutils",
+    "version": "0.16",
     "why": [
       [
         "toplevel",
         "awscli",
-        "1.32.111"
+        "1.32.115"
+      ],
+      [
+        "install",
+        "docutils<0.17,>=0.10",
+        "0.16"
       ]
     ],
     "prebuilt": false
@@ -4193,7 +7634,7 @@
       [
         "toplevel",
         "awscli",
-        "1.32.111"
+        "1.32.115"
       ],
       [
         "install",
@@ -4212,7 +7653,7 @@
       [
         "toplevel",
         "awscli",
-        "1.32.111"
+        "1.32.115"
       ],
       [
         "install",
@@ -4229,25 +7670,6 @@
   },
   {
     "type": "install",
-    "req": "docutils<0.17,>=0.10",
-    "dist": "docutils",
-    "version": "0.16",
-    "why": [
-      [
-        "toplevel",
-        "awscli",
-        "1.32.111"
-      ],
-      [
-        "install",
-        "docutils<0.17,>=0.10",
-        "0.16"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
     "req": "colorama<0.4.7,>=0.2.5",
     "dist": "colorama",
     "version": "0.4.6",
@@ -4255,83 +7677,12 @@
       [
         "toplevel",
         "awscli",
-        "1.32.111"
+        "1.32.115"
       ],
       [
         "install",
         "colorama<0.4.7,>=0.2.5",
         "0.4.6"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "toplevel",
-    "req": "aiohttp",
-    "dist": "aiohttp",
-    "version": "3.9.5",
-    "why": [
-      [
-        "toplevel",
-        "aiohttp",
-        "3.9.5"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "yarl<2.0,>=1.0",
-    "dist": "yarl",
-    "version": "1.9.4",
-    "why": [
-      [
-        "toplevel",
-        "aiohttp",
-        "3.9.5"
-      ],
-      [
-        "install",
-        "yarl<2.0,>=1.0",
-        "1.9.4"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "install",
-    "req": "multidict>=4.0",
-    "dist": "multidict",
-    "version": "6.0.5",
-    "why": [
-      [
-        "toplevel",
-        "aiohttp",
-        "3.9.5"
-      ],
-      [
-        "install",
-        "yarl<2.0,>=1.0",
-        "1.9.4"
-      ],
-      [
-        "install",
-        "multidict>=4.0",
-        "6.0.5"
-      ]
-    ],
-    "prebuilt": false
-  },
-  {
-    "type": "toplevel",
-    "req": "pillow",
-    "dist": "pillow",
-    "version": "10.3.0",
-    "why": [
-      [
-        "toplevel",
-        "pillow",
-        "10.3.0"
       ]
     ],
     "prebuilt": false
