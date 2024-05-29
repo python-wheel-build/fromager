@@ -15,10 +15,6 @@ package index from which a user can pip install knowing:
 1. All of the build tools used to build these binary packages will
    also have been built from source
 
-For the purposes of this prototype,
-[langchain](https://pypi.org/project/langchain/) was chosen as the top
-of the dependency stack.
-
 The [mirror-sdists](mirror-sdists.sh) script does the following:
 
 * Creates an empty package repository for
@@ -50,75 +46,6 @@ The [mirror-sdists](mirror-sdists.sh) script does the following:
 Finally, the [install-from-mirror](install-from-mirror.sh) script
 installs the dependency stack into a virtual environment from this
 newly created repository of wheels.
-
-## Current Status
-
-See the [currently open
-issues](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/issues)
-and the planned [development
-milestones](https://gitlab.com/fedora/sigs/ai-ml/rebuilding-the-wheel/-/milestones)
-
-## Langchain Dependency Tree
-
-For reference, here's the dependency tree we're dealing with in this
-prototype:
-
-```
-$ deptree langchain
-langchain==0.1.11
-├── aiohttp [required: >=3.8.3,<4.0.0, installed: 3.9.3]
-│   ├── aiosignal [required: >=1.1.2, installed: 1.3.1]
-│   │   └── frozenlist [required: >=1.1.0, installed: 1.4.1]
-│   ├── async-timeout [required: >=4.0,<5.0, installed: 4.0.3]
-│   ├── attrs [required: >=17.3.0, installed: 23.2.0]
-│   ├── frozenlist [required: >=1.1.1, installed: 1.4.1]
-│   ├── multidict [required: >=4.5,<7.0, installed: 6.0.5]
-│   └── yarl [required: >=1.0,<2.0, installed: 1.9.4]
-│       ├── idna [required: >=2.0, installed: 3.6]
-│       └── multidict [required: >=4.0, installed: 6.0.5]
-├── async-timeout [required: >=4.0.0,<5.0.0, installed: 4.0.3]
-├── dataclasses-json [required: >=0.5.7,<0.7, installed: 0.6.4]
-│   ├── marshmallow [required: >=3.18.0,<4.0.0, installed: 3.21.1]
-│   │   └── packaging [required: >=17.0, installed: 23.2]
-│   └── typing-inspect [required: >=0.4.0,<1, installed: 0.9.0]
-│       ├── mypy-extensions [required: >=0.3.0, installed: 1.0.0]
-│       └── typing_extensions [required: >=3.7.4, installed: 4.10.0]
-├── jsonpatch [required: >=1.33,<2.0, installed: 1.33]
-│   └── jsonpointer [required: >=1.9, installed: 2.4]
-├── langchain-community [required: >=0.0.25,<0.1, installed: 0.0.27]
-│   ...
-├── langchain-core [required: >=0.1.29,<0.2, installed: 0.1.30]
-│   ├── anyio [required: >=3,<5, installed: 4.3.0]
-│   │   ├── exceptiongroup [required: >=1.0.2, installed: 1.2.0]
-│   │   ├── idna [required: >=2.8, installed: 3.6]
-│   │   ├── sniffio [required: >=1.1, installed: 1.3.1]
-│   │   └── typing_extensions [required: >=4.1, installed: 4.10.0]
-│   ...
-│   ├── packaging [required: >=23.2,<24.0, installed: 23.2]
-│   ...
-├── langchain-text-splitters [required: >=0.0.1,<0.1, installed: 0.0.1]
-│   └── langchain-core [required: >=0.1.28,<0.2.0, installed: 0.1.30]
-│       ...
-├── langsmith [required: >=0.1.17,<0.2.0, installed: 0.1.23]
-│   ├── orjson [required: >=3.9.14,<4.0.0, installed: 3.9.15]
-│   ...
-├── numpy [required: >=1,<2, installed: 1.26.4]
-├── pydantic [required: >=1,<3, installed: 2.6.3]
-│   ├── annotated-types [required: >=0.4.0, installed: 0.6.0]
-│   ├── pydantic_core [required: ==2.16.3, installed: 2.16.3]
-│   │   └── typing_extensions [required: >=4.6.0,!=4.7.0, installed: 4.10.0]
-│   └── typing_extensions [required: >=4.6.1, installed: 4.10.0]
-├── PyYAML [required: >=5.3, installed: 6.0.1]
-├── requests [required: >=2,<3, installed: 2.31.0]
-│   ├── certifi [required: >=2017.4.17, installed: 2024.2.2]
-│   ├── charset-normalizer [required: >=2,<4, installed: 3.3.2]
-│   ├── idna [required: >=2.5,<4, installed: 3.6]
-│   └── urllib3 [required: >=1.21.1,<3, installed: 2.2.1]
-├── SQLAlchemy [required: >=1.4,<3, installed: 2.0.28]
-│   ├── greenlet [required: !=0.4.17, installed: 3.0.3]
-│   └── typing_extensions [required: >=4.6.0, installed: 4.10.0]
-└── tenacity [required: >=8.1.0,<9.0.0, installed: 8.2.3]
-```
 
 ## Additional docs
 
