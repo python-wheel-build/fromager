@@ -55,6 +55,8 @@ newly created repository of wheels.
 
 ## Using the indexes
 
+### Fedora CPU-only builds
+
 The https://pyai.fedorainfracloud.org/experimental/cpu index includes
 builds without GPU-specific optimizations. Use the
 https://pyai.fedorainfracloud.org/experimental/cpu/+simple/ index with
@@ -64,4 +66,18 @@ pip to install packages from the index.
 $ python3 -m venv numpy-test
 $ source numpy-test/bin/activate
 $ pip install --index-url https://pyai.fedorainfracloud.org/experimental/cpu/+simple/ numpy
+```
+
+### RHEL 9 CUDA builds
+
+The https://pyai.fedorainfracloud.org/experimental/cuda-ubi9 index
+includes builds with support for CUDA-based GPUs from Nvidia that are
+compatible with RHEL 9. Use the
+https://pyai.fedorainfracloud.org/experimental/cuda-ubi9/+simple/
+index with pip to install packages from the index.
+
+```
+$ python3 -m venv numpy-test
+$ source numpy-test/bin/activate
+$ pip install --index-url https://pyai.fedorainfracloud.org/experimental/cuda-ubi9/+simple/ numpy
 ```
