@@ -47,12 +47,6 @@ Finally, the [install-from-mirror](install-from-mirror.sh) script
 installs the dependency stack into a virtual environment from this
 newly created repository of wheels.
 
-## Additional docs
-
-* [How Tos](docs/howtos.md)
-* Some packages have [customizations applied](docs/pkgs/)
-* [Developer Instructions](docs/develop.md)
-
 ## Using the indexes
 
 ### Fedora CPU-only builds
@@ -81,3 +75,9 @@ $ python3 -m venv numpy-test
 $ source numpy-test/bin/activate
 $ pip install --index-url https://pyai.fedorainfracloud.org/experimental/cuda-ubi9/+simple/ numpy
 ```
+
+## Additional docs
+
+* [How Tos](docs/howtos.md)
+* Some packages have [customizations applied](overrides/)
+* [Developer Instructions](docs/develop.md)
