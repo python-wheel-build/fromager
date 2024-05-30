@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def _query(dist_name):
     for query_name in [f'python3-{dist_name}', dist_name]:
-        cmd = ['sudo', 'dnf', 'repoquery', '--queryformat',
+        cmd = ['sudo', 'dnf', '--quiet', 'repoquery', '--queryformat',
                '%{name} %{version}', query_name]
         logger.debug(' '.join(cmd))
         completed = subprocess.run(
