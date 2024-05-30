@@ -37,6 +37,8 @@ def do_find_rpms(args):
     def show(match, step, rpm_name='', rpm_version=''):
         writer.writerow((match, step['dist'], step['version'],
                          rpm_name, rpm_version))
+        if args.output:
+            outfile.flush()
 
     for step in build_order:
         rpm_info = list(_query(step['dist']))
