@@ -24,6 +24,34 @@ VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
 
 
 def main():
+    parser = _get_argument_parser()
+    args = parser.parse_args(sys.argv[1:])
+
+    # Configure console and log output.
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.DEBUG if args.verbose else logging.INFO)
+    stream_formatter = logging.Formatter(VERBOSE_LOG_FMT if args.verbose else TERSE_LOG_FMT)
+    stream_handler.setFormatter(stream_formatter)
+    logging.getLogger().addHandler(stream_handler)
+    if args.log_file:
+        # Always log to the file at debug level
+        file_handler = logging.FileHandler(args.log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter(VERBOSE_LOG_FMT)
+        file_handler.setFormatter(file_formatter)
+        logging.getLogger().addHandler(file_handler)
+    # We need to set the overall logger level to debug and allow the
+    # handlers to filter messages at their own level.
+    logging.getLogger().setLevel(logging.DEBUG)
+
+    try:
+        args.func(args)
+    except Exception as err:
+        logger.exception(err)
+        raise
+
+
+def _get_argument_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('--log-file', default='')
@@ -40,7 +68,8 @@ def main():
 
     parser_bootstrap = subparsers.add_parser('bootstrap')
     parser_bootstrap.set_defaults(func=do_bootstrap)
-    parser_bootstrap.add_argument('--requirements', '-r')
+    parser_bootstrap.add_argument('--requirements-file', '-r', action='append', default=[],
+                                  dest='requirements_files')
     parser_bootstrap.add_argument('toplevel', nargs='*')
 
     parser_download = subparsers.add_parser('download-source-archive')
@@ -94,30 +123,7 @@ def main():
     # The jobs CLI is complex enough that it's in its own module
     jobs.build_cli(parser, subparsers)
 
-    args = parser.parse_args(sys.argv[1:])
-
-    # Configure console and log output.
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.DEBUG if args.verbose else logging.INFO)
-    stream_formatter = logging.Formatter(VERBOSE_LOG_FMT if args.verbose else TERSE_LOG_FMT)
-    stream_handler.setFormatter(stream_formatter)
-    logging.getLogger().addHandler(stream_handler)
-    if args.log_file:
-        # Always log to the file at debug level
-        file_handler = logging.FileHandler(args.log_file)
-        file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter(VERBOSE_LOG_FMT)
-        file_handler.setFormatter(file_formatter)
-        logging.getLogger().addHandler(file_handler)
-    # We need to set the overall logger level to debug and allow the
-    # handlers to filter messages at their own level.
-    logging.getLogger().setLevel(logging.DEBUG)
-
-    try:
-        args.func(args)
-    except Exception as err:
-        logger.exception(err)
-        raise
+    return parser
 
 
 def requires_context(f):
@@ -142,8 +148,8 @@ def requires_context(f):
 def _get_requirements_from_args(args):
     to_build = []
     to_build.extend(args.toplevel)
-    if args.requirements:
-        with open(args.requirements, 'r') as f:
+    for filename in args.requirements_files:
+        with open(filename, 'r') as f:
             for line in f:
                 useful, _, _ = line.partition('#')
                 useful = useful.strip()
