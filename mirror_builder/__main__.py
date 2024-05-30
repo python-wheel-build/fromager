@@ -14,8 +14,8 @@ import sys
 from packaging.requirements import Requirement
 from packaging.utils import parse_wheel_filename
 
-from . import (context, finders, jobs, overrides, rpms, sdist, server, sources,
-               wheels)
+from . import (context, finders, jobs, overrides, rpms, sdist, server,
+               settings, sources, wheels)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ def _get_argument_parser():
     parser.add_argument('-t', '--work-dir', default=os.environ.get('WORKDIR', 'work-dir'))
     parser.add_argument('-p', '--patches-dir', default='overrides/patches')
     parser.add_argument('-e', '--envs-dir', default='overrides/envs')
+    parser.add_argument('--settings-file', default='overrides/settings.yaml')
     parser.add_argument('--wheel-server-url')
     parser.add_argument('--no-cleanup', dest='cleanup', default=True, action='store_false')
     parser.add_argument('--variant', default='cpu', choices=['cpu', 'cuda'])
@@ -131,6 +132,7 @@ def requires_context(f):
     @functools.wraps(f)
     def provides_context(args):
         ctx = context.WorkContext(
+            settings=settings.load(args.settings_file),
             patches_dir=args.patches_dir,
             envs_dir=args.envs_dir,
             sdists_repo=args.sdists_repo,

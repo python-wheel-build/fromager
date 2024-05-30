@@ -32,64 +32,12 @@ class MissingDependency(Exception):
         super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
 
 
-def _pkg_name_set(names):
-    return set(overrides.pkgname_to_override_module(n) for n in names)
-
-
-# Depending on the variant, some pre-built wheels aren't built from
-# source and must be acquired from another package index.
-PRE_BUILT = {
-    'cuda': _pkg_name_set([
-        # requires aligning versions with external tools
-        'llvmlite',
-
-        # Not open source?
-        'nvidia-cublas-cu12',
-        'nvidia-cuda-cupti-cu12',
-        'nvidia-cuda-nvrtc-cu12',
-        'nvidia-cuda-runtime-cu12',
-        'nvidia-cudnn-cu12',
-        'nvidia-cufft-cu12',
-        'nvidia-curand-cu12',
-        'nvidia-cusolver-cu12',
-        'nvidia-cusparse-cu12',
-        'nvidia-nccl-cu12',
-        'nvidia-nvjitlink-cu12',
-        'nvidia-nvtx-cu12',
-
-        # requires rustc 1.76 or newer, not available in UBI9
-        'pydantic-core',
-
-        # The builds work for older versions, but not for 2.3, yet.
-        'torch',
-        'triton',
-
-        # vllm's setup.py computes the CUDA dependencies dynamically
-        # based on the CUDA version it gets from importing torch. The
-        # container image knows how to build vllm with all sorts of
-        # pre-build setup steps, so we don't try to do it ourself.
-        'vllm',
-
-        # SciPy requires fortran and some other custom libraries that
-        # need more investigation.
-        # https://docs.scipy.org/doc/scipy/building/blas_lapack.html
-        # https://pkgs.devel.redhat.com/git/rpms/scipy/tree/scipy.spec?h=rhel-9.0.0
-        'SciPy',
-
-        # ray has no source distributions published and a complicated build process.
-        # https://github.com/ray-project/ray
-        # https://docs.ray.io/en/latest/ray-contribute/development.html#building-ray
-        'ray',
-    ]),
-}
-
-
 def handle_requirement(ctx, req, req_type='toplevel', why=None):
     if why is None:
         why = []
     logger.info(f'{"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}')
 
-    pre_built = overrides.pkgname_to_override_module(req.name) in PRE_BUILT.get(ctx.variant, set())
+    pre_built = overrides.pkgname_to_override_module(req.name) in ctx.settings.pre_built(ctx.variant)
 
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.

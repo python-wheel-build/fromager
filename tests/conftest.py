@@ -1,11 +1,12 @@
 import pytest
 
-from mirror_builder import context
+from mirror_builder import context, settings
 
 
 @pytest.fixture
 def tmp_context(tmp_path):
     ctx = context.WorkContext(
+        settings=settings.Settings({}),
         patches_dir='overrides/patches',
         envs_dir='overrides/envs',
         sdists_repo=tmp_path / 'sdists-repo',
