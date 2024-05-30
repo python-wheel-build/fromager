@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class WorkContext:
 
     def __init__(self,
+                 settings,
                  patches_dir,
                  envs_dir,
                  sdists_repo,
@@ -19,6 +20,7 @@ class WorkContext:
                  wheel_server_url,
                  cleanup=True,
                  variant='cpu'):
+        self.settings = settings
         self.patches_dir = pathlib.Path(patches_dir).absolute()
         self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
