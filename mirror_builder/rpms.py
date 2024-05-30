@@ -4,7 +4,7 @@ import logging
 import subprocess
 import sys
 
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 
 logger = logging.getLogger(__name__)
 
@@ -51,19 +51,38 @@ def do_find_rpms(args):
         # the other mismatched versions (there may be multiples).
         others = []
         for entry in rpm_info:
+            dist_version = Version(step['version'])
+
             try:
                 rpm_name, rpm_version_str = entry
             except Exception as err:
                 raise RuntimeError(f'Could not parse {entry}') from err
-            dist_version = Version(step['version'])
-            rpm_version = Version(rpm_version_str)
-            if dist_version == rpm_version:
+            try:
+                rpm_version = Version(rpm_version_str)
+            except InvalidVersion:
+                # Some RPM versions can't be parsed as Python package
+                # versions (tzdata). We can't safely compare the
+                # strings, except for exact equality, so fall back to
+                # saying the versions are different.
+                rpm_version = rpm_version_str
+                if step['version'] == rpm_version_str:
+                    result = 'OK'
+                else:
+                    result = 'DIFF'
+
+            else:
+                if dist_version == rpm_version:
+                    result = 'OK'
+                elif rpm_version < dist_version:
+                    result = 'OLD'
+                else:
+                    result = 'DIFF'
+
+            if result == 'OK':
                 show('OK', step, rpm_name, rpm_version)
                 break
-            elif rpm_version < dist_version:
-                others.append(('OLD', step, rpm_name, rpm_version))
             else:
-                others.append(('DIFF', step, rpm_name, rpm_version))
+                others.append((result, step, rpm_name, rpm_version))
         else:
             for o in others:
                 show(*o)
