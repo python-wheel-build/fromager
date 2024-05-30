@@ -1,16 +1,21 @@
 import csv
 import json
+import logging
 import subprocess
 import sys
 
 from packaging.version import Version
 
+logger = logging.getLogger(__name__)
+
 
 def _query(dist_name):
     for query_name in [f'python3-{dist_name}', dist_name]:
+        cmd = ['sudo', 'dnf', '--quiet', 'repoquery', '--queryformat',
+               '%{name} %{version}', query_name]
+        logger.debug(' '.join(cmd))
         completed = subprocess.run(
-            ['sudo', 'dnf', 'repoquery', '--queryformat',
-             '%{name} %{version}', query_name],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
@@ -43,7 +48,11 @@ def do_find_rpms(args):
         # Look first for a match. If we don't find one, report all of
         # the other mismatched versions (there may be multiples).
         others = []
-        for rpm_name, rpm_version_str in rpm_info:
+        for entry in rpm_info:
+            try:
+                rpm_name, rpm_version_str = entry
+            except Exception as err:
+                raise RuntimeError(f'Could not parse {entry}') from err
             dist_version = Version(step['version'])
             rpm_version = Version(rpm_version_str)
             if dist_version == rpm_version:
