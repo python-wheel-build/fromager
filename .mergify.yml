@@ -26,9 +26,9 @@ pull_request_rules:
           - check-success=unit (3.11)
           - check-success=unit (3.12)
           - '-draft'
-          - or:
-              - check-success=history-update
-              - label=ci
+          # - or:
+          #     - check-success=history-update
+          #     - label=ci
           - or:
               - approved-reviews-by=dhellmann
               - author=dhellmann
