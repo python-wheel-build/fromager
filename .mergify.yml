@@ -1,40 +1,37 @@
 pull_request_rules:
-
   - name: Add CI label
     conditions:
       - or:
-          - "title~=^tox:"
-          - "title~=^ci:"
-          - "files~=tox.ini"
-          - "files~=.github/"
+          - 'title~=^tox:'
+          - 'title~=^ci:'
+          - files~=tox.ini
+          - files~=.github/
     actions:
       label:
         add:
           - ci
-
   - name: Add Mergify label
     conditions:
       - or:
-          - "title~=^mergify:"
-          - "files~=.mergify.yml$"
+          - 'title~=^mergify:'
+          - files~=.mergify.yml$
     actions:
       label:
         add:
           - mergify
-
   - name: Automatic merge on approval
     conditions:
       - and:
-        - "check-success=Check (linter)"
-        - "check-success=CI (3.11)"
-        - "check-success=CI (3.12)"
-        - "-draft"
-        - or:
-          - "check-success=history-update"
-          - "label=ci"
-        - or:
-          - "approved-reviews-by=dhellmann"
-          - "author=dhellmann"
+          - check-success=linter
+          - check-success=unit (3.11)
+          - check-success=unit (3.12)
+          - '-draft'
+          - or:
+              - check-success=history-update
+              - label=ci
+          - or:
+              - approved-reviews-by=dhellmann
+              - author=dhellmann
     actions:
       merge:
         method: merge
