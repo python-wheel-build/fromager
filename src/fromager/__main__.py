@@ -52,7 +52,7 @@ def main():
 
 
 def _get_argument_parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser('fromager')
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('--log-file', default='')
     parser.add_argument('-o', '--sdists-repo', default='sdists-repo')

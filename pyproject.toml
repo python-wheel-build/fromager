@@ -41,9 +41,6 @@ dependencies = [
     "tomli",
 ]
 
-[tool.setuptools_scm]
-version_file = "src/fromager/version.py"
-
 [project.optional-dependencies]
 test = [
     "pytest",
@@ -51,9 +48,15 @@ test = [
     "coverage!=4.4,>=4.0",
 ]
 
+[project.scripts]
+fromager = "fromager.__main__:main"
+
 [project.entry-points."fromager.project_overrides"]
 # This test plugin should stay in the package.
 fromager_test = "fromager.example_override"
+
+[tool.setuptools_scm]
+version_file = "src/fromager/version.py"
 
 [tool.isort]
 known_first_party=["fromager"]
