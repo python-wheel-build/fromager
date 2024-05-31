@@ -17,7 +17,7 @@ ENV PATH=$VIRTUAL_ENV/bin:$PATH
 RUN mkdir /sdists-repo && mkdir /work-dir && mkdir /build-logs
 
 # Download the source archive
-RUN python3 -m mirror_builder -v \
+RUN python3 -m fromager -v \
     --log-file /build-logs/download-source-archive.log \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
@@ -25,7 +25,7 @@ RUN python3 -m mirror_builder -v \
     download-source-archive ${DIST} ${VERSION} ${SDIST_SERVER_URL}
 
 # Prepare the source dir for building
-RUN python3 -m mirror_builder -v \
+RUN python3 -m fromager -v \
     --log-file /build-logs/prepare-source.log \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
@@ -33,7 +33,7 @@ RUN python3 -m mirror_builder -v \
     prepare-source ${DIST} ${VERSION}
 
 # Prepare the build environment
-RUN python3 -m mirror_builder -v \
+RUN python3 -m fromager -v \
     --log-file /build-logs/prepare-build.log \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \

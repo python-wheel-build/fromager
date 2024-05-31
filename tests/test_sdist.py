@@ -3,10 +3,10 @@ from unittest.mock import patch
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from mirror_builder import sdist
+from fromager import sdist
 
 
-@patch('mirror_builder.sources.resolve_sdist')
+@patch('fromager.sources.resolve_sdist')
 def test_missing_dependency_format(resolve_sdist):
     resolutions = {
         'flit_core': '3.9.0',

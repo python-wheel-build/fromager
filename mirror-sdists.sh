@@ -22,7 +22,7 @@ VENV="${WORKDIR}/venv-mirror-sdists"
 install_tools "$VENV"
 
 # shellcheck disable=SC2086
-python3 -m mirror_builder ${VERBOSE} \
+python3 -m fromager ${VERBOSE} \
         --log-file "$WORKDIR/mirror-sdists-debug.log" \
         --variant "$VARIANT" \
         bootstrap "$@"

@@ -86,12 +86,12 @@ Plugins are registered using [entry
 points](https://packaging.python.org/en/latest/specifications/entry-points/)
 so they can be discovered and loaded at runtime. In `pyproject.toml`,
 configure the entry point in the
-`project.entry-points."mirror_builder.project_overrides"` namespace to
+`project.entry-points."fromager.project_overrides"` namespace to
 link the [canonical distribution name](#canonical-distribution-names)
 to an importable module.
 
 ```
-[project.entry-points."mirror_builder.project_overrides"]
+[project.entry-points."fromager.project_overrides"]
 flit_core = "package_plugins.flit_core"
 pyarrow = "package_plugins.pyarrow"
 torch = "package_plugins.torch"

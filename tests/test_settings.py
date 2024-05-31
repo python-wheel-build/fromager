@@ -1,6 +1,6 @@
 import textwrap
 
-from mirror_builder import settings
+from fromager import settings
 
 
 def test_empty():

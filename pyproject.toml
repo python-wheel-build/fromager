@@ -3,12 +3,12 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mirror-builder"
+name = "fromager"
 authors = [
     {name = "Mark McLoughlin", email="markmc@redhat.com"},
     {name = "Doug Hellmann", email="dhellmann@redhat.com"},
 ]
-description = "Wheel mirror builder"
+description = "Wheel maker"
 dynamic = ["version"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 
 dependencies = [
     "html5lib",
@@ -48,17 +48,12 @@ test = [
     "coverage!=4.4,>=4.0",
 ]
 
-[project.entry-points."mirror_builder.project_overrides"]
+[project.entry-points."fromager.project_overrides"]
 # This test plugin should stay in the package.
-mirror_builder_test = "mirror_builder.example_override"
-
-[tool.setuptools]
-packages = [
-    "mirror_builder",
-]
+fromager_test = "fromager.example_override"
 
 [tool.isort]
-known_first_party=["mirror_builder"]
+known_first_party=["fromager"]
 skip_glob=[
   ".tox/*",    # test runner environment
   "work-dir*", # test runner output

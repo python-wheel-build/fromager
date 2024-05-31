@@ -35,7 +35,7 @@ fi
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"
 
-python3 -m mirror_builder \
+python3 -m fromager \
         "${VERBOSE}" \
         --work-dir "${WORKDIR}" \
         --sdists-repo /sdists-repo \
