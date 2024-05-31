@@ -9,7 +9,7 @@ from stevedore import extension
 # should we set, etc.
 
 _mgr = extension.ExtensionManager(
-    namespace='mirror_builder.project_overrides',
+    namespace='fromager.project_overrides',
     invoke_on_load=False,
 )
 

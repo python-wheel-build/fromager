@@ -1,6 +1,6 @@
 import pathlib
 
-from mirror_builder import external_commands
+from fromager import external_commands
 
 
 def test_external_commands_environ():

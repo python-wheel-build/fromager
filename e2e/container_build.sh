@@ -7,7 +7,7 @@ set -o pipefail
 # shellcheck disable=SC1091
 source /venv/bin/activate
 
-python3 -m mirror_builder \
+python3 -m fromager \
         --wheel-server-url "$WHEEL_SERVER_URL" \
         -v \
         --work-dir /work-dir \

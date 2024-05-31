@@ -1,6 +1,6 @@
 import pytest
 
-from mirror_builder import context, settings
+from fromager import context, settings
 
 
 @pytest.fixture

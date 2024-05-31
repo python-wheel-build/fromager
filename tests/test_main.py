@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from mirror_builder import __main__ as main
+from fromager import __main__ as main
 
 
 @pytest.fixture

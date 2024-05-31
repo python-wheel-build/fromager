@@ -6,7 +6,7 @@ ARG TOPLEVEL
 ENV VIRTUAL_ENV=/venv
 ENV PATH=$VIRTUAL_ENV/bin:$PATH
 
-RUN python3 -m mirror_builder -v \
+RUN python3 -m fromager -v \
     --work-dir /work-dir \
     --sdists-repo /sdists-repo \
     --wheels-repo /wheels-repo \

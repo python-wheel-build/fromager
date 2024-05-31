@@ -1,6 +1,6 @@
 import pytest
 
-from mirror_builder import dependencies
+from fromager import dependencies
 
 
 @pytest.mark.parametrize('build_system,expected_results', [

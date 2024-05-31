@@ -4,15 +4,14 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from mirror_builder import finders
+from fromager import finders
 
 
 @pytest.mark.parametrize('dist_name,version_string,expected_base', [
     ('mypkg', '1.2', 'mypkg-1.2.tar.gz'),
-    ('torch', '2.0', 'pytorch-v2.0.tar.gz'),
     ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0.tar.gz'),
     ('cython', '3.0.10', 'Cython-3.0.10.tar.gz'),
-    ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9.tar.gz'),
+    ('fromage_test', '9.9.9', 'fromage-test-9.9.9.tar.gz'),
     ('ruamel-yaml', '0.18.6', 'ruamel.yaml-0.18.6.tar.gz'),
 ])
 def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
@@ -30,10 +29,9 @@ def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
 
 @pytest.mark.parametrize('dist_name,version_string,expected_base', [
     ('mypkg', '1.2', 'mypkg-1.2-py2.py3-none-any.whl'),
-    ('torch', '2.0', 'torch-2.0-cp311-cp311-linux_aarch64.whl'),
     ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0-py2.py3-none-any.whl'),
     ('cython', '3.0.10', 'Cython-3.0.10-cp311-cp311-linux_aarch64.whl'),
-    ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9-cp311-cp311-linux_aarch64.whl'),
+    ('fromage_test', '9.9.9', 'fromage-test-9.9.9-cp311-cp311-linux_aarch64.whl'),
     ('ruamel-yaml', '0.18.6', 'ruamel.yaml-0.18.6-py3-none-any.whl'),
 ])
 def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
@@ -51,11 +49,10 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
 
 @pytest.mark.parametrize('dist_name,version_string,unpack_base,source_base', [
     ('mypkg', '1.2', 'mypkg-1.2', 'mypkg-1.2'),
-    ('torch', '2.0', 'pytorch-v2.0', 'pytorch-v2.0'),
     ('oslo.messaging', '14.7.0', 'oslo.messaging-14.7.0', 'oslo.messaging-14.7.0'),
     ('cython', '3.0.10', 'Cython-3.0.10', 'Cython-3.0.10'),
-    ('mirror_builder_test', '9.9.9', 'mirror-builder-test-9.9.9',
-     'different-prefix-mirror-builder-test-9.9.9'),
+    ('fromager_test', '9.9.9', 'fromager-test-9.9.9',
+     'different-prefix-fromager-test-9.9.9'),
     ('ruamel-yaml', '0.18.6', 'ruamel.yaml-0.18.6', 'ruamel.yaml-0.18.6'),
 ])
 def test_find_source_dir(tmp_path, dist_name, version_string, unpack_base, source_base):
