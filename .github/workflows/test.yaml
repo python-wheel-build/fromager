@@ -44,6 +44,7 @@ jobs:
         test-script:
           - bootstrap
           - report_missing_dependency
+          - build_with_build_order
 
     steps:
       - name: Get source

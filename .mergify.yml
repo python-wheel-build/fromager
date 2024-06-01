@@ -32,6 +32,8 @@ pull_request_rules:
           - check-success=e2e (3.12, bootstrap)
           - check-success=e2e (3.11, report_missing_dependency)
           - check-success=e2e (3.12, report_missing_dependency)
+          - check-success=e2e (3.11, build_with_build_order)
+          - check-success=e2e (3.12, build_with_build_order)
           - '-draft'
           # - or:
           #     - check-success=history-update
