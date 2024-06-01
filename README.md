@@ -54,6 +54,30 @@ Wheels are built by running `pip wheel` configured so it will only
 download dependencies from the local wheel repository. This ensures
 that all dependencies are being built in the correct order.
 
+## Production Builds
+
+Production builds use separate commands for the steps described as
+part of bootstrapping, and accept arguments to control the servers
+that are used for downloading source or built wheels.
+
+The `download-source-archive` command finds the source distribution
+for a specific version of a dependency on the specified package index
+and downloads it. It will be common to run this step with `pypi.org`,
+but for truly isolated and reproducible builds a private index server
+is more robust.
+
+The `prepare-source` command unpacks the source archive downloaded
+from the previous step and applies any patches (refer to
+[customization](docs/customization.md) for details about patching).
+
+The `prepare-build` command creates a virtualenv with the build
+dependencies for building the wheel. It expects a `--wheel-server-url`
+as argument to control where built wheels can be downloaded.
+
+The `build` command prepares a wheel, compiling any extensions using
+the appropriate override environment settings (refer to
+[customization](docs/customization.md) for details about overrides).
+
 ## Additional docs
 
 * [Package build customization instructions](docs/customization.md)
