@@ -9,6 +9,7 @@ authors = [
     {name = "Doug Hellmann", email="dhellmann@redhat.com"},
 ]
 description = "Wheel maker"
+readme = "README.md"
 dynamic = ["version"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
