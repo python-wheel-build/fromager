@@ -31,34 +31,31 @@ jobs:
       - name: Run tests
         run: tox -e py
 
-  # bootstrap:
-  #   name: bootstrap-langchain
-  #   runs-on: ubuntu-latest
+  bootstrap:
+    name: bootstrap
+    runs-on: ubuntu-latest
 
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       python-version:
-  #         - "3.9"
-  #         - "3.12"
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
 
-  #   steps:
-  #     - name: Get source
-  #       uses: actions/checkout@v4
+    steps:
+      - name: Get source
+        uses: actions/checkout@v4
 
-  #     - name: Setup Podman
-  #       run: |
-  #         sudo apt update
-  #         sudo apt-get -y install podman
-  #         podman pull fedora:39
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-  #     - name: Create container
-  #       run: |
-  #         podman build --tag test-${{ matrix.python-version }} -f ./Containerfile
+      - name: Install dependencies
+        run: python -m pip install tox
 
-  #     - name: Run tests
-  #       run: |
-  #         PYTHON=python${{ matrix.python-version }} ./test_container.sh
+      - name: Run tests
+        run: ./e2e/test_bootstrap.sh
 
   # e2e:
   #   name: e2e
