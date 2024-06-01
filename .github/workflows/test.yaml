@@ -31,8 +31,8 @@ jobs:
       - name: Run tests
         run: tox -e py
 
-  bootstrap:
-    name: bootstrap
+  e2e:
+    name: e2e
     runs-on: ubuntu-latest
 
     strategy:
@@ -41,6 +41,8 @@ jobs:
         python-version:
           - "3.11"
           - "3.12"
+        test-script:
+          - bootstrap
 
     steps:
       - name: Get source
@@ -55,36 +57,4 @@ jobs:
         run: python -m pip install tox
 
       - name: Run tests
-        run: ./e2e/test_bootstrap.sh
-
-  # e2e:
-  #   name: e2e
-  #   runs-on: ubuntu-latest
-
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       python-version:
-  #         - "3.9"
-  #         - "3.12"
-  #       test-script:
-  #         - e2e/test_rebuild_following_bootstrap.sh
-
-  #   steps:
-  #     - name: Get source
-  #       uses: actions/checkout@v4
-
-  #     - name: Set up Python ${{ matrix.python-version }}
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ matrix.python-version }}
-
-  #     - name: Setup Podman
-  #       run: |
-  #         sudo apt update
-  #         sudo apt-get -y install podman
-  #         podman pull fedora:39
-
-  #     - name: Run tests
-  #       run: |
-  #         PYTHON=python${{ matrix.python-version }} ${{ matrix.test-script }}
+        run: ./e2e/test_${{ matrix.test-script }}.sh
