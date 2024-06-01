@@ -50,6 +50,9 @@ test = [
     "coverage!=4.4,>=4.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/python-wheel-build/fromager"
+
 [project.scripts]
 fromager = "fromager.__main__:main"
 
