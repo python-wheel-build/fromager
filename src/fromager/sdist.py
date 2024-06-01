@@ -1,7 +1,9 @@
 import importlib.metadata
 import logging
 import os.path
+import re
 import shutil
+import subprocess
 import sys
 from urllib.parse import urlparse
 
@@ -9,6 +11,12 @@ from . import (dependencies, external_commands, finders, overrides, server,
                sources, wheels)
 
 logger = logging.getLogger(__name__)
+
+# Pip has no API, so parse its output looking for what it couldn't
+# install.
+_pip_missing_dependency_pattern = re.compile(
+    r'Could not find a version that satisfies the requirement (\w+)',
+)
 
 
 class MissingDependency(Exception):
@@ -224,10 +232,24 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
             logger.error('failed to install %s dependency %s: %s', next_req_type, dep, err)
             raise MissingDependency(next_req_type, dep, build_backend_dependencies) from err
 
-    build_env = wheels.BuildEnvironment(
-        ctx, sdist_root_dir.parent,
-        build_system_dependencies | build_backend_dependencies,
-    )
+    try:
+        build_env = wheels.BuildEnvironment(
+            ctx, sdist_root_dir.parent,
+            build_system_dependencies | build_backend_dependencies,
+        )
+    except subprocess.CalledProcessError as err:
+        # Pip has no API, so parse its output looking for what it
+        # couldn't install. If we don't find something, just re-raise
+        # the exception we already have.
+        logger.error('failed to create build environment for %s: %s', dep, err)
+        match = _pip_missing_dependency_pattern.search(err.output)
+        if match:
+            raise MissingDependency(
+                'build',
+                match.groups()[0],
+                build_system_dependencies | build_backend_dependencies,
+            ) from err
+        raise
     return build_env.path
 
 
