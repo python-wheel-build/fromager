@@ -24,6 +24,25 @@ jobs:
       - name: Run
         run: tox -e linter
 
+  pkglint:
+    name: pkglint
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.ref, 'refs/tags') }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+
+      - name: Install dependencies
+        run: python -m pip install tox
+
+      - name: Run
+        run: tox -e pkglint
+
   markdownlint:
     # https://github.com/marketplace/actions/markdown-lint
     name: markdownlint
