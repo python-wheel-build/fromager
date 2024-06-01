@@ -16,3 +16,4 @@ __pycache__/
 /node_modules/
 /package-lock.json
 /package.json
+/e2e-output/
