@@ -56,3 +56,14 @@ that all dependencies are being built in the correct order.
 
 * [Package build customization instructions](docs/customization.md)
 * [Developer instructions](docs/develop.md)
+
+## What's with the name?
+
+Python's name comes from Monty Python, the group of comedians. One of
+their skits is about a cheese shop that has no cheese in stock. The
+original Python Package Index (pypi.org) was called The Cheeseshop, in
+part because it hosted metadata about packages but no actual
+packages. The wheel file format was selected because cheese is
+packaged in wheels. A
+"[fromager](https://en.wiktionary.org/wiki/fromager)" is the French
+word for someone who makes or sells cheese.
