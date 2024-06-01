@@ -34,8 +34,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: articulate/actions-markdownlint@v1.1.0
-        # with:
-        #   config: markdownlint-config.json
+        with:
+          config: .markdownlint-config.yaml
         #   files: 'docs/**/*.md'
         #   ignore: node_modules
         #   version: 0.28.1
