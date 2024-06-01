@@ -6,6 +6,7 @@ on:
 
 jobs:
   linter:
+    name: linter
     runs-on: ubuntu-latest
     if: ${{ !startsWith(github.ref, 'refs/tags') }}
 
@@ -22,3 +23,19 @@ jobs:
 
       - name: Run
         run: tox -e linter
+
+  markdownlint:
+    # https://github.com/marketplace/actions/markdown-lint
+    name: markdownlint
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.ref, 'refs/tags') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: articulate/actions-markdownlint@v1.1.0
+        # with:
+        #   config: markdownlint-config.json
+        #   files: 'docs/**/*.md'
+        #   ignore: node_modules
+        #   version: 0.28.1
