@@ -3,14 +3,16 @@
 Fromager is a tool for completely re-building a dependency tree of
 Python wheels from source.
 
+The goals are to support guaranteeing
+
 1. The [binary
    package](https://packaging.python.org/en/latest/glossary/#term-Built-Distribution)
-   they are installing was built from source in a known build
+   someone is installing was built from source in a known build
    environment compatible with their own environment
 1. All of the package’s dependencies were also built from source -- any
    binary package installed will have been built from source
 1. All of the build tools used to build these binary packages will
-   also have been built from source.
+   also have been built from source
 
 ## Modes
 
@@ -52,6 +54,30 @@ Wheels are built by running `pip wheel` configured so it will only
 download dependencies from the local wheel repository. This ensures
 that all dependencies are being built in the correct order.
 
+## Production Builds
+
+Production builds use separate commands for the steps described as
+part of bootstrapping, and accept arguments to control the servers
+that are used for downloading source or built wheels.
+
+The `download-source-archive` command finds the source distribution
+for a specific version of a dependency on the specified package index
+and downloads it. It will be common to run this step with `pypi.org`,
+but for truly isolated and reproducible builds a private index server
+is more robust.
+
+The `prepare-source` command unpacks the source archive downloaded
+from the previous step and applies any patches (refer to
+[customization](docs/customization.md) for details about patching).
+
+The `prepare-build` command creates a virtualenv with the build
+dependencies for building the wheel. It expects a `--wheel-server-url`
+as argument to control where built wheels can be downloaded.
+
+The `build` command prepares a wheel, compiling any extensions using
+the appropriate override environment settings (refer to
+[customization](docs/customization.md) for details about overrides).
+
 ## Additional docs
 
 * [Package build customization instructions](docs/customization.md)
@@ -64,6 +90,6 @@ their skits is about a cheese shop that has no cheese in stock. The
 original Python Package Index (pypi.org) was called The Cheeseshop, in
 part because it hosted metadata about packages but no actual
 packages. The wheel file format was selected because cheese is
-packaged in wheels. A
+packaged in wheels. And
 "[fromager](https://en.wiktionary.org/wiki/fromager)" is the French
 word for someone who makes or sells cheese.
