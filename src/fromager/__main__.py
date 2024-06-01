@@ -13,8 +13,8 @@ import sys
 
 from packaging.requirements import Requirement
 
-from . import (context, finders, overrides, rpms, sdist, server, settings,
-               sources, wheels)
+from . import (context, finders, overrides, sdist, server, settings, sources,
+               wheels)
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +107,6 @@ def _get_argument_parser():
     parser_graph.add_argument('build_order_file', nargs='+')
     parser_graph.add_argument('--output', '-o')
 
-    parser_find_rpms = subparsers.add_parser('find-rpms')
-    parser_find_rpms.set_defaults(func=rpms.do_find_rpms)
-    parser_find_rpms.add_argument('build_order_file', default='work-dir/build-order.json')
-    parser_find_rpms.add_argument('--output', '-o')
 
     parser_summary = subparsers.add_parser('build-order-summary')
     parser_summary.set_defaults(func=do_build_order_summary)
