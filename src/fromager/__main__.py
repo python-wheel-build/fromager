@@ -62,7 +62,7 @@ def _get_argument_parser():
     parser.add_argument('--settings-file', default='overrides/settings.yaml')
     parser.add_argument('--wheel-server-url')
     parser.add_argument('--no-cleanup', dest='cleanup', default=True, action='store_false')
-    parser.add_argument('--variant', default='cpu', choices=['cpu', 'cuda'])
+    parser.add_argument('--variant', default='cpu')
 
     subparsers = parser.add_subparsers(title='commands', dest='command')
 

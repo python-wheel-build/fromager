@@ -1,8 +1,21 @@
 # Customizing parts of the package build process
 
-The tools support customizing most aspects of the build process,
+Fromager support customizing most aspects of the build process,
 including acquiring the source, applying local patches, passing
 arguments to the build, and providing a custom build command.
+
+## Variants
+
+It is frequently necessary to build the same packages in different
+ways, especially for binary wheels with code compiled for different
+operating systems or hardware architectures. In fromager, the sets of
+build configuration options for each scenario is called a "variant".
+
+The default variant is `cpu`, to differentiate from variants for
+hardware accelerators.
+
+A variant name can be any string, but since the variant name shows up
+in filesystem paths it is often easier to avoid including whitespace.
 
 ## Build environment variables
 
