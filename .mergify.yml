@@ -27,8 +27,8 @@ pull_request_rules:
           - check-success=markdownlint
           - check-success=unit (3.11)
           - check-success=unit (3.12)
-          - check-success=bootstrap (3.11)
-          - check-success=bootstrap (3.12)
+          - check-success=e2e (3.11, bootstrap)
+          - check-success=e2e (3.12, bootstrap)
           - '-draft'
           # - or:
           #     - check-success=history-update
