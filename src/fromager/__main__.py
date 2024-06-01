@@ -52,66 +52,121 @@ def main():
 
 def _get_argument_parser():
     parser = argparse.ArgumentParser('fromager')
-    parser.add_argument('-v', '--verbose', action='store_true', default=False)
-    parser.add_argument('--log-file', default='')
-    parser.add_argument('-o', '--sdists-repo', default='sdists-repo')
-    parser.add_argument('-w', '--wheels-repo', default='wheels-repo')
-    parser.add_argument('-t', '--work-dir', default=os.environ.get('WORKDIR', 'work-dir'))
-    parser.add_argument('-p', '--patches-dir', default='overrides/patches')
-    parser.add_argument('-e', '--envs-dir', default='overrides/envs')
-    parser.add_argument('--settings-file', default='overrides/settings.yaml')
-    parser.add_argument('--wheel-server-url')
-    parser.add_argument('--no-cleanup', dest='cleanup', default=True, action='store_false')
-    parser.add_argument('--variant', default='cpu')
+    parser.add_argument('-v', '--verbose', action='store_true', default=False,
+                        help='report more detail to the console')
+    parser.add_argument('--log-file', default='',
+                        help='save detailed report of actions to file')
+    parser.add_argument('-o', '--sdists-repo', default='sdists-repo',
+                        help='location to manage source distributions [%(default)s]')
+    parser.add_argument('-w', '--wheels-repo', default='wheels-repo',
+                        help='location to manage wheel repository [%(default)s]')
+    parser.add_argument('-t', '--work-dir', default=os.environ.get('WORKDIR', 'work-dir'),
+                        help='location to manage working files, including builds [%(default)s]')
+    parser.add_argument('-p', '--patches-dir', default='overrides/patches',
+                        help='location of files for patching source before building [%(default)s]')
+    parser.add_argument('-e', '--envs-dir', default='overrides/envs',
+                        help='location of environment override files [%(default)s]')
+    parser.add_argument('--settings-file', default='overrides/settings.yaml',
+                        help='location of the application settings file [%(default)s]')
+    parser.add_argument('--wheel-server-url',
+                        help='URL for the wheel server for builds')
+    parser.add_argument('--no-cleanup', dest='cleanup', default=True, action='store_false',
+                        help='do not remove working files when a build completes successfully')
+    parser.add_argument('--variant', default='cpu',
+                        help='the build variant name [%(default)s]')
 
     subparsers = parser.add_subparsers(title='commands', dest='command')
 
-    parser_bootstrap = subparsers.add_parser('bootstrap')
+    parser_bootstrap = subparsers.add_parser(
+        'bootstrap',
+        help='recursively build packages and their dependencies',
+    )
     parser_bootstrap.set_defaults(func=do_bootstrap)
     parser_bootstrap.add_argument('--requirements-file', '-r', action='append', default=[],
-                                  dest='requirements_files')
-    parser_bootstrap.add_argument('toplevel', nargs='*')
+                                  dest='requirements_files',
+                                  help='a pip requirements file')
+    parser_bootstrap.add_argument('toplevel', nargs='*',
+                                  help='a requirements specification for a package')
 
-    parser_download = subparsers.add_parser('download-source-archive')
+    parser_download = subparsers.add_parser(
+        'download-source-archive',
+        help='download the source code archive for one version of one package',
+    )
     parser_download.set_defaults(func=do_download_source_archive)
-    parser_download.add_argument('dist_name')
-    parser_download.add_argument('dist_version')
-    parser_download.add_argument('sdist_server_url')
+    parser_download.add_argument('dist_name',
+                                 help='the name of the distribution')
+    parser_download.add_argument('dist_version',
+                                 help='the version of the distribution')
+    parser_download.add_argument('sdist_server_url',
+                                 help='the URL for a PyPI-compatible package index hosting sdists')
 
-    parser_prepare_source = subparsers.add_parser('prepare-source')
+    parser_prepare_source = subparsers.add_parser(
+        'prepare-source',
+        help='ensure the source code is in a form ready for building a distribution',
+    )
     parser_prepare_source.set_defaults(func=do_prepare_source)
-    parser_prepare_source.add_argument('dist_name')
-    parser_prepare_source.add_argument('dist_version')
+    parser_prepare_source.add_argument('dist_name',
+                                       help='the name of the distribution')
+    parser_prepare_source.add_argument('dist_version',
+                                       help='the version of the distribution')
 
-    parser_prepare_build = subparsers.add_parser('prepare-build')
+    parser_prepare_build = subparsers.add_parser(
+        'prepare-build',
+        help='set up build environment to build the package',
+    )
     parser_prepare_build.set_defaults(func=do_prepare_build)
-    parser_prepare_build.add_argument('dist_name')
-    parser_prepare_build.add_argument('dist_version')
+    parser_prepare_build.add_argument('dist_name',
+                                      help='the name of the distribution')
+    parser_prepare_build.add_argument('dist_version',
+                                      help='the version of the distribution')
 
-    parser_build = subparsers.add_parser('build')
+    parser_build = subparsers.add_parser(
+        'build',
+        help='build a wheel',
+    )
     parser_build.set_defaults(func=do_build)
-    parser_build.add_argument('dist_name')
-    parser_build.add_argument('dist_version')
+    parser_build.add_argument('dist_name',
+                              help='the name of the distribution')
+    parser_build.add_argument('dist_version',
+                              help='the version of the distribution')
 
-    parser_canonicalize = subparsers.add_parser('canonicalize')
+    parser_canonicalize = subparsers.add_parser(
+        'canonicalize',
+        help='convert a package name to its canonical form for use in override paths',
+    )
     parser_canonicalize.set_defaults(func=do_canonicalize)
-    parser_canonicalize.add_argument('toplevel', nargs='+')
+    parser_canonicalize.add_argument('toplevel', nargs='+',
+                                     help='names of distributions to convert')
 
-    parser_csv = subparsers.add_parser('build-order-csv')
+    parser_csv = subparsers.add_parser(
+        'build-order-csv',
+        help='convert build order files to CSV',
+    )
     parser_csv.set_defaults(func=do_build_order_csv)
-    parser_csv.add_argument('build_order_file', default='work-dir/build-order.json', nargs='?')
-    parser_csv.add_argument('--output', '-o')
+    parser_csv.add_argument('build_order_file', default='work-dir/build-order.json', nargs='?',
+                            help='the build-order.json files to convert')
+    parser_csv.add_argument('--output', '-o',
+                            help='write the output to a named file (defaults to console)')
 
-    parser_graph = subparsers.add_parser('build-order-graph')
+    parser_graph = subparsers.add_parser(
+        'build-order-graph',
+        help='convert build-order.json files to a dot graph showing dependencies',
+    )
     parser_graph.set_defaults(func=do_build_order_graph)
-    parser_graph.add_argument('build_order_file', nargs='+')
-    parser_graph.add_argument('--output', '-o')
+    parser_graph.add_argument('build_order_file', nargs='+',
+                              help='the build-order.json files to convert')
+    parser_graph.add_argument('--output', '-o',
+                              help='write the output to a named file (defaults to console)')
 
-
-    parser_summary = subparsers.add_parser('build-order-summary')
+    parser_summary = subparsers.add_parser(
+        'build-order-summary',
+        help='report commonalities and differences between build order files',
+    )
     parser_summary.set_defaults(func=do_build_order_summary)
-    parser_summary.add_argument('build_order_file', nargs='+')
-    parser_summary.add_argument('--output', '-o')
+    parser_summary.add_argument('build_order_file', nargs='+',
+                                help='the build-order.json files to examine')
+    parser_summary.add_argument('--output', '-o',
+                                help='write the output to a named CSV file (defaults to console)')
 
     return parser
 
