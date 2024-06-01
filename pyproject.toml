@@ -48,6 +48,10 @@ test = [
     "pytest-cov",
     "coverage!=4.4,>=4.0",
 ]
+build = [
+    "build",
+    "twine",
+]
 
 [project.scripts]
 fromager = "fromager.__main__:main"
