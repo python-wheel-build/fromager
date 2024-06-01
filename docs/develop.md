@@ -1,29 +1,5 @@
 # Developing these tools
 
-## Local development/testing
-
-The tools should work as-is on a Fedora system. Use `setup.sh` to
-install some system dependencies for running the tool scripts and for
-compiling some of the target packages.
-
-Podman is also required in some cases, and is not installed by
-`setup.sh`.
-
-Use the `cli` tox environment to run the tool without having to manage
-your own virtualenv for variations of commands not supported directly
-by the script wrappers. For example
-
-```
-$ tox -e cli -- --no-cleanup bootstrap numpy
-```
-
-is basically the same as `mirror-sdists.sh numpy` but leaves the
-source trees for all of the packages on the filesystem to be examined,
-something that is too expensive to do normally in container builds. It
-also allows you to reuse any of the build artifacts between
-iterations, so you don't have to wait for expensive dependencies to
-compile again.
-
 ### Unit tests and linter
 
 The unit tests and linter rely on [tox](https://tox.wiki/) and a
