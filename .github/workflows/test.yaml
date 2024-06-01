@@ -43,6 +43,7 @@ jobs:
           - "3.12"
         test-script:
           - bootstrap
+          - report_missing_dependency
 
     steps:
       - name: Get source

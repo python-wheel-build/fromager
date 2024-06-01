@@ -5,67 +5,89 @@
 # not available when setting up to build a package.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-# shellcheck disable=SC1091
-source "${SCRIPTDIR}/common.sh"
-TOPDIR="$( cd "${SCRIPTDIR}/.." && pwd )"
 
-# Create the various output directories
-mkdir -p "${WORKDIR}"
-mkdir -p wheels-repo/downloads/
-mkdir -p sdists-repo/downloads/
-
-# What are we building?
-TOPLEVEL=stevedore
-
-# Redirect stdout/stderr to logfile
-logfile="$WORKDIR/report-missing-dependency.log"
-exec > >(tee "$logfile") 2>&1
+set -x
+set -e
+set -o pipefail
 
 on_exit() {
   [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
 }
 trap on_exit EXIT SIGINT SIGTERM
 
-# Bootstrap to create the build order file, if we don't have one.
-if [ ! -f work-dir/build-order.json ]; then
-  "$TOPDIR/mirror-sdists.sh" "$TOPLEVEL"
-fi
+# Bootstrap to create the build order file.
+OUTDIR="e2e-output"
+
+# What are we building?
+DIST="stevedore"
+VERSION="5.2.0"
+
+# Recreate output directory
+rm -rf "$OUTDIR"
+mkdir -p "$OUTDIR/build-logs"
+
+tox -e cli -- \
+    --sdists-repo="$OUTDIR/sdists-repo" \
+    --wheels-repo="$OUTDIR/wheels-repo" \
+    --work-dir="$OUTDIR/work-dir" \
+    bootstrap "${DIST}==${VERSION}"
 
 # Extract the build dependencies from the bootstrap info.
-jq -r '.[] | select( .type | contains("build-") ) | .req'  "$WORKDIR/build-order.json" > "$WORKDIR/expected_build_requirements.txt"
+jq -r '.[] | select( .type | contains("build-") ) | .req'  \
+   "$OUTDIR/work-dir/build-order.json" > "$OUTDIR/expected_build_requirements.txt"
 
 # Remove all of the build dependencies from the wheels-repo.
-jq -r '.[] | select( .type | contains("build-") ) | .dist'  "$WORKDIR/build-order.json" \
+jq -r '.[] | select( .type | contains("build-") ) | .dist'  "$OUTDIR/work-dir/build-order.json" \
   | while read -r to_remove; do
   echo "Removing build dependency ${to_remove}"
-  rm -f "wheels-repo/downloads/${to_remove}"*
+  rm -f "$OUTDIR/wheels-repo/downloads/${to_remove}"*
 done
+
+# Rebuild the wheel mirror to only include the things we have not deleted.
+rm -rf "$OUTDIR/wheels-repo/simple"
+.tox/cli/bin/pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
 # Start a web server for the wheels-repo. We remember the PID so we
 # can stop it later, and we determine the primary IP of the host
 # because podman won't see the server via localhost.
-$PYTHON -m http.server --directory wheels-repo/ 9090 &
+.tox/cli/bin/python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9090 &
 HTTP_SERVER_PID=$!
 IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
 export WHEEL_SERVER_URL="http://${IP}:9090/simple"
 
-# Set up a virtualenv with the mirror tool in it.
-banner "Set up mirror tools"
-MIRROR_VENV=$WORKDIR/venv-mirror-tools
-rm -rf "${MIRROR_VENV:?}"
-python3 -m venv "$MIRROR_VENV"
-"$MIRROR_VENV/bin/python3" -m pip install --index-url "$TOOL_SERVER_URL" python-pypi-mirror
-rm -rf wheels-repo/simple
-"$MIRROR_VENV/bin/pypi-mirror" create -d wheels-repo/downloads/ -m wheels-repo/simple/
-
 # Rebuild the original toplevel wheel, expecting a failure.
-version=$(jq -r '.[] | select ( .dist == "'$TOPLEVEL'" ) | .version' "$WORKDIR/build-order.json")
-"${TOPDIR}/build_wheel.sh" -d "$TOPLEVEL" -v "$version" -a "$WORKDIR" || echo "Got expected build error"
+version=$(jq -r '.[] | select ( .dist == "'$DIST'" ) | .version' "$OUTDIR/work-dir/build-order.json")
 
-if grep -q MissingDependency "build-logs/${TOPLEVEL}-prepare-build.log"; then
+# Download the source archive
+tox -e cli -- \
+    --log-file "$OUTDIR/build-logs/download-source-archive.log" \
+    --work-dir "$OUTDIR/work-dir" \
+    --sdists-repo "$OUTDIR/sdists-repo" \
+    --wheels-repo "$OUTDIR/wheels-repo" \
+    download-source-archive "$DIST" "$VERSION" "https://pypi.org/simple"
+
+# Prepare the source dir for building
+tox -e cli -- \
+    --log-file "$OUTDIR/build-logs/prepare-source.log" \
+    --work-dir "$OUTDIR/work-dir" \
+    --sdists-repo "$OUTDIR/sdists-repo" \
+    --wheels-repo "$OUTDIR/wheels-repo" \
+    prepare-source "$DIST" "$VERSION"
+
+# Prepare the build environment
+tox -e cli -- \
+    --log-file "$OUTDIR/build-logs/prepare-build.log" \
+    --work-dir "$OUTDIR/work-dir" \
+    --sdists-repo "$OUTDIR/sdists-repo" \
+    --wheels-repo "$OUTDIR/wheels-repo" \
+    --wheel-server-url "${WHEEL_SERVER_URL}" \
+    prepare-build "$DIST" "$VERSION" \
+    || echo "Got expected build error"
+
+if grep -q "MissingDependency" "$OUTDIR/build-logs/prepare-build.log"; then
   echo "Found expected error"
 else
-  echo "Did not find expected error in build-logs/${TOPLEVEL}-prepare-build.log"
+  echo "Did not find expected error in $OUTDIR/build-logs/prepare-build.log"
   exit 1
 fi
 
