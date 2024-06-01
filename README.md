@@ -3,14 +3,16 @@
 Fromager is a tool for completely re-building a dependency tree of
 Python wheels from source.
 
+The goals are to support guaranteeing
+
 1. The [binary
    package](https://packaging.python.org/en/latest/glossary/#term-Built-Distribution)
-   they are installing was built from source in a known build
+   someone is installing was built from source in a known build
    environment compatible with their own environment
 1. All of the package’s dependencies were also built from source -- any
    binary package installed will have been built from source
 1. All of the build tools used to build these binary packages will
-   also have been built from source.
+   also have been built from source
 
 ## Modes
 
@@ -64,6 +66,6 @@ their skits is about a cheese shop that has no cheese in stock. The
 original Python Package Index (pypi.org) was called The Cheeseshop, in
 part because it hosted metadata about packages but no actual
 packages. The wheel file format was selected because cheese is
-packaged in wheels. A
+packaged in wheels. And
 "[fromager](https://en.wiktionary.org/wiki/fromager)" is the French
 word for someone who makes or sells cheese.
