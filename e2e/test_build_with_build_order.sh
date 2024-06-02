@@ -27,8 +27,8 @@ rm -rf "$OUTDIR"
 mkdir -p "$OUTDIR/build-logs"
 
 # Set up virtualenv with the CLI and dependencies.
-tox -e cli -n
-source ".tox/cli/bin/activate"
+tox -e e2e -n -r
+source ".tox/e2e/bin/activate"
 
 # Bootstrap the test project
 fromager \

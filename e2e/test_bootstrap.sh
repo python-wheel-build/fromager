@@ -11,15 +11,19 @@ set -x
 set -e
 set -o pipefail
 
-OUTDIR="e2e-output"
+OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
 
-rm -rf e2e-outputs
+rm -rf "$OUTDIR"
+mkdir "$OUTDIR"
 
-tox -e cli -- \
-    --sdists-repo="$OUTDIR/sdists-repo" \
-    --wheels-repo="$OUTDIR/wheels-repo" \
-    --work-dir="$OUTDIR/work-dir" \
-    bootstrap 'stevedore==5.2.0'
+tox -e e2e -n -r
+source .tox/e2e/bin/activate
+
+fromager \
+  --sdists-repo="$OUTDIR/sdists-repo" \
+  --wheels-repo="$OUTDIR/wheels-repo" \
+  --work-dir="$OUTDIR/work-dir" \
+  bootstrap 'stevedore==5.2.0'
 
 find "$OUTDIR/wheels-repo/simple/" -name '*.whl'
 
