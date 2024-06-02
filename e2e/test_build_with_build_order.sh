@@ -42,7 +42,6 @@ cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
 rm -r "$OUTDIR/work-dir" "$OUTDIR/sdists-repo" "$OUTDIR/wheels-repo"
 
 # Rebuild the wheel mirror to be empty
-rm -rf "$OUTDIR/wheels-repo/simple"
 .tox/cli/bin/pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
 # Start a web server for the wheels-repo. We remember the PID so we
@@ -109,3 +108,27 @@ jq -r '.[] | "build_wheel " + .dist + " " + .version' \
    "$OUTDIR/build-order.json" \
    > "$OUTDIR/build.sh"
 source "$OUTDIR/build.sh"
+find "$OUTDIR/wheels-repo/simple/" -name '*.whl'
+
+EXPECTED_FILES="
+wheels-repo/downloads/flit_core-3.9.0-py3-none-any.whl
+wheels-repo/downloads/wheel-0.43.0-py3-none-any.whl
+wheels-repo/downloads/setuptools-70.0.0-py3-none-any.whl
+wheels-repo/downloads/pbr-6.0.0-py2.py3-none-any.whl
+wheels-repo/downloads/stevedore-5.2.0-py3-none-any.whl
+
+sdists-repo/downloads/stevedore-5.2.0.tar.gz
+sdists-repo/downloads/setuptools-70.0.0.tar.gz
+sdists-repo/downloads/wheel-0.43.0.tar.gz
+sdists-repo/downloads/flit_core-3.9.0.tar.gz
+sdists-repo/downloads/pbr-6.0.0.tar.gz
+"
+
+pass=true
+for f in $EXPECTED_FILES; do
+  if [ ! -f "$OUTDIR/$f" ]; then
+    echo "Did not find $f" 1>&2
+    pass=false
+  fi
+done
+$pass
