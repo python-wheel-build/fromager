@@ -43,6 +43,8 @@ def main():
     # handlers to filter messages at their own level.
     logging.getLogger().setLevel(logging.DEBUG)
 
+    overrides.log_overrides()
+
     try:
         args.func(args)
     except Exception as err:

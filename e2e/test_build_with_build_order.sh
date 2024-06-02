@@ -27,8 +27,8 @@ rm -rf "$OUTDIR"
 mkdir -p "$OUTDIR/build-logs"
 
 # Set up virtualenv with the CLI and dependencies.
-tox -e cli -n
-source ".tox/cli/bin/activate"
+tox -e e2e -n -r
+source ".tox/e2e/bin/activate"
 
 # Bootstrap the test project
 fromager \
@@ -42,13 +42,12 @@ cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
 rm -r "$OUTDIR/work-dir" "$OUTDIR/sdists-repo" "$OUTDIR/wheels-repo"
 
 # Rebuild the wheel mirror to be empty
-rm -rf "$OUTDIR/wheels-repo/simple"
-.tox/cli/bin/pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
+pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
 # Start a web server for the wheels-repo. We remember the PID so we
 # can stop it later, and we determine the primary IP of the host
 # because podman won't see the server via localhost.
-.tox/cli/bin/python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9090 &
+python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9090 &
 HTTP_SERVER_PID=$!
 IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
 export WHEEL_SERVER_URL="http://${IP}:9090/simple"
@@ -92,6 +91,9 @@ build_wheel() {
         --wheel-server-url "${WHEEL_SERVER_URL}" \
         build "$dist" "$version"
 
+    # Move the built wheel into place
+    mv "$OUTDIR"/wheels-repo/build/*.whl "$OUTDIR/wheels-repo/downloads/"
+
     # update the wheel server
     pypi-mirror \
         create \
@@ -108,4 +110,29 @@ build_wheel() {
 jq -r '.[] | "build_wheel " + .dist + " " + .version' \
    "$OUTDIR/build-order.json" \
    > "$OUTDIR/build.sh"
+find "$OUTDIR/wheels-repo/"
 source "$OUTDIR/build.sh"
+find "$OUTDIR/wheels-repo/"
+
+EXPECTED_FILES="
+wheels-repo/downloads/flit_core-3.9.0-py3-none-any.whl
+wheels-repo/downloads/wheel-0.43.0-py3-none-any.whl
+wheels-repo/downloads/setuptools-70.0.0-py3-none-any.whl
+wheels-repo/downloads/pbr-6.0.0-py2.py3-none-any.whl
+wheels-repo/downloads/stevedore-5.2.0-py3-none-any.whl
+
+sdists-repo/downloads/stevedore-5.2.0.tar.gz
+sdists-repo/downloads/setuptools-70.0.0.tar.gz
+sdists-repo/downloads/wheel-0.43.0.tar.gz
+sdists-repo/downloads/flit_core-3.9.0.tar.gz
+sdists-repo/downloads/pbr-6.0.0.tar.gz
+"
+
+pass=true
+for f in $EXPECTED_FILES; do
+  if [ ! -f "$OUTDIR/$f" ]; then
+    echo "FAIL: Did not find $OUTDIR/$f" 1>&2
+    pass=false
+  fi
+done
+$pass

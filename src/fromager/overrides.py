@@ -17,6 +17,10 @@ _mgr = extension.ExtensionManager(
 logger = logging.getLogger(__name__)
 
 
+def log_overrides():
+    logger.debug('loaded overrides for %s', _mgr.entry_points_names())
+
+
 def patches_for_source_dir(patches_dir, source_dir_name):
     """Iterator producing patches to apply to the source dir.
 

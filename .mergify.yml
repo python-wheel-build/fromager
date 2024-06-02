@@ -4,9 +4,12 @@ pull_request_rules:
       - or:
           - 'title~=^tox:'
           - 'title~=^ci:'
+          - 'title~=^e2e:'
           - files~=tox.ini
           - files~=.github/
           - files~=.markdownlint-config.yaml
+          - files~=tests/
+          - files~=e2e/
     actions:
       label:
         add:

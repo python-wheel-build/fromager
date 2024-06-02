@@ -45,6 +45,7 @@ jobs:
           - bootstrap
           - report_missing_dependency
           - build_with_build_order
+          - override
 
     steps:
       - name: Get source
