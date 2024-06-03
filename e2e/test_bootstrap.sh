@@ -39,6 +39,9 @@ sdists-repo/downloads/setuptools-70.0.0.tar.gz
 sdists-repo/downloads/wheel-0.43.0.tar.gz
 sdists-repo/downloads/flit_core-3.9.0.tar.gz
 sdists-repo/downloads/pbr-6.0.0.tar.gz
+
+work-dir/build-order.json
+work-dir/constraints.txt
 "
 
 pass=true
@@ -48,4 +51,13 @@ for f in $EXPECTED_FILES; do
     pass=false
   fi
 done
+
+# Verify that the constraints file matches the build order file.
+jq -r '.[] | .dist + "==" + .version' "$OUTDIR/work-dir/build-order.json" > "$OUTDIR/build-order-constraints.txt"
+if ! diff "$OUTDIR/work-dir/constraints.txt" "$OUTDIR/build-order-constraints.txt";
+then
+  echo "FAIL: constraints do not match build order"
+  pass=false
+fi
+
 $pass

@@ -36,6 +36,7 @@ class WorkContext:
         self.variant = variant
 
         self._build_order_filename = self.work_dir / 'build-order.json'
+        self._constraints_filename = self.work_dir / 'constraints.txt'
 
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -95,6 +96,9 @@ class WorkContext:
             # Requirement and Version instances that can't be
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
+        with open(self._constraints_filename, 'w') as f:
+            for step in self._build_stack:
+                f.write(f'{step["dist"]}=={step["version"]}\n')
 
     def setup(self):
         # The work dir must already exist, so don't try to create it.
