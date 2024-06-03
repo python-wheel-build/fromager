@@ -50,7 +50,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
     if not pre_built:
-        source_filename, resolved_version = sources.download_source(
+        source_filename, resolved_version, source_url, source_url_type = sources.download_source(
             ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
 
     else:
@@ -59,6 +59,8 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
         # case these do not come from PyPI?
         wheel_url, resolved_version = sources.resolve_sdist(
             req, sources.PYPI_SERVER_URL, only_sdists=False)
+        source_url = wheel_url
+        source_url_type = 'prebuilt'
         wheel_filename = ctx.wheels_prebuilt / os.path.basename(urlparse(wheel_url).path)
         if not wheel_filename.exists():
             logger.info(f'downloading pre-built wheel {wheel_url}')
@@ -109,7 +111,15 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
     # Add the new package to the build order list before trying to
     # build it so we have a record of the dependency even if the build
     # fails.
-    ctx.add_to_build_order(req_type, req, resolved_version, why, pre_built)
+    ctx.add_to_build_order(
+        req_type=req_type,
+        req=req,
+        version=resolved_version,
+        why=why,
+        source_url=source_url,
+        source_url_type=source_url_type,
+        prebuilt=pre_built,
+    )
 
     if not pre_built:
         # FIXME: This is a bit naive, but works for most wheels, including
