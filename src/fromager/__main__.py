@@ -233,7 +233,8 @@ def do_bootstrap(args, ctx):
 def do_download_source_archive(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('downloading source archive for %s from %s', req, args.sdist_server_url)
-    filename, _ = sources.download_source(ctx, req, [args.sdist_server_url])
+    filename, version, source_url, _ = sources.download_source(ctx, req, [args.sdist_server_url])
+    logger.debug('saved %s version %s from %s to %s', req.name, version, source_url, filename)
     print(filename)
 
 

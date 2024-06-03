@@ -25,16 +25,25 @@ DEFAULT_SDIST_SERVER_URLS = [
 
 def download_source(ctx, req, sdist_server_urls):
     downloader = overrides.find_override_method(req.name, 'download_source')
+    source_type = 'override'
     if not downloader:
         downloader = default_download_source
+        source_type = 'sdist'
     for url in sdist_server_urls:
         try:
             logger.debug('trying to resolve and download %s using %s', req, url)
-            source_filename, version = downloader(ctx, req, url)
+            download_details = downloader(ctx, req, url)
+            if len(download_details) == 3:
+                source_filename, version, source_url = download_details
+            elif len(download_details) == 2:
+                source_filename, version = download_details
+                source_url = 'override'
+            else:
+                raise ValueError(f'do not know how to unpack {download_details}, expected 2 or 3 members')
         except Exception as err:
             logger.debug('failed to resolve %s using %s: %s', req, url, err)
             continue
-        return (source_filename, version)
+        return (source_filename, version, source_url, source_type)
     servers = ', '.join(sdist_server_urls)
     raise ValueError(f'failed to find source for {req} at {servers}')
 
@@ -66,7 +75,7 @@ def default_download_source(ctx, req, sdist_server_url):
     url, version = resolve_sdist(req, sdist_server_url)
     source_filename = download_url(ctx.sdists_downloads, url)
     logger.debug('have source for %s version %s in %s', req, version, source_filename)
-    return (source_filename, version)
+    return (source_filename, version, url)
 
 
 def download_url(destination_dir, url):
