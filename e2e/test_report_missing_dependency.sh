@@ -53,10 +53,10 @@ rm -rf "$OUTDIR/wheels-repo/simple"
 # Start a web server for the wheels-repo. We remember the PID so we
 # can stop it later, and we determine the primary IP of the host
 # because podman won't see the server via localhost.
-.tox/e2e/bin/python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9090 &
+.tox/e2e/bin/python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9999 &
 HTTP_SERVER_PID=$!
 IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
-export WHEEL_SERVER_URL="http://${IP}:9090/simple"
+export WHEEL_SERVER_URL="http://${IP}:9999/simple"
 
 # Rebuild the original toplevel wheel, expecting a failure.
 version=$(jq -r '.[] | select ( .dist == "'$DIST'" ) | .version' "$OUTDIR/work-dir/build-order.json")
