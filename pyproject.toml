@@ -36,7 +36,6 @@ dependencies = [
     "pkginfo",
     "PyYAML",
     "pyproject_hooks>=1.0.0,!=1.1.0",
-    "python-gitlab",
     "python-pypi-mirror",
     "requests",
     "resolvelib",
