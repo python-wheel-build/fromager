@@ -29,8 +29,10 @@ pull_request_rules:
           - check-success=linter
           - check-success=pkglint
           - check-success=markdownlint
+          - check-success=unit (3.10)
           - check-success=unit (3.11)
           - check-success=unit (3.12)
+          - check-success=e2e (3.10, bootstrap)
           - check-success=e2e (3.11, bootstrap)
           - check-success=e2e (3.12, bootstrap)
           - check-success=e2e (3.11, report_missing_dependency)
