@@ -34,9 +34,9 @@ def test_seen_name_canonicalization(tmp_context):
 
 def test_build_order(tmp_context):
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
+        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme', 'url', 'sdist')
     tmp_context.add_to_build_order(
-        'dependency', Requirement('testdist>1.0'), '1.2', ' -> testdist')
+        'dependency', Requirement('testdist>1.0'), '1.2', ' -> testdist', 'url', 'sdist')
     contents_str = tmp_context._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
@@ -47,6 +47,8 @@ def test_build_order(tmp_context):
             'version': '6.0',
             'why': ' -> buildme',
             'prebuilt': False,
+            'source_url': 'url',
+            'source_url_type': 'sdist',
         },
         {
             'type': 'dependency',
@@ -55,6 +57,8 @@ def test_build_order(tmp_context):
             'version': '1.2',
             'why': ' -> testdist',
             'prebuilt': False,
+            'source_url': 'url',
+            'source_url_type': 'sdist',
         },
     ]
     assert expected == contents
@@ -62,11 +66,14 @@ def test_build_order(tmp_context):
 
 def test_build_order_repeats(tmp_context):
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
+        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme',
+        'url', 'sdist')
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme')
+        'build_backend', Requirement('buildme>1.0'), '6.0', ' -> buildme',
+        'url', 'sdist')
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('buildme[extra]>1.0'), '6.0', ' -> buildme[extra]')
+        'build_backend', Requirement('buildme[extra]>1.0'), '6.0', ' -> buildme[extra]',
+        'url', 'sdist')
     contents_str = tmp_context._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
@@ -77,6 +84,8 @@ def test_build_order_repeats(tmp_context):
             'version': '6.0',
             'why': ' -> buildme',
             'prebuilt': False,
+            'source_url': 'url',
+            'source_url_type': 'sdist',
         },
     ]
     assert expected == contents
@@ -84,9 +93,11 @@ def test_build_order_repeats(tmp_context):
 
 def test_build_order_name_canonicalization(tmp_context):
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('flit-core>1.0'), '3.9.0', ' -> buildme')
+        'build_backend', Requirement('flit-core>1.0'), '3.9.0', ' -> buildme',
+        'url', 'sdist')
     tmp_context.add_to_build_order(
-        'build_backend', Requirement('flit_core>1.0'), '3.9.0', ' -> buildme')
+        'build_backend', Requirement('flit_core>1.0'), '3.9.0', ' -> buildme',
+        'url', 'sdist')
     contents_str = tmp_context._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
@@ -97,6 +108,8 @@ def test_build_order_name_canonicalization(tmp_context):
             'version': '3.9.0',
             'why': ' -> buildme',
             'prebuilt': False,
+            'source_url': 'url',
+            'source_url_type': 'sdist',
         },
     ]
     assert expected == contents

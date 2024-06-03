@@ -70,7 +70,8 @@ class WorkContext:
     def has_been_seen(self, req, version):
         return self._resolved_key(req, version) in self._seen_requirements
 
-    def add_to_build_order(self, req_type, req, version, why, prebuilt=False):
+    def add_to_build_order(self, req_type, req, version, why, source_url, source_url_type,
+                           prebuilt=False):
         # We only care if this version of this package has been built,
         # and don't want to trigger building it twice. The "extras"
         # value, included in the _resolved_key() output, can confuse
@@ -88,6 +89,8 @@ class WorkContext:
             'version': str(version),
             'why': why,
             'prebuilt': prebuilt,
+            'source_url': source_url,
+            'source_url_type': source_url_type,
         }
         self._build_stack.append(info)
         with open(self._build_order_filename, 'w') as f:
