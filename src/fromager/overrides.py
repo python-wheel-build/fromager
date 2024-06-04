@@ -8,9 +8,15 @@ from stevedore import extension
 # and build target, what patches should we apply, what environment variables
 # should we set, etc.
 
+
+def _die_on_plugin_load_failure(mgr, ep, err):
+    raise RuntimeError(f'failed to load overrides for {ep.name}') from err
+
+
 _mgr = extension.ExtensionManager(
     namespace='fromager.project_overrides',
     invoke_on_load=False,
+    on_load_failure_callback=_die_on_plugin_load_failure,
 )
 
 
@@ -74,9 +80,10 @@ def find_override_method(distname, method):
     try:
         mod = _mgr[distname].plugin
     except KeyError:
-        logger.debug('no override module for %s', distname)
+        logger.debug('no override module for %s among %s', distname, _mgr.entry_points_names())
         return None
     if not hasattr(mod, method):
         logger.debug('no %s override for %s', method, distname)
         return None
+    logger.info('found %s override for %s', method, distname)
     return getattr(mod, method)
