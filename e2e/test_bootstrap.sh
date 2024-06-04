@@ -42,6 +42,12 @@ sdists-repo/downloads/pbr-6.0.0.tar.gz
 
 work-dir/build-order.json
 work-dir/constraints.txt
+
+work-dir/flit_core-3.9.0/build.log
+work-dir/pbr-6.0.0/build.log
+work-dir/setuptools-70.0.0/build.log
+work-dir/stevedore-5.2.0/build.log
+work-dir/wheel-0.43.0/build.log
 "
 
 pass=true

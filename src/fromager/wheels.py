@@ -34,6 +34,7 @@ def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
             '--wheel-dir', ctx.wheels_build,
             '--no-deps',
             '--index-url', ctx.wheel_server_url,  # probably redundant, but just in case
+            '--log', sdist_root_dir.parent / 'build.log',
             sdist_root_dir,
         ]
         external_commands.run(cmd, cwd=dir_name, extra_environ=extra_environ)
