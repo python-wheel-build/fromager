@@ -53,6 +53,7 @@ def main():
 
 
 def _get_argument_parser():
+    variant = os.environ.get('FROMAGER_VARIANT', 'cpu')
     parser = argparse.ArgumentParser('fromager')
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
                         help='report more detail to the console')
@@ -74,7 +75,7 @@ def _get_argument_parser():
                         help='URL for the wheel server for builds')
     parser.add_argument('--no-cleanup', dest='cleanup', default=True, action='store_false',
                         help='do not remove working files when a build completes successfully')
-    parser.add_argument('--variant', default='cpu',
+    parser.add_argument('--variant', default=variant,
                         help='the build variant name [%(default)s]')
 
     subparsers = parser.add_subparsers(title='commands', dest='command')
