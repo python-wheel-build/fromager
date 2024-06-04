@@ -1,8 +1,11 @@
+import logging
 import pathlib
 
 import yaml
 
 from . import overrides
+
+logger = logging.getLogger(__name__)
 
 
 class Settings:
@@ -24,6 +27,8 @@ def _parse(content):
 def load(filename):
     filepath = pathlib.Path(filename)
     if not filepath.exists():
+        logger.debug('settings file %s does not exist, ignoring', filepath.absolute())
         return Settings({})
-    with open(filename, 'r') as f:
+    with open(filepath, 'r') as f:
+        logger.info('loading settings from %s', filepath.absolute())
         return _parse(f)

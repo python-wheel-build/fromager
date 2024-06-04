@@ -211,6 +211,10 @@ def _get_requirements_from_args(args):
 
 @requires_context
 def do_bootstrap(args, ctx):
+    pre_built = ctx.settings.pre_built(args.variant)
+    if pre_built:
+        logger.info('treating %s as pre-built wheels', list(sorted(pre_built)))
+
     server.start_wheel_server(ctx)
 
     to_build = _get_requirements_from_args(args)
