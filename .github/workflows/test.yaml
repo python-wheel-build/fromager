@@ -16,6 +16,9 @@ jobs:
           - "3.10"
           - "3.11"
           - "3.12"
+        rust-version:
+          # RHEL 9.4 has rustc 1.75
+          - "1.75"
 
     steps:
       - name: Get source
@@ -26,10 +29,21 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Set up Rust ${{ matrix.rust-version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust-version }}
+          default: true
+          override: true
+
       - name: Install dependencies
         run: python -m pip install tox
 
       - name: Run tests
+        run: tox -e py
+
+      - name: Run tests for pyo3_test
+        working-directory: ./e2e/pyo3_test/
         run: tox -e py
 
   e2e:
@@ -43,6 +57,9 @@ jobs:
           - "3.10"
           - "3.11"
           - "3.12"
+        rust-version:
+          # RHEL 9.4 has rustc 1.75
+          - "1.75"
         test-script:
           - bootstrap
           - report_missing_dependency
@@ -57,6 +74,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust ${{ matrix.rust-version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust-version }}
+          default: true
+          override: true
 
       - name: Install dependencies
         run: python -m pip install tox

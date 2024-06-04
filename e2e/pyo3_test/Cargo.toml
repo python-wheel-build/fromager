@@ -1,0 +1,12 @@
+[package]
+name = "pyo3_test"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.21.2", features = ["gil-refs"] }
+
+[lib]
+name = "_lib"
+crate-type = ["cdylib"]
+path = "rust/lib.rs"

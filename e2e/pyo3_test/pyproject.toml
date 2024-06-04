@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools", "setuptools-rust"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyo3_test"
+version = "1.0.0"
+
+[tool.setuptools.packages]
+find = { where = ["python"] }
+
+[[tool.setuptools-rust.ext-modules]]
+target = "pyo3_test._lib"
