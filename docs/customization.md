@@ -17,6 +17,10 @@ hardware accelerators.
 A variant name can be any string, but since the variant name shows up
 in filesystem paths it is often easier to avoid including whitespace.
 
+Set the variant using the `--variant` command line option or the
+`FROMAGER_VARIANT` environment variable (for ease of use in
+containers).
+
 ## Build environment variables
 
 Most python packages with configurable builds use environment
