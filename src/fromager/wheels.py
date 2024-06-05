@@ -1,4 +1,5 @@
 import logging
+import os
 import platform
 import tempfile
 import venv
@@ -24,6 +25,23 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
 
 def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
     logger.debug('building wheel for %s with %s', sdist_root_dir, extra_environ)
+
+    # Activate the virtualenv for the subprocess:
+    # 1. Put the build environment at the front of the PATH to ensure
+    #    any build tools are picked up from there and not global
+    #    versions. If the caller has already set a path, start there.
+    # 2. Set VIRTUAL_ENV so tools looking for that (for example,
+    #    maturin) find it.
+    existing_path = extra_environ.get('PATH') or os.environ.get('PATH') or ''
+    path_parts = [str(build_env.python.parent)]
+    if existing_path:
+        path_parts.append(existing_path)
+    updated_path = ':'.join(path_parts)
+    override_env = {}
+    override_env.update(extra_environ)
+    override_env['PATH'] = updated_path
+    override_env['VIRTUAL_ENV'] = str(build_env.path)
+
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = [
             build_env.python, '-m', 'pip', '-vvv',
@@ -37,7 +55,7 @@ def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
             '--log', sdist_root_dir.parent / 'build.log',
             sdist_root_dir,
         ]
-        external_commands.run(cmd, cwd=dir_name, extra_environ=extra_environ)
+        external_commands.run(cmd, cwd=dir_name, extra_environ=override_env)
 
 
 class BuildEnvironment:
