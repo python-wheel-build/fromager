@@ -1,8 +1,8 @@
 import logging
 import os
 import platform
+import sys
 import tempfile
-import venv
 
 from . import external_commands, overrides
 
@@ -75,10 +75,11 @@ class BuildEnvironment:
         if self.path.exists():
             logger.info('reusing build environment in %s', self.path)
             return
+
         logger.debug('creating build environment in %s', self.path)
-        self._builder = venv.EnvBuilder(clear=True, with_pip=True)
-        self._builder.create(self.path)
+        external_commands.run([sys.executable, '-m', 'virtualenv', self.path])
         logger.info('created build environment in %s', self.path)
+
         req_filename = self.path / 'requirements.txt'
         # FIXME: Ensure each requirement is pinned to a specific version.
         with open(req_filename, 'w') as f:
