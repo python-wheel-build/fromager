@@ -5,7 +5,7 @@ import shutil
 
 import pkginfo
 import pyproject_hooks
-import tomli
+import toml
 from packaging import markers, metadata
 from packaging.requirements import Requirement
 
@@ -98,7 +98,7 @@ def _get_pyproject_contents(sdist_root_dir):
     pyproject_toml_filename = sdist_root_dir / 'pyproject.toml'
     if not os.path.exists(pyproject_toml_filename):
         return {}
-    return tomli.loads(pyproject_toml_filename.read_text())
+    return toml.loads(pyproject_toml_filename.read_text())
 
 
 # From pypa/build/src/build/__main__.py

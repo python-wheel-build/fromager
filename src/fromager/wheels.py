@@ -16,6 +16,9 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
     if not builder:
         builder = default_build_wheel
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    # TODO: refactor?
+    # Build Rust without network access
+    extra_environ["CARGO_NET_OFFLINE"] = "true"
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
     wheels = list(ctx.wheels_build.glob('*.whl'))
     if wheels:

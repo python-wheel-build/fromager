@@ -40,7 +40,7 @@ dependencies = [
     "requests",
     "resolvelib",
     "stevedore",
-    "tomli",
+    "toml",
     "virtualenv",
 ]
 
