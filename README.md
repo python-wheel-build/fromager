@@ -74,8 +74,9 @@ The `prepare-build` command creates a virtualenv with the build
 dependencies for building the wheel. It expects a `--wheel-server-url`
 as argument to control where built wheels can be downloaded.
 
-The `build` command prepares a wheel, compiling any extensions using
-the appropriate override environment settings (refer to
+The `build-wheel` command creates a wheel using the build environment
+and prepared source, compiling any extensions using the appropriate
+override environment settings (refer to
 [customization](docs/customization.md) for details about overrides).
 
 ## Additional docs

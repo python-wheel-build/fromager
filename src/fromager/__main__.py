@@ -123,15 +123,15 @@ def _get_argument_parser():
     parser_prepare_build.add_argument('dist_version',
                                       help='the version of the distribution')
 
-    parser_build = subparsers.add_parser(
-        'build',
-        help='build a wheel',
+    parser_build_wheel = subparsers.add_parser(
+        'build-wheel',
+        help='build a wheel from prepared source',
     )
-    parser_build.set_defaults(func=do_build)
-    parser_build.add_argument('dist_name',
-                              help='the name of the distribution')
-    parser_build.add_argument('dist_version',
-                              help='the version of the distribution')
+    parser_build_wheel.set_defaults(func=do_build_wheel)
+    parser_build_wheel.add_argument('dist_name',
+                                    help='the name of the distribution')
+    parser_build_wheel.add_argument('dist_version',
+                                    help='the version of the distribution')
 
     parser_canonicalize = subparsers.add_parser(
         'canonicalize',
@@ -281,7 +281,7 @@ def do_prepare_build(args, ctx):
 
 
 @requires_context
-def do_build(args, ctx):
+def do_build_wheel(args, ctx):
     req = Requirement(f'{args.dist_name}=={args.dist_version}')
     logger.info('building for %s', req)
     source_root_dir = _find_source_root_dir(pathlib.Path(args.work_dir), req, args.dist_version)
