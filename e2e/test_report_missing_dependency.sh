@@ -67,7 +67,7 @@ fromager \
   --work-dir "$OUTDIR/work-dir" \
   --sdists-repo "$OUTDIR/sdists-repo" \
   --wheels-repo "$OUTDIR/wheels-repo" \
-  download-source-archive "$DIST" "$VERSION" "https://pypi.org/simple"
+  step download-source-archive "$DIST" "$VERSION" "https://pypi.org/simple"
 
 # Prepare the source dir for building
 fromager \
@@ -75,7 +75,7 @@ fromager \
   --work-dir "$OUTDIR/work-dir" \
   --sdists-repo "$OUTDIR/sdists-repo" \
   --wheels-repo "$OUTDIR/wheels-repo" \
-  prepare-source "$DIST" "$VERSION"
+  step prepare-source "$DIST" "$VERSION"
 
 # Prepare the build environment
 fromager \
@@ -84,7 +84,7 @@ fromager \
   --sdists-repo "$OUTDIR/sdists-repo" \
   --wheels-repo "$OUTDIR/wheels-repo" \
   --wheel-server-url "${WHEEL_SERVER_URL}" \
-  prepare-build "$DIST" "$VERSION" \
+  step prepare-build "$DIST" "$VERSION" \
   || echo "Got expected build error"
 
 if grep -q "MissingDependency" "$OUTDIR/build-logs/prepare-build.log"; then

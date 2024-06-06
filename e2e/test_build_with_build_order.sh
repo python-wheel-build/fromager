@@ -63,7 +63,7 @@ build_wheel() {
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
         --wheels-repo "$OUTDIR/wheels-repo" \
-        download-source-archive "$dist" "$version" "https://pypi.org/simple"
+        step download-source-archive "$dist" "$version" "https://pypi.org/simple"
 
     # Prepare the source dir for building
     fromager \
@@ -71,7 +71,7 @@ build_wheel() {
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
         --wheels-repo "$OUTDIR/wheels-repo" \
-        prepare-source "$dist" "$version"
+        step prepare-source "$dist" "$version"
 
     # Prepare the build environment
     fromager \
@@ -80,7 +80,7 @@ build_wheel() {
         --sdists-repo "$OUTDIR/sdists-repo" \
         --wheels-repo "$OUTDIR/wheels-repo" \
         --wheel-server-url "${WHEEL_SERVER_URL}" \
-        prepare-build "$dist" "$version"
+        step prepare-build "$dist" "$version"
 
     # Build the wheel
     fromager \
@@ -89,7 +89,7 @@ build_wheel() {
         --sdists-repo "$OUTDIR/sdists-repo" \
         --wheels-repo "$OUTDIR/wheels-repo" \
         --wheel-server-url "${WHEEL_SERVER_URL}" \
-        build "$dist" "$version"
+        step build-wheel "$dist" "$version"
 
     # Move the built wheel into place
     mv "$OUTDIR"/wheels-repo/build/*.whl "$OUTDIR/wheels-repo/downloads/"
