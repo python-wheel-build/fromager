@@ -21,6 +21,15 @@ def step():
 @click.argument('sdist_server_url')
 @click.pass_obj
 def download_source_archive(wkctx, dist_name, dist_version, sdist_server_url):
+    """download the source code archive for one version of one package
+
+    DIST_NAME is the name of a distribution
+
+    DIST_VERSION is the version to process
+
+    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
+
+    """
     req = Requirement(f'{dist_name}=={dist_version}')
     logger.info('downloading source archive for %s from %s', req, sdist_server_url)
     filename, version, source_url, _ = sources.download_source(wkctx, req, [sdist_server_url])
@@ -33,6 +42,15 @@ def download_source_archive(wkctx, dist_name, dist_version, sdist_server_url):
 @click.argument('dist_version')
 @click.pass_obj
 def prepare_source(wkctx, dist_name, dist_version):
+    """ensure the source code is in a form ready for building a wheel
+
+    DIST_NAME is the name of a distribution
+
+    DIST_VERSION is the version to process
+
+    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
+
+    """
     req = Requirement(f'{dist_name}=={dist_version}')
     logger.info('preparing source directory for %s', req)
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / 'downloads'
@@ -64,6 +82,15 @@ def _find_source_root_dir(work_dir, req, dist_version):
 @click.argument('dist_version')
 @click.pass_obj
 def prepare_build(wkctx, dist_name, dist_version):
+    """set up build environment to build the package
+
+    DIST_NAME is the name of a distribution
+
+    DIST_VERSION is the version to process
+
+    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
+
+    """
     server.start_wheel_server(wkctx)
     req = Requirement(f'{dist_name}=={dist_version}')
     source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
@@ -76,6 +103,15 @@ def prepare_build(wkctx, dist_name, dist_version):
 @click.argument('dist_version')
 @click.pass_obj
 def build_wheel(wkctx, dist_name, dist_version):
+    """build a wheel from prepared source
+
+    DIST_NAME is the name of a distribution
+
+    DIST_VERSION is the version to process
+
+    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
+
+    """
     req = Requirement(f'{dist_name}=={dist_version}')
     logger.info('building for %s', req)
     source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)

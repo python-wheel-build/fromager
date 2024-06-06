@@ -18,9 +18,20 @@ def build_order():
 
 
 @build_order.command()
-@click.option('-o', '--output', type=click.Path())
+@click.option('-o', '--output', type=click.Path(),
+              help='output file to create')
 @click.argument('build_order_file')
 def as_csv(build_order_file, output):
+    """Create a comma-separated-value file from the build order file
+
+    BUILD_ORDER_FILE is one or more build-order.json files to convert
+
+    Creates a file suitable for import into a spreadsheet including the
+    distribution name, version, original requirement, dependency type,
+    whether the package is pre-built, the build order step number, and
+    a full dependency chain leading to the requirment.
+
+    """
     fields = [
         ('dist', 'Distribution Name'),
         ('version', 'Version'),
@@ -66,9 +77,19 @@ def as_csv(build_order_file, output):
 
 
 @build_order.command()
-@click.option('-o', '--output', type=click.Path())
+@click.option('-o', '--output', type=click.Path(),
+              help='output file to create')
 @click.argument('build_order_file', nargs=-1)
 def summary(build_order_file, output):
+    """Summarize the build order files
+
+    BUILD_ORDER_FILE is one or more build-order.json files to convert
+
+    Creates a comma-separated-value file including the distribution
+    name, the build order file that included it, which versions are
+    used in each, and where they match.
+
+    """
     dist_to_input_file = collections.defaultdict(dict)
     for filename in build_order_file:
         with open(filename, 'r') as f:
@@ -107,9 +128,15 @@ def summary(build_order_file, output):
 
 
 @build_order.command()
-@click.option('-o', '--output', type=click.Path())
+@click.option('-o', '--output', type=click.Path(),
+              help='output file to create')
 @click.argument('build_order_file', nargs=-1)
 def graph(build_order_file, output):
+    """Write a graphviz-compatible dot file representing the build order dependencies
+
+    BUILD_ORDER_FILE is one or more build-order.json files to convert
+
+    """
 
     def fmt_req(req, version):
         req = Requirement(req)
