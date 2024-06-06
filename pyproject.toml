@@ -31,6 +31,7 @@ classifiers = [
 requires-python = ">=3.10"
 
 dependencies = [
+    "click>=8.1.7",
     "html5lib",
     "packaging",
     "pkginfo",
@@ -59,7 +60,7 @@ build = [
 Repository = "https://github.com/python-wheel-build/fromager"
 
 [project.scripts]
-fromager = "fromager.__main__:main"
+fromager = "fromager.__main__:invoke_main"
 
 [project.entry-points."fromager.project_overrides"]
 # This test plugin should stay in the package.
