@@ -41,6 +41,7 @@ dependencies = [
     "resolvelib",
     "stevedore",
     "toml",
+    "virtualenv",
 ]
 
 [project.optional-dependencies]
