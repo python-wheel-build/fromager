@@ -74,5 +74,16 @@ def main(ctx, verbose, log_file,
 for cmd in commands.commands:
     main.add_command(cmd)
 
+
+def invoke_main():
+    # Wrapper for the click main command that ensures any exceptions
+    # are logged so that build pipeline outputs include the traceback.
+    try:
+        main(auto_envvar_prefix='FROMAGER')
+    except Exception as err:
+        logger.exception(err)
+        raise
+
+
 if __name__ == '__main__':
-    main(auto_envvar_prefix='FROMAGER')
+    invoke_main()
