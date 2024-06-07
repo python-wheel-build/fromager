@@ -66,6 +66,7 @@ jobs:
           - build_with_build_order
           - override
           - build_steps
+          - build
 
     steps:
       - name: Get source
