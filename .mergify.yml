@@ -29,22 +29,29 @@ pull_request_rules:
           - check-success=linter
           - check-success=pkglint
           - check-success=markdownlint
+
           - check-success=unit (3.10, 1.75)
           - check-success=unit (3.11, 1.75)
           - check-success=unit (3.12, 1.75)
+
           - check-success=e2e (3.10, 1.75, bootstrap)
           - check-success=e2e (3.11, 1.75, bootstrap)
           - check-success=e2e (3.12, 1.75, bootstrap)
+
+          - check-success=e2e (3.10, 1.75, build_steps)
+          - check-success=e2e (3.11, 1.75, build_steps)
+          - check-success=e2e (3.12, 1.75, build_steps)
+
+          - check-success=e2e (3.10, 1.75, override)
+          - check-success=e2e (3.11, 1.75, override)
+          - check-success=e2e (3.12, 1.75, override)
+
           - check-success=e2e (3.10, 1.75, report_missing_dependency)
           - check-success=e2e (3.11, 1.75, report_missing_dependency)
           - check-success=e2e (3.12, 1.75, report_missing_dependency)
-          - check-success=e2e (3.10, 1.75, build_with_build_order)
-          - check-success=e2e (3.11, 1.75, build_with_build_order)
-          - check-success=e2e (3.12, 1.75, build_with_build_order)
+
           - '-draft'
-          # - or:
-          #     - check-success=history-update
-          #     - label=ci
+
           - or:
               - approved-reviews-by=dhellmann
               - author=dhellmann
