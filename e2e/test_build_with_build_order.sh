@@ -52,39 +52,14 @@ HTTP_SERVER_PID=$!
 IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
 export WHEEL_SERVER_URL="http://${IP}:9999/simple"
 
-# Define the function used in the build script
-build_wheel() {
-    local -r dist="$1"
-    local -r version="$2"
+# Rebuild everything
+fromager \
+    --log-file "$OUTDIR/build-logs/${dist}-build.log" \
+    --work-dir "$OUTDIR/work-dir" \
+    --sdists-repo "$OUTDIR/sdists-repo" \
+    --wheels-repo "$OUTDIR/wheels-repo" \
+    build-sequence "$OUTDIR/build-order.json" "https://pypi.org/simple"
 
-    fromager \
-        --log-file "$OUTDIR/build-logs/${dist}-build.log" \
-        --work-dir "$OUTDIR/work-dir" \
-        --sdists-repo "$OUTDIR/sdists-repo" \
-        --wheels-repo "$OUTDIR/wheels-repo" \
-        build "$dist" "$version" "https://pypi.org/simple"
-
-    # Move the built wheel into place
-    mv "$OUTDIR"/wheels-repo/build/*.whl "$OUTDIR/wheels-repo/downloads/"
-
-    # update the wheel server
-    pypi-mirror \
-        create \
-        -d "$OUTDIR/wheels-repo/downloads/" \
-        -m "$OUTDIR/wheels-repo/simple/"
-
-}
-
-# Create and run a script to build everything, one wheel at a time.
-#
-# This is a little convoluted, but protects us from subshells
-# swallowing any errors in individual steps like we would see if we
-# passed the output of 'jq' to a while loop.
-jq -r '.[] | "build_wheel " + .dist + " " + .version' \
-   "$OUTDIR/build-order.json" \
-   > "$OUTDIR/build.sh"
-find "$OUTDIR/wheels-repo/"
-source "$OUTDIR/build.sh"
 find "$OUTDIR/wheels-repo/"
 
 EXPECTED_FILES="
