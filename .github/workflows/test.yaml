@@ -63,6 +63,7 @@ jobs:
         test-script:
           - bootstrap
           - build
+          - build_order
           - build_steps
           - override
           - report_missing_dependency
