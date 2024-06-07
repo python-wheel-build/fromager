@@ -88,8 +88,6 @@ def prepare_build(wkctx, dist_name, dist_version):
 
     DIST_VERSION is the version to process
 
-    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
-
     """
     server.start_wheel_server(wkctx)
     req = Requirement(f'{dist_name}=={dist_version}')
@@ -108,8 +106,6 @@ def build_wheel(wkctx, dist_name, dist_version):
     DIST_NAME is the name of a distribution
 
     DIST_VERSION is the version to process
-
-    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
 
     """
     req = Requirement(f'{dist_name}=={dist_version}')
