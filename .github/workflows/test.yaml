@@ -62,6 +62,7 @@ jobs:
           - "1.75"
         test-script:
           - bootstrap
+          - build
           - build_steps
           - override
           - report_missing_dependency
