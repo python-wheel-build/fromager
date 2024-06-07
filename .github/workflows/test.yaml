@@ -65,6 +65,7 @@ jobs:
           - report_missing_dependency
           - build_with_build_order
           - override
+          - build_steps
 
     steps:
       - name: Get source
