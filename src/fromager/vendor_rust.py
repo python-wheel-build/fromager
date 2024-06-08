@@ -4,10 +4,11 @@
 import json
 import logging
 import pathlib
-import subprocess
 import typing
 
 import toml
+
+from . import external_commands
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,7 @@ def _cargo_vendor(
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
     args.append(project_dir / VENDOR_DIR)
-    logger.debug("Vendor: %s", args)
-    out = subprocess.check_output(args, stderr=subprocess.STDOUT, text=True, env={})
-    logger.debug("cargo vendor output: %s", out)
-
+    external_commands.run(args)
     return sorted(project_dir.joinpath(VENDOR_DIR).iterdir())
 
 
