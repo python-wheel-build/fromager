@@ -26,6 +26,7 @@ def _cargo_vendor(
     project_dir: pathlib.Path,
 ) -> typing.Iterable[pathlib.Path]:
     """Run cargo vendor"""
+    logger.info("updating vendored rust dependencies in %s", project_dir)
     args = ["cargo", "vendor", f"--manifest-path={manifests[0]}"]
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
@@ -70,9 +71,9 @@ def _cargo_config(project_dir: pathlib.Path):
     try:
         with open(config_toml, "r", encoding="utf-8") as f:
             cfg = toml.load(f)
-        logger.info("Extending existing '.cargo/config.toml'")
+        logger.debug("Extending existing '.cargo/config.toml'")
     except FileNotFoundError:
-        logger.info("Creating new '.cargo/config.toml'")
+        logger.debug("Creating new '.cargo/config.toml'")
         dotcargo.mkdir(exist_ok=True)
         cfg = {}
 
@@ -92,21 +93,21 @@ def vendor_rust(project_dir: pathlib.Path, *, shrink_vendored: bool = True) -> b
     # check for Cargo.toml
     manifests = list(project_dir.glob("**/Cargo.toml"))
     if not manifests:
-        logger.info("%s has no Cargo.toml files", project_name)
+        logger.debug("%s has no Cargo.toml files", project_name)
         return False
 
     # setuptools-rust and maturin-based projects have a pyproject.toml
     if not project_dir.joinpath("pyproject.toml").is_file():
         raise ValueError("pyproject.toml is missing")
 
-    logger.info(
+    logger.debug(
         "%s has cargo maninfests: %s",
         project_name,
         sorted(str(d.relative_to(project_dir)) for d in manifests),
     )
     # fetch and vendor Rust crates
     vendored = _cargo_vendor(manifests, project_dir)
-    logger.info(
+    logger.debug(
         "%s vendored crates: %s",
         project_name,
         sorted(d.name for d in vendored),
