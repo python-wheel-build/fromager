@@ -67,6 +67,7 @@ jobs:
           - build_steps
           - override
           - report_missing_dependency
+          - rust_vendor
 
     steps:
       - name: Get source
