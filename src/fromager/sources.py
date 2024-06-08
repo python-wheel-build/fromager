@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import requests
 import resolvelib
 
-from . import overrides, resolver
+from . import overrides, resolver, vendor_rust
 
 logger = logging.getLogger(__name__)
 
@@ -181,4 +181,5 @@ def _default_prepare_source(ctx, req, source_filename, version):
     source_root_dir, is_new = unpack_source(ctx, source_filename)
     if is_new:
         _patch_source(ctx, source_root_dir)
+        vendor_rust.vendor_rust(source_root_dir)
     return source_root_dir
