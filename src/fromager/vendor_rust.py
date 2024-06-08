@@ -2,8 +2,8 @@
 """Vendor Rust crates into an sdist
 """
 import json
-import pathlib
 import logging
+import pathlib
 import subprocess
 import typing
 
