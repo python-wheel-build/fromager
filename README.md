@@ -60,6 +60,28 @@ Production builds use separate commands for the steps described as
 part of bootstrapping, and accept arguments to control the servers
 that are used for downloading source or built wheels.
 
+### All-in-one commands
+
+Two commands support building wheels from source.
+
+The `build` command takes as input the distribution name and version
+to build, the variant, and the URL where it is acceptable to download
+source distributions. The server URL is usually a simple index URL for
+an internal package index. The outputs are one patched source
+distribution and one built wheel.
+
+The `build-sequence` command takes a build-order file, the variant,
+and the source distribution server URL. The outputs are patched source
+distributions and built wheels for each item in the build-order file.
+
+### Step-by-step commands
+
+Occasionally it is necessary to perform additional tasks between build
+steps, or to run the different steps in different configurations (with
+or without network access, for example). Using the `step` subcommands,
+it is possible to script the same operations performed by the `build`
+and `build-sequence` commands.
+
 The `step download-source-archive` command finds the source
 distribution for a specific version of a dependency on the specified
 package index and downloads it. It will be common to run this step
