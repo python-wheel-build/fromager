@@ -13,6 +13,14 @@ The goals are to support guaranteeing
    binary package installed will have been built from source
 1. All of the build tools used to build these binary packages will
    also have been built from source
+1. The build can be customized for the packager's needs, including
+   patching out bugs, passing different compilation options to support
+   build "variants", etc.
+
+The basic design tenet is to automate everything with a default
+behavior that works for most PEP-517 compatible packages, but support
+overriding all of the actions for special cases, without encoding
+those special cases directly into fromager.
 
 ## Modes
 
