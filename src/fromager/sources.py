@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os.path
@@ -108,6 +109,11 @@ def _sdist_root_name(source_filename):
     return base_name[:-len(ext_to_strip)]
 
 
+def _takes_arg(f, arg_name):
+    sig = inspect.signature(f)
+    return arg_name in sig.parameters
+
+
 def unpack_source(ctx, source_filename):
     unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
     if unpack_dir.exists():
@@ -124,7 +130,11 @@ def unpack_source(ctx, source_filename):
     logger.debug('unpacking %s to %s', source_filename, unpack_dir)
     if str(source_filename).endswith('.tar.gz'):
         with tarfile.open(source_filename, 'r') as t:
-            t.extractall(unpack_dir, filter='data')
+            if _takes_arg(t.extractall, 'filter'):
+                t.extractall(unpack_dir, filter='data')
+            else:
+                logger.debug('unpacking without filter="data"')
+                t.extractall(unpack_dir)
     elif str(source_filename).endswith('.zip'):
         with zipfile.ZipFile(source_filename) as zf:
             zf.extractall(path=unpack_dir)
