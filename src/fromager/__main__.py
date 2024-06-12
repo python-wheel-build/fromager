@@ -14,7 +14,7 @@ VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
 
 
 @click.group()
-@click.option('-v', '--verbose', default=False, help='report more detail to the console')
+@click.option('-v', '--verbose', default=False, is_flag=True, help='report more detail to the console')
 @click.option('--log-file', type=click.Path(), help='save detailed report of actions to file')
 @click.option('-o', '--sdists-repo', default=pathlib.Path('sdists-repo'), type=click.Path(),
               help='location to manage source distributions')
