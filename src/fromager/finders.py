@@ -32,7 +32,7 @@ def find_sdist(downloads_dir, req, dist_version):
         filename_prefix = _dist_name_to_filename(req.name)
         canonical_name = canonicalize_name(req.name)
 
-        candidate_bases = [
+        candidate_bases = set([
             # First check if the file is there using the canonically
             # transformed name.
             f'{filename_prefix}-{dist_version}',
@@ -47,7 +47,7 @@ def find_sdist(downloads_dir, req, dist_version):
             # Sometimes the sdist uses '.' instead of '-' in the
             # package name portion.
             f'{req.name.replace("-", ".")}-{dist_version}',
-        ]
+        ])
         # Case-insensitive globbing was added to Python 3.12, but we
         # have to run with older versions, too, so do our own name
         # comparison.
@@ -66,7 +66,7 @@ def find_wheel(downloads_dir, req, dist_version):
     filename_prefix = _dist_name_to_filename(req.name)
     canonical_name = canonicalize_name(req.name)
 
-    candidate_bases = [
+    candidate_bases = set([
         # First check if the file is there using the canonically
         # transformed name.
         f'{filename_prefix}-{dist_version}-',
@@ -81,7 +81,7 @@ def find_wheel(downloads_dir, req, dist_version):
         # Sometimes the sdist uses '.' instead of '-' in the
         # package name portion.
         f'{req.name.replace("-", ".")}-{dist_version}-',
-    ]
+    ])
     # Case-insensitive globbing was added to Python 3.12, but we
     # have to run with older versions, too, so do our own name
     # comparison.
@@ -127,7 +127,7 @@ def find_source_dir(work_dir, req, dist_version):
     name_based = f'{req.name}-{dist_version}'
     dotted_name = f'{req.name.replace("-", ".")}-{dist_version}'
 
-    candidate_bases = [
+    candidate_bases = set([
         # First check if the file is there using the canonically
         # transformed name.
         filename_based,
@@ -142,7 +142,7 @@ def find_source_dir(work_dir, req, dist_version):
         # Sometimes the sdist uses '.' instead of '-' in the
         # package name portion.
         dotted_name,
-    ]
+    ])
 
     # Case-insensitive globbing was added to Python 3.12, but we
     # have to run with older versions, too, so do our own name
