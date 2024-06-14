@@ -55,10 +55,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
 
     else:
         logger.info(f'{req_type} requirement {req} uses a pre-built wheel')
-        # FIXME: Do we need an option for prebuilt wheel server in
-        # case these do not come from PyPI?
-        wheel_url, resolved_version = sources.resolve_sdist(
-            req, sources.PYPI_SERVER_URL, only_sdists=False)
+        servers = [sources.PYPI_SERVER_URL]
+        if ctx.wheel_server_url:
+            servers.insert(0, ctx.wheel_server_url)
+        wheel_url, resolved_version = _resolve_prebuilt_wheel(req, servers)
         source_url = wheel_url
         source_url_type = 'prebuilt'
         wheel_filename = ctx.wheels_prebuilt / os.path.basename(urlparse(wheel_url).path)
@@ -169,6 +169,18 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
             logger.debug('cleaned up build environment %s', build_env.path)
 
     return resolved_version
+
+
+def _resolve_prebuilt_wheel(req, wheel_server_urls):
+    "Return URL to wheel and its version."
+    for url in wheel_server_urls:
+        try:
+            wheel_url, resolved_version = sources.resolve_sdist(req, url, only_sdists=False)
+        except Exception:
+            continue
+        if wheel_url and resolved_version:
+            return (wheel_url, resolved_version)
+    raise ValueError(f'Could not find a prebuilt wheel for {req} on {" or ".join(wheel_server_urls)}')
 
 
 def _handle_build_system_requirements(ctx, req, why, sdist_root_dir):

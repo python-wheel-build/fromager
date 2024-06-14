@@ -66,6 +66,7 @@ jobs:
           - build_order
           - build_steps
           - override
+          - prebuilt_wheels_alt_server
           - report_missing_dependency
           - rust_vendor
 
