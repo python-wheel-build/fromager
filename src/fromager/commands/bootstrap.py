@@ -24,8 +24,8 @@ def _get_requirements_from_args(toplevel, requirements_file):
 
 
 @click.command()
-@click.option('--variant', default='cpu',
-              help='the build variant name')
+@click.option('--variant', default='cpu', help='the build variant name',
+              type=click.Choice(['cpu', 'cuda-ubi9', 'gaudi-ubi9', 'rocm-ubi9']))
 @click.option('-r', '--requirements-file', multiple=True,
               help='pip requirements file')
 @click.argument('toplevel', nargs=-1)
