@@ -54,6 +54,10 @@ pull_request_rules:
           - check-success=e2e (3.11, 1.75, override)
           - check-success=e2e (3.12, 1.75, override)
 
+          - check-success=e2e (3.10, 1.75, prebuilt_wheels_alt_server)
+          - check-success=e2e (3.11, 1.75, prebuilt_wheels_alt_server)
+          - check-success=e2e (3.12, 1.75, prebuilt_wheels_alt_server)
+
           - check-success=e2e (3.10, 1.75, report_missing_dependency)
           - check-success=e2e (3.11, 1.75, report_missing_dependency)
           - check-success=e2e (3.12, 1.75, report_missing_dependency)

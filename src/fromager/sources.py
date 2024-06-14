@@ -57,7 +57,7 @@ def resolve_sdist(req, sdist_server_url, only_sdists=True):
     rslvr = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logger.debug("resolving requirement %s", req)
+    logger.debug("resolving requirement %s using %s", req, sdist_server_url)
     try:
         result = rslvr.resolve([req])
     except (resolvelib.InconsistentCandidate,
