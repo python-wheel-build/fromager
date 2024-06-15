@@ -71,7 +71,6 @@ def _build(wkctx, dist_name, dist_version, sdist_server_url):
     req = Requirement(f'{dist_name}=={dist_version}')
 
     # Download
-    logger.info('downloading source archive for %s from %s', req, sdist_server_url)
     source_filename, version, source_url, _ = sources.download_source(
         wkctx, req, [sdist_server_url],
     )
@@ -79,14 +78,12 @@ def _build(wkctx, dist_name, dist_version, sdist_server_url):
                  req.name, version, source_url, source_filename)
 
     # Prepare source
-    logger.info('preparing source directory for %s', req)
     source_root_dir = sources.prepare_source(wkctx, req, source_filename, dist_version)
 
     # Build environment
-    logger.info('preparing build environment for %s', req)
     sdist.prepare_build_environment(wkctx, req, source_root_dir)
 
-    logger.info('building for %s', req)
+    # Build
     build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(wkctx, req, source_root_dir, build_env)
     return wheel_filename

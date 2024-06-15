@@ -43,7 +43,7 @@ class MissingDependency(Exception):
 def handle_requirement(ctx, req, req_type='toplevel', why=None):
     if why is None:
         why = []
-    logger.info(f'{"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}')
+    logger.info(f'{req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}')
 
     pre_built = overrides.pkgname_to_override_module(req.name) in ctx.settings.pre_built(ctx.variant)
 
@@ -54,7 +54,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
             ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
 
     else:
-        logger.info(f'{req_type} requirement {req} uses a pre-built wheel')
+        logger.info(f'{req.name}: {req_type} requirement {req} uses a pre-built wheel')
         servers = [sources.PYPI_SERVER_URL]
         if ctx.wheel_server_url:
             servers.insert(0, ctx.wheel_server_url)
@@ -63,10 +63,10 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
         source_url_type = 'prebuilt'
         wheel_filename = ctx.wheels_prebuilt / os.path.basename(urlparse(wheel_url).path)
         if not wheel_filename.exists():
-            logger.info(f'downloading pre-built wheel {wheel_url}')
+            logger.info(f'{req.name}: downloading pre-built wheel {wheel_url}')
             wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
         else:
-            logger.info(f'have pre-built wheel {wheel_filename}')
+            logger.info(f'{req.name}: have pre-built wheel {wheel_filename}')
         # Add the wheel to the mirror so it is available to anything
         # that needs to install it. We leave a copy in the prebuilt
         # directory to make it easy to remove the wheel from the
@@ -74,7 +74,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
         # index.
         dest_name = ctx.wheels_downloads / wheel_filename.name
         if not dest_name.exists():
-            logger.info('updating temporary mirror with pre-built wheel')
+            logger.info(f'{req.name}: updating temporary mirror with pre-built wheel')
             shutil.copy(wheel_filename, dest_name)
             server.update_wheel_mirror(ctx)
         unpack_dir = ctx.work_dir / f'{req.name}-{resolved_version}'
@@ -83,11 +83,11 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
-        logger.debug(f'redundant {req_type} requirement {why} -> {req} resolves to {resolved_version}')
+        logger.debug(f'{req.name}: redundant {req_type} requirement {why} -> {req} resolves to {resolved_version}')
         return resolved_version
     ctx.mark_as_seen(req, resolved_version)
 
-    logger.info('new %s dependency %s resolves to %s', req_type, req, resolved_version)
+    logger.info(f'{req.name}: new {req_type} dependency {req} resolves to {resolved_version}')
 
     # Build the dependency chain up to the point of this new
     # requirement using a new list so we can avoid modifying the list
@@ -127,10 +127,9 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
         # actual name without doing most of the work to build the wheel.
         wheel_filename = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
         if wheel_filename:
-            logger.info('have wheel for %s version %s: %s',
-                        req.name, resolved_version, wheel_filename)
+            logger.info(f'{req.name}: have wheel version {resolved_version}: {wheel_filename}')
         else:
-            logger.info('preparing to build wheel for %s version %s', req, resolved_version)
+            logger.info(f'{req.name}: preparing to build wheel for version {resolved_version}')
             build_env = wheels.BuildEnvironment(
                 ctx, sdist_root_dir.parent,
                 build_system_dependencies | build_backend_dependencies,
@@ -140,8 +139,7 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
             # When we update the mirror, the built file moves to the
             # downloads directory.
             wheel_filename = ctx.wheels_downloads / built_filename.name
-            logger.info('built wheel for %s version %s: %s',
-                        req.name, resolved_version, wheel_filename)
+            logger.info(f'{req.name}: built wheel for version {resolved_version}: {wheel_filename}')
 
     # Process installation dependencies for all wheels.
     next_req_type = 'install'
@@ -160,13 +158,13 @@ def handle_requirement(ctx, req, req_type='toplevel', why=None):
     # artifacts that were created.
     if ctx.cleanup:
         if sdist_root_dir:
-            logger.debug('cleaning up source tree %s', sdist_root_dir)
+            logger.debug(f'{req.name}: cleaning up source tree {sdist_root_dir}')
             shutil.rmtree(sdist_root_dir)
-            logger.debug('cleaned up source tree %s', sdist_root_dir)
+            logger.debug(f'{req.name}: cleaned up source tree {sdist_root_dir}')
         if build_env:
-            logger.debug('cleaning up build environment %s', build_env.path)
+            logger.debug(f'{req.name}: cleaning up build environment {build_env.path}')
             shutil.rmtree(build_env.path)
-            logger.debug('cleaned up build environment %s', build_env.path)
+            logger.debug('{req.name}: cleaned up build environment {build_env.path}')
 
     return resolved_version
 
@@ -220,7 +218,7 @@ def _handle_build_backend_requirements(ctx, req, why, sdist_root_dir):
 
 
 def prepare_build_environment(ctx, req, sdist_root_dir):
-    logger.info('preparing build environment for %s', req.name)
+    logger.info(f'{req.name}: preparing build environment')
 
     next_req_type = 'build_system'
     build_system_dependencies = dependencies.get_build_system_dependencies(ctx, req, sdist_root_dir)
@@ -235,7 +233,7 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
         try:
             _maybe_install(ctx, dep, next_req_type, None)
         except Exception as err:
-            logger.error('failed to install %s dependency %s: %s', next_req_type, dep, err)
+            logger.error(f'{req.name}: failed to install {next_req_type} dependency {dep}: {err}')
             raise MissingDependency(next_req_type, dep, build_system_dependencies) from err
 
     next_req_type = 'build_backend'
@@ -251,7 +249,7 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
         try:
             _maybe_install(ctx, dep, next_req_type, None)
         except Exception as err:
-            logger.error('failed to install %s dependency %s: %s', next_req_type, dep, err)
+            logger.error(f'{req.name}: failed to install {next_req_type} dependency {dep}: {err}')
             raise MissingDependency(next_req_type, dep, build_backend_dependencies) from err
 
     try:
@@ -263,7 +261,7 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
         # Pip has no API, so parse its output looking for what it
         # couldn't install. If we don't find something, just re-raise
         # the exception we already have.
-        logger.error('failed to create build environment for %s: %s', dep, err)
+        logger.error(f'{req.name}: failed to create build environment for {dep}: {err}')
         match = _pip_missing_dependency_pattern.search(err.output)
         if match:
             raise MissingDependency(
@@ -287,12 +285,11 @@ def _maybe_install(ctx, req, req_type, resolved_version):
         try:
             actual_version = importlib.metadata.version(req.name)
             if str(resolved_version) == actual_version:
-                logger.debug('already have %s %s installed', req.name, resolved_version)
+                logger.debug(f'{req.name}: already have {req.name} version {resolved_version} installed')
                 return
-            logger.info('found %s %s installed, updating to %s',
-                        req.name, actual_version, resolved_version)
+            logger.info(f'{req.name}: found {req.name} {actual_version} installed, updating to {resolved_version}')
         except importlib.metadata.PackageNotFoundError as err:
-            logger.debug('could not determine version of %s, will install: %s', req.name, err)
+            logger.debug(f'{req.name}: could not determine version of {req.name}, will install: {err}')
     safe_install(ctx, req, req_type)
 
 

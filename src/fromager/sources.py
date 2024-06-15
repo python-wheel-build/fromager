@@ -32,7 +32,7 @@ def download_source(ctx, req, sdist_server_urls):
         source_type = 'sdist'
     for url in sdist_server_urls:
         try:
-            logger.debug('trying to resolve and download %s using %s', req, url)
+            logger.debug(f'{req.name}: trying to resolve and download {req} using {url}')
             download_details = downloader(ctx, req, url)
             if len(download_details) == 3:
                 source_filename, version, source_url = download_details
@@ -42,7 +42,7 @@ def download_source(ctx, req, sdist_server_urls):
             else:
                 raise ValueError(f'do not know how to unpack {download_details}, expected 2 or 3 members')
         except Exception as err:
-            logger.debug('failed to resolve %s using %s: %s', req, url, err)
+            logger.debug(f'{req.name}: failed to resolve {req} using {url}: {err}')
             continue
         return (source_filename, version, source_url, source_type)
     servers = ', '.join(sdist_server_urls)
@@ -57,13 +57,13 @@ def resolve_sdist(req, sdist_server_url, only_sdists=True):
     rslvr = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logger.debug("resolving requirement %s using %s", req, sdist_server_url)
+    logger.debug(f'{req.name}: resolving requirement {req} using {sdist_server_url}')
     try:
         result = rslvr.resolve([req])
     except (resolvelib.InconsistentCandidate,
             resolvelib.RequirementsConflicted,
             resolvelib.ResolutionImpossible) as err:
-        logger.warning(f'could not resolve {req}: {err}')
+        logger.warning(f'{req.name}: could not resolve {req}: {err}')
         raise
 
     for name, candidate in result.mapping.items():
@@ -75,7 +75,7 @@ def default_download_source(ctx, req, sdist_server_url):
     "Download the requirement and return the name of the output path."
     url, version = resolve_sdist(req, sdist_server_url)
     source_filename = download_url(ctx.sdists_downloads, url)
-    logger.debug('have source for %s version %s in %s', req, version, source_filename)
+    logger.debug(f'{req.name}: have source for {req} version {version} in {source_filename}')
     return (source_filename, version, url)
 
 
@@ -176,14 +176,14 @@ def read_build_meta(unpack_dir):
 
 
 def prepare_source(ctx, req, source_filename, version):
-    logger.info('preparing source for %s from %s', req, source_filename)
+    logger.info(f'{req.name}: preparing source for {req} from {source_filename}')
     preparer = overrides.find_override_method(req.name, 'prepare_source')
     if not preparer:
         preparer = _default_prepare_source
     source_root_dir = preparer(ctx, req, source_filename, version)
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
-        logger.info('prepared source for %s at %s', req, source_root_dir)
+        logger.info(f'{req.name}: prepared source for {req} at {source_root_dir}')
     return source_root_dir
 
 
@@ -191,5 +191,5 @@ def _default_prepare_source(ctx, req, source_filename, version):
     source_root_dir, is_new = unpack_source(ctx, source_filename)
     if is_new:
         _patch_source(ctx, source_root_dir)
-        vendor_rust.vendor_rust(source_root_dir)
+        vendor_rust.vendor_rust(req, source_root_dir)
     return source_root_dir

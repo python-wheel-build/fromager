@@ -15,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_build_system_dependencies(ctx, req, sdist_root_dir):
-    logger.info('getting build system dependencies for %s in %s',
-                req, sdist_root_dir)
+    logger.info(f'{req.name}: getting build system dependencies for {req} in {sdist_root_dir}')
     dep_func = overrides.find_override_method(req.name, 'get_build_system_dependencies')
     if not dep_func:
         dep_func = default_get_build_system_dependencies
@@ -40,8 +39,7 @@ def default_get_build_system_dependencies(ctx, req, sdist_root_dir):
 
 
 def get_build_backend_dependencies(ctx, req, sdist_root_dir):
-    logger.info('getting build backend dependencies for %s in %s',
-                req, sdist_root_dir)
+    logger.info(f'{req.name}: getting build backend dependencies for {req} in {sdist_root_dir}')
     dep_func = overrides.find_override_method(req.name, 'get_build_backend_dependencies')
     if not dep_func:
         dep_func = default_get_build_backend_dependencies
@@ -58,8 +56,7 @@ def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
 
 
 def get_install_dependencies(ctx, req, sdist_root_dir):
-    logger.info('getting installation dependencies for %s in %s',
-                req, sdist_root_dir)
+    logger.info(f'{req.name}: getting installation dependencies for {req} in {sdist_root_dir}')
     dep_func = overrides.find_override_method(req.name, 'get_install_dependencies')
     if not dep_func:
         dep_func = default_get_install_dependencies
@@ -68,7 +65,7 @@ def get_install_dependencies(ctx, req, sdist_root_dir):
 
 
 def get_install_dependencies_of_wheel(req, wheel_filename):
-    logger.info('getting installation dependencies from %s', wheel_filename)
+    logger.info(f'{req.name}: getting installation dependencies from {wheel_filename}')
     wheel = pkginfo.Wheel(wheel_filename)
     return _filter_requirements(req, wheel.requires_dist)
 
@@ -82,7 +79,7 @@ def default_get_install_dependencies(ctx, req, sdist_root_dir):
 
     # Clean up any existing dist-info so we don't get an error regenerating it.
     for info_dir in sdist_root_dir.glob('*.dist-info'):
-        logger.debug('removing existing dist-info dir %s', info_dir)
+        logger.debug(f'{req.name}: removing existing dist-info dir {info_dir}')
         shutil.rmtree(info_dir)
 
     metadata_path = hook_caller.prepare_metadata_for_build_wheel(sdist_root_dir)

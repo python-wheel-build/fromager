@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_wheel(ctx, req, sdist_root_dir, build_env):
-    logger.info('building wheel for %s in %s writing to %s', req.name, sdist_root_dir,
-                ctx.wheels_build)
+    logger.info(f'{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}')
     builder = overrides.find_override_method(req.name, 'build_wheel')
     if not builder:
         builder = default_build_wheel
@@ -27,7 +26,7 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
 
 
 def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
-    logger.debug('building wheel for %s with %s', sdist_root_dir, extra_environ)
+    logger.debug(f'{req.name}: building wheel in {sdist_root_dir} with {extra_environ}')
 
     # Activate the virtualenv for the subprocess:
     # 1. Put the build environment at the front of the PATH to ensure
