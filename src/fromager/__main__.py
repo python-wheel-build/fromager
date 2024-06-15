@@ -32,11 +32,14 @@ VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
               help='URL for the wheel server for builds')
 @click.option('--cleanup/--no-cleanup', default=True,
               help='control removal of working files when a build completes successfully')
+@click.option('--variant', default='cpu',
+              help='the build variant name')
 @click.pass_context
 def main(ctx, verbose, log_file,
          sdists_repo, wheels_repo, work_dir, patches_dir, envs_dir,
          settings_file, wheel_server_url,
          cleanup,
+         variant,
          ):
     # Configure console and log output.
     stream_handler = logging.StreamHandler()
@@ -66,6 +69,7 @@ def main(ctx, verbose, log_file,
         work_dir=work_dir,
         wheel_server_url=wheel_server_url,
         cleanup=cleanup,
+        variant=variant,
     )
     wkctx.setup()
     ctx.obj = wkctx
