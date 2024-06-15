@@ -65,8 +65,9 @@ class WorkContext:
         return (canonicalize_name(req.name), tuple(sorted(req.extras)), str(version))
 
     def mark_as_seen(self, req, version):
-        logger.debug('remembering seen sdist %s', self._resolved_key(req, version))
-        self._seen_requirements.add(self._resolved_key(req, version))
+        key = self._resolved_key(req, version)
+        logger.debug(f'{req.name}: remembering seen sdist {key}')
+        self._seen_requirements.add(key)
 
     def has_been_seen(self, req, version):
         return self._resolved_key(req, version) in self._seen_requirements
@@ -81,7 +82,7 @@ class WorkContext:
         key = (canonicalize_name(req.name), str(version))
         if key in self._build_requirements:
             return
-        logger.info(f'adding {key} to build order')
+        logger.info(f'{req.name}: adding {key} to build order')
         self._build_requirements.add(key)
         info = {
             'type': req_type,

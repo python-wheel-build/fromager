@@ -7,6 +7,7 @@ import pathlib
 import typing
 
 import toml
+from packaging.requirements import Requirement
 
 from . import external_commands
 
@@ -23,11 +24,12 @@ CARGO_CONFIG = {
 
 
 def _cargo_vendor(
+    req: Requirement,
     manifests: typing.List[pathlib.Path],
     project_dir: pathlib.Path,
 ) -> typing.Iterable[pathlib.Path]:
     """Run cargo vendor"""
-    logger.info("updating vendored rust dependencies in %s", project_dir)
+    logger.info(f'{req.name}: updating vendored rust dependencies in {project_dir}')
     args = ["cargo", "vendor", f"--manifest-path={manifests[0]}"]
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
@@ -81,35 +83,29 @@ def _cargo_config(project_dir: pathlib.Path):
         toml.dump(cfg, f)
 
 
-def vendor_rust(project_dir: pathlib.Path, *, shrink_vendored: bool = True) -> bool:
+def vendor_rust(req: Requirement, project_dir: pathlib.Path, *, shrink_vendored: bool = True) -> bool:
     """Vendor Rust crates into a source directory
 
     Returns ``True`` if the project has a ``Cargo.toml``, otherwise
     ``False``.
     """
-    project_name = str(project_dir.name)
     # check for Cargo.toml
     manifests = list(project_dir.glob("**/Cargo.toml"))
     if not manifests:
-        logger.debug("%s has no Cargo.toml files", project_name)
+        logger.debug(f'{req.name}: has no Cargo.toml files')
         return False
 
     # setuptools-rust and maturin-based projects have a pyproject.toml
     if not project_dir.joinpath("pyproject.toml").is_file():
         raise ValueError("pyproject.toml is missing")
 
-    logger.debug(
-        "%s has cargo maninfests: %s",
-        project_name,
-        sorted(str(d.relative_to(project_dir)) for d in manifests),
-    )
+    the_manifests = sorted(str(d.relative_to(project_dir)) for d in manifests)
+    logger.debug(f'{req.name}: {project_dir} has cargo manifests: {the_manifests}')
+
     # fetch and vendor Rust crates
-    vendored = _cargo_vendor(manifests, project_dir)
-    logger.debug(
-        "%s vendored crates: %s",
-        project_name,
-        sorted(d.name for d in vendored),
-    )
+    vendored = _cargo_vendor(req, manifests, project_dir)
+    logger.debug(f'{req.name}: vendored crates: {sorted(d.name for d in vendored)}')
+
     # remove unnecessary pre-compiled files for Windows, macOS, and iOS.
     if shrink_vendored:
         for crate_dir in vendored:
