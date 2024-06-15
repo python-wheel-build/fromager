@@ -35,16 +35,17 @@ def bootstrap(wkctx, requirements_file, toplevel):
     and optional version constraints.
 
     """
+    to_build = _get_requirements_from_args(toplevel, requirements_file)
+    if not to_build:
+        raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
+    logger.info('bootstrapping %r variant of %s', wkctx.variant, to_build)
+
     pre_built = wkctx.settings.pre_built(wkctx.variant)
     if pre_built:
         logger.info('treating %s as pre-built wheels', list(sorted(pre_built)))
 
     server.start_wheel_server(wkctx)
 
-    to_build = _get_requirements_from_args(toplevel, requirements_file)
-    if not to_build:
-        raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
-    logger.debug('bootstrapping %r variant of %s', wkctx.variant, to_build)
     for toplevel in to_build:
         sdist.handle_requirement(wkctx, Requirement(toplevel))
 
