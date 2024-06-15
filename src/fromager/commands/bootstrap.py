@@ -24,20 +24,18 @@ def _get_requirements_from_args(toplevel, requirements_file):
 
 
 @click.command()
-@click.option('--variant', default='cpu',
-              help='the build variant name')
 @click.option('-r', '--requirements-file', multiple=True,
               help='pip requirements file')
 @click.argument('toplevel', nargs=-1)
 @click.pass_obj
-def bootstrap(wkctx, variant, requirements_file, toplevel):
+def bootstrap(wkctx, requirements_file, toplevel):
     """Compute and build the dependencies of a set of requirements recursively
 
     TOPLEVEL is a requirements specification, including a package name
     and optional version constraints.
 
     """
-    pre_built = wkctx.settings.pre_built(variant)
+    pre_built = wkctx.settings.pre_built(wkctx.variant)
     if pre_built:
         logger.info('treating %s as pre-built wheels', list(sorted(pre_built)))
 
@@ -46,7 +44,7 @@ def bootstrap(wkctx, variant, requirements_file, toplevel):
     to_build = _get_requirements_from_args(toplevel, requirements_file)
     if not to_build:
         raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
-    logger.debug('bootstrapping %s', to_build)
+    logger.debug('bootstrapping %r variant of %s', wkctx.variant, to_build)
     for toplevel in to_build:
         sdist.handle_requirement(wkctx, Requirement(toplevel))
 
