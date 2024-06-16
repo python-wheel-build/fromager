@@ -6,6 +6,8 @@ from packaging.requirements import Requirement
 
 from .. import finders, sdist, server, sources, wheels
 
+from . import bootstrap
+
 logger = logging.getLogger(__name__)
 
 
@@ -114,3 +116,25 @@ def build_wheel(wkctx, dist_name, dist_version):
     build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(wkctx, req, source_root_dir, build_env)
     print(wheel_filename)
+
+@step.command()
+@click.option('-r', '--requirements-file', multiple=True,
+              help='pip requirements file')
+@click.option('--variant', default='cpu',
+              help='the build variant name')
+@click.argument('toplevel', nargs=-1)
+@click.pass_obj
+def create_build_order(wkctx, variant, requirements_file, toplevel):
+    pre_built = wkctx.settings.pre_built(variant)
+    if pre_built:
+        logger.info('treating %s as pre-built wheels', list(sorted(pre_built)))
+
+    server.start_wheel_server(wkctx)
+
+    to_build = bootstrap.get_requirements_from_args(toplevel, requirements_file)
+
+    if not to_build:
+        raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
+    logger.debug('bootstrapping %s', to_build)
+    for toplevel in to_build:
+        print("wip")

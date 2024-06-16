@@ -8,7 +8,7 @@ from .. import sdist, server
 logger = logging.getLogger(__name__)
 
 
-def _get_requirements_from_args(toplevel, requirements_file):
+def get_requirements_from_args(toplevel, requirements_file):
     to_build = []
     to_build.extend(toplevel)
     for filename in requirements_file:
@@ -43,7 +43,7 @@ def bootstrap(wkctx, variant, requirements_file, toplevel):
 
     server.start_wheel_server(wkctx)
 
-    to_build = _get_requirements_from_args(toplevel, requirements_file)
+    to_build = get_requirements_from_args(toplevel, requirements_file)
     if not to_build:
         raise RuntimeError('Pass a requirement specificiation or use -r to pass a requirements file')
     logger.debug('bootstrapping %s', to_build)
