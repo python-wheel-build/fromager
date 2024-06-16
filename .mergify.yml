@@ -66,6 +66,10 @@ pull_request_rules:
           - check-success=e2e (3.11, 1.75, rust_vendor)
           - check-success=e2e (3.12, 1.75, rust_vendor)
 
+          - check-success=e2e (3.10, 1.75, download_sequence)
+          - check-success=e2e (3.11, 1.75, download_sequence)
+          - check-success=e2e (3.12, 1.75, download_sequence)
+
           - '-draft'
 
           - or:

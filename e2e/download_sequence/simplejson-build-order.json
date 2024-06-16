@@ -1,0 +1,96 @@
+[
+  {
+    "type": "build-system",
+    "req": "flit_core<4,>=3.8",
+    "dist": "flit-core",
+    "version": "3.9.0",
+    "why": [
+      [
+        "toplevel",
+        "simplejson==3.19.2",
+        "3.19.2"
+      ],
+      [
+        "build-system",
+        "setuptools>=40.8.0",
+        "70.0.0"
+      ],
+      [
+        "build-backend",
+        "wheel",
+        "0.43.0"
+      ],
+      [
+        "build-system",
+        "flit_core<4,>=3.8",
+        "3.9.0"
+      ]
+    ],
+    "prebuilt": false,
+    "source_url": "https://files.pythonhosted.org/packages/c4/e6/c1ac50fe3eebb38a155155711e6e864e254ce4b6e17fe2429b4c4d5b9e80/flit_core-3.9.0.tar.gz#sha256=72ad266176c4a3fcfab5f2930d76896059851240570ce9a98733b658cb786eba",
+    "source_url_type": "sdist"
+  },
+  {
+    "type": "build-backend",
+    "req": "wheel",
+    "dist": "wheel",
+    "version": "0.43.0",
+    "why": [
+      [
+        "toplevel",
+        "simplejson==3.19.2",
+        "3.19.2"
+      ],
+      [
+        "build-system",
+        "setuptools>=40.8.0",
+        "70.0.0"
+      ],
+      [
+        "build-backend",
+        "wheel",
+        "0.43.0"
+      ]
+    ],
+    "prebuilt": false,
+    "source_url": "https://files.pythonhosted.org/packages/b8/d6/ac9cd92ea2ad502ff7c1ab683806a9deb34711a1e2bd8a59814e8fc27e69/wheel-0.43.0.tar.gz#sha256=465ef92c69fa5c5da2d1cf8ac40559a8c940886afcef87dcf14b9470862f1d85",
+    "source_url_type": "sdist"
+  },
+  {
+    "type": "build-system",
+    "req": "setuptools>=40.8.0",
+    "dist": "setuptools",
+    "version": "70.0.0",
+    "why": [
+      [
+        "toplevel",
+        "simplejson==3.19.2",
+        "3.19.2"
+      ],
+      [
+        "build-system",
+        "setuptools>=40.8.0",
+        "70.0.0"
+      ]
+    ],
+    "prebuilt": false,
+    "source_url": "https://files.pythonhosted.org/packages/aa/60/5db2249526c9b453c5bb8b9f6965fcab0ddb7f40ad734420b3b421f7da44/setuptools-70.0.0.tar.gz#sha256=f211a66637b8fa059bb28183da127d4e86396c991a942b028c6650d4319c3fd0",
+    "source_url_type": "sdist"
+  },
+  {
+    "type": "toplevel",
+    "req": "simplejson==3.19.2",
+    "dist": "simplejson",
+    "version": "3.19.2",
+    "why": [
+      [
+        "toplevel",
+        "simplejson==3.19.2",
+        "3.19.2"
+      ]
+    ],
+    "prebuilt": false,
+    "source_url": "https://files.pythonhosted.org/packages/79/79/3ccb95bb4154952532f280f7a41979fbfb0fbbaee4d609810ecb01650afa/simplejson-3.19.2.tar.gz#sha256=9eb442a2442ce417801c912df68e1f6ccfcd41577ae7274953ab3ad24ef7d82c",
+    "source_url_type": "sdist"
+  }
+]
