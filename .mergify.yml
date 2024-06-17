@@ -72,9 +72,11 @@ pull_request_rules:
 
           - '-draft'
 
-          - or:
-              - approved-reviews-by=dhellmann
-              - author=dhellmann
+          # At least 1 reviewer, without changes requested.
+          - "approved-reviews-by>=0"
+          - "#review-requested=0"
+          - "#changes-requested-reviews-by=0"
+
     actions:
       merge:
         method: merge
