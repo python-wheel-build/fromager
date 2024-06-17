@@ -49,15 +49,20 @@ def download_source(ctx, req, sdist_server_urls):
     raise ValueError(f'failed to find source for {req} at {servers}')
 
 
-def resolve_sdist(req, sdist_server_url, only_sdists=True):
+def resolve_dist(req, sdist_server_url, include_sdists=True, include_wheels=True):
     "Return URL to source and its version."
+    logger.debug(f'{req.name}: resolving requirement {req} using {sdist_server_url}')
+
     # Create the (reusable) resolver. Limit to sdists.
-    provider = resolver.PyPIProvider(only_sdists=only_sdists, sdist_server_url=sdist_server_url)
+    provider = resolver.PyPIProvider(
+        include_sdists=include_sdists,
+        include_wheels=include_wheels,
+        sdist_server_url=sdist_server_url,
+    )
     reporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
-    logger.debug(f'{req.name}: resolving requirement {req} using {sdist_server_url}')
     try:
         result = rslvr.resolve([req])
     except (resolvelib.InconsistentCandidate,
@@ -73,7 +78,7 @@ def resolve_sdist(req, sdist_server_url, only_sdists=True):
 
 def default_download_source(ctx, req, sdist_server_url):
     "Download the requirement and return the name of the output path."
-    url, version = resolve_sdist(req, sdist_server_url)
+    url, version = resolve_dist(req, sdist_server_url, include_wheels=False)
     source_filename = download_url(ctx.sdists_downloads, url)
     logger.debug(f'{req.name}: have source for {req} version {version} in {source_filename}')
     return (source_filename, version, url)
