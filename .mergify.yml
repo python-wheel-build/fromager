@@ -73,7 +73,7 @@ pull_request_rules:
           - '-draft'
 
           # At least 1 reviewer, without changes requested.
-          - "approved-reviews-by>=0"
+          - "#approved-reviews-by>=1"
           - "#review-requested=0"
           - "#changes-requested-reviews-by=0"
 
