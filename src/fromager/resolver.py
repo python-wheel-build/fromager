@@ -159,9 +159,11 @@ def get_metadata_for_wheel(url):
 
 
 class PyPIProvider(ExtrasProvider):
-    def __init__(self, only_sdists=False, sdist_server_url='https://pypi.org/simple/'):
+    def __init__(self, include_sdists=True, include_wheels=True,
+                 sdist_server_url='https://pypi.org/simple/'):
         super().__init__()
-        self.only_sdists = only_sdists
+        self.include_sdists = include_sdists
+        self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
 
     def identify(self, requirement_or_candidate):
@@ -184,13 +186,21 @@ class PyPIProvider(ExtrasProvider):
         # Need to pass the extras to the search, so they
         # are added to the candidate at creation - we
         # treat candidates as immutable once created.
-        candidates = (
-            candidate
-            for candidate in get_project_from_pypi(identifier, set(), self.sdist_server_url)
-            if (candidate.is_sdist or not self.only_sdists)
-            and candidate.version not in bad_versions
-            and all(candidate.version in r.specifier for r in requirements)
-        )
+        candidates = []
+        for candidate in get_project_from_pypi(identifier, set(), self.sdist_server_url):
+            # Skip versions that are known bad
+            if candidate.version in bad_versions:
+                continue
+            # Skip versions that do not match the requirement
+            if not all(candidate.version in r.specifier for r in requirements):
+                continue
+            # Only include sdists if we're asked to
+            if self.include_sdists and not candidate.is_sdist:
+                continue
+            # Only include wheels if we're asked to
+            if self.include_wheels and candidate.is_sdist:
+                continue
+            candidates.append(candidate)
         return sorted(candidates, key=attrgetter("version"), reverse=True)
 
     def is_satisfied_by(self, requirement, candidate):

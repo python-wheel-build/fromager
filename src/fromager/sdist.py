@@ -27,7 +27,7 @@ class MissingDependency(Exception):
         resolutions = []
         for r in all_reqs:
             try:
-                url, version = sources.resolve_sdist(r, sources.PYPI_SERVER_URL)
+                url, version = sources.resolve_dist(r, sources.PYPI_SERVER_URL)
             except Exception as err:
                 resolutions.append(f'{r} -> {err}')
             else:
@@ -173,7 +173,7 @@ def _resolve_prebuilt_wheel(req, wheel_server_urls):
     "Return URL to wheel and its version."
     for url in wheel_server_urls:
         try:
-            wheel_url, resolved_version = sources.resolve_sdist(req, url, only_sdists=False)
+            wheel_url, resolved_version = sources.resolve_dist(req, url, include_sdists=False)
         except Exception:
             continue
         if wheel_url and resolved_version:
