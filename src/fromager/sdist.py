@@ -173,7 +173,9 @@ def _resolve_prebuilt_wheel(req, wheel_server_urls):
     "Return URL to wheel and its version."
     for url in wheel_server_urls:
         try:
-            wheel_url, resolved_version = sources.resolve_dist(req, url, include_sdists=False)
+            wheel_url, resolved_version = sources.resolve_dist(req, url,
+                                                               include_sdists=False,
+                                                               include_wheels=True)
         except Exception:
             continue
         if wheel_url and resolved_version:

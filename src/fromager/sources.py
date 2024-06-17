@@ -78,7 +78,7 @@ def resolve_dist(req, sdist_server_url, include_sdists=True, include_wheels=True
 
 def default_download_source(ctx, req, sdist_server_url):
     "Download the requirement and return the name of the output path."
-    url, version = resolve_dist(req, sdist_server_url, include_wheels=False)
+    url, version = resolve_dist(req, sdist_server_url, include_sdists=True, include_wheels=False)
     source_filename = download_url(ctx.sdists_downloads, url)
     logger.debug(f'{req.name}: have source for {req} version {version} in {source_filename}')
     return (source_filename, version, url)
