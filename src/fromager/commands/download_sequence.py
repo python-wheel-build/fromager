@@ -26,5 +26,7 @@ def download_sequence(wkctx, build_order_file, sdist_server_url):
     """
     with open(build_order_file, 'r') as f:
         for entry in json.load(f):
+            if entry["prebuilt"]:
+                continue
             req = Requirement(f"{entry['dist']}=={entry['version']}")
             sources.download_source(wkctx, req, [sdist_server_url])
