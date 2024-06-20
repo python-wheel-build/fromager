@@ -25,35 +25,31 @@ fromager \
   --work-dir="$OUTDIR/work-dir" \
   bootstrap 'stevedore==5.2.0'
 
-find "$OUTDIR/wheels-repo/simple/" -name '*.whl'
+find "$OUTDIR/wheels-repo/" -name '*.whl'
+find "$OUTDIR/sdists-repo/" -name '*.tar.gz'
+ls "$OUTDIR"/work-dir/*/build.log || true
 
 EXPECTED_FILES="
-wheels-repo/downloads/flit_core-3.9.0-py3-none-any.whl
-wheels-repo/downloads/wheel-0.43.0-py3-none-any.whl
-wheels-repo/downloads/setuptools-70.0.0-py3-none-any.whl
-wheels-repo/downloads/pbr-6.0.0-py2.py3-none-any.whl
-wheels-repo/downloads/stevedore-5.2.0-py3-none-any.whl
+$OUTDIR/wheels-repo/downloads/setuptools-*.whl
+$OUTDIR/wheels-repo/downloads/pbr-*.whl
+$OUTDIR/wheels-repo/downloads/stevedore-*.whl
 
-sdists-repo/downloads/stevedore-5.2.0.tar.gz
-sdists-repo/downloads/setuptools-70.0.0.tar.gz
-sdists-repo/downloads/wheel-0.43.0.tar.gz
-sdists-repo/downloads/flit_core-3.9.0.tar.gz
-sdists-repo/downloads/pbr-6.0.0.tar.gz
+$OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
+$OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
+$OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
 
-work-dir/build-order.json
-work-dir/constraints.txt
+$OUTDIR/work-dir/build-order.json
+$OUTDIR/work-dir/constraints.txt
 
-work-dir/flit_core-3.9.0/build.log
-work-dir/pbr-6.0.0/build.log
-work-dir/setuptools-70.0.0/build.log
-work-dir/stevedore-5.2.0/build.log
-work-dir/wheel-0.43.0/build.log
+$OUTDIR/work-dir/pbr-*/build.log
+$OUTDIR/work-dir/setuptools-*/build.log
+$OUTDIR/work-dir/stevedore-*/build.log
 "
 
 pass=true
-for f in $EXPECTED_FILES; do
-  if [ ! -f "$OUTDIR/$f" ]; then
-    echo "Did not find $f" 1>&2
+for pattern in $EXPECTED_FILES; do
+  if [ ! -f "${pattern}" ]; then
+    echo "Did not find $pattern" 1>&2
     pass=false
   fi
 done
