@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def _get_requirements_from_args(toplevel, requirements_file):
     to_build = []
-    to_build.extend(toplevel)
+    to_build.extend(('toplevel', t) for t in toplevel)
     for filename in requirements_file:
         with open(filename, 'r') as f:
             for line in f:
@@ -19,7 +19,7 @@ def _get_requirements_from_args(toplevel, requirements_file):
                 logger.debug('line %r useful %r', line, useful)
                 if not useful:
                     continue
-                to_build.append(useful)
+                to_build.append((str(filename), useful))
     return to_build
 
 
@@ -46,8 +46,8 @@ def bootstrap(wkctx, requirements_file, toplevel):
 
     server.start_wheel_server(wkctx)
 
-    for toplevel in to_build:
-        sdist.handle_requirement(wkctx, Requirement(toplevel))
+    for origin, toplevel in to_build:
+        sdist.handle_requirement(wkctx, Requirement(toplevel), req_type=origin)
 
     # If we put pre-built wheels in the downloads directory, we should
     # remove them so we can treat that directory as a source of wheels
