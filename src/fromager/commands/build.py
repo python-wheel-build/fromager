@@ -92,6 +92,9 @@ def _build(wkctx, dist_name, dist_version, sdist_server_url):
     # Build environment
     sdist.prepare_build_environment(wkctx, req, source_root_dir)
 
+    # Make a new source distribution, in case we patched the code.
+    sources.build_sdist(wkctx, req, source_root_dir)
+
     # Build
     build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(wkctx, req, source_root_dir, build_env)

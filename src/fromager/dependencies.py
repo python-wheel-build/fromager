@@ -36,7 +36,7 @@ def _filter_requirements(req, requirements):
 
 
 def default_get_build_system_dependencies(ctx, req, sdist_root_dir):
-    pyproject_toml = _get_pyproject_contents(sdist_root_dir)
+    pyproject_toml = get_pyproject_contents(sdist_root_dir)
     return get_build_backend(pyproject_toml)["requires"]
 
 
@@ -54,7 +54,27 @@ def get_build_backend_dependencies(ctx, req, sdist_root_dir):
 
 
 def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
-    pyproject_toml = _get_pyproject_contents(sdist_root_dir)
+    pyproject_toml = get_pyproject_contents(sdist_root_dir)
+    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    hook_caller = get_build_backend_hook_caller(
+        sdist_root_dir, pyproject_toml, override_environ=extra_environ
+    )
+    return hook_caller.get_requires_for_build_wheel()
+
+
+def get_build_sdist_dependencies(ctx, req, sdist_root_dir):
+    logger.info(
+        f"{req.name}: getting build sdist dependencies for {req} in {sdist_root_dir}"
+    )
+    dep_func = overrides.find_override_method(req.name, "get_build_sdist_dependencies")
+    if not dep_func:
+        dep_func = default_get_build_sdist_dependencies
+    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
+    return deps
+
+
+def default_get_build_sdist_dependencies(ctx, req, sdist_root_dir):
+    pyproject_toml = get_pyproject_contents(sdist_root_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
         sdist_root_dir, pyproject_toml, override_environ=extra_environ
@@ -80,7 +100,7 @@ def get_install_dependencies_of_wheel(req, wheel_filename):
 
 
 def default_get_install_dependencies(ctx, req, sdist_root_dir):
-    pyproject_toml = _get_pyproject_contents(sdist_root_dir)
+    pyproject_toml = get_pyproject_contents(sdist_root_dir)
     requires = set()
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
@@ -101,7 +121,7 @@ def default_get_install_dependencies(ctx, req, sdist_root_dir):
     return requires
 
 
-def _get_pyproject_contents(sdist_root_dir):
+def get_pyproject_contents(sdist_root_dir):
     pyproject_toml_filename = sdist_root_dir / "pyproject.toml"
     if not os.path.exists(pyproject_toml_filename):
         return {}

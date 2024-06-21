@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import requests
 import resolvelib
 
-from . import overrides, resolver, vendor_rust
+from . import dependencies, overrides, resolver, tarballs, vendor_rust
 
 logger = logging.getLogger(__name__)
 
@@ -210,3 +210,45 @@ def _default_prepare_source(ctx, req, source_filename, version):
         _patch_source(ctx, source_root_dir)
         vendor_rust.vendor_rust(req, source_root_dir)
     return source_root_dir
+
+
+def build_sdist(ctx, req, sdist_root_dir):
+    logger.info(f"{req.name}: building source distribution in {sdist_root_dir}")
+    builder = overrides.find_override_method(req.name, "build_sdist")
+    if not builder:
+        builder = default_build_sdist
+    sdist_filename = builder(ctx, req, sdist_root_dir)
+    logger.info(f"{req.name}: built source distribution {sdist_filename}")
+    return sdist_filename
+
+
+def default_build_sdist(ctx, req, sdist_root_dir):
+    # It seems like the "correct" way to do this would be to run the
+    # PEP 517 API in the source tree we have modified. However, quite
+    # a few packages assume their source distribution is being built
+    # from a source code repository checkout and those throw an error
+    # when we use the interface to try to rebuild the sdist. Since we
+    # know what we have is an exploded tarball, we just tar it back
+    # up.
+    #
+    # For cases where the PEP 517 approach works, use
+    # pep517_build_sdist().
+    sdist_filename = ctx.sdists_builds / (sdist_root_dir.name + ".tar.gz")
+    if sdist_filename.exists():
+        sdist_filename.unlink()
+    # The format argument is specified based on
+    # https://peps.python.org/pep-0517/#build-sdist.
+    with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
+        tarballs.tar_reproducible(sdist, sdist_root_dir)
+    return sdist_filename
+
+
+def pep517_build_sdist(ctx, req, sdist_root_dir):
+    """Use the PEP 517 API to build a source distribution from a modified source tree."""
+    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    pyproject_toml = dependencies.get_pyproject_contents(sdist_root_dir)
+    hook_caller = dependencies.get_build_backend_hook_caller(
+        sdist_root_dir, pyproject_toml, extra_environ
+    )
+    sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
+    return sdist_filename
