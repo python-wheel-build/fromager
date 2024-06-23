@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 @click.command()
-@click.argument('dist_name')
-@click.argument('dist_version')
-@click.argument('sdist_server_url')
+@click.argument("dist_name")
+@click.argument("dist_version")
+@click.argument("sdist_server_url")
 @click.pass_obj
 def build(wkctx, dist_name, dist_version, sdist_server_url):
     """Build a single version of a single wheel
@@ -41,8 +41,8 @@ def build(wkctx, dist_name, dist_version, sdist_server_url):
 
 
 @click.command()
-@click.argument('build_order_file')
-@click.argument('sdist_server_url')
+@click.argument("build_order_file")
+@click.argument("sdist_server_url")
 @click.pass_obj
 def build_sequence(wkctx, build_order_file, sdist_server_url):
     """Build a sequence of wheels in order
@@ -55,9 +55,11 @@ def build_sequence(wkctx, build_order_file, sdist_server_url):
     the build order file.
 
     """
-    with open(build_order_file, 'r') as f:
+    with open(build_order_file, "r") as f:
         for entry in json.load(f):
-            wheel_filename = _build(wkctx, entry['dist'], entry['version'], sdist_server_url)
+            wheel_filename = _build(
+                wkctx, entry["dist"], entry["version"], sdist_server_url
+            )
             server.update_wheel_mirror(wkctx)
             # After we update the wheel mirror, the built file has
             # moved to a new directory.
@@ -68,14 +70,21 @@ def build_sequence(wkctx, build_order_file, sdist_server_url):
 def _build(wkctx, dist_name, dist_version, sdist_server_url):
     server.start_wheel_server(wkctx)
 
-    req = Requirement(f'{dist_name}=={dist_version}')
+    req = Requirement(f"{dist_name}=={dist_version}")
 
     # Download
     source_filename, version, source_url, _ = sources.download_source(
-        wkctx, req, [sdist_server_url],
+        wkctx,
+        req,
+        [sdist_server_url],
     )
-    logger.debug('saved %s version %s from %s to %s',
-                 req.name, version, source_url, source_filename)
+    logger.debug(
+        "saved %s version %s from %s to %s",
+        req.name,
+        version,
+        source_url,
+        source_filename,
+    )
 
     # Prepare source
     source_root_dir = sources.prepare_source(wkctx, req, source_filename, dist_version)

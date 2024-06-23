@@ -15,8 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_build_system_dependencies(ctx, req, sdist_root_dir):
-    logger.info(f'{req.name}: getting build system dependencies for {req} in {sdist_root_dir}')
-    dep_func = overrides.find_override_method(req.name, 'get_build_system_dependencies')
+    logger.info(
+        f"{req.name}: getting build system dependencies for {req} in {sdist_root_dir}"
+    )
+    dep_func = overrides.find_override_method(req.name, "get_build_system_dependencies")
     if not dep_func:
         dep_func = default_get_build_system_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
@@ -35,12 +37,16 @@ def _filter_requirements(req, requirements):
 
 def default_get_build_system_dependencies(ctx, req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
-    return get_build_backend(pyproject_toml)['requires']
+    return get_build_backend(pyproject_toml)["requires"]
 
 
 def get_build_backend_dependencies(ctx, req, sdist_root_dir):
-    logger.info(f'{req.name}: getting build backend dependencies for {req} in {sdist_root_dir}')
-    dep_func = overrides.find_override_method(req.name, 'get_build_backend_dependencies')
+    logger.info(
+        f"{req.name}: getting build backend dependencies for {req} in {sdist_root_dir}"
+    )
+    dep_func = overrides.find_override_method(
+        req.name, "get_build_backend_dependencies"
+    )
     if not dep_func:
         dep_func = default_get_build_backend_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
@@ -50,14 +56,17 @@ def get_build_backend_dependencies(ctx, req, sdist_root_dir):
 def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
-    hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
-                                                override_environ=extra_environ)
+    hook_caller = get_build_backend_hook_caller(
+        sdist_root_dir, pyproject_toml, override_environ=extra_environ
+    )
     return hook_caller.get_requires_for_build_wheel()
 
 
 def get_install_dependencies(ctx, req, sdist_root_dir):
-    logger.info(f'{req.name}: getting installation dependencies for {req} in {sdist_root_dir}')
-    dep_func = overrides.find_override_method(req.name, 'get_install_dependencies')
+    logger.info(
+        f"{req.name}: getting installation dependencies for {req} in {sdist_root_dir}"
+    )
+    dep_func = overrides.find_override_method(req.name, "get_install_dependencies")
     if not dep_func:
         dep_func = default_get_install_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
@@ -65,7 +74,7 @@ def get_install_dependencies(ctx, req, sdist_root_dir):
 
 
 def get_install_dependencies_of_wheel(req, wheel_filename):
-    logger.info(f'{req.name}: getting installation dependencies from {wheel_filename}')
+    logger.info(f"{req.name}: getting installation dependencies from {wheel_filename}")
     wheel = pkginfo.Wheel(wheel_filename)
     return _filter_requirements(req, wheel.requires_dist)
 
@@ -74,25 +83,26 @@ def default_get_install_dependencies(ctx, req, sdist_root_dir):
     pyproject_toml = _get_pyproject_contents(sdist_root_dir)
     requires = set()
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
-    hook_caller = get_build_backend_hook_caller(sdist_root_dir, pyproject_toml,
-                                                override_environ=extra_environ)
+    hook_caller = get_build_backend_hook_caller(
+        sdist_root_dir, pyproject_toml, override_environ=extra_environ
+    )
 
     # Clean up any existing dist-info so we don't get an error regenerating it.
-    for info_dir in sdist_root_dir.glob('*.dist-info'):
-        logger.debug(f'{req.name}: removing existing dist-info dir {info_dir}')
+    for info_dir in sdist_root_dir.glob("*.dist-info"):
+        logger.debug(f"{req.name}: removing existing dist-info dir {info_dir}")
         shutil.rmtree(info_dir)
 
     metadata_path = hook_caller.prepare_metadata_for_build_wheel(sdist_root_dir)
     with open(os.path.join(sdist_root_dir, metadata_path, "METADATA"), "r") as f:
         parsed = metadata.Metadata.from_email(f.read(), validate=False)
-        for r in (parsed.requires_dist or []):
+        for r in parsed.requires_dist or []:
             if evaluate_marker(r, req.extras):
                 requires.add(r)
     return requires
 
 
 def _get_pyproject_contents(sdist_root_dir):
-    pyproject_toml_filename = sdist_root_dir / 'pyproject.toml'
+    pyproject_toml_filename = sdist_root_dir / "pyproject.toml"
     if not os.path.exists(pyproject_toml_filename):
         return {}
     return toml.loads(pyproject_toml_filename.read_text())
@@ -100,9 +110,9 @@ def _get_pyproject_contents(sdist_root_dir):
 
 # From pypa/build/src/build/__main__.py
 _DEFAULT_BACKEND = {
-    'build-backend': 'setuptools.build_meta:__legacy__',
-    'backend-path': None,
-    'requires': ['setuptools >= 40.8.0'],
+    "build-backend": "setuptools.build_meta:__legacy__",
+    "backend-path": None,
+    "requires": ["setuptools >= 40.8.0"],
 }
 
 
@@ -115,9 +125,9 @@ def get_build_backend(pyproject_toml):
     # Override it with local settings. This allows for some projects
     # like pyarrow, that don't have 'build-backend' set but *do* have
     # 'requires' set.
-    for key in ['build-backend', 'backend-path', 'requires']:
-        if key in pyproject_toml.get('build-system', {}):
-            backend_settings[key] = pyproject_toml['build-system'][key]
+    for key in ["build-backend", "backend-path", "requires"]:
+        if key in pyproject_toml.get("build-system", {}):
+            backend_settings[key] = pyproject_toml["build-system"][key]
 
     return backend_settings
 
@@ -137,8 +147,8 @@ def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml, override_envir
 
     return pyproject_hooks.BuildBackendHookCaller(
         source_dir=sdist_root_dir,
-        build_backend=backend['build-backend'],
-        backend_path=backend['backend-path'],
+        build_backend=backend["build-backend"],
+        backend_path=backend["backend-path"],
         runner=_run_hook_with_extra_environ,
     )
 
@@ -151,12 +161,16 @@ def evaluate_marker(req, extras=None):
     if not extras:
         marker_envs = [default_env]
     else:
-        marker_envs = [default_env.copy() | {'extra': e} for e in extras]
+        marker_envs = [default_env.copy() | {"extra": e} for e in extras]
 
     for marker_env in marker_envs:
         if req.marker.evaluate(marker_env):
-            logger.debug(f'adding {req} -- marker evaluates true with extras={extras} and default_env={default_env}')
+            logger.debug(
+                f"adding {req} -- marker evaluates true with extras={extras} and default_env={default_env}"
+            )
             return True
 
-    logger.debug(f'ignoring {req} -- marker evaluates false with extras={extras} and default_env={default_env}')
+    logger.debug(
+        f"ignoring {req} -- marker evaluates false with extras={extras} and default_env={default_env}"
+    )
     return False

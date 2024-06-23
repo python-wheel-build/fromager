@@ -9,34 +9,35 @@ logger = logging.getLogger(__name__)
 
 
 class WorkContext:
-
-    def __init__(self,
-                 settings,
-                 patches_dir,
-                 envs_dir,
-                 sdists_repo,
-                 wheels_repo,
-                 work_dir,
-                 wheel_server_url,
-                 cleanup=True,
-                 variant='cpu'):
+    def __init__(
+        self,
+        settings,
+        patches_dir,
+        envs_dir,
+        sdists_repo,
+        wheels_repo,
+        work_dir,
+        wheel_server_url,
+        cleanup=True,
+        variant="cpu",
+    ):
         self.settings = settings
         self.patches_dir = pathlib.Path(patches_dir).absolute()
         self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
-        self.sdists_downloads = self.sdists_repo / 'downloads'
+        self.sdists_downloads = self.sdists_repo / "downloads"
         self.wheels_repo = pathlib.Path(wheels_repo).absolute()
-        self.wheels_build = self.wheels_repo / 'build'
-        self.wheels_downloads = self.wheels_repo / 'downloads'
-        self.wheels_prebuilt = self.wheels_repo / 'prebuilt'
-        self.wheel_server_dir = self.wheels_repo / 'simple'
+        self.wheels_build = self.wheels_repo / "build"
+        self.wheels_downloads = self.wheels_repo / "downloads"
+        self.wheels_prebuilt = self.wheels_repo / "prebuilt"
+        self.wheel_server_dir = self.wheels_repo / "simple"
         self.work_dir = pathlib.Path(work_dir).absolute()
         self.wheel_server_url = wheel_server_url
         self.cleanup = cleanup
         self.variant = variant
 
-        self._build_order_filename = self.work_dir / 'build-order.json'
-        self._constraints_filename = self.work_dir / 'constraints.txt'
+        self._build_order_filename = self.work_dir / "build-order.json"
+        self._constraints_filename = self.work_dir / "constraints.txt"
 
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -53,12 +54,10 @@ class WorkContext:
 
     @property
     def pip_wheel_server_args(self):
-        args = ['--index-url', self.wheel_server_url]
+        args = ["--index-url", self.wheel_server_url]
         parsed = urlparse(self.wheel_server_url)
-        if parsed.scheme != 'https':
-            args = args + [
-                '--trusted-host', parsed.hostname
-            ]
+        if parsed.scheme != "https":
+            args = args + ["--trusted-host", parsed.hostname]
         return args
 
     def _resolved_key(self, req, version):
@@ -66,14 +65,15 @@ class WorkContext:
 
     def mark_as_seen(self, req, version):
         key = self._resolved_key(req, version)
-        logger.debug(f'{req.name}: remembering seen sdist {key}')
+        logger.debug(f"{req.name}: remembering seen sdist {key}")
         self._seen_requirements.add(key)
 
     def has_been_seen(self, req, version):
         return self._resolved_key(req, version) in self._seen_requirements
 
-    def add_to_build_order(self, req_type, req, version, why, source_url, source_url_type,
-                           prebuilt=False):
+    def add_to_build_order(
+        self, req_type, req, version, why, source_url, source_url_type, prebuilt=False
+    ):
         # We only care if this version of this package has been built,
         # and don't want to trigger building it twice. The "extras"
         # value, included in the _resolved_key() output, can confuse
@@ -82,25 +82,25 @@ class WorkContext:
         key = (canonicalize_name(req.name), str(version))
         if key in self._build_requirements:
             return
-        logger.info(f'{req.name}: adding {key} to build order')
+        logger.info(f"{req.name}: adding {key} to build order")
         self._build_requirements.add(key)
         info = {
-            'type': req_type,
-            'req': str(req),
-            'dist': canonicalize_name(req.name),
-            'version': str(version),
-            'why': why,
-            'prebuilt': prebuilt,
-            'source_url': source_url,
-            'source_url_type': source_url_type,
+            "type": req_type,
+            "req": str(req),
+            "dist": canonicalize_name(req.name),
+            "version": str(version),
+            "why": why,
+            "prebuilt": prebuilt,
+            "source_url": source_url,
+            "source_url_type": source_url_type,
         }
         self._build_stack.append(info)
-        with open(self._build_order_filename, 'w') as f:
+        with open(self._build_order_filename, "w") as f:
             # Set default=str because the why value includes
             # Requirement and Version instances that can't be
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
-        with open(self._constraints_filename, 'w') as f:
+        with open(self._constraints_filename, "w") as f:
             for step in self._build_stack:
                 f.write(f'{step["dist"]}=={step["version"]}\n')
 
@@ -108,9 +108,14 @@ class WorkContext:
         # The work dir must already exist, so don't try to create it.
         # Use os.makedirs() to create the others in case the paths
         # already exist.
-        for p in [self.work_dir,
-                  self.sdists_repo, self.sdists_downloads,
-                  self.wheels_repo, self.wheels_downloads, self.wheels_prebuilt]:
+        for p in [
+            self.work_dir,
+            self.sdists_repo,
+            self.sdists_downloads,
+            self.wheels_repo,
+            self.wheels_downloads,
+            self.wheels_prebuilt,
+        ]:
             if not p.exists():
-                logger.debug('creating %s', p)
+                logger.debug("creating %s", p)
                 p.mkdir(parents=True)

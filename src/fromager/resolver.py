@@ -18,8 +18,11 @@ import requests
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.tags import sys_tags
-from packaging.utils import (canonicalize_name, parse_sdist_filename,
-                             parse_wheel_filename)
+from packaging.utils import (
+    canonicalize_name,
+    parse_sdist_filename,
+    parse_wheel_filename,
+)
 from packaging.version import Version
 
 from .extras_provider import ExtrasProvider
@@ -27,7 +30,7 @@ from .extras_provider import ExtrasProvider
 logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
-DEBUG_RESOLVER = os.environ.get('DEBUG_RESOLVER', '')
+DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
 SUPPORTED_TAGS = set(sys_tags())
 
 
@@ -79,8 +82,10 @@ class Candidate:
 
 def get_project_from_pypi(project, extras, sdist_server_url):
     """Return candidates created from the project name and extras."""
-    simple_index_url = sdist_server_url.rstrip('/') + '/' + project + '/'
-    logger.debug('get available versions of project %s from %s', project, simple_index_url)
+    simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
+    logger.debug(
+        "get available versions of project %s from %s", project, simple_index_url
+    )
     data = requests.get(simple_index_url).content
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
@@ -98,17 +103,21 @@ def get_project_from_pypi(project, extras, sdist_server_url):
                 # Ignore files with invalid python specifiers
                 # e.g. shellingham has files with ">= '2.7'"
                 if DEBUG_RESOLVER:
-                    logger.debug(f'skipping {filename} because of an invalid python version specifier {py_req}: {err}')
+                    logger.debug(
+                        f"skipping {filename} because of an invalid python version specifier {py_req}: {err}"
+                    )
                 continue
             if PYTHON_VERSION not in spec:
                 if DEBUG_RESOLVER:
-                    logger.debug(f'skipping {filename} because of python version {py_req}')
+                    logger.debug(
+                        f"skipping {filename} because of python version {py_req}"
+                    )
                 continue
 
         # TODO: Handle compatibility tags?
 
         try:
-            if filename.endswith('.tar.gz') or filename.endswith('.zip'):
+            if filename.endswith(".tar.gz") or filename.endswith(".zip"):
                 is_sdist = True
                 name, version = parse_sdist_filename(filename)
                 tags = set()
@@ -121,7 +130,7 @@ def get_project_from_pypi(project, extras, sdist_server_url):
                 matching_tags = SUPPORTED_TAGS.intersection(tags)
                 if not matching_tags:
                     if DEBUG_RESOLVER:
-                        logger.debug(f'ignoring {filename} with tags {tags}')
+                        logger.debug(f"ignoring {filename} with tags {tags}")
                     continue
         except Exception as err:
             # Ignore files with invalid versions
@@ -140,9 +149,11 @@ def get_project_from_pypi(project, extras, sdist_server_url):
                 logger.debug(f'skipping invalid filename "{filename}"')
             continue
 
-        c = Candidate(name, version, url=candidate_url, extras=extras, is_sdist=is_sdist)
+        c = Candidate(
+            name, version, url=candidate_url, extras=extras, is_sdist=is_sdist
+        )
         if DEBUG_RESOLVER:
-            logger.debug('candidate %s (%s) %s', filename, c, candidate_url)
+            logger.debug("candidate %s (%s) %s", filename, c, candidate_url)
         yield c
 
 
@@ -159,8 +170,12 @@ def get_metadata_for_wheel(url):
 
 
 class PyPIProvider(ExtrasProvider):
-    def __init__(self, include_sdists=True, include_wheels=True,
-                 sdist_server_url='https://pypi.org/simple/'):
+    def __init__(
+        self,
+        include_sdists=True,
+        include_wheels=True,
+        sdist_server_url="https://pypi.org/simple/",
+    ):
         super().__init__()
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
@@ -187,7 +202,9 @@ class PyPIProvider(ExtrasProvider):
         # are added to the candidate at creation - we
         # treat candidates as immutable once created.
         candidates = []
-        for candidate in get_project_from_pypi(identifier, set(), self.sdist_server_url):
+        for candidate in get_project_from_pypi(
+            identifier, set(), self.sdist_server_url
+        ):
             # Skip versions that are known bad
             if candidate.version in bad_versions:
                 continue
