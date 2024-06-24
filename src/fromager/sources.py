@@ -71,7 +71,7 @@ def resolve_dist(req, sdist_server_url, include_sdists=True, include_wheels=True
         logger.warning(f'{req.name}: could not resolve {req}: {err}')
         raise
 
-    for name, candidate in result.mapping.items():
+    for candidate in result.mapping.values():
         return (candidate.url, candidate.version)
     return (None, None)
 
@@ -145,7 +145,7 @@ def unpack_source(ctx, source_filename):
             zf.extractall(path=unpack_dir)
     else:
         raise ValueError(f'Do not know how to unpack source archive {source_filename}')
-    return (list(unpack_dir.glob('*'))[0], True)
+    return (next(iter(unpack_dir.glob('*'))), True)
 
 
 def _patch_source(ctx, source_root_dir):

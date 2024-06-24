@@ -19,7 +19,7 @@ _pip_missing_dependency_pattern = re.compile(
 )
 
 
-class MissingDependency(Exception):
+class MissingDependency(Exception):  # noqa: N818
 
     def __init__(self, req_type, req, all_reqs):
         self.missing_req = req

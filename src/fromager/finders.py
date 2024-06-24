@@ -16,7 +16,7 @@ def _dist_name_to_filename(dist_name):
     Following https://peps.python.org/pep-0427/
     """
     canonical_name = canonicalize_name(dist_name)
-    return re.sub(r"[^\w\d.]+", "_", canonical_name, re.UNICODE)
+    return re.sub(r"[^\w\d.]+", "_", canonical_name, flags=re.UNICODE)
 
 
 def find_sdist(downloads_dir, req, dist_version):

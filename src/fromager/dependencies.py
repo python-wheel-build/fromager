@@ -125,13 +125,14 @@ def get_build_backend(pyproject_toml):
 def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml, override_environ):
     backend = get_build_backend(pyproject_toml)
 
-    def _run_hook_with_extra_environ(cmd, cwd=None, extra_environ={}):
+    def _run_hook_with_extra_environ(cmd, cwd=None, extra_environ=None):
         """The BuildBackendHookCaller is going to pass extra_environ
         and our build system may want to set some values, too. Merge
         the 2 sets of values before calling the actual runner function.
         """
         full_environ = {}
-        full_environ.update(extra_environ)
+        if extra_environ is not None:
+            full_environ.update(extra_environ)
         full_environ.update(override_environ)
         return external_commands.run(cmd, cwd=cwd, extra_environ=full_environ)
 

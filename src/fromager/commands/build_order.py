@@ -226,14 +226,14 @@ def graph(build_order_file, output):
                     ('fontcolor', 'white'),
                     ('tooltip', 'toplevel package'),
                 ])
-            node_attr_text = ','.join('%s="%s"' % a for a in node_attrs)
+            node_attr_text = ','.join(f'{a}="{b}"' for a, b in node_attrs)
 
             outfile.write(f'  {nid} [{node_attr_text}];\n')
 
         outfile.write('\n')
         if len(toplevel_nodes) > 1:
             outfile.write('  /* toplevel nodes should all be at the same level */\n')
-            outfile.write('  {rank=same; %s;}\n\n' % " ".join(toplevel_nodes))
+            outfile.write(f"  {{rank=same; {' '.join(toplevel_nodes)};}}\n\n")
         # if len(leaves) > 1:
         #     outfile.write('  /* leaf nodes should all be at the same level */\n')
         #     outfile.write('  {rank=same; %s;}\n\n' % " ".join(leaves))
