@@ -9,38 +9,89 @@ from . import commands, context, overrides, settings
 
 logger = logging.getLogger(__name__)
 
-TERSE_LOG_FMT = '%(message)s'
-VERBOSE_LOG_FMT = '%(levelname)s:%(name)s:%(lineno)d: %(message)s'
+TERSE_LOG_FMT = "%(message)s"
+VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
 
 
 @click.group()
-@click.option('-v', '--verbose', default=False, is_flag=True, help='report more detail to the console')
-@click.option('--log-file', type=click.Path(), help='save detailed report of actions to file')
-@click.option('-o', '--sdists-repo', default=pathlib.Path('sdists-repo'), type=click.Path(),
-              help='location to manage source distributions')
-@click.option('-w', '--wheels-repo', default=pathlib.Path('wheels-repo'), type=click.Path(),
-              help='location to manage wheel repository')
-@click.option('-t', '--work-dir', default=pathlib.Path('work-dir'), type=click.Path(),
-              help='location to manage working files, including builds')
-@click.option('-p', '--patches-dir', default=pathlib.Path('overrides/patches'), type=click.Path(),
-              help='location of files for patching source before building')
-@click.option('-e', '--envs-dir', default=pathlib.Path('overrides/envs'), type=click.Path(),
-              help='location of environment override files')
-@click.option('--settings-file', default=pathlib.Path('overrides/settings.yaml'), type=click.Path(),
-              help='location of the application settings file')
-@click.option('--wheel-server-url', default='', type=str,
-              help='URL for the wheel server for builds')
-@click.option('--cleanup/--no-cleanup', default=True,
-              help='control removal of working files when a build completes successfully')
-@click.option('--variant', default='cpu',
-              help='the build variant name')
+@click.option(
+    "-v",
+    "--verbose",
+    default=False,
+    is_flag=True,
+    help="report more detail to the console",
+)
+@click.option(
+    "--log-file", type=click.Path(), help="save detailed report of actions to file"
+)
+@click.option(
+    "-o",
+    "--sdists-repo",
+    default=pathlib.Path("sdists-repo"),
+    type=click.Path(),
+    help="location to manage source distributions",
+)
+@click.option(
+    "-w",
+    "--wheels-repo",
+    default=pathlib.Path("wheels-repo"),
+    type=click.Path(),
+    help="location to manage wheel repository",
+)
+@click.option(
+    "-t",
+    "--work-dir",
+    default=pathlib.Path("work-dir"),
+    type=click.Path(),
+    help="location to manage working files, including builds",
+)
+@click.option(
+    "-p",
+    "--patches-dir",
+    default=pathlib.Path("overrides/patches"),
+    type=click.Path(),
+    help="location of files for patching source before building",
+)
+@click.option(
+    "-e",
+    "--envs-dir",
+    default=pathlib.Path("overrides/envs"),
+    type=click.Path(),
+    help="location of environment override files",
+)
+@click.option(
+    "--settings-file",
+    default=pathlib.Path("overrides/settings.yaml"),
+    type=click.Path(),
+    help="location of the application settings file",
+)
+@click.option(
+    "--wheel-server-url",
+    default="",
+    type=str,
+    help="URL for the wheel server for builds",
+)
+@click.option(
+    "--cleanup/--no-cleanup",
+    default=True,
+    help="control removal of working files when a build completes successfully",
+)
+@click.option("--variant", default="cpu", help="the build variant name")
 @click.pass_context
-def main(ctx, verbose, log_file,
-         sdists_repo, wheels_repo, work_dir, patches_dir, envs_dir,
-         settings_file, wheel_server_url,
-         cleanup,
-         variant,
-         ):
+def main(
+    ctx,
+    verbose,
+    log_file,
+    sdists_repo,
+    wheels_repo,
+    work_dir,
+    patches_dir,
+    envs_dir,
+    settings_file,
+    wheel_server_url,
+    cleanup,
+    variant,
+):
     # Configure console and log output.
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -83,11 +134,11 @@ def invoke_main():
     # Wrapper for the click main command that ensures any exceptions
     # are logged so that build pipeline outputs include the traceback.
     try:
-        main(auto_envvar_prefix='FROMAGER')
+        main(auto_envvar_prefix="FROMAGER")
     except Exception as err:
         logger.exception(err)
         raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     invoke_main()

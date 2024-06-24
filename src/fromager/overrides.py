@@ -10,11 +10,11 @@ from stevedore import extension
 
 
 def _die_on_plugin_load_failure(mgr, ep, err):
-    raise RuntimeError(f'failed to load overrides for {ep.name}') from err
+    raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 
 
 _mgr = extension.ExtensionManager(
-    namespace='fromager.project_overrides',
+    namespace="fromager.project_overrides",
     invoke_on_load=False,
     on_load_failure_callback=_die_on_plugin_load_failure,
 )
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def log_overrides():
-    logger.debug('loaded overrides for %s', _mgr.entry_points_names())
+    logger.debug("loaded overrides for %s", _mgr.entry_points_names())
 
 
 def patches_for_source_dir(patches_dir, source_dir_name):
@@ -37,7 +37,7 @@ def patches_for_source_dir(patches_dir, source_dir_name):
     the filenames.
 
     """
-    return sorted(patches_dir.glob(source_dir_name + '*.patch'))
+    return sorted(patches_dir.glob(source_dir_name + "*.patch"))
 
 
 def extra_environ_for_pkg(envs_dir, pkgname, variant):
@@ -51,21 +51,22 @@ def extra_environ_for_pkg(envs_dir, pkgname, variant):
 
     pkgname = pkgname_to_override_module(pkgname)
     variant_dir = envs_dir / variant
-    env_file = variant_dir / (pkgname + '.env')
+    env_file = variant_dir / (pkgname + ".env")
 
     if env_file.exists():
-        logger.debug('found %s environment settings for %s in %s',
-                     variant, pkgname, env_file)
-        with open(env_file, 'r') as f:
+        logger.debug(
+            "found %s environment settings for %s in %s", variant, pkgname, env_file
+        )
+        with open(env_file, "r") as f:
             for line in f:
-                key, _, value = line.strip().partition('=')
+                key, _, value = line.strip().partition("=")
                 extra_environ[key.strip()] = value.strip()
     return extra_environ
 
 
 def pkgname_to_override_module(pkgname):
     canonical_name = canonicalize_name(pkgname)
-    module_name = canonical_name.replace('-', '_')
+    module_name = canonical_name.replace("-", "_")
     return module_name
 
 
@@ -80,10 +81,12 @@ def find_override_method(distname, method):
     try:
         mod = _mgr[distname].plugin
     except KeyError:
-        logger.debug('no override module for %s among %s', distname, _mgr.entry_points_names())
+        logger.debug(
+            "no override module for %s among %s", distname, _mgr.entry_points_names()
+        )
         return None
     if not hasattr(mod, method):
-        logger.debug('no %s override for %s', method, distname)
+        logger.debug("no %s override for %s", method, distname)
         return None
-    logger.info('found %s override for %s', method, distname)
+    logger.info("found %s override for %s", method, distname)
     return getattr(mod, method)

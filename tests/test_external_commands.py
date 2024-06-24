@@ -10,7 +10,7 @@ def test_external_commands_environ():
 
 
 def test_external_commands_log_file(tmp_path):
-    log_filename = pathlib.Path(tmp_path) / 'test.log'
+    log_filename = pathlib.Path(tmp_path) / "test.log"
     env = {"BLAH": "test"}
     output = external_commands.run(
         ["sh", "-c", "echo $BLAH"],
