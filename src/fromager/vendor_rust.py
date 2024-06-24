@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-"""Vendor Rust crates into an sdist
-"""
+"""Vendor Rust crates into an sdist"""
+
 import json
 import logging
 import pathlib
@@ -29,7 +29,7 @@ def _cargo_vendor(
     project_dir: pathlib.Path,
 ) -> typing.Iterable[pathlib.Path]:
     """Run cargo vendor"""
-    logger.info(f'{req.name}: updating vendored rust dependencies in {project_dir}')
+    logger.info(f"{req.name}: updating vendored rust dependencies in {project_dir}")
     args = ["cargo", "vendor", f"--manifest-path={manifests[0]}"]
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
@@ -83,7 +83,9 @@ def _cargo_config(project_dir: pathlib.Path):
         toml.dump(cfg, f)
 
 
-def vendor_rust(req: Requirement, project_dir: pathlib.Path, *, shrink_vendored: bool = True) -> bool:
+def vendor_rust(
+    req: Requirement, project_dir: pathlib.Path, *, shrink_vendored: bool = True
+) -> bool:
     """Vendor Rust crates into a source directory
 
     Returns ``True`` if the project has a ``Cargo.toml``, otherwise
@@ -92,7 +94,7 @@ def vendor_rust(req: Requirement, project_dir: pathlib.Path, *, shrink_vendored:
     # check for Cargo.toml
     manifests = list(project_dir.glob("**/Cargo.toml"))
     if not manifests:
-        logger.debug(f'{req.name}: has no Cargo.toml files')
+        logger.debug(f"{req.name}: has no Cargo.toml files")
         return False
 
     # setuptools-rust and maturin-based projects have a pyproject.toml
@@ -100,11 +102,11 @@ def vendor_rust(req: Requirement, project_dir: pathlib.Path, *, shrink_vendored:
         raise ValueError("pyproject.toml is missing")
 
     the_manifests = sorted(str(d.relative_to(project_dir)) for d in manifests)
-    logger.debug(f'{req.name}: {project_dir} has cargo manifests: {the_manifests}')
+    logger.debug(f"{req.name}: {project_dir} has cargo manifests: {the_manifests}")
 
     # fetch and vendor Rust crates
     vendored = _cargo_vendor(req, manifests, project_dir)
-    logger.debug(f'{req.name}: vendored crates: {sorted(d.name for d in vendored)}')
+    logger.debug(f"{req.name}: vendored crates: {sorted(d.name for d in vendored)}")
 
     # remove unnecessary pre-compiled files for Windows, macOS, and iOS.
     if shrink_vendored:

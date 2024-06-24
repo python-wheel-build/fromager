@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 @click.command()
-@click.argument('build_order_file')
-@click.argument('sdist_server_url')
+@click.argument("build_order_file")
+@click.argument("sdist_server_url")
 @click.pass_obj
 def download_sequence(wkctx, build_order_file, sdist_server_url):
     """Download a sequence of source distributions in order.
@@ -24,7 +24,7 @@ def download_sequence(wkctx, build_order_file, sdist_server_url):
     the build order file.
 
     """
-    with open(build_order_file, 'r') as f:
+    with open(build_order_file, "r") as f:
         for entry in json.load(f):
             if entry["prebuilt"]:
                 continue
