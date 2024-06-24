@@ -1,4 +1,4 @@
-from . import bootstrap, build, build_order, canonicalize, step, download_sequence
+from . import bootstrap, build, build_order, canonicalize, download_sequence, step
 
 commands = [
     bootstrap.bootstrap,

@@ -25,7 +25,7 @@ CARGO_CONFIG = {
 
 def _cargo_vendor(
     req: Requirement,
-    manifests: typing.List[pathlib.Path],
+    manifests: list[pathlib.Path],
     project_dir: pathlib.Path,
 ) -> typing.Iterable[pathlib.Path]:
     """Run cargo vendor"""
@@ -45,7 +45,7 @@ def _cargo_shrink(crate_dir: pathlib.Path):
     bundle up to 60% smaller. If we ever need these files, then we have to
     figure out how to compile them from sources, too.
     """
-    removed_files: typing.List[str] = []
+    removed_files: list[str] = []
     for pattern in ["**/*.a", "**/*.lib"]:
         for filename in crate_dir.glob(pattern):
             logger.debug("Removing '%s'", filename.relative_to(crate_dir.parent))

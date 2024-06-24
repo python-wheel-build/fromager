@@ -1,5 +1,5 @@
-import logging
 import json
+import logging
 
 import click
 from packaging.requirements import Requirement
