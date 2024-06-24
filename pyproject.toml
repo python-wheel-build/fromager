@@ -70,10 +70,33 @@ fromager_test = "fromager.example_override"
 [tool.setuptools_scm]
 version_file = "src/fromager/version.py"
 
-[tool.isort]
-known_first_party=["fromager"]
-skip_glob=[
-  ".tox/*",    # test runner environment
-  "work-dir*", # test runner output
-  "tox_env",   # CI job venv
+[tool.ruff]
+target-version = "py310"
+# same as black's default line length
+line-length = 88
+
+[tool.ruff.lint]
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+select = [
+  "B",  # flake8-bugbear
+  "E",  # pycodestyle
+  "F",  # pyflakes
+  "Q",  # flake8-quotes
+  "I",  # isort
+  "N",  # pep8-naming
+  "W",  # pycodestyle
+  "RUF", # ruff-specific rules
+  "UP",  # pyupgrade
+  "TID", # flake8-tidy-imports
 ]
+ignore = [
+    "E501",  # Line too long
+    "RUF005",  # Consider iterable unpacking instead of concatenation
+    "TID252",  # Prefer absolute imports over relative imports from parent modules
+    "UP015",  # Unnecessary open mode parameters
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fromager"]
