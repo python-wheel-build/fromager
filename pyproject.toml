@@ -74,6 +74,9 @@ version_file = "src/fromager/version.py"
 target-version = "py310"
 # same as black's default line length
 line-length = 88
+exclude = [
+    "src/fromager/version.py",  # file is generated dynamically, out of our control
+]
 
 [tool.ruff.lint]
 # Allow fix for all enabled rules (when `--fix`) is provided.
