@@ -155,10 +155,10 @@ https://pypi.org.
 For examples, refer to `fromager.resolver.PyPIProvider` and
 `fromager.resolver.GitHubTagProvider`.
 
-The arguments are the `Requirement` being evaluated, a boolean
-indicating whether source distributions should be included, a boolean
-indicating whether built wheels should be included, and the URL for
-the sdist server.
+The arguments are the `WorkContext`, the `Requirement` being
+evaluated, a boolean indicating whether source distributions should be
+included, a boolean indicating whether built wheels should be
+included, and the URL for the sdist server.
 
 The return value must be an instance of a class that implements the
 `resolvelib.providers.AbstractProvider` API.
@@ -173,7 +173,7 @@ name in case that is different from the version number encoded within
 that tag name.
 
 ```
-def get_resolver_provider(include_sdists, include_wheels, sdist_server_url):
+def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
     ...
 ```
 

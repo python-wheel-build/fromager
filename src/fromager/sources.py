@@ -63,6 +63,7 @@ def download_source(
 
 
 def resolve_dist(
+    ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
     include_sdists: bool = True,
@@ -76,6 +77,7 @@ def resolve_dist(
     if not provider_factory:
         provider_factory = default_resolver_provider
     provider = provider_factory(
+        ctx=ctx,
         req=req,
         include_sdists=include_sdists,
         include_wheels=include_wheels,
@@ -101,6 +103,7 @@ def resolve_dist(
 
 
 def default_resolver_provider(
+    ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
     include_sdists: bool,
@@ -120,7 +123,7 @@ def default_download_source(
 ) -> tuple[pathlib.Path, str, str]:
     "Download the requirement and return the name of the output path."
     url, version = resolve_dist(
-        req, sdist_server_url, include_sdists=True, include_wheels=False
+        ctx, req, sdist_server_url, include_sdists=True, include_wheels=False
     )
     source_filename = download_url(ctx.sdists_downloads, url)
     logger.debug(

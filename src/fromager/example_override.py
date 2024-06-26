@@ -8,7 +8,7 @@ def get_resolver_provider(
     include_sdists: bool,
     include_wheels: bool,
     sdist_server_url: str,
-):
+) -> resolver.GitHubTagProvider:
     return resolver.GitHubTagProvider(
         organization="python-wheel-build",
         repo="fromager",
