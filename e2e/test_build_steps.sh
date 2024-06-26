@@ -82,6 +82,14 @@ build_wheel() {
         --wheel-server-url "${WHEEL_SERVER_URL}" \
         step prepare-build "$dist" "$version"
 
+    # Build an updated sdist
+    fromager \
+        --log-file "$OUTDIR/build-logs/${dist}-build-sdist.log" \
+        --work-dir "$OUTDIR/work-dir" \
+        --sdists-repo "$OUTDIR/sdists-repo" \
+        --wheels-repo "$OUTDIR/wheels-repo" \
+        step build-sdist "$dist" "$version"
+
     # Build the wheel
     fromager \
         --log-file "$OUTDIR/build-logs/${dist}-prepare-build.log" \
@@ -122,6 +130,10 @@ $OUTDIR/wheels-repo/downloads/stevedore-*.whl
 $OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
 $OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
 $OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
+
+$OUTDIR/sdists-repo/builds/stevedore-*.tar.gz
+$OUTDIR/sdists-repo/builds/setuptools-*.tar.gz
+$OUTDIR/sdists-repo/builds/pbr-*.tar.gz
 "
 
 pass=true

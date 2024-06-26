@@ -162,6 +162,12 @@ def handle_requirement(ctx, req, req_type="toplevel", why=None):
                 sdist_root_dir.parent,
                 build_system_dependencies | build_backend_dependencies,
             )
+            try:
+                sources.build_sdist(ctx, req, sdist_root_dir)
+            except Exception as err:
+                logger.warning(
+                    f"{req.name}: failed to build source distribution: {err}"
+                )
             built_filename = wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
             server.update_wheel_mirror(ctx)
             # When we update the mirror, the built file moves to the
@@ -310,11 +316,32 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
                 next_req_type, dep, build_backend_dependencies
             ) from err
 
+    next_req_type = "build_sdist"
+    build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
+        ctx, req, sdist_root_dir
+    )
+    _write_requirements_file(
+        build_sdist_dependencies,
+        sdist_root_dir.parent / "build-sdist-requirements.txt",
+    )
+    for dep in build_sdist_dependencies:
+        try:
+            _maybe_install(ctx, dep, next_req_type, None)
+        except Exception as err:
+            logger.error(
+                f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
+            )
+            raise MissingDependency(
+                next_req_type, dep, build_sdist_dependencies
+            ) from err
+
     try:
         build_env = wheels.BuildEnvironment(
             ctx,
             sdist_root_dir.parent,
-            build_system_dependencies | build_backend_dependencies,
+            build_system_dependencies
+            | build_backend_dependencies
+            | build_sdist_dependencies,
         )
     except subprocess.CalledProcessError as err:
         # Pip has no API, so parse its output looking for what it

@@ -104,6 +104,10 @@ The `step prepare-build` command creates a virtualenv with the build
 dependencies for building the wheel. It expects a `--wheel-server-url`
 as argument to control where built wheels can be downloaded.
 
+The `step build-sdist` command turns the prepared source tree into a
+new source distribution ("sdist"), including any patches or vendored
+code.
+
 The `step build-wheel` command creates a wheel using the build
 environment and prepared source, compiling any extensions using the
 appropriate override environment settings (refer to

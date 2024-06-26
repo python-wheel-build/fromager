@@ -26,6 +26,7 @@ class WorkContext:
         self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / "downloads"
+        self.sdists_builds = self.sdists_repo / "builds"
         self.wheels_repo = pathlib.Path(wheels_repo).absolute()
         self.wheels_build = self.wheels_repo / "build"
         self.wheels_downloads = self.wheels_repo / "downloads"
@@ -112,6 +113,7 @@ class WorkContext:
             self.work_dir,
             self.sdists_repo,
             self.sdists_downloads,
+            self.sdists_builds,
             self.wheels_repo,
             self.wheels_downloads,
             self.wheels_prebuilt,

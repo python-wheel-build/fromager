@@ -48,8 +48,6 @@ def prepare_source(wkctx, dist_name, dist_version):
 
     DIST_VERSION is the version to process
 
-    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
-
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
@@ -64,6 +62,27 @@ def prepare_source(wkctx, dist_name, dist_version):
     # FIXME: Does the version need to be a Version instead of str?
     source_root_dir = sources.prepare_source(wkctx, req, source_filename, dist_version)
     print(source_root_dir)
+
+
+@step.command()
+@click.argument("dist_name")
+@click.argument("dist_version")
+@click.pass_obj
+def build_sdist(wkctx, dist_name, dist_version):
+    """build a new source distribution for the package
+
+    DIST_NAME is the name of a distribution
+
+    DIST_VERSION is the version to process
+
+    The source distribution is placed in the `sdists-repo/builds`
+    directory.
+
+    """
+    req = Requirement(f"{dist_name}=={dist_version}")
+    source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
+    sdist_filename = sources.build_sdist(wkctx, req, source_root_dir)
+    print(sdist_filename)
 
 
 def _find_source_root_dir(work_dir, req, dist_version):
