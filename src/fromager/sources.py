@@ -72,7 +72,11 @@ def resolve_dist(
     logger.debug(f"{req.name}: resolving requirement {req} using {sdist_server_url}")
 
     # Create the (reusable) resolver. Limit to sdists.
-    provider = resolver.PyPIProvider(
+    provider_factory = overrides.find_override_method(req.name, "get_resolver_provider")
+    if not provider_factory:
+        provider_factory = default_resolver_provider
+    provider = provider_factory(
+        req=req,
         include_sdists=include_sdists,
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
@@ -94,6 +98,19 @@ def resolve_dist(
     for candidate in result.mapping.values():
         return (candidate.url, candidate.version)
     return (None, None)
+
+
+def default_resolver_provider(
+    req: Requirement,
+    sdist_server_url: str,
+    include_sdists: bool,
+    include_wheels: bool,
+) -> resolver.PyPIProvider:
+    return resolver.PyPIProvider(
+        include_sdists=include_sdists,
+        include_wheels=include_wheels,
+        sdist_server_url=sdist_server_url,
+    )
 
 
 def default_download_source(

@@ -143,6 +143,40 @@ def download_source(ctx, req, sdist_server_url):
     return source_filename, version
 ```
 
+### get_resolver_provider
+
+The `get_resolver_provider()` function allows an override to change
+the way requirement specifications are converted to fixed
+versions. The default implementation looks for published versions on a
+Python package index. Most overrides do not need to implement this
+hook unless they are building versions of packages not released to
+https://pypi.org.
+
+For examples, refer to `fromager.resolver.PyPIProvider` and
+`fromager.resolver.GitHubTagProvider`.
+
+The arguments are the `Requirement` being evaluated, a boolean
+indicating whether source distributions should be included, a boolean
+indicating whether built wheels should be included, and the URL for
+the sdist server.
+
+The return value must be an instance of a class that implements the
+`resolvelib.providers.AbstractProvider` API.
+
+The expectation is that a `download_source()` override will call
+`sources.resolve_dist()`, which will call `get_resolver_provider()`,
+and then the return value of the resolution will be passed back to
+`download_source()` as a tuple of URL and version. The provider can
+therefore use any value as the "URL" that will help it decide what to
+download. For example, the `GitHubTagProvider` returns the actual tag
+name in case that is different from the version number encoded within
+that tag name.
+
+```
+def get_resolver_provider(include_sdists, include_wheels, sdist_server_url):
+    ...
+```
+
 ### prepare_source
 
 The `prepare_source()` function is responsible for setting up a tree
