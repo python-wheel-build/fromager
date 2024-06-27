@@ -131,6 +131,11 @@ def handle_requirement(ctx, req, req_type="toplevel", why=None):
             ctx, req, why, sdist_root_dir
         )
 
+        next_req_type = "build_sdist"
+        build_sdist_dependencies = _handle_build_sdist_requirements(
+            ctx, req, why, sdist_root_dir
+        )
+
     # Add the new package to the build order list before trying to
     # build it so we have a record of the dependency even if the build
     # fails.
@@ -160,7 +165,9 @@ def handle_requirement(ctx, req, req_type="toplevel", why=None):
             build_env = wheels.BuildEnvironment(
                 ctx,
                 sdist_root_dir.parent,
-                build_system_dependencies | build_backend_dependencies,
+                build_system_dependencies
+                | build_backend_dependencies
+                | build_sdist_dependencies,
             )
             try:
                 sources.build_sdist(ctx, req, sdist_root_dir)
@@ -267,6 +274,25 @@ def _handle_build_backend_requirements(ctx, req, why, sdist_root_dir):
         # installed.
         _maybe_install(ctx, dep, "build-backend", resolved)
     return build_backend_dependencies
+
+
+def _handle_build_sdist_requirements(ctx, req, why, sdist_root_dir):
+    build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
+        ctx, req, sdist_root_dir
+    )
+    _write_requirements_file(
+        build_sdist_dependencies,
+        sdist_root_dir.parent / "build-sdist-requirements.txt",
+    )
+    for dep in sorted(build_sdist_dependencies):
+        try:
+            resolved = handle_requirement(ctx, dep, "build-sdist", why)
+        except Exception as err:
+            raise ValueError(
+                f"could not handle build-sdist dependency {dep} for {why}"
+            ) from err
+        _maybe_install(ctx, dep, "build-sdist", resolved)
+    return build_sdist_dependencies
 
 
 def prepare_build_environment(ctx, req, sdist_root_dir):
