@@ -1,11 +1,12 @@
 """Based on https://src.fedoraproject.org/rpms/python-cryptography/blob/rawhide/f/vendor_rust.py"""
 
 import os
+import pathlib
 import stat
 import tarfile
 
 
-def _tar_reset(tarinfo):
+def _tar_reset(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
     """Reset user, group, mtime, and mode to create reproducible tar"""
     tarinfo.uid = 0
     tarinfo.gid = 0
@@ -21,7 +22,7 @@ def _tar_reset(tarinfo):
     return tarinfo
 
 
-def tar_reproducible(tar, basedir):
+def tar_reproducible(tar: tarfile.TarFile, basedir: pathlib.Path):
     """Create reproducible tar file"""
 
     content = [str(basedir)]  # convert from pathlib.Path, if that's what we have

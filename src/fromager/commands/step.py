@@ -4,7 +4,7 @@ import pathlib
 import click
 from packaging.requirements import Requirement
 
-from .. import finders, sdist, server, sources, wheels
+from .. import context, finders, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,12 @@ def step():
 @click.argument("dist_version")
 @click.argument("sdist_server_url")
 @click.pass_obj
-def download_source_archive(wkctx, dist_name, dist_version, sdist_server_url):
+def download_source_archive(
+    wkctx: context.WorkContext,
+    dist_name: str,
+    dist_version: str,
+    sdist_server_url: str,
+):
     """download the source code archive for one version of one package
 
     DIST_NAME is the name of a distribution
@@ -41,7 +46,11 @@ def download_source_archive(wkctx, dist_name, dist_version, sdist_server_url):
 @click.argument("dist_name")
 @click.argument("dist_version")
 @click.pass_obj
-def prepare_source(wkctx, dist_name, dist_version):
+def prepare_source(
+    wkctx: context.WorkContext,
+    dist_name: str,
+    dist_version: str,
+):
     """ensure the source code is in a form ready for building a wheel
 
     DIST_NAME is the name of a distribution
@@ -68,7 +77,11 @@ def prepare_source(wkctx, dist_name, dist_version):
 @click.argument("dist_name")
 @click.argument("dist_version")
 @click.pass_obj
-def build_sdist(wkctx, dist_name, dist_version):
+def build_sdist(
+    wkctx: context.WorkContext,
+    dist_name: str,
+    dist_version: str,
+):
     """build a new source distribution for the package
 
     DIST_NAME is the name of a distribution
@@ -85,7 +98,11 @@ def build_sdist(wkctx, dist_name, dist_version):
     print(sdist_filename)
 
 
-def _find_source_root_dir(work_dir, req, dist_version):
+def _find_source_root_dir(
+    work_dir: pathlib.Path,
+    req: Requirement,
+    dist_version: str,
+) -> pathlib.Path:
     source_root_dir = finders.find_source_dir(pathlib.Path(work_dir), req, dist_version)
     if source_root_dir:
         return source_root_dir
@@ -99,7 +116,7 @@ def _find_source_root_dir(work_dir, req, dist_version):
 @click.argument("dist_name")
 @click.argument("dist_version")
 @click.pass_obj
-def prepare_build(wkctx, dist_name, dist_version):
+def prepare_build(wkctx: context.WorkContext, dist_name: str, dist_version: str):
     """set up build environment to build the package
 
     DIST_NAME is the name of a distribution
@@ -117,7 +134,7 @@ def prepare_build(wkctx, dist_name, dist_version):
 @click.argument("dist_name")
 @click.argument("dist_version")
 @click.pass_obj
-def build_wheel(wkctx, dist_name, dist_version):
+def build_wheel(wkctx: context.WorkContext, dist_name: str, dist_version: str):
     """build a wheel from prepared source
 
     DIST_NAME is the name of a distribution

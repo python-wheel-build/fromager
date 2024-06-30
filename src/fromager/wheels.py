@@ -1,15 +1,79 @@
 import logging
 import os
+import pathlib
 import platform
 import sys
 import tempfile
+import typing
 
-from . import external_commands, overrides
+from packaging.requirements import Requirement
+
+from . import context, external_commands, overrides
 
 logger = logging.getLogger(__name__)
 
 
-def build_wheel(ctx, req, sdist_root_dir, build_env):
+class BuildEnvironment:
+    "Wrapper for a virtualenv used for build isolation."
+
+    def __init__(
+        self,
+        ctx: context.WorkContext,
+        parent_dir: pathlib.Path,
+        build_requirements: typing.Iterable[Requirement],
+    ):
+        self._ctx = ctx
+        self.path = parent_dir / f"build-{platform.python_version()}"
+        self._build_requirements = build_requirements
+        self._createenv()
+
+    @property
+    def python(self) -> pathlib.Path:
+        return (self.path / "bin/python3").absolute()
+
+    def _createenv(self):
+        if self.path.exists():
+            logger.info("reusing build environment in %s", self.path)
+            return
+
+        logger.debug("creating build environment in %s", self.path)
+        external_commands.run([sys.executable, "-m", "virtualenv", self.path])
+        logger.info("created build environment in %s", self.path)
+
+        req_filename = self.path / "requirements.txt"
+        # FIXME: Ensure each requirement is pinned to a specific version.
+        with open(req_filename, "w") as f:
+            if self._build_requirements:
+                for r in self._build_requirements:
+                    f.write(f"{r}\n")
+        if not self._build_requirements:
+            return
+        external_commands.run(
+            [
+                self.python,
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--only-binary",
+                ":all:",
+            ]
+            + self._ctx.pip_wheel_server_args
+            + [
+                "-r",
+                req_filename.absolute(),
+            ],
+            cwd=self.path.parent,
+        )
+        logger.info("installed dependencies into build environment in %s", self.path)
+
+
+def build_wheel(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    build_env: BuildEnvironment,
+) -> pathlib.Path | None:
     logger.info(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
@@ -27,7 +91,13 @@ def build_wheel(ctx, req, sdist_root_dir, build_env):
     return None
 
 
-def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
+def default_build_wheel(
+    ctx: context.WorkContext,
+    build_env: BuildEnvironment,
+    extra_environ: dict,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+):
     logger.debug(f"{req.name}: building wheel in {sdist_root_dir} with {extra_environ}")
 
     # Activate the virtualenv for the subprocess:
@@ -67,53 +137,3 @@ def default_build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
             sdist_root_dir,
         ]
         external_commands.run(cmd, cwd=dir_name, extra_environ=override_env)
-
-
-class BuildEnvironment:
-    "Wrapper for a virtualenv used for build isolation."
-
-    def __init__(self, ctx, parent_dir, build_requirements):
-        self._ctx = ctx
-        self.path = parent_dir / f"build-{platform.python_version()}"
-        self._build_requirements = build_requirements
-        self._createenv()
-
-    @property
-    def python(self):
-        return (self.path / "bin/python3").absolute()
-
-    def _createenv(self):
-        if self.path.exists():
-            logger.info("reusing build environment in %s", self.path)
-            return
-
-        logger.debug("creating build environment in %s", self.path)
-        external_commands.run([sys.executable, "-m", "virtualenv", self.path])
-        logger.info("created build environment in %s", self.path)
-
-        req_filename = self.path / "requirements.txt"
-        # FIXME: Ensure each requirement is pinned to a specific version.
-        with open(req_filename, "w") as f:
-            if self._build_requirements:
-                for r in self._build_requirements:
-                    f.write(f"{r}\n")
-        if not self._build_requirements:
-            return
-        external_commands.run(
-            [
-                self.python,
-                "-m",
-                "pip",
-                "install",
-                "--disable-pip-version-check",
-                "--only-binary",
-                ":all:",
-            ]
-            + self._ctx.pip_wheel_server_args
-            + [
-                "-r",
-                req_filename.absolute(),
-            ],
-            cwd=self.path.parent,
-        )
-        logger.info("installed dependencies into build environment in %s", self.path)

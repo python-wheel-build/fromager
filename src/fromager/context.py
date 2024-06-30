@@ -3,7 +3,11 @@ import logging
 import pathlib
 from urllib.parse import urlparse
 
+from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from packaging.version import Version
+
+from . import settings
 
 logger = logging.getLogger(__name__)
 
@@ -11,17 +15,17 @@ logger = logging.getLogger(__name__)
 class WorkContext:
     def __init__(
         self,
-        settings,
-        patches_dir,
-        envs_dir,
-        sdists_repo,
-        wheels_repo,
-        work_dir,
-        wheel_server_url,
-        cleanup=True,
-        variant="cpu",
+        active_settings: settings.Settings,
+        patches_dir: pathlib.Path,
+        envs_dir: pathlib.Path,
+        sdists_repo: pathlib.Path,
+        wheels_repo: pathlib.Path,
+        work_dir: pathlib.Path,
+        wheel_server_url: str,
+        cleanup: bool = True,
+        variant: str = "cpu",
     ):
-        self.settings = settings
+        self.settings = active_settings
         self.patches_dir = pathlib.Path(patches_dir).absolute()
         self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
@@ -54,26 +58,33 @@ class WorkContext:
         self._seen_requirements = set()
 
     @property
-    def pip_wheel_server_args(self):
+    def pip_wheel_server_args(self) -> list[str]:
         args = ["--index-url", self.wheel_server_url]
         parsed = urlparse(self.wheel_server_url)
         if parsed.scheme != "https":
             args = args + ["--trusted-host", parsed.hostname]
         return args
 
-    def _resolved_key(self, req, version):
+    def _resolved_key(self, req: Requirement, version: Version) -> tuple:
         return (canonicalize_name(req.name), tuple(sorted(req.extras)), str(version))
 
-    def mark_as_seen(self, req, version):
+    def mark_as_seen(self, req: Requirement, version: Version):
         key = self._resolved_key(req, version)
         logger.debug(f"{req.name}: remembering seen sdist {key}")
         self._seen_requirements.add(key)
 
-    def has_been_seen(self, req, version):
+    def has_been_seen(self, req: Requirement, version: Version) -> tuple:
         return self._resolved_key(req, version) in self._seen_requirements
 
     def add_to_build_order(
-        self, req_type, req, version, why, source_url, source_url_type, prebuilt=False
+        self,
+        req_type: str,
+        req: Requirement,
+        version: Version,
+        why: list,
+        source_url: str,
+        source_url_type: str,
+        prebuilt: bool = False,
     ):
         # We only care if this version of this package has been built,
         # and don't want to trigger building it twice. The "extras"

@@ -5,6 +5,7 @@
 #
 import logging
 import os
+import typing
 from email.message import EmailMessage
 from email.parser import BytesParser
 from io import BytesIO
@@ -35,7 +36,14 @@ SUPPORTED_TAGS = set(sys_tags())
 
 
 class Candidate:
-    def __init__(self, name, version, url=None, extras=None, is_sdist=None):
+    def __init__(
+        self,
+        name: str,
+        version: str,
+        url: str | None = None,
+        extras: dict | None = None,
+        is_sdist: bool | None = None,
+    ):
         self.name = canonicalize_name(name)
         self.version = version
         self.url = url
@@ -45,7 +53,7 @@ class Candidate:
         self._metadata = None
         self._dependencies = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if not self.extras:
             return f"<{self.name}=={self.version}>"
         return f"<{self.name}[{','.join(self.extras)}]=={self.version}>"
@@ -57,10 +65,10 @@ class Candidate:
         return self._metadata
 
     @property
-    def requires_python(self):
+    def requires_python(self) -> bool:
         return self.metadata.get("Requires-Python")
 
-    def _get_dependencies(self):
+    def _get_dependencies(self) -> typing.Iterable[Requirement]:
         deps = self.metadata.get_all("Requires-Dist", [])
         extras = self.extras if self.extras else [""]
 
@@ -74,13 +82,17 @@ class Candidate:
                         yield r
 
     @property
-    def dependencies(self):
+    def dependencies(self) -> list[Requirement]:
         if self._dependencies is None:
             self._dependencies = list(self._get_dependencies())
         return self._dependencies
 
 
-def get_project_from_pypi(project, extras, sdist_server_url):
+def get_project_from_pypi(
+    project: str,
+    extras: tuple[str],
+    sdist_server_url: str,
+) -> typing.Iterable[Candidate]:
     """Return candidates created from the project name and extras."""
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
     logger.debug(
@@ -157,7 +169,7 @@ def get_project_from_pypi(project, extras, sdist_server_url):
         yield c
 
 
-def get_metadata_for_wheel(url):
+def get_metadata_for_wheel(url: str) -> EmailMessage:
     data = requests.get(url).content
     with ZipFile(BytesIO(data)) as z:
         for n in z.namelist():
@@ -172,23 +184,26 @@ def get_metadata_for_wheel(url):
 class PyPIProvider(ExtrasProvider):
     def __init__(
         self,
-        include_sdists=True,
-        include_wheels=True,
-        sdist_server_url="https://pypi.org/simple/",
+        include_sdists: bool = True,
+        include_wheels: bool = True,
+        sdist_server_url: str = "https://pypi.org/simple/",
     ):
         super().__init__()
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
 
-    def identify(self, requirement_or_candidate):
+    def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
 
-    def get_extras_for(self, requirement_or_candidate):
+    def get_extras_for(
+        self,
+        requirement_or_candidate: Requirement | Candidate,
+    ) -> tuple[str]:
         # Extras is a set, which is not hashable
         return tuple(sorted(requirement_or_candidate.extras))
 
-    def get_base_requirement(self, candidate):
+    def get_base_requirement(self, candidate: Candidate) -> Requirement:
         return Requirement(f"{candidate.name}=={candidate.version}")
 
     def get_preference(self, identifier, resolutions, candidates, information, **kwds):
@@ -220,11 +235,11 @@ class PyPIProvider(ExtrasProvider):
             candidates.append(candidate)
         return sorted(candidates, key=attrgetter("version"), reverse=True)
 
-    def is_satisfied_by(self, requirement, candidate):
+    def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
         if canonicalize_name(requirement.name) != candidate.name:
             return False
         return candidate.version in requirement.specifier
 
-    def get_dependencies(self, candidate):
+    def get_dependencies(self, candidate: Candidate) -> list:
         # return candidate.dependencies
         return []

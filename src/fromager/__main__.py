@@ -80,17 +80,17 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
 @click.pass_context
 def main(
     ctx,
-    verbose,
-    log_file,
-    sdists_repo,
-    wheels_repo,
-    work_dir,
-    patches_dir,
-    envs_dir,
-    settings_file,
-    wheel_server_url,
-    cleanup,
-    variant,
+    verbose: bool,
+    log_file: click.Path,
+    sdists_repo: click.Path,
+    wheels_repo: click.Path,
+    work_dir: click.Path,
+    patches_dir: click.Path,
+    envs_dir: click.Path,
+    settings_file: click.Path,
+    wheel_server_url: str,
+    cleanup: bool,
+    variant: str,
 ):
     # Configure console and log output.
     stream_handler = logging.StreamHandler()
@@ -112,7 +112,7 @@ def main(
     overrides.log_overrides()
 
     wkctx = context.WorkContext(
-        settings=settings.load(settings_file),
+        active_settings=settings.load(settings_file),
         patches_dir=patches_dir,
         envs_dir=envs_dir,
         sdists_repo=sdists_repo,
