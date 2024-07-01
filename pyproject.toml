@@ -43,6 +43,7 @@ dependencies = [
     "stevedore",
     "toml",
     "virtualenv",
+    "PyGithub",
 ]
 
 [project.optional-dependencies]

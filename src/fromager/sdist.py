@@ -35,6 +35,7 @@ _pip_missing_dependency_pattern = re.compile(
 class MissingDependency(Exception):  # noqa: N818
     def __init__(
         self,
+        ctx: context.WorkContext,
         req_type: str,
         req: Requirement,
         all_reqs: typing.Iterable[Requirement],
@@ -44,7 +45,7 @@ class MissingDependency(Exception):  # noqa: N818
         resolutions = []
         for r in all_reqs:
             try:
-                url, version = sources.resolve_dist(r, sources.PYPI_SERVER_URL)
+                url, version = sources.resolve_dist(ctx, r, sources.PYPI_SERVER_URL)
             except Exception as err:
                 resolutions.append(f"{r} -> {err}")
             else:
@@ -85,7 +86,7 @@ def handle_requirement(
         servers = [sources.PYPI_SERVER_URL]
         if ctx.wheel_server_url:
             servers.insert(0, ctx.wheel_server_url)
-        wheel_url, resolved_version = _resolve_prebuilt_wheel(req, servers)
+        wheel_url, resolved_version = _resolve_prebuilt_wheel(ctx, req, servers)
         source_url = wheel_url
         source_url_type = "prebuilt"
         wheel_filename = ctx.wheels_prebuilt / os.path.basename(
@@ -239,6 +240,7 @@ def _sort_requirements(
 
 
 def _resolve_prebuilt_wheel(
+    ctx: context.WorkContext,
     req: Requirement,
     wheel_server_urls: list[str],
 ) -> tuple[str, str]:
@@ -246,7 +248,11 @@ def _resolve_prebuilt_wheel(
     for url in wheel_server_urls:
         try:
             wheel_url, resolved_version = sources.resolve_dist(
-                req, url, include_sdists=False, include_wheels=True
+                ctx,
+                req,
+                url,
+                include_sdists=False,
+                include_wheels=True,
             )
         except Exception:
             continue
@@ -361,7 +367,10 @@ def prepare_build_environment(
                 f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
             )
             raise MissingDependency(
-                next_req_type, dep, build_system_dependencies
+                ctx,
+                next_req_type,
+                dep,
+                build_system_dependencies,
             ) from err
 
     next_req_type = "build_backend"
@@ -383,7 +392,10 @@ def prepare_build_environment(
                 f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
             )
             raise MissingDependency(
-                next_req_type, dep, build_backend_dependencies
+                ctx,
+                next_req_type,
+                dep,
+                build_backend_dependencies,
             ) from err
 
     next_req_type = "build_sdist"
@@ -402,7 +414,10 @@ def prepare_build_environment(
                 f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
             )
             raise MissingDependency(
-                next_req_type, dep, build_sdist_dependencies
+                ctx,
+                next_req_type,
+                dep,
+                build_sdist_dependencies,
             ) from err
 
     try:
@@ -421,6 +436,7 @@ def prepare_build_environment(
         match = _pip_missing_dependency_pattern.search(err.output)
         if match:
             raise MissingDependency(
+                ctx,
                 "build",
                 match.groups()[0],
                 build_system_dependencies | build_backend_dependencies,
