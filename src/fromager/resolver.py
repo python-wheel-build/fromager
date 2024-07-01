@@ -249,22 +249,24 @@ class PyPIProvider(ExtrasProvider):
 class GitHubTagProvider(ExtrasProvider):
     def __init__(
         self,
-        organization,
-        repo,
+        organization: str,
+        repo: str,
     ):
         super().__init__()
         self.organization = organization
         self.repo = repo
         self.client = github.Github()
 
-    def identify(self, requirement_or_candidate):
+    def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
 
-    def get_extras_for(self, requirement_or_candidate):
+    def get_extras_for(
+        self, requirement_or_candidate: Requirement | Candidate
+    ) -> tuple[str]:
         # Extras is a set, which is not hashable
         return tuple(sorted(requirement_or_candidate.extras))
 
-    def get_base_requirement(self, candidate):
+    def get_base_requirement(self, candidate: Candidate) -> Requirement:
         return Requirement(f"{candidate.name}=={candidate.version}")
 
     def get_preference(self, identifier, resolutions, candidates, information, **kwds):
@@ -297,11 +299,11 @@ class GitHubTagProvider(ExtrasProvider):
             candidates.append(Candidate(identifier, version, url=tag.name))
         return sorted(candidates, key=attrgetter("version"), reverse=True)
 
-    def is_satisfied_by(self, requirement, candidate):
+    def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
         if canonicalize_name(requirement.name) != candidate.name:
             return False
         return candidate.version in requirement.specifier
 
-    def get_dependencies(self, candidate):
+    def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies
         return []
