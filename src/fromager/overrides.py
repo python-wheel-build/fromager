@@ -82,7 +82,7 @@ def pkgname_to_override_module(pkgname: str) -> str:
     return module_name
 
 
-def find_override_method(distname: str, method: str) -> typing.Callable:
+def find_override_method(distname: str, method: str) -> typing.Callable | None:
     """Given a distname and method name, look for an override implementation of the method.
 
     If there is no module or no method, return None.

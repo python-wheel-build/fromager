@@ -18,7 +18,7 @@ import html5lib
 import requests
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.tags import sys_tags
+from packaging.tags import Tag, sys_tags
 from packaging.utils import (
     canonicalize_name,
     parse_sdist_filename,
@@ -39,7 +39,7 @@ class Candidate:
     def __init__(
         self,
         name: str,
-        version: str,
+        version: Version,
         url: str | None = None,
         extras: dict | None = None,
         is_sdist: bool | None = None,
@@ -50,8 +50,8 @@ class Candidate:
         self.extras = extras
         self.is_sdist = is_sdist
 
-        self._metadata = None
-        self._dependencies = None
+        self._metadata: EmailMessage | None = None
+        self._dependencies: list[Requirement] | None = None
 
     def __repr__(self) -> str:
         if not self.extras:
@@ -132,7 +132,7 @@ def get_project_from_pypi(
             if filename.endswith(".tar.gz") or filename.endswith(".zip"):
                 is_sdist = True
                 name, version = parse_sdist_filename(filename)
-                tags = set()
+                tags: frozenset[Tag] = frozenset()
             else:
                 is_sdist = False
                 name, version, _, tags = parse_wheel_filename(filename)

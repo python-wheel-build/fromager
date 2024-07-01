@@ -1,15 +1,18 @@
 import json
 import logging
 import pathlib
+import typing
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import settings
 
 logger = logging.getLogger(__name__)
+
+SeenRequirement = tuple[NormalizedName, tuple[str, ...], str]
 
 
 class WorkContext:
@@ -24,7 +27,7 @@ class WorkContext:
         wheel_server_url: str,
         cleanup: bool = True,
         variant: str = "cpu",
-    ):
+    ) -> None:
         self.settings = active_settings
         self.patches_dir = pathlib.Path(patches_dir).absolute()
         self.envs_dir = pathlib.Path(envs_dir).absolute()
@@ -47,33 +50,33 @@ class WorkContext:
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
         # be built in order.
-        self._build_stack = []
-        self._build_requirements = set()
+        self._build_stack: list[dict[str, typing.Any]] = []
+        self._build_requirements: set[tuple[NormalizedName, str]] = set()
 
         # Track requirements we've seen before so we don't resolve the
         # same dependencies over and over and so we can break cycles in
         # the dependency list. The key is the requirements spec, rather
         # than the package, in case we do have multiple rules for the same
         # package.
-        self._seen_requirements = set()
+        self._seen_requirements: set[SeenRequirement] = set()
 
     @property
     def pip_wheel_server_args(self) -> list[str]:
         args = ["--index-url", self.wheel_server_url]
         parsed = urlparse(self.wheel_server_url)
-        if parsed.scheme != "https":
+        if parsed.scheme != "https" and parsed.hostname is not None:
             args = args + ["--trusted-host", parsed.hostname]
         return args
 
-    def _resolved_key(self, req: Requirement, version: Version) -> tuple:
+    def _resolved_key(self, req: Requirement, version: Version) -> SeenRequirement:
         return (canonicalize_name(req.name), tuple(sorted(req.extras)), str(version))
 
-    def mark_as_seen(self, req: Requirement, version: Version):
+    def mark_as_seen(self, req: Requirement, version: Version) -> None:
         key = self._resolved_key(req, version)
         logger.debug(f"{req.name}: remembering seen sdist {key}")
         self._seen_requirements.add(key)
 
-    def has_been_seen(self, req: Requirement, version: Version) -> tuple:
+    def has_been_seen(self, req: Requirement, version: Version) -> bool:
         return self._resolved_key(req, version) in self._seen_requirements
 
     def add_to_build_order(
@@ -85,7 +88,7 @@ class WorkContext:
         source_url: str,
         source_url_type: str,
         prebuilt: bool = False,
-    ):
+    ) -> None:
         # We only care if this version of this package has been built,
         # and don't want to trigger building it twice. The "extras"
         # value, included in the _resolved_key() output, can confuse
@@ -116,7 +119,7 @@ class WorkContext:
             for step in self._build_stack:
                 f.write(f'{step["dist"]}=={step["version"]}\n')
 
-    def setup(self):
+    def setup(self) -> None:
         # The work dir must already exist, so don't try to create it.
         # Use os.makedirs() to create the others in case the paths
         # already exist.

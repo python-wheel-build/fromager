@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import typing
 
 import yaml
 
@@ -18,7 +19,7 @@ class Settings:
         return set(overrides.pkgname_to_override_module(n) for n in names)
 
 
-def _parse(content: str) -> Settings:
+def _parse(content: typing.TextIO) -> Settings:
     data = yaml.safe_load(content)
     return Settings(data)
 

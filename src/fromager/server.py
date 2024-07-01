@@ -1,6 +1,7 @@
 import functools
 import http.server
 import logging
+import os
 import shutil
 import threading
 
@@ -54,8 +55,8 @@ def update_wheel_mirror(ctx: context.WorkContext):
             "pypi-mirror",
             "create",
             "-d",
-            ctx.wheels_downloads,
+            os.fspath(ctx.wheels_downloads),
             "-m",
-            ctx.wheel_server_dir,
+            os.fspath(ctx.wheel_server_dir),
         ]
     )

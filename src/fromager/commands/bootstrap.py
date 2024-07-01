@@ -14,7 +14,7 @@ def _get_requirements_from_args(
     toplevel: typing.Iterable[str],
     requirements_files: typing.Iterable[pathlib.Path],
 ) -> typing.Iterable[tuple[str, str]]:
-    to_build = []
+    to_build: list[tuple[str, str]] = []
     to_build.extend(("toplevel", t) for t in toplevel)
     for filename in requirements_files:
         with open(filename, "r") as f:
@@ -63,8 +63,8 @@ def bootstrap(
 
     server.start_wheel_server(wkctx)
 
-    for origin, toplevel in to_build:
-        sdist.handle_requirement(wkctx, Requirement(toplevel), req_type=origin)
+    for origin, req in to_build:
+        sdist.handle_requirement(wkctx, Requirement(req), req_type=origin)
 
     # If we put pre-built wheels in the downloads directory, we should
     # remove them so we can treat that directory as a source of wheels

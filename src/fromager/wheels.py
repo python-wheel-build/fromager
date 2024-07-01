@@ -43,9 +43,8 @@ class BuildEnvironment:
         req_filename = self.path / "requirements.txt"
         # FIXME: Ensure each requirement is pinned to a specific version.
         with open(req_filename, "w") as f:
-            if self._build_requirements:
-                for r in self._build_requirements:
-                    f.write(f"{r}\n")
+            for r in self._build_requirements:
+                f.write(f"{r}\n")
         if not self._build_requirements:
             return
         external_commands.run(
@@ -118,7 +117,7 @@ def default_build_wheel(
 
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = [
-            build_env.python,
+            os.fspath(build_env.python),
             "-m",
             "pip",
             "-vvv",
@@ -128,12 +127,12 @@ def default_build_wheel(
             "--only-binary",
             ":all:",
             "--wheel-dir",
-            ctx.wheels_build,
+            os.fspath(ctx.wheels_build),
             "--no-deps",
             "--index-url",
             ctx.wheel_server_url,  # probably redundant, but just in case
             "--log",
-            sdist_root_dir.parent / "build.log",
-            sdist_root_dir,
+            os.fspath(sdist_root_dir.parent / "build.log"),
+            os.fspath(sdist_root_dir),
         ]
         external_commands.run(cmd, cwd=dir_name, extra_environ=override_env)
