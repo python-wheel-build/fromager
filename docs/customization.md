@@ -36,7 +36,7 @@ organized with a subdirectory per variant.
 Environment files are named using the [canonical distribution
 name](#canonical-distribution-names) and the suffix `.env`.
 
-```
+```console
 $ tree overrides/envs/
 overrides/envs/
 ├── cpu
@@ -54,7 +54,7 @@ around the 3 parts will be ignored, but whitespace inside the value is
 preserved. It is not necessary to quote values, and quotes inside the
 value will be passed through.
 
-```
+```console
 $ cat overrides/envs/cuda/llama_cpp_python.env
 CMAKE_ARGS=-DLLAMA_CUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major -DLLAMA_NATIVE=off
 CFLAGS=-mno-avx
@@ -63,21 +63,20 @@ FORCE_CMAKE=1
 
 ## Patching source
 
-The `--patches-dir` command line argument specifies a directory
-containing patches to be applied after the source code is in place and
-before evaluating any further dependencies or building the
-project. The default directory is `overrides/patches`.
+The `--patches-dir` command line argument specifies a directory containing
+patches to be applied after the source code is in place and before evaluating
+any further dependencies or building the project. The default directory is
+`overrides/patches`.
 
-Patch files should be placed in a subdirectory matching the 
-source directory name and use the suffix `.patch`. The
-filenames are sorted lexicographically, so any text between the prefix
-and suffix can be used to ensure the patches are applied in a specific
-order.
+Patch files should be placed in a subdirectory matching the source directory
+name and use the suffix `.patch`. The filenames are sorted lexicographically, so
+any text between the prefix and suffix can be used to ensure the patches are
+applied in a specific order.
 
-Patches are applied by running `patch -p1 filename` while inside the
-root of the source tree.
+Patches are applied by running `patch -p1 filename` while inside the root of the
+source tree.
 
-```
+```console
 $ ls -1 overrides/patches/*
 clarifai-10.2.1/fix-sdist.patch
 flash_attn-2.5.7/pyproject-toml.patch
@@ -94,11 +93,10 @@ pytorch-v2.2.2/004-fix-release-version.patch
 xformers-0.0.26.post1/pyproject.toml.patch
 ```
 
-Note: A legacy patch organization with the patches in the
-patches directory, not in subdirectories, with the filenames
-prefixed with the source directory name is also supported.
-The newer format, using subdirectories, is preferred because
-it avoids name collisions between variant source trees.
+Note: A legacy patch organization with the patches in the patches directory, not
+in subdirectories, with the filenames prefixed with the source directory name is
+also supported. The newer format, using subdirectories, is preferred because it
+avoids name collisions between variant source trees.
 
 ## Override plugins
 
@@ -112,7 +110,7 @@ configure the entry point in the
 link the [canonical distribution name](#canonical-distribution-names)
 to an importable module.
 
-```
+```toml
 [project.entry-points."fromager.project_overrides"]
 flit_core = "package_plugins.flit_core"
 pyarrow = "package_plugins.pyarrow"
@@ -142,7 +140,7 @@ The function may be invoked more than once if multiple sdist servers
 are being used. Returning a valid response prevents multiple
 invocations.
 
-```
+```python
 def download_source(ctx, req, sdist_server_url):
     ...
     return source_filename, version
@@ -160,7 +158,7 @@ evaluated, the `Path` to the source archive, and the version.
 The return value should be the `Path` to the root of the source tree,
 ideally inside the `ctx.work_dir` directory.
 
-```
+```python
 def prepare_source(ctx, req, source_filename, version):
     ...
     return output_dir_name
@@ -178,7 +176,7 @@ look for.
 The return value should be a string with the base filename (no paths)
 for the archive.
 
-```
+```python
 def expected_source_archive_name(req, dist_version):
     return f'apache-arrow-{dist_version}.tar.gz'
 ```
@@ -195,7 +193,7 @@ look for.
 The return value should be a string with the name of the source root
 directory relative to the `ctx.work_dir` where it was prepared.
 
-```
+```python
 def expected_source_directory_name(req, dist_version):
     return f'apache-arrow-{dist_version}/arrow-apache-arrow-{dist_version}'
 ```
@@ -213,7 +211,7 @@ for build system dependencies for the package. The caller is
 responsible for evaluating the requirements with the current build
 environment settings to determine if they are actually needed.
 
-```
+```python
 # pyarrow.py
 def get_build_system_dependencies(ctx, req, sdist_root_dir):
     # The _actual_ directory with our requirements is different than
@@ -238,7 +236,7 @@ for build backend dependencies for the package. The caller is
 responsible for evaluating the requirements with the current build
 environment settings to determine if they are actually needed.
 
-```
+```python
 # pyarrow.py
 def get_build_backend_dependencies(ctx, req, sdist_root_dir):
     # The _actual_ directory with our requirements is different than
@@ -263,7 +261,7 @@ for runtime and installation dependencies for the package. The caller
 is responsible for evaluating the requirements with the current build
 environment settings to determine if they are actually needed.
 
-```
+```python
 # pyarrow.py
 def get_install_dependencies(ctx, req, sdist_root_dir):
     # The _actual_ directory with our requirements is different than
@@ -289,7 +287,7 @@ the `Path` to the root of the source tree.
 
 The return value is ignored.
 
-```
+```python
 def build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
     ...
 ```
@@ -305,7 +303,7 @@ canonical version of the name, computed using
 with underscores (`_`). For convenience, the `canonicalize`
 command will print the correct form of a name.
 
-```
+```console
 $ tox -e cli -- canonicalize flit-core
 flit_core
 ```
