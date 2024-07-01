@@ -68,9 +68,8 @@ containing patches to be applied after the source code is in place and
 before evaluating any further dependencies or building the
 project. The default directory is `overrides/patches`.
 
-Patch files should be prefixed with the [canonical distribution
-name](#canonical-distribution-names) followed by a hyphen (`-`) and
-the version number of the package and use the suffix `.patch`. The
+Patch files should be placed in a subdirectory matching the 
+source directory name and use the suffix `.patch`. The
 filenames are sorted lexicographically, so any text between the prefix
 and suffix can be used to ensure the patches are applied in a specific
 order.
@@ -79,21 +78,27 @@ Patches are applied by running `patch -p1 filename` while inside the
 root of the source tree.
 
 ```
-$ ls -1 overrides/patches/
-clarifai-10.2.1-fix-sdist.patch
-flash_attn-2.5.7-pyproject-toml.patch
-jupyterlab_pygments-0.3.0-pyproject-remove-jupyterlab.patch
-ninja-1.11.1.1-wrap-system-ninja.patch
-pytorch-v2.2.1-001-remove-cmake-build-requirement.patch
-pytorch-v2.2.1-002-dist-info-no-run-build-deps.patch
-pytorch-v2.2.1-003-fbgemm-no-maybe-uninitialized.patch
-pytorch-v2.2.1-004-fix-release-version.patch
-pytorch-v2.2.2-001-remove-cmake-build-requirement.patch
-pytorch-v2.2.2-002-dist-info-no-run-build-deps.patch
-pytorch-v2.2.2-003-fbgemm-no-maybe-uninitialized.patch
-pytorch-v2.2.2-004-fix-release-version.patch
-xformers-0.0.26.post1-pyproject.toml.patch
+$ ls -1 overrides/patches/*
+clarifai-10.2.1/fix-sdist.patch
+flash_attn-2.5.7/pyproject-toml.patch
+jupyterlab_pygments-0.3.0/pyproject-remove-jupyterlab.patch
+ninja-1.11.1.1/wrap-system-ninja.patch
+pytorch-v2.2.1/001-remove-cmake-build-requirement.patch
+pytorch-v2.2.1/002-dist-info-no-run-build-deps.patch
+pytorch-v2.2.1/003-fbgemm-no-maybe-uninitialized.patch
+pytorch-v2.2.1/004-fix-release-version.patch
+pytorch-v2.2.2/001-remove-cmake-build-requirement.patch
+pytorch-v2.2.2/002-dist-info-no-run-build-deps.patch
+pytorch-v2.2.2/003-fbgemm-no-maybe-uninitialized.patch
+pytorch-v2.2.2/004-fix-release-version.patch
+xformers-0.0.26.post1/pyproject.toml.patch
 ```
+
+Note: A legacy patch organization with the patches in the
+patches directory, not in subdirectories, with the filenames
+prefixed with the source directory name is also supported.
+The newer format, using subdirectories, is preferred because
+it avoids name collisions between variant source trees.
 
 ## Override plugins
 
