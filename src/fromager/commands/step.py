@@ -3,8 +3,9 @@ import pathlib
 
 import click
 from packaging.requirements import Requirement
+from packaging.version import Version
 
-from .. import context, finders, sdist, server, sources, wheels
+from .. import clickext, context, finders, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +18,13 @@ def step():
 
 @step.command()
 @click.argument("dist_name")
-@click.argument("dist_version")
+@click.argument("dist_version", type=clickext.PackageVersion())
 @click.argument("sdist_server_url")
 @click.pass_obj
 def download_source_archive(
     wkctx: context.WorkContext,
     dist_name: str,
-    dist_version: str,
+    dist_version: Version,
     sdist_server_url: str,
 ):
     """download the source code archive for one version of one package
@@ -44,12 +45,12 @@ def download_source_archive(
 
 @step.command()
 @click.argument("dist_name")
-@click.argument("dist_version")
+@click.argument("dist_version", type=clickext.PackageVersion())
 @click.pass_obj
 def prepare_source(
     wkctx: context.WorkContext,
     dist_name: str,
-    dist_version: str,
+    dist_version: Version,
 ):
     """ensure the source code is in a form ready for building a wheel
 
@@ -75,12 +76,12 @@ def prepare_source(
 
 @step.command()
 @click.argument("dist_name")
-@click.argument("dist_version")
+@click.argument("dist_version", type=clickext.PackageVersion())
 @click.pass_obj
 def build_sdist(
     wkctx: context.WorkContext,
     dist_name: str,
-    dist_version: str,
+    dist_version: Version,
 ):
     """build a new source distribution for the package
 
@@ -114,9 +115,13 @@ def _find_source_root_dir(
 
 @step.command()
 @click.argument("dist_name")
-@click.argument("dist_version")
+@click.argument("dist_version", type=clickext.PackageVersion())
 @click.pass_obj
-def prepare_build(wkctx: context.WorkContext, dist_name: str, dist_version: str):
+def prepare_build(
+    wkctx: context.WorkContext,
+    dist_name: str,
+    dist_version: Version,
+):
     """set up build environment to build the package
 
     DIST_NAME is the name of a distribution
@@ -132,9 +137,13 @@ def prepare_build(wkctx: context.WorkContext, dist_name: str, dist_version: str)
 
 @step.command()
 @click.argument("dist_name")
-@click.argument("dist_version")
+@click.argument("dist_version", type=clickext.PackageVersion())
 @click.pass_obj
-def build_wheel(wkctx: context.WorkContext, dist_name: str, dist_version: str):
+def build_wheel(
+    wkctx: context.WorkContext,
+    dist_name: str,
+    dist_version: Version,
+):
     """build a wheel from prepared source
 
     DIST_NAME is the name of a distribution

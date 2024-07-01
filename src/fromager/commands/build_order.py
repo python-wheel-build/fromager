@@ -8,7 +8,7 @@ import sys
 import click
 from packaging.requirements import Requirement
 
-from .. import overrides
+from .. import clickext, overrides
 
 
 @click.group()
@@ -18,9 +18,14 @@ def build_order():
 
 
 @build_order.command()
-@click.option("-o", "--output", type=click.Path(), help="output file to create")
+@click.option(
+    "-o",
+    "--output",
+    type=clickext.ClickPath(),
+    help="output file to create",
+)
 @click.argument("build_order_file")
-def as_csv(build_order_file: str, output: click.Path):
+def as_csv(build_order_file: str, output: pathlib.Path | None):
     """Create a comma-separated-value file from the build order file
 
     BUILD_ORDER_FILE is one or more build-order.json files to convert
@@ -77,9 +82,14 @@ def as_csv(build_order_file: str, output: click.Path):
 
 
 @build_order.command()
-@click.option("-o", "--output", type=click.Path(), help="output file to create")
+@click.option(
+    "-o",
+    "--output",
+    type=clickext.ClickPath(),
+    help="output file to create",
+)
 @click.argument("build_order_file", nargs=-1)
-def summary(build_order_file: list[str], output: click.Path):
+def summary(build_order_file: list[str], output: pathlib.Path | None):
     """Summarize the build order files
 
     BUILD_ORDER_FILE is one or more build-order.json files to convert
@@ -126,9 +136,14 @@ def summary(build_order_file: list[str], output: click.Path):
 
 
 @build_order.command()
-@click.option("-o", "--output", type=click.Path(), help="output file to create")
+@click.option(
+    "-o",
+    "--output",
+    type=clickext.ClickPath(),
+    help="output file to create",
+)
 @click.argument("build_order_file", nargs=-1)
-def graph(build_order_file: list[str], output: click.Path):
+def graph(build_order_file: list[str], output: pathlib.Path | None):
     """Write a graphviz-compatible dot file representing the build order dependencies
 
     BUILD_ORDER_FILE is one or more build-order.json files to convert
