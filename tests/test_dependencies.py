@@ -1,6 +1,11 @@
-import pytest
+import os
+import pathlib
+import typing
 
-from fromager import dependencies
+import pytest
+from packaging.requirements import Requirement
+
+from fromager import context, dependencies
 
 
 @pytest.mark.parametrize(
@@ -32,7 +37,57 @@ from fromager import dependencies
         ),
     ],
 )
-def test_get_build_backend(build_system, expected_results):
+def test_get_build_backend(
+    build_system: dict[str, list[str]] | dict[str, str | list[str] | None],
+    expected_results: dict[str, typing.Any] | dict[str, str | list[str] | None],
+):
     pyproject_toml = {"build-system": build_system}
     actual = dependencies.get_build_backend(pyproject_toml)
     assert expected_results == actual
+
+
+def test_get_build_system_dependencies(tmp_context: context.WorkContext):
+    fromager_root = pathlib.Path(os.getcwd())
+    results = dependencies.get_build_system_dependencies(
+        tmp_context,
+        Requirement("fromager"),
+        fromager_root,
+    )
+    names = set(r.name for r in results)
+    assert names == set(["setuptools", "setuptools_scm"])
+
+
+def test_get_build_backend_dependencies(tmp_context: context.WorkContext):
+    fromager_root = pathlib.Path(os.getcwd())
+    results = dependencies.get_build_backend_dependencies(
+        tmp_context,
+        Requirement("fromager"),
+        fromager_root,
+    )
+    names = set(r.name for r in results)
+    assert names == set()
+
+
+def test_get_build_sdist_dependencies(tmp_context: context.WorkContext):
+    fromager_root = pathlib.Path(os.getcwd())
+    results = dependencies.get_build_sdist_dependencies(
+        tmp_context,
+        Requirement("fromager"),
+        fromager_root,
+    )
+    names = set(r.name for r in results)
+    assert names == set()
+
+
+def test_get_install_dependencies(tmp_context: context.WorkContext):
+    fromager_root = pathlib.Path(os.getcwd())
+    pyproject_contents = dependencies.get_pyproject_contents(fromager_root)
+    expected = set(
+        Requirement(d) for d in pyproject_contents["project"]["dependencies"]
+    )
+    actual = dependencies.get_install_dependencies(
+        tmp_context,
+        Requirement("fromager"),
+        fromager_root,
+    )
+    assert actual == expected
