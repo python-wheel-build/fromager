@@ -4,21 +4,22 @@ import pathlib
 
 import click
 from packaging.requirements import Requirement
+from packaging.version import Version
 
-from .. import context, sdist, server, sources, wheels
+from .. import clickext, context, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
 
 @click.command()
 @click.argument("dist_name")
-@click.argument("dist_version")
+@click.argument("dist_version", type=clickext.PackageVersion())
 @click.argument("sdist_server_url")
 @click.pass_obj
 def build(
     wkctx: context.WorkContext,
     dist_name: str,
-    dist_version: str,
+    dist_version: Version,
     sdist_server_url: str,
 ):
     """Build a single version of a single wheel
@@ -80,7 +81,7 @@ def build_sequence(
 def _build(
     wkctx: context.WorkContext,
     dist_name: str,
-    dist_version: str,
+    dist_version: Version,
     sdist_server_url: str,
 ) -> pathlib.Path:
     server.start_wheel_server(wkctx)

@@ -5,18 +5,18 @@ import typing
 import click
 from packaging.requirements import Requirement
 
-from .. import context, sdist, server
+from .. import clickext, context, sdist, server
 
 logger = logging.getLogger(__name__)
 
 
 def _get_requirements_from_args(
     toplevel: typing.Iterable[str],
-    requirements_file: typing.Iterable[pathlib.Path],
-) -> typing.Iterable[str]:
+    requirements_files: typing.Iterable[pathlib.Path],
+) -> typing.Iterable[tuple[str, str]]:
     to_build = []
     to_build.extend(("toplevel", t) for t in toplevel)
-    for filename in requirements_file:
+    for filename in requirements_files:
         with open(filename, "r") as f:
             for line in f:
                 useful, _, _ = line.partition("#")
@@ -29,12 +29,19 @@ def _get_requirements_from_args(
 
 
 @click.command()
-@click.option("-r", "--requirements-file", multiple=True, help="pip requirements file")
+@click.option(
+    "-r",
+    "--requirements-file",
+    "requirements_files",
+    multiple=True,
+    type=clickext.ClickPath(),
+    help="pip requirements file",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
     wkctx: context.WorkContext,
-    requirements_file: list[str],
+    requirements_files: list[pathlib.Path],
     toplevel: list[str],
 ):
     """Compute and build the dependencies of a set of requirements recursively
@@ -43,7 +50,7 @@ def bootstrap(
     and optional version constraints.
 
     """
-    to_build = _get_requirements_from_args(toplevel, requirements_file)
+    to_build = _get_requirements_from_args(toplevel, requirements_files)
     if not to_build:
         raise RuntimeError(
             "Pass a requirement specificiation or use -r to pass a requirements file"

@@ -5,7 +5,7 @@ import pathlib
 
 import click
 
-from . import commands, context, overrides, settings
+from . import clickext, commands, context, overrides, settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,47 +22,49 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
     help="report more detail to the console",
 )
 @click.option(
-    "--log-file", type=click.Path(), help="save detailed report of actions to file"
+    "--log-file",
+    type=clickext.ClickPath(),
+    help="save detailed report of actions to file",
 )
 @click.option(
     "-o",
     "--sdists-repo",
     default=pathlib.Path("sdists-repo"),
-    type=click.Path(),
+    type=clickext.ClickPath(),
     help="location to manage source distributions",
 )
 @click.option(
     "-w",
     "--wheels-repo",
     default=pathlib.Path("wheels-repo"),
-    type=click.Path(),
+    type=clickext.ClickPath(),
     help="location to manage wheel repository",
 )
 @click.option(
     "-t",
     "--work-dir",
     default=pathlib.Path("work-dir"),
-    type=click.Path(),
+    type=clickext.ClickPath(),
     help="location to manage working files, including builds",
 )
 @click.option(
     "-p",
     "--patches-dir",
     default=pathlib.Path("overrides/patches"),
-    type=click.Path(),
+    type=clickext.ClickPath(),
     help="location of files for patching source before building",
 )
 @click.option(
     "-e",
     "--envs-dir",
     default=pathlib.Path("overrides/envs"),
-    type=click.Path(),
+    type=clickext.ClickPath(),
     help="location of environment override files",
 )
 @click.option(
     "--settings-file",
     default=pathlib.Path("overrides/settings.yaml"),
-    type=click.Path(),
+    type=clickext.ClickPath(),
     help="location of the application settings file",
 )
 @click.option(
@@ -81,13 +83,13 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
 def main(
     ctx,
     verbose: bool,
-    log_file: click.Path,
-    sdists_repo: click.Path,
-    wheels_repo: click.Path,
-    work_dir: click.Path,
-    patches_dir: click.Path,
-    envs_dir: click.Path,
-    settings_file: click.Path,
+    log_file: pathlib.Path,
+    sdists_repo: pathlib.Path,
+    wheels_repo: pathlib.Path,
+    work_dir: pathlib.Path,
+    patches_dir: pathlib.Path,
+    envs_dir: pathlib.Path,
+    settings_file: pathlib.Path,
     wheel_server_url: str,
     cleanup: bool,
     variant: str,
