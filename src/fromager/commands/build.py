@@ -83,7 +83,7 @@ def _build(
     dist_name: str,
     dist_version: Version,
     sdist_server_url: str,
-) -> pathlib.Path:
+) -> pathlib.Path | None:
     server.start_wheel_server(wkctx)
 
     req = Requirement(f"{dist_name}=={dist_version}")
@@ -112,6 +112,8 @@ def _build(
     sources.build_sdist(wkctx, req, source_root_dir)
 
     # Build
-    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
+    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, ())
     wheel_filename = wheels.build_wheel(wkctx, req, source_root_dir, build_env)
+    if wheel_filename is None:
+        raise FileNotFoundError("build_wheel did not build a wheel")
     return wheel_filename

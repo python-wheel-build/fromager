@@ -11,6 +11,7 @@ import typing
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from . import (
     context,
@@ -62,7 +63,7 @@ def handle_requirement(
     req: Requirement,
     req_type: str = "toplevel",
     why: list | None = None,
-) -> str:
+) -> Version:
     if why is None:
         why = []
     logger.info(
@@ -195,10 +196,13 @@ def handle_requirement(
             server.update_wheel_mirror(ctx)
             # When we update the mirror, the built file moves to the
             # downloads directory.
-            wheel_filename = ctx.wheels_downloads / built_filename.name
-            logger.info(
-                f"{req.name}: built wheel for version {resolved_version}: {wheel_filename}"
-            )
+            if built_filename is not None:
+                wheel_filename = ctx.wheels_downloads / built_filename.name
+                logger.info(
+                    f"{req.name}: built wheel for version {resolved_version}: {wheel_filename}"
+                )
+            else:
+                logger.warning(f"Did not build wheel for {req.name}")
 
     # Process installation dependencies for all wheels.
     next_req_type = "install"
@@ -241,7 +245,7 @@ def _sort_requirements(
 def _resolve_prebuilt_wheel(
     req: Requirement,
     wheel_server_urls: list[str],
-) -> tuple[str, str]:
+) -> tuple[str, Version]:
     "Return URL to wheel and its version."
     for url in wheel_server_urls:
         try:
@@ -422,7 +426,7 @@ def prepare_build_environment(
         if match:
             raise MissingDependency(
                 "build",
-                match.groups()[0],
+                Requirement(match.groups()[0]),
                 build_system_dependencies | build_backend_dependencies,
             ) from err
         raise
@@ -442,7 +446,7 @@ def _maybe_install(
     ctx: context.WorkContext,
     req: Requirement,
     req_type: str,
-    resolved_version: str,
+    resolved_version: str | None,
 ):
     "Install the package if it is not already installed."
     if resolved_version is not None:

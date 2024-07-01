@@ -63,7 +63,7 @@ def prepare_source(
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
     source_filename = finders.find_sdist(wkctx.sdists_downloads, req, dist_version)
     if source_filename is None:
-        dir_contents = []
+        dir_contents: list[str] = []
         for ext in ["*.tar.gz", "*.zip"]:
             dir_contents.extend(str(e) for e in wkctx.sdists_downloads.glob(ext))
         raise RuntimeError(
@@ -102,7 +102,7 @@ def build_sdist(
 def _find_source_root_dir(
     work_dir: pathlib.Path,
     req: Requirement,
-    dist_version: str,
+    dist_version: Version,
 ) -> pathlib.Path:
     source_root_dir = finders.find_source_dir(pathlib.Path(work_dir), req, dist_version)
     if source_root_dir:
@@ -153,6 +153,6 @@ def build_wheel(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
-    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
+    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, ())
     wheel_filename = wheels.build_wheel(wkctx, req, source_root_dir, build_env)
     print(wheel_filename)

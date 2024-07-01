@@ -33,7 +33,7 @@ def download_source(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_urls: list[str],
-) -> tuple[pathlib.Path, str, str, str]:
+) -> tuple[pathlib.Path, Version, str, str]:
     downloader = overrides.find_override_method(req.name, "download_source")
     source_type = "override"
     if not downloader:
@@ -57,7 +57,7 @@ def download_source(
         except Exception as err:
             logger.debug(f"{req.name}: failed to resolve {req} using {url}: {err}")
             continue
-        return (source_filename, version, source_url, source_type)
+        return (source_filename, Version(version), source_url, source_type)
     servers = ", ".join(sdist_server_urls)
     raise ValueError(f"failed to find source for {req} at {servers}")
 
@@ -67,7 +67,7 @@ def resolve_dist(
     sdist_server_url: str,
     include_sdists: bool = True,
     include_wheels: bool = True,
-) -> tuple[str, str]:
+) -> tuple[str, Version] | tuple[None, None]:
     "Return URL to source and its version."
     logger.debug(f"{req.name}: resolving requirement {req} using {sdist_server_url}")
 
@@ -78,7 +78,7 @@ def resolve_dist(
         sdist_server_url=sdist_server_url,
     )
     reporter = resolvelib.BaseReporter()
-    rslvr = resolvelib.Resolver(provider, reporter)
+    rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
     try:
@@ -92,7 +92,7 @@ def resolve_dist(
         raise
 
     for candidate in result.mapping.values():
-        return (candidate.url, candidate.version)
+        return (candidate.url, Version(candidate.version))
     return (None, None)
 
 
@@ -150,7 +150,7 @@ def _takes_arg(f: typing.Callable, arg_name: str) -> bool:
 def unpack_source(
     ctx: context.WorkContext,
     source_filename: pathlib.Path,
-) -> pathlib.Path:
+) -> tuple[pathlib.Path, bool]:
     unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
     if unpack_dir.exists():
         if ctx.cleanup:

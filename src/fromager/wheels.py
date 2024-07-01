@@ -43,9 +43,8 @@ class BuildEnvironment:
         req_filename = self.path / "requirements.txt"
         # FIXME: Ensure each requirement is pinned to a specific version.
         with open(req_filename, "w") as f:
-            if self._build_requirements:
-                for r in self._build_requirements:
-                    f.write(f"{r}\n")
+            for r in self._build_requirements:
+                f.write(f"{r}\n")
         if not self._build_requirements:
             return
         external_commands.run(

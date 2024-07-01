@@ -4,6 +4,7 @@ import itertools
 import json
 import pathlib
 import sys
+import typing
 
 import click
 from packaging.requirements import Requirement
@@ -65,6 +66,7 @@ def as_csv(build_order_file: str, output: pathlib.Path | None):
             )
             build_order.append(new_entry)
 
+    outfile: typing.TextIO
     if output:
         outfile = open(output, "w")
     else:
@@ -99,7 +101,7 @@ def summary(build_order_file: list[str], output: pathlib.Path | None):
     used in each, and where they match.
 
     """
-    dist_to_input_file = collections.defaultdict(dict)
+    dist_to_input_file: dict[str, dict[str, str]] = collections.defaultdict(dict)
     for filename in build_order_file:
         with open(filename, "r") as f:
             build_order = json.load(f)
@@ -107,6 +109,7 @@ def summary(build_order_file: list[str], output: pathlib.Path | None):
             key = overrides.pkgname_to_override_module(step["dist"])
             dist_to_input_file[key][filename] = step["version"]
 
+    outfile: typing.TextIO
     if output:
         outfile = open(output, "w")
     else:
@@ -157,7 +160,7 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
             f'{name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}=={version}'
         )
 
-    def new_node(req):
+    def new_node(req) -> dict[str, typing.Any]:
         if req not in nodes:
             nodes[req] = {
                 "nid": "node" + str(next(node_ids)),
@@ -175,8 +178,8 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
     # syntactically correct.
     node_ids = itertools.count(1)
     # Map formatted requirement text to node details
-    nodes = {}
-    edges = []
+    nodes: dict[str, typing.Any] = {}
+    edges: list[tuple] = []
 
     for filename in build_order_file:
         with open(filename, "r") as f:
@@ -207,6 +210,7 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
             except Exception as err:
                 raise Exception(f"Error processing {filename} at {step}") from err
 
+    outfile: typing.TextIO
     if output:
         outfile = open(output, "w")
     else:
