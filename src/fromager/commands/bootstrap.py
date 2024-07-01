@@ -1,14 +1,19 @@
 import logging
+import pathlib
+import typing
 
 import click
 from packaging.requirements import Requirement
 
-from .. import sdist, server
+from .. import context, sdist, server
 
 logger = logging.getLogger(__name__)
 
 
-def _get_requirements_from_args(toplevel, requirements_file):
+def _get_requirements_from_args(
+    toplevel: typing.Iterable[str],
+    requirements_file: typing.Iterable[pathlib.Path],
+) -> typing.Iterable[str]:
     to_build = []
     to_build.extend(("toplevel", t) for t in toplevel)
     for filename in requirements_file:
@@ -27,7 +32,11 @@ def _get_requirements_from_args(toplevel, requirements_file):
 @click.option("-r", "--requirements-file", multiple=True, help="pip requirements file")
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
-def bootstrap(wkctx, requirements_file, toplevel):
+def bootstrap(
+    wkctx: context.WorkContext,
+    requirements_file: list[str],
+    toplevel: list[str],
+):
     """Compute and build the dependencies of a set of requirements recursively
 
     TOPLEVEL is a requirements specification, including a package name

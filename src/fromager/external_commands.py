@@ -7,7 +7,12 @@ logger = logging.getLogger(__name__)
 
 
 # based on pyproject_hooks/_impl.py: quiet_subprocess_runner
-def run(cmd, cwd=None, extra_environ=None, log_filename=None):
+def run(
+    cmd: list[str],
+    cwd: str | None = None,
+    extra_environ: dict | None = None,
+    log_filename: str | None = None,
+) -> str:
     """Call the subprocess while logging output"""
     if extra_environ is None:
         extra_environ = {}

@@ -6,13 +6,16 @@ import pathlib
 import shutil
 import subprocess
 import tarfile
+import typing
 import zipfile
 from urllib.parse import urlparse
 
 import requests
 import resolvelib
+from packaging.requirements import Requirement
+from packaging.version import Version
 
-from . import dependencies, overrides, resolver, tarballs, vendor_rust
+from . import context, dependencies, overrides, resolver, tarballs, vendor_rust
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,11 @@ DEFAULT_SDIST_SERVER_URLS = [
 ]
 
 
-def download_source(ctx, req, sdist_server_urls):
+def download_source(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_urls: list[str],
+) -> tuple[pathlib.Path, str, str, str]:
     downloader = overrides.find_override_method(req.name, "download_source")
     source_type = "override"
     if not downloader:
@@ -55,7 +62,12 @@ def download_source(ctx, req, sdist_server_urls):
     raise ValueError(f"failed to find source for {req} at {servers}")
 
 
-def resolve_dist(req, sdist_server_url, include_sdists=True, include_wheels=True):
+def resolve_dist(
+    req: Requirement,
+    sdist_server_url: str,
+    include_sdists: bool = True,
+    include_wheels: bool = True,
+) -> tuple[str, str]:
     "Return URL to source and its version."
     logger.debug(f"{req.name}: resolving requirement {req} using {sdist_server_url}")
 
@@ -84,7 +96,11 @@ def resolve_dist(req, sdist_server_url, include_sdists=True, include_wheels=True
     return (None, None)
 
 
-def default_download_source(ctx, req, sdist_server_url):
+def default_download_source(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+) -> tuple[pathlib.Path, str, str]:
     "Download the requirement and return the name of the output path."
     url, version = resolve_dist(
         req, sdist_server_url, include_sdists=True, include_wheels=False
@@ -96,7 +112,7 @@ def default_download_source(ctx, req, sdist_server_url):
     return (source_filename, version, url)
 
 
-def download_url(destination_dir, url):
+def download_url(destination_dir: pathlib.Path, url: str) -> pathlib.Path:
     outfile = pathlib.Path(destination_dir) / os.path.basename(urlparse(url).path)
     logger.debug(
         "looking for %s %s", outfile, "(exists)" if outfile.exists() else "(not there)"
@@ -115,7 +131,7 @@ def download_url(destination_dir, url):
     return outfile
 
 
-def _sdist_root_name(source_filename):
+def _sdist_root_name(source_filename: pathlib.Path) -> str:
     base_name = pathlib.Path(source_filename).name
     if base_name.endswith(".tar.gz"):
         ext_to_strip = ".tar.gz"
@@ -126,12 +142,15 @@ def _sdist_root_name(source_filename):
     return base_name[: -len(ext_to_strip)]
 
 
-def _takes_arg(f, arg_name):
+def _takes_arg(f: typing.Callable, arg_name: str) -> bool:
     sig = inspect.signature(f)
     return arg_name in sig.parameters
 
 
-def unpack_source(ctx, source_filename):
+def unpack_source(
+    ctx: context.WorkContext,
+    source_filename: pathlib.Path,
+) -> pathlib.Path:
     unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
     if unpack_dir.exists():
         if ctx.cleanup:
@@ -160,7 +179,7 @@ def unpack_source(ctx, source_filename):
     return (next(iter(unpack_dir.glob("*"))), True)
 
 
-def _patch_source(ctx, source_root_dir):
+def _patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path):
     for p in overrides.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
         logger.info("applying patch file %s to %s", p, source_root_dir)
         with open(p, "r") as f:
@@ -171,7 +190,12 @@ def _patch_source(ctx, source_root_dir):
             )
 
 
-def write_build_meta(unpack_dir, req, source_filename, version):
+def write_build_meta(
+    unpack_dir: pathlib.Path,
+    req: Requirement,
+    source_filename: pathlib.Path,
+    version: Version,
+):
     meta_file = unpack_dir / "build-meta.json"
     with open(meta_file, "w") as f:
         json.dump(
@@ -186,13 +210,18 @@ def write_build_meta(unpack_dir, req, source_filename, version):
     return meta_file
 
 
-def read_build_meta(unpack_dir):
+def read_build_meta(unpack_dir: pathlib.Path) -> dict:
     meta_file = unpack_dir / "build-meta.json"
     with open(meta_file, "r") as f:
         return json.load(f)
 
 
-def prepare_source(ctx, req, source_filename, version):
+def prepare_source(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_filename: pathlib.Path,
+    version: Version,
+) -> pathlib.Path:
     logger.info(f"{req.name}: preparing source for {req} from {source_filename}")
     preparer = overrides.find_override_method(req.name, "prepare_source")
     if not preparer:
@@ -204,7 +233,12 @@ def prepare_source(ctx, req, source_filename, version):
     return source_root_dir
 
 
-def _default_prepare_source(ctx, req, source_filename, version):
+def _default_prepare_source(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_filename: pathlib.Path,
+    version: Version,
+) -> pathlib.Path:
     source_root_dir, is_new = unpack_source(ctx, source_filename)
     if is_new:
         _patch_source(ctx, source_root_dir)
@@ -212,7 +246,11 @@ def _default_prepare_source(ctx, req, source_filename, version):
     return source_root_dir
 
 
-def build_sdist(ctx, req, sdist_root_dir):
+def build_sdist(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> pathlib.Path:
     logger.info(f"{req.name}: building source distribution in {sdist_root_dir}")
     builder = overrides.find_override_method(req.name, "build_sdist")
     if not builder:
@@ -222,7 +260,11 @@ def build_sdist(ctx, req, sdist_root_dir):
     return sdist_filename
 
 
-def default_build_sdist(ctx, req, sdist_root_dir):
+def default_build_sdist(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> pathlib.Path:
     # It seems like the "correct" way to do this would be to run the
     # PEP 517 API in the source tree we have modified. However, quite
     # a few packages assume their source distribution is being built
@@ -243,7 +285,11 @@ def default_build_sdist(ctx, req, sdist_root_dir):
     return sdist_filename
 
 
-def pep517_build_sdist(ctx, req, sdist_root_dir):
+def pep517_build_sdist(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> pathlib.Path:
     """Use the PEP 517 API to build a source distribution from a modified source tree."""
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     pyproject_toml = dependencies.get_pyproject_contents(sdist_root_dir)

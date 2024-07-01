@@ -2,13 +2,18 @@ import importlib.metadata
 import logging
 import operator
 import os.path
+import pathlib
 import re
 import shutil
 import subprocess
 import sys
+import typing
 from urllib.parse import urlparse
 
+from packaging.requirements import Requirement
+
 from . import (
+    context,
     dependencies,
     external_commands,
     finders,
@@ -28,7 +33,12 @@ _pip_missing_dependency_pattern = re.compile(
 
 
 class MissingDependency(Exception):  # noqa: N818
-    def __init__(self, req_type, req, all_reqs):
+    def __init__(
+        self,
+        req_type: str,
+        req: Requirement,
+        all_reqs: typing.Iterable[Requirement],
+    ):
         self.missing_req = req
         self.all_reqs = all_reqs
         resolutions = []
@@ -47,7 +57,12 @@ class MissingDependency(Exception):  # noqa: N818
         super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
 
 
-def handle_requirement(ctx, req, req_type="toplevel", why=None):
+def handle_requirement(
+    ctx: context.WorkContext,
+    req: Requirement,
+    req_type: str = "toplevel",
+    why: list | None = None,
+) -> str:
     if why is None:
         why = []
     logger.info(
@@ -217,11 +232,16 @@ def handle_requirement(ctx, req, req_type="toplevel", why=None):
     return resolved_version
 
 
-def _sort_requirements(requirements):
+def _sort_requirements(
+    requirements: typing.Iterable[Requirement],
+) -> typing.Iterable[Requirement]:
     return sorted(requirements, key=operator.attrgetter("name"))
 
 
-def _resolve_prebuilt_wheel(req, wheel_server_urls):
+def _resolve_prebuilt_wheel(
+    req: Requirement,
+    wheel_server_urls: list[str],
+) -> tuple[str, str]:
     "Return URL to wheel and its version."
     for url in wheel_server_urls:
         try:
@@ -237,7 +257,12 @@ def _resolve_prebuilt_wheel(req, wheel_server_urls):
     )
 
 
-def _handle_build_system_requirements(ctx, req, why, sdist_root_dir):
+def _handle_build_system_requirements(
+    ctx: context.WorkContext,
+    req: Requirement,
+    why: list | None,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx, req, sdist_root_dir
     )
@@ -259,7 +284,12 @@ def _handle_build_system_requirements(ctx, req, why, sdist_root_dir):
     return build_system_dependencies
 
 
-def _handle_build_backend_requirements(ctx, req, why, sdist_root_dir):
+def _handle_build_backend_requirements(
+    ctx: context.WorkContext,
+    req: Requirement,
+    why: list,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
         ctx, req, sdist_root_dir
     )
@@ -281,7 +311,12 @@ def _handle_build_backend_requirements(ctx, req, why, sdist_root_dir):
     return build_backend_dependencies
 
 
-def _handle_build_sdist_requirements(ctx, req, why, sdist_root_dir):
+def _handle_build_sdist_requirements(
+    ctx: context.WorkContext,
+    req: Requirement,
+    why: list | None,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
         ctx, req, sdist_root_dir
     )
@@ -300,7 +335,11 @@ def _handle_build_sdist_requirements(ctx, req, why, sdist_root_dir):
     return build_sdist_dependencies
 
 
-def prepare_build_environment(ctx, req, sdist_root_dir):
+def prepare_build_environment(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> pathlib.Path:
     logger.info(f"{req.name}: preparing build environment")
 
     next_req_type = "build_system"
@@ -390,13 +429,21 @@ def prepare_build_environment(ctx, req, sdist_root_dir):
     return build_env.path
 
 
-def _write_requirements_file(requirements, filename):
+def _write_requirements_file(
+    requirements: typing.Iterable[Requirement],
+    filename: pathlib.Path,
+):
     with open(filename, "w") as f:
         for r in requirements:
             f.write(f"{r}\n")
 
 
-def _maybe_install(ctx, req, req_type, resolved_version):
+def _maybe_install(
+    ctx: context.WorkContext,
+    req: Requirement,
+    req_type: str,
+    resolved_version: str,
+):
     "Install the package if it is not already installed."
     if resolved_version is not None:
         try:
@@ -416,7 +463,11 @@ def _maybe_install(ctx, req, req_type, resolved_version):
     safe_install(ctx, req, req_type)
 
 
-def safe_install(ctx, req, req_type):
+def safe_install(
+    ctx: context.WorkContext,
+    req: Requirement,
+    req_type: str,
+):
     logger.debug("installing %s %s", req_type, req)
     external_commands.run(
         [

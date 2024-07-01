@@ -1,4 +1,6 @@
 import logging
+import pathlib
+import typing
 
 from packaging.utils import canonicalize_name
 from stevedore import extension
@@ -9,7 +11,11 @@ from stevedore import extension
 # should we set, etc.
 
 
-def _die_on_plugin_load_failure(mgr, ep, err):
+def _die_on_plugin_load_failure(
+    mgr: extension.ExtensionManager,
+    ep: extension.Extension,
+    err: Exception,
+):
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 
 
@@ -27,7 +33,9 @@ def log_overrides():
     logger.debug("loaded overrides for %s", _mgr.entry_points_names())
 
 
-def patches_for_source_dir(patches_dir, source_dir_name):
+def patches_for_source_dir(
+    patches_dir: pathlib.Path, source_dir_name: str
+) -> typing.Iterable[pathlib.Path]:
     """Iterator producing patches to apply to the source dir.
 
     Input should be the base directory name, not a full path.
@@ -40,7 +48,11 @@ def patches_for_source_dir(patches_dir, source_dir_name):
     return sorted(patches_dir.glob(source_dir_name + "*.patch"))
 
 
-def extra_environ_for_pkg(envs_dir, pkgname, variant):
+def extra_environ_for_pkg(
+    envs_dir: pathlib.Path,
+    pkgname: str,
+    variant: str,
+) -> dict:
     """Return a dict of extra environment variables for a particular package.
 
     Extra environment variables are stored in per-package .env files in the
@@ -64,13 +76,13 @@ def extra_environ_for_pkg(envs_dir, pkgname, variant):
     return extra_environ
 
 
-def pkgname_to_override_module(pkgname):
+def pkgname_to_override_module(pkgname: str) -> str:
     canonical_name = canonicalize_name(pkgname)
     module_name = canonical_name.replace("-", "_")
     return module_name
 
 
-def find_override_method(distname, method):
+def find_override_method(distname: str, method: str) -> typing.Callable:
     """Given a distname and method name, look for an override implementation of the method.
 
     If there is no module or no method, return None.

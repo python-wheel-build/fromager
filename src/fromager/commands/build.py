@@ -1,10 +1,11 @@
 import json
 import logging
+import pathlib
 
 import click
 from packaging.requirements import Requirement
 
-from .. import sdist, server, sources, wheels
+from .. import context, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,12 @@ logger = logging.getLogger(__name__)
 @click.argument("dist_version")
 @click.argument("sdist_server_url")
 @click.pass_obj
-def build(wkctx, dist_name, dist_version, sdist_server_url):
+def build(
+    wkctx: context.WorkContext,
+    dist_name: str,
+    dist_version: str,
+    sdist_server_url: str,
+):
     """Build a single version of a single wheel
 
     DIST_NAME is the name of a distribution
@@ -44,7 +50,11 @@ def build(wkctx, dist_name, dist_version, sdist_server_url):
 @click.argument("build_order_file")
 @click.argument("sdist_server_url")
 @click.pass_obj
-def build_sequence(wkctx, build_order_file, sdist_server_url):
+def build_sequence(
+    wkctx: context.WorkContext,
+    build_order_file: str,
+    sdist_server_url: str,
+):
     """Build a sequence of wheels in order
 
     BUILD_ORDER_FILE is the build-order.json files to build
@@ -67,7 +77,12 @@ def build_sequence(wkctx, build_order_file, sdist_server_url):
             print(wheel_filename)
 
 
-def _build(wkctx, dist_name, dist_version, sdist_server_url):
+def _build(
+    wkctx: context.WorkContext,
+    dist_name: str,
+    dist_version: str,
+    sdist_server_url: str,
+) -> pathlib.Path:
     server.start_wheel_server(wkctx)
 
     req = Requirement(f"{dist_name}=={dist_version}")

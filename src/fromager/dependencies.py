@@ -1,7 +1,9 @@
 import copy
 import logging
 import os
+import pathlib
 import shutil
+import typing
 
 import pkginfo
 import pyproject_hooks
@@ -9,12 +11,16 @@ import toml
 from packaging import markers, metadata
 from packaging.requirements import Requirement
 
-from . import external_commands, overrides
+from . import context, external_commands, overrides
 
 logger = logging.getLogger(__name__)
 
 
-def get_build_system_dependencies(ctx, req, sdist_root_dir):
+def get_build_system_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     logger.info(
         f"{req.name}: getting build system dependencies for {req} in {sdist_root_dir}"
     )
@@ -25,7 +31,9 @@ def get_build_system_dependencies(ctx, req, sdist_root_dir):
     return deps
 
 
-def _filter_requirements(req, requirements):
+def _filter_requirements(
+    req: Requirement, requirements: typing.Iterable[Requirement]
+) -> set[Requirement]:
     requires = set()
     for r in requirements:
         if not isinstance(r, Requirement):
@@ -35,12 +43,20 @@ def _filter_requirements(req, requirements):
     return requires
 
 
-def default_get_build_system_dependencies(ctx, req, sdist_root_dir):
+def default_get_build_system_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> typing.Iterable[Requirement]:
     pyproject_toml = get_pyproject_contents(sdist_root_dir)
     return get_build_backend(pyproject_toml)["requires"]
 
 
-def get_build_backend_dependencies(ctx, req, sdist_root_dir):
+def get_build_backend_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     logger.info(
         f"{req.name}: getting build backend dependencies for {req} in {sdist_root_dir}"
     )
@@ -53,7 +69,11 @@ def get_build_backend_dependencies(ctx, req, sdist_root_dir):
     return deps
 
 
-def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
+def default_get_build_backend_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     pyproject_toml = get_pyproject_contents(sdist_root_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
@@ -62,7 +82,11 @@ def default_get_build_backend_dependencies(ctx, req, sdist_root_dir):
     return hook_caller.get_requires_for_build_wheel()
 
 
-def get_build_sdist_dependencies(ctx, req, sdist_root_dir):
+def get_build_sdist_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     logger.info(
         f"{req.name}: getting build sdist dependencies for {req} in {sdist_root_dir}"
     )
@@ -73,7 +97,11 @@ def get_build_sdist_dependencies(ctx, req, sdist_root_dir):
     return deps
 
 
-def default_get_build_sdist_dependencies(ctx, req, sdist_root_dir):
+def default_get_build_sdist_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     pyproject_toml = get_pyproject_contents(sdist_root_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
@@ -82,7 +110,11 @@ def default_get_build_sdist_dependencies(ctx, req, sdist_root_dir):
     return hook_caller.get_requires_for_build_wheel()
 
 
-def get_install_dependencies(ctx, req, sdist_root_dir):
+def get_install_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     logger.info(
         f"{req.name}: getting installation dependencies for {req} in {sdist_root_dir}"
     )
@@ -93,13 +125,19 @@ def get_install_dependencies(ctx, req, sdist_root_dir):
     return deps
 
 
-def get_install_dependencies_of_wheel(req, wheel_filename):
+def get_install_dependencies_of_wheel(
+    req: Requirement, wheel_filename: pathlib.Path
+) -> set[Requirement]:
     logger.info(f"{req.name}: getting installation dependencies from {wheel_filename}")
     wheel = pkginfo.Wheel(wheel_filename)
     return _filter_requirements(req, wheel.requires_dist)
 
 
-def default_get_install_dependencies(ctx, req, sdist_root_dir):
+def default_get_install_dependencies(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+) -> set[Requirement]:
     pyproject_toml = get_pyproject_contents(sdist_root_dir)
     requires = set()
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
@@ -121,7 +159,7 @@ def default_get_install_dependencies(ctx, req, sdist_root_dir):
     return requires
 
 
-def get_pyproject_contents(sdist_root_dir):
+def get_pyproject_contents(sdist_root_dir: pathlib.Path) -> dict:
     pyproject_toml_filename = sdist_root_dir / "pyproject.toml"
     if not os.path.exists(pyproject_toml_filename):
         return {}
@@ -136,7 +174,7 @@ _DEFAULT_BACKEND = {
 }
 
 
-def get_build_backend(pyproject_toml):
+def get_build_backend(pyproject_toml: dict) -> dict:
     # Build a set of defaults. Use a copy to ensure that if anything
     # modifies the values returned by this function our defaults are
     # not changed.
@@ -152,7 +190,9 @@ def get_build_backend(pyproject_toml):
     return backend_settings
 
 
-def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml, override_environ):
+def get_build_backend_hook_caller(
+    sdist_root_dir: pathlib.Path, pyproject_toml: dict, override_environ: dict
+) -> pyproject_hooks.BuildBackendHookCaller:
     backend = get_build_backend(pyproject_toml)
 
     def _run_hook_with_extra_environ(cmd, cwd=None, extra_environ=None):
@@ -174,7 +214,7 @@ def get_build_backend_hook_caller(sdist_root_dir, pyproject_toml, override_envir
     )
 
 
-def evaluate_marker(req, extras=None):
+def evaluate_marker(req: Requirement, extras: dict | None = None) -> bool:
     if not req.marker:
         return True
 
