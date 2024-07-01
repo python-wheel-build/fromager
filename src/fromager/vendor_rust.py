@@ -3,6 +3,7 @@
 
 import json
 import logging
+import os
 import pathlib
 import typing
 
@@ -33,7 +34,7 @@ def _cargo_vendor(
     args = ["cargo", "vendor", f"--manifest-path={manifests[0]}"]
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
-    args.append(project_dir / VENDOR_DIR)
+    args.append(os.fspath(project_dir / VENDOR_DIR))
     external_commands.run(args)
     return sorted(project_dir.joinpath(VENDOR_DIR).iterdir())
 
