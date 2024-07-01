@@ -172,7 +172,7 @@ download. For example, the `GitHubTagProvider` returns the actual tag
 name in case that is different from the version number encoded within
 that tag name.
 
-```
+```python
 def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
     ...
 ```
