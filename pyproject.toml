@@ -103,3 +103,16 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["fromager"]
+
+[tool.mypy]
+mypy_path = ["src"]
+
+[[tool.mypy.overrides]]
+# packages without typing annotations and stubs
+module = [
+    "pyproject_hooks",
+    "requests_mock",
+    "resolver",
+    "stevedore",
+]
+ignore_missing_imports = true
