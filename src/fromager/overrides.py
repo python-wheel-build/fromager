@@ -1,3 +1,4 @@
+import itertools
 import logging
 import pathlib
 import typing
@@ -45,7 +46,10 @@ def patches_for_source_dir(
     the filenames.
 
     """
-    return sorted(patches_dir.glob(source_dir_name + "*.patch"))
+    return itertools.chain(
+        sorted(patches_dir.glob(source_dir_name + "*.patch")),  # legacy format
+        sorted((patches_dir / source_dir_name).glob("*.patch")),  # safer
+    )
 
 
 def extra_environ_for_pkg(
