@@ -1,4 +1,5 @@
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from fromager import resolver
 
@@ -15,9 +16,9 @@ def get_resolver_provider(
     )
 
 
-def expected_source_archive_name(req: Requirement, dist_version: str) -> str:
+def expected_source_archive_name(req: Requirement, dist_version: Version) -> str:
     return f"fromager-test-{dist_version}.tar.gz"
 
 
-def expected_source_directory_name(req: Requirement, dist_version: str) -> str:
+def expected_source_directory_name(req: Requirement, dist_version: Version) -> str:
     return f"fromager-test-{dist_version}/different-prefix-fromager-test-{dist_version}"

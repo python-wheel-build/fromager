@@ -6,6 +6,7 @@ import re
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 from . import overrides
 
@@ -24,7 +25,7 @@ def _dist_name_to_filename(dist_name: str) -> str:
 def find_sdist(
     downloads_dir: pathlib.Path,
     req: Requirement,
-    dist_version: str,
+    dist_version: Version,
 ) -> pathlib.Path | None:
     sdist_name_func = overrides.find_override_method(
         req.name, "expected_source_archive_name"
@@ -74,7 +75,7 @@ def find_sdist(
 def find_wheel(
     downloads_dir: pathlib.Path,
     req: Requirement,
-    dist_version: str,
+    dist_version: Version,
 ) -> pathlib.Path | None:
     filename_prefix = _dist_name_to_filename(req.name)
     canonical_name = canonicalize_name(req.name)
@@ -112,7 +113,7 @@ def find_wheel(
 def find_source_dir(
     work_dir: pathlib.Path,
     req: Requirement,
-    dist_version: str,
+    dist_version: Version,
 ) -> pathlib.Path | None:
     sdir_name_func = overrides.find_override_method(
         req.name, "expected_source_directory_name"

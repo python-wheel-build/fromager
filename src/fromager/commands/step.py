@@ -102,7 +102,7 @@ def build_sdist(
 def _find_source_root_dir(
     work_dir: pathlib.Path,
     req: Requirement,
-    dist_version: str,
+    dist_version: Version,
 ) -> pathlib.Path:
     source_root_dir = finders.find_source_dir(pathlib.Path(work_dir), req, dist_version)
     if source_root_dir:

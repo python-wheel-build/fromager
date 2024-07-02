@@ -33,7 +33,7 @@ def download_source(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_urls: list[str],
-) -> tuple[pathlib.Path, str, str, str]:
+) -> tuple[pathlib.Path, Version, str, str]:
     downloader = overrides.find_override_method(req.name, "download_source")
     source_type = "override"
     if not downloader:
@@ -57,7 +57,7 @@ def download_source(
         except Exception as err:
             logger.debug(f"{req.name}: failed to resolve {req} using {url}: {err}")
             continue
-        return (source_filename, version, source_url, source_type)
+        return (source_filename, Version(version), source_url, source_type)
     servers = ", ".join(sdist_server_urls)
     raise ValueError(f"failed to find source for {req} at {servers}")
 
@@ -68,7 +68,7 @@ def resolve_dist(
     sdist_server_url: str,
     include_sdists: bool = True,
     include_wheels: bool = True,
-) -> tuple[str, str]:
+) -> tuple[str, Version] | tuple[None, None]:
     "Return URL to source and its version."
     logger.debug(f"{req.name}: resolving requirement {req} using {sdist_server_url}")
 
@@ -98,7 +98,7 @@ def resolve_dist(
         raise
 
     for candidate in result.mapping.values():
-        return (candidate.url, candidate.version)
+        return (candidate.url, Version(candidate.version))
     return (None, None)
 
 
@@ -120,11 +120,13 @@ def default_download_source(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
-) -> tuple[pathlib.Path, str, str]:
+) -> tuple[pathlib.Path, Version, str]:
     "Download the requirement and return the name of the output path."
     url, version = resolve_dist(
         ctx, req, sdist_server_url, include_sdists=True, include_wheels=False
     )
+    if url is None or version is None:
+        raise ValueError(f"Could not resolve dist for {req}")
     source_filename = download_url(ctx.sdists_downloads, url)
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"

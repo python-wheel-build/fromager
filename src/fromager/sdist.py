@@ -11,6 +11,7 @@ import typing
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from . import (
     context,
@@ -63,7 +64,7 @@ def handle_requirement(
     req: Requirement,
     req_type: str = "toplevel",
     why: list | None = None,
-) -> str:
+) -> Version:
     if why is None:
         why = []
     logger.info(
@@ -243,7 +244,7 @@ def _resolve_prebuilt_wheel(
     ctx: context.WorkContext,
     req: Requirement,
     wheel_server_urls: list[str],
-) -> tuple[str, str]:
+) -> tuple[str, Version]:
     "Return URL to wheel and its version."
     for url in wheel_server_urls:
         try:
@@ -458,13 +459,13 @@ def _maybe_install(
     ctx: context.WorkContext,
     req: Requirement,
     req_type: str,
-    resolved_version: str,
-):
+    resolved_version: Version | None,
+) -> None:
     "Install the package if it is not already installed."
     if resolved_version is not None:
         try:
-            actual_version = importlib.metadata.version(req.name)
-            if str(resolved_version) == actual_version:
+            actual_version = Version(importlib.metadata.version(req.name))
+            if resolved_version == actual_version:
                 logger.debug(
                     f"{req.name}: already have {req.name} version {resolved_version} installed"
                 )

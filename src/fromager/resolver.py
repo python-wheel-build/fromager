@@ -40,7 +40,7 @@ class Candidate:
     def __init__(
         self,
         name: str,
-        version: str,
+        version: Version,
         url: str | None = None,
         extras: dict | None = None,
         is_sdist: bool | None = None,
@@ -210,7 +210,9 @@ class PyPIProvider(ExtrasProvider):
     def get_preference(self, identifier, resolutions, candidates, information, **kwds):
         return sum(1 for _ in candidates[identifier])
 
-    def find_matches(self, identifier, requirements, incompatibilities):
+    def find_matches(
+        self, identifier, requirements, incompatibilities: typing.Iterable[Candidate]
+    ):
         requirements = list(requirements[identifier])
         bad_versions = {c.version for c in incompatibilities[identifier]}
 
