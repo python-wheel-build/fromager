@@ -296,9 +296,8 @@ distribution, wheel, and python package names are represented in
 filenames and requirements specifications. To standardize and ensure
 that build customizations are recognized correctly, we always use a
 canonical version of the name, computed using
-`packaging.utils.canonicalize_name()` and then replacing hyphens (`-`)
-with underscores (`_`). For convenience, the `canonicalize`
-command will print the correct form of a name.
+`packaging.utils.canonicalize_name()`. For convenience, the
+`canonicalize` command will print the correct form of a name.
 
 ```
 $ tox -e cli -- canonicalize flit-core

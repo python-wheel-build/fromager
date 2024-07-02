@@ -77,10 +77,7 @@ def extra_environ_for_pkg(
 
 
 def pkgname_to_override_module(pkgname: str) -> str:
-    canonical_name = canonicalize_name(pkgname)
-    module_name = canonical_name.replace("-", "_")
-    return module_name
-
+    return canonicalize_name(pkgname)
 
 def find_override_method(distname: str, method: str) -> typing.Callable:
     """Given a distname and method name, look for an override implementation of the method.
