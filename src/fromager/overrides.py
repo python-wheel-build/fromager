@@ -12,6 +12,23 @@ from stevedore import extension
 # should we set, etc.
 
 
+logger = logging.getLogger(__name__)
+
+
+_mgr = None
+
+
+def _get_extensions() -> extension.ExtensionManager:
+    global _mgr
+    if _mgr is None:
+        _mgr = extension.ExtensionManager(
+            namespace="fromager.project_overrides",
+            invoke_on_load=False,
+            on_load_failure_callback=_die_on_plugin_load_failure,
+        )
+    return _mgr
+
+
 def _die_on_plugin_load_failure(
     mgr: extension.ExtensionManager,
     ep: extension.Extension,
@@ -20,18 +37,8 @@ def _die_on_plugin_load_failure(
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 
 
-_mgr = extension.ExtensionManager(
-    namespace="fromager.project_overrides",
-    invoke_on_load=False,
-    on_load_failure_callback=_die_on_plugin_load_failure,
-)
-
-
-logger = logging.getLogger(__name__)
-
-
 def log_overrides():
-    logger.debug("loaded overrides for %s", _mgr.entry_points_names())
+    logger.debug("loaded overrides for %s", _get_extensions().entry_points_names())
 
 
 def patches_for_source_dir(
@@ -95,10 +102,12 @@ def find_override_method(distname: str, method: str) -> typing.Callable:
     """
     distname = pkgname_to_override_module(distname)
     try:
-        mod = _mgr[distname].plugin
+        mod = _get_extensions()[distname].plugin
     except KeyError:
         logger.debug(
-            "no override module for %s among %s", distname, _mgr.entry_points_names()
+            "no override module for %s among %s",
+            distname,
+            _get_extensions().entry_points_names(),
         )
         return None
     if not hasattr(mod, method):
