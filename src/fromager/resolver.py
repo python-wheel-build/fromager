@@ -14,6 +14,7 @@ from platform import python_version
 from urllib.parse import urljoin, urlparse
 from zipfile import ZipFile
 
+import github
 import html5lib
 import requests
 from packaging.requirements import Requirement
@@ -241,5 +242,68 @@ class PyPIProvider(ExtrasProvider):
         return candidate.version in requirement.specifier
 
     def get_dependencies(self, candidate: Candidate) -> list:
+        # return candidate.dependencies
+        return []
+
+
+class GitHubTagProvider(ExtrasProvider):
+    def __init__(
+        self,
+        organization: str,
+        repo: str,
+    ):
+        super().__init__()
+        self.organization = organization
+        self.repo = repo
+        self.client = github.Github()
+
+    def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
+        return canonicalize_name(requirement_or_candidate.name)
+
+    def get_extras_for(
+        self, requirement_or_candidate: Requirement | Candidate
+    ) -> tuple[str]:
+        # Extras is a set, which is not hashable
+        return tuple(sorted(requirement_or_candidate.extras))
+
+    def get_base_requirement(self, candidate: Candidate) -> Requirement:
+        return Requirement(f"{candidate.name}=={candidate.version}")
+
+    def get_preference(self, identifier, resolutions, candidates, information, **kwds):
+        return sum(1 for _ in candidates[identifier])
+
+    def find_matches(self, identifier, requirements, incompatibilities):
+        repo = self.client.get_repo(f"{self.organization}/{self.repo}")
+
+        requirements = list(requirements[identifier])
+        bad_versions = {c.version for c in incompatibilities[identifier]}
+
+        # Need to pass the extras to the search, so they
+        # are added to the candidate at creation - we
+        # treat candidates as immutable once created.
+        candidates = []
+        for tag in repo.get_tags():
+            try:
+                version = Version(tag.name)
+            except Exception as err:
+                logger.debug(
+                    f"could not parse version from git tag {tag.name} on {repo.full_name}: {err}"
+                )
+                continue
+            # Skip versions that are known bad
+            if version in bad_versions:
+                continue
+            # Skip versions that do not match the requirement
+            if not all(version in r.specifier for r in requirements):
+                continue
+            candidates.append(Candidate(identifier, version, url=tag.name))
+        return sorted(candidates, key=attrgetter("version"), reverse=True)
+
+    def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
+        if canonicalize_name(requirement.name) != candidate.name:
+            return False
+        return candidate.version in requirement.specifier
+
+    def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies
         return []
