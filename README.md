@@ -131,6 +131,16 @@ issue](https://gitlab.com/gitlab-org/gitlab/-/issues/350582):
 
 ```plaintext
 machine gitlab.com login oauth2 password $token
+```  
+
+## Determining versions via GitHub tags  
+
+In some cases, the builder might have to use tags on GitHub to determine the version of a project instead of looking at
+pypi.org. To avoid rate limit or to access private GitHub repository, a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) can be passed to fromager by setting
+the following environment variable:  
+
+```shell
+GITHUB_TOKEN=<access_token>
 ```
 
 ## Additional docs
