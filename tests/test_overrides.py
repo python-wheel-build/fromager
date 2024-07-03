@@ -38,3 +38,20 @@ def test_patches_for_source_dir(tmp_path: pathlib.Path):
         overrides.patches_for_source_dir(patches_dir, "project-1.2.3-variant")
     )
     assert results == [p2, p5]
+
+
+def test_extra_environ_for_pkg(tmp_path: pathlib.Path):
+    env_dir = tmp_path / "env"
+    env_dir.mkdir()
+
+    variant_dir = env_dir / "variant"
+    variant_dir.mkdir()
+
+    project_env = variant_dir / "project.env"
+    project_env.write_text("VAR1=VALUE1\nVAR2=VALUE2")
+
+    result = overrides.extra_environ_for_pkg(env_dir, "project", "variant")
+    assert result == {"VAR1": "VALUE1", "VAR2": "VALUE2"}
+
+    result = overrides.extra_environ_for_pkg(env_dir, "non_existant_project", "variant")
+    assert result == {}
