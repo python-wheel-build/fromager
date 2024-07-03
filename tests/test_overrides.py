@@ -1,4 +1,3 @@
-import os
 import pathlib
 
 from fromager import overrides
@@ -49,14 +48,10 @@ def test_extra_environ_for_pkg(tmp_path: pathlib.Path):
     variant_dir.mkdir()
 
     project_env = variant_dir / "project.env"
-    project_env.write_text("VAR1=OVERRIDEN\nVAR2=VALUE2")
-
-    os.environ.clear()
-    os.environ["VAR1"] = "VALUE1"
-    os.environ["VAR3"] = "VALUE3"
+    project_env.write_text("VAR1=VALUE1\nVAR2=VALUE2")
 
     result = overrides.extra_environ_for_pkg(env_dir, "project", "variant")
-    assert result == {"VAR1": "OVERRIDEN", "VAR2": "VALUE2", "VAR3": "VALUE3"}
+    assert result == {"VAR1": "VALUE1", "VAR2": "VALUE2"}
 
     result = overrides.extra_environ_for_pkg(env_dir, "non_existant_project", "variant")
-    assert result == {"VAR1": "VALUE1", "VAR3": "VALUE3"}
+    assert result == {}
