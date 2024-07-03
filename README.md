@@ -113,6 +113,26 @@ environment and prepared source, compiling any extensions using the
 appropriate override environment settings (refer to
 [customization](docs/customization.md) for details about overrides).
 
+## Using private registries
+
+Fromager uses the [requests](https://requests.readthedocs.io) library and `pip`
+at different points for talking to package registries. Both support
+authenticating to remote servers in various ways. The simplest way to integrate
+the authentication with fromager is to have a
+[netrc](https://docs.python.org/3/library/netrc.html) file with a valid entry
+for the host. The file will be read from `~/.netrc` by default. Another location
+can be specified by setting the `NETRC` environment variable.
+
+For example, to use a gitlab package registry, use a [personal
+access
+token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html#create-a-personal-access-token)
+as documented in [this
+issue](https://gitlab.com/gitlab-org/gitlab/-/issues/350582):
+
+```plaintext
+machine gitlab.com login oauth2 password $token
+```
+
 ## Additional docs
 
 * [Package build customization instructions](docs/customization.md)
