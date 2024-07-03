@@ -1,6 +1,5 @@
 import itertools
 import logging
-import os
 import pathlib
 import typing
 
@@ -72,7 +71,7 @@ def extra_environ_for_pkg(
 
     By default all packages have access to the environment variables in the current process
     """
-    extra_environ = dict(os.environ)
+    extra_environ = {}
 
     pkgname = pkgname_to_override_module(pkgname)
     variant_dir = envs_dir / variant

@@ -111,7 +111,7 @@ def default_build_wheel(
     if existing_path:
         path_parts.append(existing_path)
     updated_path = ":".join(path_parts)
-    override_env = {}
+    override_env = dict(os.environ)
     override_env.update(extra_environ)
     override_env["PATH"] = updated_path
     override_env["VIRTUAL_ENV"] = str(build_env.path)
