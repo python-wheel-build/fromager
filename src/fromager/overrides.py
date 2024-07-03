@@ -68,8 +68,6 @@ def extra_environ_for_pkg(
 
     Extra environment variables are stored in per-package .env files in the
     envs package, with a key=value per line.
-
-    By default all packages have access to the environment variables in the current process
     """
     extra_environ = {}
 
