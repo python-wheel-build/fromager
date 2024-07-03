@@ -54,7 +54,11 @@ def download_source(
                 raise ValueError(
                     f"do not know how to unpack {download_details}, expected 2 or 3 members"
                 )
-        except Exception as err:
+        except (
+            resolvelib.InconsistentCandidate,
+            resolvelib.RequirementsConflicted,
+            resolvelib.ResolutionImpossible,
+        ) as err:
             logger.debug(f"{req.name}: failed to resolve {req} using {url}: {err}")
             continue
         return (source_filename, version, source_url, source_type)
