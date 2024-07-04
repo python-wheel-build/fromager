@@ -24,6 +24,7 @@ class WorkContext:
         wheel_server_url: str,
         cleanup: bool = True,
         variant: str = "cpu",
+        jobs: int | None = None,
     ):
         self.settings = active_settings
         self.patches_dir = pathlib.Path(patches_dir).absolute()
@@ -40,6 +41,7 @@ class WorkContext:
         self.wheel_server_url = wheel_server_url
         self.cleanup = cleanup
         self.variant = variant
+        self.jobs = jobs
 
         self._build_order_filename = self.work_dir / "build-order.json"
         self._constraints_filename = self.work_dir / "constraints.txt"

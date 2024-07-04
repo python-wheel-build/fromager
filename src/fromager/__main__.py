@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import os
 import pathlib
 
 import click
@@ -79,6 +80,12 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
     help="control removal of working files when a build completes successfully",
 )
 @click.option("--variant", default="cpu", help="the build variant name")
+@click.option(
+    "-j",
+    "--jobs",
+    type=int,
+    help="number of jobs available to run in parallel",
+)
 @click.pass_context
 def main(
     ctx,
@@ -93,6 +100,7 @@ def main(
     wheel_server_url: str,
     cleanup: bool,
     variant: str,
+    jobs: int,
 ):
     # Configure console and log output.
     stream_handler = logging.StreamHandler()
@@ -123,6 +131,7 @@ def main(
         wheel_server_url=wheel_server_url,
         cleanup=cleanup,
         variant=variant,
+        jobs=jobs if jobs is None or jobs > 0 else os.cpu_count(),
     )
     wkctx.setup()
     ctx.obj = wkctx
