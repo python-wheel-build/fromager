@@ -52,6 +52,8 @@ test = [
     "pytest-cov",
     "coverage!=4.4,>=4.0",
     "requests-mock",
+    "setuptools>=64", 
+    "setuptools_scm>=8",
 ]
 build = [
     "build",
