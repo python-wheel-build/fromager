@@ -12,7 +12,7 @@ class Constraints:
     def __init__(self, data: dict[str, Requirement]):
         self._data = data
 
-    def get_new_requirement(self, req: Requirement):
+    def get_constrained_requirement(self, req: Requirement):
         constraint = self._data.get(req.name)
         new_req = copy.deepcopy(req)
 
