@@ -19,14 +19,25 @@ class Constraints:
         if not constraint:
             return new_req, None
 
-        # only allow "==" in constraints for now
-        if len(constraint.specifier) != 1 or not str(constraint.specifier).startswith(
-            "=="
-        ):
+        # only allow one constraint per package
+        if len(constraint.specifier) != 1:
             logger.debug(
-                f"{constraint} is not allowed. Only '<package>==<version>' constraints are allowed"
+                f"{constraint} is not allowed. Only one constraint per package is allowed"
             )
             return new_req, None
+
+        for spec in constraint.specifier:
+            # only allow "=="
+            if spec.operator != "==":
+                logger.debug(
+                    f"{constraint} is not allowed. Only '<package>==<version>' constraints are allowed"
+                )
+                return new_req, None
+            # ensure that constraint and req don't conflict
+            if spec.version not in req.specifier:
+                raise ValueError(
+                    f"Constraint {constraint} conflicts with requirement {req}"
+                )
 
         new_req.specifier = constraint.specifier
         return new_req, constraint

@@ -1,3 +1,4 @@
+import pytest
 from packaging.requirements import Requirement
 
 from fromager import constraints
@@ -25,6 +26,13 @@ def test_incorrect_operator():
     new_req, constraint = c.get_new_requirement(old_req)
     assert new_req == old_req
     assert constraint is None
+
+
+def test_constraint_conflict():
+    c = constraints.Constraints({"torch": Requirement("torch==2.3.0")})
+    old_req = Requirement("torch!=2.3.0,<2.4.0")
+    with pytest.raises(ValueError):
+        c.get_new_requirement(old_req)
 
 
 def test_apply_constraint():
