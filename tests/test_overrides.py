@@ -96,3 +96,52 @@ def test_extra_environ_for_pkg_expansion(tmp_path: pathlib.Path):
 
     with pytest.raises(ValueError):
         extra_environ = overrides.extra_environ_for_pkg(tmp_path, pkg_name, variant)
+
+
+def test_list_all(tmp_path):
+    patches_dir = tmp_path / "patches"
+    patches_dir.mkdir()
+
+    project_patch_dir = patches_dir / "project-with-patch-1.2.3"
+    project_patch_dir.mkdir()
+
+    # legacy form
+    p1 = patches_dir / "legacy-project-1.2.3-001.patch"
+    np1 = patches_dir / "legacy-project-1.2.3.txt"
+    p2 = patches_dir / "fromager_test-1.2.3.patch"  # duplicate
+
+    # new form with project dir
+    p3 = project_patch_dir / "003.patch"
+    p4 = project_patch_dir / "004.patch"
+    np2 = project_patch_dir / "not-a-patch.txt"
+
+    # Create all of the test files
+    for p in [p1, p2, p3, p4]:
+        p.write_text("this is a patch file")
+    for f in [np1, np2]:
+        f.write_text("this is not a patch file")
+
+    env_dir = tmp_path / "env"
+    env_dir.mkdir()
+    variant_dir = env_dir / "variant"
+    variant_dir.mkdir()
+    project_env = variant_dir / "project-with-env.env"
+    project_env.write_text("VAR1=VALUE1\nVAR2=VALUE2")
+    project_env2 = variant_dir / "fromager_test.env"
+    project_env2.write_text("VAR1=VALUE1\nVAR2=VALUE2")  # duplicate
+
+    expected = [
+        "project-with-patch",
+        "legacy-project",
+        "project-with-env",
+        "fromager-test",
+    ]
+    expected.sort()
+
+    packages = overrides.list_all(
+        patches_dir=patches_dir,
+        envs_dir=env_dir,
+        test=True,
+    )
+
+    assert expected == packages
