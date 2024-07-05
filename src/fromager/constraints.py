@@ -21,18 +21,17 @@ class Constraints:
 
         # only allow one constraint per package
         if len(constraint.specifier) != 1:
-            logger.debug(
+            raise ValueError(
                 f"{constraint} is not allowed. Only one constraint per package is allowed"
             )
-            return new_req, None
 
         for spec in constraint.specifier:
             # only allow "=="
             if spec.operator != "==":
-                logger.debug(
+                raise ValueError(
                     f"{constraint} is not allowed. Only '<package>==<version>' constraints are allowed"
                 )
-                return new_req, None
+
             # ensure that constraint and req don't conflict
             if spec.version not in req.specifier:
                 raise ValueError(
@@ -56,10 +55,9 @@ def load(filename: pathlib.Path | None) -> Constraints:
         return Constraints({})
     filepath = pathlib.Path(filename)
     if not filepath.exists():
-        logger.debug(
-            "constraints file %s does not exist, ignoring", filepath.absolute()
+        raise FileNotFoundError(
+            f"constraints file {filepath.absolute()} does not exist, ignoring"
         )
-        return Constraints({})
     with open(filepath, "r") as f:
         logger.info("loading constraints from %s", filepath.absolute())
         return _parse(f)
