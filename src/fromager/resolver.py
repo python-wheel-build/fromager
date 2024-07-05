@@ -255,7 +255,9 @@ class GitHubTagProvider(ExtrasProvider):
         super().__init__()
         self.organization = organization
         self.repo = repo
-        self.client = github.Github()
+        token = os.getenv("GITHUB_TOKEN")
+        auth = github.Auth.Token(token) if token else None
+        self.client = github.Github(auth=auth)
 
     def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
