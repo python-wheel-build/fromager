@@ -75,33 +75,41 @@ def handle_requirement(
         f'{req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}'
     )
 
+    new_req, constraint = ctx.constraints.get_new_requirement(req)
+    if constraint:
+        logger.info(
+            f"incoming requirement {req} matches constraint {constraint}, the new requirement is {new_req}"
+        )
+
     pre_built = overrides.pkgname_to_override_module(
-        req.name
+        new_req.name
     ) in ctx.settings.pre_built(ctx.variant)
 
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
     if not pre_built:
         source_filename, resolved_version, source_url, source_url_type = (
-            sources.download_source(ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
+            sources.download_source(ctx, new_req, sources.DEFAULT_SDIST_SERVER_URLS)
         )
 
     else:
-        logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
+        logger.info(
+            f"{new_req.name}: {req_type} requirement {new_req} uses a pre-built wheel"
+        )
         servers = [sources.PYPI_SERVER_URL]
         if ctx.wheel_server_url:
             servers.insert(0, ctx.wheel_server_url)
-        wheel_url, resolved_version = _resolve_prebuilt_wheel(ctx, req, servers)
+        wheel_url, resolved_version = _resolve_prebuilt_wheel(ctx, new_req, servers)
         source_url = wheel_url
         source_url_type = "prebuilt"
         wheel_filename = ctx.wheels_prebuilt / os.path.basename(
             urlparse(wheel_url).path
         )
         if not wheel_filename.exists():
-            logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
+            logger.info(f"{new_req.name}: downloading pre-built wheel {wheel_url}")
             wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
         else:
-            logger.info(f"{req.name}: have pre-built wheel {wheel_filename}")
+            logger.info(f"{new_req.name}: have pre-built wheel {wheel_filename}")
         # Add the wheel to the mirror so it is available to anything
         # that needs to install it. We leave a copy in the prebuilt
         # directory to make it easy to remove the wheel from the
@@ -109,29 +117,31 @@ def handle_requirement(
         # index.
         dest_name = ctx.wheels_downloads / wheel_filename.name
         if not dest_name.exists():
-            logger.info(f"{req.name}: updating temporary mirror with pre-built wheel")
+            logger.info(
+                f"{new_req.name}: updating temporary mirror with pre-built wheel"
+            )
             shutil.copy(wheel_filename, dest_name)
             server.update_wheel_mirror(ctx)
-        unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
+        unpack_dir = ctx.work_dir / f"{new_req.name}-{resolved_version}"
         if not unpack_dir.exists():
             unpack_dir.mkdir()
 
     # Avoid cyclic dependencies and redundant processing.
-    if ctx.has_been_seen(req, resolved_version):
+    if ctx.has_been_seen(new_req, resolved_version):
         logger.debug(
-            f"{req.name}: redundant {req_type} requirement {why} -> {req} resolves to {resolved_version}"
+            f"{new_req.name}: redundant {req_type} requirement {why} -> {new_req} resolves to {resolved_version}"
         )
         return resolved_version
-    ctx.mark_as_seen(req, resolved_version)
+    ctx.mark_as_seen(new_req, resolved_version)
 
     logger.info(
-        f"{req.name}: new {req_type} dependency {req} resolves to {resolved_version}"
+        f"{new_req.name}: new {req_type} dependency {new_req} resolves to {resolved_version}"
     )
 
     # Build the dependency chain up to the point of this new
     # requirement using a new list so we can avoid modifying the list
     # we're given.
-    why = why[:] + [(req_type, req, resolved_version)]
+    why = why[:] + [(req_type, new_req, resolved_version)]
 
     # for cleanup
     build_env = None
@@ -139,23 +149,23 @@ def handle_requirement(
 
     if not pre_built:
         sdist_root_dir = sources.prepare_source(
-            ctx, req, source_filename, resolved_version
+            ctx, new_req, source_filename, resolved_version
         )
         unpack_dir = sdist_root_dir.parent
 
         next_req_type = "build_system"
         build_system_dependencies = _handle_build_system_requirements(
-            ctx, req, why, sdist_root_dir
+            ctx, new_req, why, sdist_root_dir
         )
 
         next_req_type = "build_backend"
         build_backend_dependencies = _handle_build_backend_requirements(
-            ctx, req, why, sdist_root_dir
+            ctx, new_req, why, sdist_root_dir
         )
 
         next_req_type = "build_sdist"
         build_sdist_dependencies = _handle_build_sdist_requirements(
-            ctx, req, why, sdist_root_dir
+            ctx, new_req, why, sdist_root_dir
         )
 
     # Add the new package to the build order list before trying to
@@ -163,7 +173,7 @@ def handle_requirement(
     # fails.
     ctx.add_to_build_order(
         req_type=req_type,
-        req=req,
+        req=new_req,
         version=resolved_version,
         why=why,
         source_url=source_url,
@@ -175,14 +185,16 @@ def handle_requirement(
         # FIXME: This is a bit naive, but works for most wheels, including
         # our more expensive ones, and there's not a way to know the
         # actual name without doing most of the work to build the wheel.
-        wheel_filename = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
+        wheel_filename = finders.find_wheel(
+            ctx.wheels_downloads, new_req, resolved_version
+        )
         if wheel_filename:
             logger.info(
-                f"{req.name}: have wheel version {resolved_version}: {wheel_filename}"
+                f"{new_req.name}: have wheel version {resolved_version}: {wheel_filename}"
             )
         else:
             logger.info(
-                f"{req.name}: preparing to build wheel for version {resolved_version}"
+                f"{new_req.name}: preparing to build wheel for version {resolved_version}"
             )
             build_env = wheels.BuildEnvironment(
                 ctx,
@@ -192,24 +204,24 @@ def handle_requirement(
                 | build_sdist_dependencies,
             )
             try:
-                sources.build_sdist(ctx, req, sdist_root_dir)
+                sources.build_sdist(ctx, new_req, sdist_root_dir)
             except Exception as err:
                 logger.warning(
-                    f"{req.name}: failed to build source distribution: {err}"
+                    f"{new_req.name}: failed to build source distribution: {err}"
                 )
-            built_filename = wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
+            built_filename = wheels.build_wheel(ctx, new_req, sdist_root_dir, build_env)
             server.update_wheel_mirror(ctx)
             # When we update the mirror, the built file moves to the
             # downloads directory.
             wheel_filename = ctx.wheels_downloads / built_filename.name
             logger.info(
-                f"{req.name}: built wheel for version {resolved_version}: {wheel_filename}"
+                f"{new_req.name}: built wheel for version {resolved_version}: {wheel_filename}"
             )
 
     # Process installation dependencies for all wheels.
     next_req_type = "install"
     install_dependencies = dependencies.get_install_dependencies_of_wheel(
-        req, wheel_filename
+        new_req, wheel_filename
     )
     _write_requirements_file(
         install_dependencies,
@@ -227,13 +239,17 @@ def handle_requirement(
     # artifacts that were created.
     if ctx.cleanup:
         if sdist_root_dir:
-            logger.debug(f"{req.name}: cleaning up source tree {sdist_root_dir}")
+            logger.debug(f"{new_req.name}: cleaning up source tree {sdist_root_dir}")
             shutil.rmtree(sdist_root_dir)
-            logger.debug(f"{req.name}: cleaned up source tree {sdist_root_dir}")
+            logger.debug(f"{new_req.name}: cleaned up source tree {sdist_root_dir}")
         if build_env:
-            logger.debug(f"{req.name}: cleaning up build environment {build_env.path}")
+            logger.debug(
+                f"{new_req.name}: cleaning up build environment {build_env.path}"
+            )
             shutil.rmtree(build_env.path)
-            logger.debug("{req.name}: cleaned up build environment {build_env.path}")
+            logger.debug(
+                f"{new_req.name}: cleaned up build environment {build_env.path}"
+            )
 
     return resolved_version
 

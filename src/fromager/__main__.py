@@ -5,7 +5,7 @@ import pathlib
 
 import click
 
-from . import clickext, commands, context, overrides, settings
+from . import clickext, commands, constraints, context, overrides, settings
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,12 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
     help="location of the application settings file",
 )
 @click.option(
+    "-c",
+    "--constraints-file",
+    type=clickext.ClickPath(),
+    help="location of the constraints file",
+)
+@click.option(
     "--wheel-server-url",
     default="",
     type=str,
@@ -90,6 +96,7 @@ def main(
     patches_dir: pathlib.Path,
     envs_dir: pathlib.Path,
     settings_file: pathlib.Path,
+    constraints_file: pathlib.Path,
     wheel_server_url: str,
     cleanup: bool,
     variant: str,
@@ -115,6 +122,7 @@ def main(
 
     wkctx = context.WorkContext(
         active_settings=settings.load(settings_file),
+        pkg_constraints=constraints.load(constraints_file),
         patches_dir=patches_dir,
         envs_dir=envs_dir,
         sdists_repo=sdists_repo,

@@ -7,7 +7,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from . import settings
+from . import constraints, settings
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ class WorkContext:
     def __init__(
         self,
         active_settings: settings.Settings,
+        pkg_constraints: constraints.Constraints,
         patches_dir: pathlib.Path,
         envs_dir: pathlib.Path,
         sdists_repo: pathlib.Path,
@@ -26,6 +27,7 @@ class WorkContext:
         variant: str = "cpu",
     ):
         self.settings = active_settings
+        self.constraints = pkg_constraints
         self.patches_dir = pathlib.Path(patches_dir).absolute()
         self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
