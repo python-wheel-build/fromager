@@ -1,6 +1,8 @@
 import itertools
 import logging
+import os
 import pathlib
+import string
 import typing
 
 from packaging.utils import canonicalize_name
@@ -68,8 +70,13 @@ def extra_environ_for_pkg(
 
     Extra environment variables are stored in per-package .env files in the
     envs package, with a key=value per line.
+
+    Supports $NAME and ${NAME} substition from process environment and
+    previous keys in an env file. Raises 'KeyError' for unknown keys and
+    'ValueError' for subshell "$()" expressions.
     """
     extra_environ = {}
+    template_env = os.environ.copy()
 
     pkgname = pkgname_to_override_module(pkgname)
     variant_dir = envs_dir / variant
@@ -82,7 +89,14 @@ def extra_environ_for_pkg(
         with open(env_file, "r") as f:
             for line in f:
                 key, _, value = line.strip().partition("=")
-                extra_environ[key.strip()] = value.strip()
+                key = key.strip()
+                value = value.strip()
+                if "$(" in value:
+                    raise ValueError(f"'{value}': subshell '$()' is not supported.")
+                value = string.Template(value).substitute(template_env)
+                extra_environ[key] = value
+                # subsequent key-value pairs can depend on previously vars.
+                template_env[key] = value
     return extra_environ
 
 

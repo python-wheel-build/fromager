@@ -54,9 +54,15 @@ around the 3 parts will be ignored, but whitespace inside the value is
 preserved. It is not necessary to quote values, and quotes inside the
 value will be passed through.
 
+Environment files support simple parameter expansions `$NAME` and
+`${NAME}`. Values are taken from previous lines, then process environment.
+Sub shell expression `$(cmd)` and extended parameter expansions like
+`${NAME:-default}` are not implemented.
+
 ```console
 $ cat overrides/envs/cuda/llama_cpp_python.env
-CMAKE_ARGS=-DLLAMA_CUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major -DLLAMA_NATIVE=off
+LLAMA_NATIVE=off
+CMAKE_ARGS=-DLLAMA_CUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major -DLLAMA_NATIVE=${LLAMA_NATIVE}
 CFLAGS=-mno-avx
 FORCE_CMAKE=1
 ```
