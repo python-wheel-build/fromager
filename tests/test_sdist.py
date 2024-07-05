@@ -1,13 +1,18 @@
+import typing
 from unittest.mock import patch
 
 from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import sdist
+from fromager.context import WorkContext
 
 
 @patch("fromager.sources.resolve_dist")
-def test_missing_dependency_format(resolve_dist, tmp_context):
+def test_missing_dependency_format(
+    resolve_dist: typing.Callable,
+    tmp_context: WorkContext,
+):
     resolutions = {
         "flit_core": "3.9.0",
         "setuptools": "69.5.1",
@@ -30,3 +35,13 @@ def test_missing_dependency_format(resolve_dist, tmp_context):
     assert "setuptools>=40.8.0 -> 69.5.1" in s
     # Ensure we report what version we expect of all of the other dependencies
     assert "flit_core -> 3.9.0" in s
+
+
+def test_ignore_based_on_marker(tmp_context: WorkContext):
+    version = sdist.handle_requirement(
+        ctx=tmp_context,
+        req=Requirement('foo; python_version<"3.9"'),
+        req_type="toplevel",
+        why=[],
+    )
+    assert version == ""

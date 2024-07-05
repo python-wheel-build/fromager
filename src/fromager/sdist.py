@@ -66,6 +66,11 @@ def handle_requirement(
 ) -> str:
     if why is None:
         why = []
+    if not dependencies.evaluate_marker(req):
+        logger.info(
+            f"{req.name}: ignoring {req_type} dependency because of its marker expression"
+        )
+        return ""
     logger.info(
         f'{req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}'
     )
