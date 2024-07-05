@@ -84,6 +84,14 @@ def build_wheel(
     # TODO: refactor?
     # Build Rust without network access
     extra_environ["CARGO_NET_OFFLINE"] = "true"
+    # configure max jobs settings. should cover most of the cases, if not then the user can use ctx.jobs in their plugin
+    if ctx.jobs:
+        extra_environ["MAKEFLAGS"] = (
+            f"{extra_environ.get('MAKEFLAGS', '')} -j{ctx.jobs}"
+        )
+        extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = f"{ctx.jobs}"
+        extra_environ["MAX_JOBS"] = f"{ctx.jobs}"
+
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if wheels:
