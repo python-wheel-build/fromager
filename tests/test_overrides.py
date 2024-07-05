@@ -1,4 +1,8 @@
+import os
 import pathlib
+from unittest import mock
+
+import pytest
 
 from fromager import overrides
 
@@ -55,3 +59,40 @@ def test_extra_environ_for_pkg(tmp_path: pathlib.Path):
 
     result = overrides.extra_environ_for_pkg(env_dir, "non_existant_project", "variant")
     assert result == {}
+
+
+def test_extra_environ_for_pkg_expansion(tmp_path: pathlib.Path):
+    variant = "cpu"
+    pkg_name = "another-shrubbery"
+    env_file = tmp_path / variant / "another_shrubbery.env"
+    env_file.parent.mkdir(parents=True)
+
+    # good case
+    with env_file.open("w", encoding="utf=8") as f:
+        f.write("EGG = Python\n")
+        f.write("SPAM=Monty ${EGG}!\n")
+        f.write("KNIGHT=$NAME\n")
+
+    with mock.patch.dict(os.environ) as environ:
+        environ.clear()
+        environ["NAME"] = "Ni"
+        extra_environ = overrides.extra_environ_for_pkg(tmp_path, pkg_name, variant)
+
+    assert extra_environ == {"EGG": "Python", "SPAM": "Monty Python!", "KNIGHT": "Ni"}
+
+    # unknown key
+    with env_file.open("w", encoding="utf=8") as f:
+        f.write("EGG=${UNKNOWN_NAME}\n")
+
+    with mock.patch.dict(os.environ) as environ:
+        environ.clear()
+        environ["NAME"] = "Ni"
+        with pytest.raises(KeyError):
+            extra_environ = overrides.extra_environ_for_pkg(tmp_path, pkg_name, variant)
+
+    # unsupported
+    with env_file.open("w", encoding="utf=8") as f:
+        f.write("SPAM=$(ls)\n")
+
+    with pytest.raises(ValueError):
+        extra_environ = overrides.extra_environ_for_pkg(tmp_path, pkg_name, variant)
