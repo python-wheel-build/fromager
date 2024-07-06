@@ -78,7 +78,7 @@ def handle_requirement(
     req, constraint = ctx.constraints.get_constrained_requirement(original_req)
     if constraint:
         logger.info(
-            f"incoming requirement {req} matches constraint {constraint}, the new requirement is {req}"
+            f"{original_req.name}: incoming requirement {original_req} matches constraint {constraint}, the new requirement is {req}"
         )
 
     pre_built = overrides.pkgname_to_override_module(
