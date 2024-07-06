@@ -24,6 +24,7 @@ mkdir -p "$OUTDIR/build-logs"
 # Set up virtualenv with the CLI and dependencies.
 tox -e e2e -n -r
 source ".tox/e2e/bin/activate"
+pip install e2e/post_build_hook
 
 # Bootstrap the test project
 fromager \
@@ -51,6 +52,8 @@ fromager \
 EXPECTED_FILES="
 wheels-repo/build/stevedore-5.2.0-py3-none-any.whl
 sdists-repo/downloads/stevedore-5.2.0.tar.gz
+sdists-repo/builds/stevedore-5.2.0.tar.gz
+sdists-repo/builds/test-output-file.txt
 build.log
 "
 
@@ -61,4 +64,12 @@ for f in $EXPECTED_FILES; do
     pass=false
   fi
 done
+
+if $pass; then
+  if ! grep -q "${DIST}==${VERSION}" $OUTDIR/sdists-repo/builds/test-output-file.txt; then
+    echo "FAIL: Did not find content in post-build hook output file" 1>&2
+    pass=false
+  fi
+fi
+
 $pass

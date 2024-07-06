@@ -6,7 +6,7 @@ import click
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from .. import clickext, context, sdist, server, sources, wheels
+from fromager import clickext, context, hooks, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +109,19 @@ def _build(
     sdist.prepare_build_environment(wkctx, req, source_root_dir)
 
     # Make a new source distribution, in case we patched the code.
-    sources.build_sdist(wkctx, req, source_root_dir)
+    sdist_filename = sources.build_sdist(wkctx, req, source_root_dir)
 
     # Build
     build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(wkctx, req, source_root_dir, build_env)
+
+    hooks.run_post_build_hooks(
+        ctx=wkctx,
+        req=req,
+        dist_name=dist_name,
+        dist_version=dist_version,
+        sdist_filename=sdist_filename,
+        wheel_filename=wheel_filename,
+    )
+
     return wheel_filename
