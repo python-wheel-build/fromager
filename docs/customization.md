@@ -347,3 +347,39 @@ command will print the correct form of a name.
 $ tox -e cli -- canonicalize flit-core
 flit_core
 ```
+
+## Process hooks
+
+Fromager supports plugging in Python hooks to be run after build events.
+
+### post_build
+
+The `post_build` hook runs after a wheel is successfully built and can be used
+to publish that wheel to a package index or take other post-build actions.
+
+Configure a `post_build` hook in your `pyproject.toml` like this:
+
+```toml
+[project.entry-points."fromager.hooks"]
+post_build = "package_plugins.module:function"
+```
+
+The input arguments to the `post_build` hook are the `WorkContext`,
+`Requirement` being built, the distribution name and version, and the sdist and
+wheel filenames.
+
+NOTE: The files should not be renamed or moved.
+
+```python
+def post_build(
+    ctx: context.WorkContext,
+    req: Requirement,
+    dist_name: str,
+    dist_version: str,
+    sdist_filename: pathlib.Path,
+    wheel_filename: pathlib.Path,
+):
+    logger.info(
+        f"{req.name}: running post build hook for {sdist_filename} and {wheel_filename}"
+    )
+```
