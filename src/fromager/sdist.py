@@ -60,20 +60,26 @@ class MissingDependency(Exception):  # noqa: N818
 
 def handle_requirement(
     ctx: context.WorkContext,
-    req: Requirement,
+    original_req: Requirement,
     req_type: str = "toplevel",
     why: list | None = None,
 ) -> str:
     if why is None:
         why = []
-    if not dependencies.evaluate_marker(req):
+    if not dependencies.evaluate_marker(original_req):
         logger.info(
-            f"{req.name}: ignoring {req_type} dependency because of its marker expression"
+            f"{original_req.name}: ignoring {req_type} dependency because of its marker expression"
         )
         return ""
     logger.info(
-        f'{req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}'
+        f'{original_req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {original_req} {why}'
     )
+
+    req, constraint = ctx.constraints.get_constrained_requirement(original_req)
+    if constraint:
+        logger.info(
+            f"incoming requirement {req} matches constraint {constraint}, the new requirement is {req}"
+        )
 
     pre_built = overrides.pkgname_to_override_module(
         req.name
@@ -233,7 +239,7 @@ def handle_requirement(
         if build_env:
             logger.debug(f"{req.name}: cleaning up build environment {build_env.path}")
             shutil.rmtree(build_env.path)
-            logger.debug("{req.name}: cleaned up build environment {build_env.path}")
+            logger.debug(f"{req.name}: cleaned up build environment {build_env.path}")
 
     return resolved_version
 
