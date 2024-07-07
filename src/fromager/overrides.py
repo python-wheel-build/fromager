@@ -5,7 +5,8 @@ import pathlib
 import string
 import typing
 
-from packaging.utils import canonicalize_name
+from packaging.utils import canonicalize_name, parse_sdist_filename
+from packaging.version import Version
 from stevedore import extension
 
 # An interface for reretrieving per-package information which influences
@@ -128,3 +129,54 @@ def find_override_method(distname: str, method: str) -> typing.Callable:
         return None
     logger.info("found %s override for %s", method, distname)
     return getattr(mod, method)
+
+
+def list_all(patches_dir: pathlib.Path, envs_dir: pathlib.Path, test: bool = False):
+    exts = _get_extensions()
+
+    def patched_projects():
+        for item in patches_dir.glob("*"):
+            if not item.is_dir():
+                continue
+            fake_sdist = item.name + ".tar.gz"
+            name, _ = parse_sdist_filename(fake_sdist)
+            yield name
+
+    def patched_projects_legacy():
+        for item in patches_dir.glob("*.patch"):
+            parts = []
+            for p in item.stem.split("-"):
+                parts.append(p)
+                try:
+                    Version(p)
+                    # Stop when we get something we can parse as a version string.
+                    break
+                except Exception:
+                    pass
+            fake_sdist = ("-".join(parts)) + ".tar.gz"
+            try:
+                name, _ = parse_sdist_filename(fake_sdist)
+            except Exception as err:
+                logger.warning(f"could not extract package name from {item}: {err}")
+                continue
+            yield name
+
+    def env_projects():
+        for item in envs_dir.glob("*/*.env"):
+            yield item.stem
+
+    # Use canonicalize_name() to ensure we can correctly remove duplicate
+    # entries from the return list.
+    return sorted(
+        set(
+            canonicalize_name(n)
+            for n in itertools.chain(
+                exts.names(),
+                patched_projects(),
+                patched_projects_legacy(),
+                env_projects(),
+            )
+            if not test
+            or n != "fromager_test"  # filter out test package except in test mode
+        )
+    )
