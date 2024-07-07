@@ -17,31 +17,25 @@ def test_patches_for_source_dir(tmp_path: pathlib.Path):
     project_variant_patch_dir = patches_dir / "project-1.2.3-variant"
     project_variant_patch_dir.mkdir()
 
-    # legacy form
-    p1 = patches_dir / "project-1.2.3-001.patch"
-    np1 = patches_dir / "project-1.2.3.txt"
-    p2 = patches_dir / "project-1.2.3-variant-002.patch"
-
-    # new form with project dir
-    p3 = project_patch_dir / "003.patch"
-    p4 = project_patch_dir / "004.patch"
-    np2 = project_patch_dir / "not-a-patch.txt"
-    p5 = project_variant_patch_dir / "005.patch"
-    np3 = project_variant_patch_dir / "not-a-patch.txt"
+    p1 = project_patch_dir / "001.patch"
+    p2 = project_patch_dir / "002.patch"
+    np1 = project_patch_dir / "not-a-patch.txt"
+    p3 = project_variant_patch_dir / "003.patch"
+    np2 = project_variant_patch_dir / "not-a-patch.txt"
 
     # Create all of the test files
-    for p in [p1, p2, p3, p4, p5]:
+    for p in [p1, p2, p3]:
         p.write_text("this is a patch file")
-    for f in [np1, np2, np3]:
+    for f in [np1, np2]:
         f.write_text("this is not a patch file")
 
     results = list(overrides.patches_for_source_dir(patches_dir, "project-1.2.3"))
-    assert results == [p1, p2, p3, p4]
+    assert results == [p1, p2]
 
     results = list(
         overrides.patches_for_source_dir(patches_dir, "project-1.2.3-variant")
     )
-    assert results == [p2, p5]
+    assert results == [p3]
 
 
 def test_extra_environ_for_pkg(tmp_path: pathlib.Path):
