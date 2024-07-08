@@ -37,12 +37,20 @@ def test_build_order(tmp_context):
         "build_backend",
         Requirement("buildme>1.0"),
         "6.0",
-        " -> buildme",
+        [("toplevel", Requirement("buildme>1.0"), "6.0")],
         "url",
         "sdist",
     )
     tmp_context.add_to_build_order(
-        "dependency", Requirement("testdist>1.0"), "1.2", " -> testdist", "url", "sdist"
+        "dependency",
+        Requirement("testdist>1.0"),
+        "1.2",
+        [
+            ("toplevel", Requirement("buildme>1.0"), "6.0"),
+            ("install", Requirement("testdist>1.0"), "1.0"),
+        ],
+        "url",
+        "sdist",
     )
     contents_str = tmp_context._build_order_filename.read_text()
     contents = json.loads(contents_str)
@@ -52,22 +60,27 @@ def test_build_order(tmp_context):
             "req": "buildme>1.0",
             "dist": "buildme",
             "version": "6.0",
-            "why": " -> buildme",
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
             "constraint": "",
+            "why": [
+                ["toplevel", "buildme>1.0", "6.0"],
+            ],
         },
         {
             "type": "dependency",
             "req": "testdist>1.0",
             "dist": "testdist",
             "version": "1.2",
-            "why": " -> testdist",
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
             "constraint": "",
+            "why": [
+                ["toplevel", "buildme>1.0", "6.0"],
+                ["install", "testdist>1.0", "1.0"],
+            ],
         },
     ]
     assert expected == contents
@@ -78,7 +91,7 @@ def test_build_order_repeats(tmp_context):
         "build_backend",
         Requirement("buildme>1.0"),
         "6.0",
-        " -> buildme",
+        [("toplevel", Requirement("buildme>1.0"), "6.0")],
         "url",
         "sdist",
     )
@@ -86,7 +99,7 @@ def test_build_order_repeats(tmp_context):
         "build_backend",
         Requirement("buildme>1.0"),
         "6.0",
-        " -> buildme",
+        [("toplevel", Requirement("buildme>1.0"), "6.0")],
         "url",
         "sdist",
     )
@@ -94,7 +107,7 @@ def test_build_order_repeats(tmp_context):
         "build_backend",
         Requirement("buildme[extra]>1.0"),
         "6.0",
-        " -> buildme[extra]",
+        [("toplevel", Requirement("buildme[extra]>1.0"), "6.0")],
         "url",
         "sdist",
     )
@@ -106,11 +119,13 @@ def test_build_order_repeats(tmp_context):
             "req": "buildme>1.0",
             "dist": "buildme",
             "version": "6.0",
-            "why": " -> buildme",
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
             "constraint": "",
+            "why": [
+                ["toplevel", "buildme>1.0", "6.0"],
+            ],
         },
     ]
     assert expected == contents
@@ -121,7 +136,7 @@ def test_build_order_name_canonicalization(tmp_context):
         "build_backend",
         Requirement("flit-core>1.0"),
         "3.9.0",
-        " -> buildme",
+        [("build_backend", Requirement("flit-core>1.0"), "3.9.0")],
         "url",
         "sdist",
     )
@@ -129,7 +144,7 @@ def test_build_order_name_canonicalization(tmp_context):
         "build_backend",
         Requirement("flit_core>1.0"),
         "3.9.0",
-        " -> buildme",
+        [("build_backend", Requirement("flit-core>1.0"), "3.9.0")],
         "url",
         "sdist",
     )
@@ -141,11 +156,13 @@ def test_build_order_name_canonicalization(tmp_context):
             "req": "flit-core>1.0",
             "dist": "flit-core",
             "version": "3.9.0",
-            "why": " -> buildme",
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
             "constraint": "",
+            "why": [
+                ["build_backend", "flit-core>1.0", "3.9.0"],
+            ],
         },
     ]
     assert expected == contents
