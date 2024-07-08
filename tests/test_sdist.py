@@ -1,6 +1,8 @@
-from unittest.mock import MagicMock
-
+import pathlib
+import zipfile
 from unittest.mock import patch
+
+import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -32,12 +34,12 @@ def test_missing_dependency_format(resolve_dist, tmp_context):
     # Ensure we report what version we expect of all of the other dependencies
     assert "flit_core -> 3.9.0" in s
 
-@patch("fromager.sources.download_url")
-@patch("zipfile.ZipFile")
-def test_invalid_wheel_file_exception(mock_zipfile, mock_download_url):
-    mock_download_url.return_value = "fake_wheel.csv"
-    mock_zip_instance = MagicMock()
-    mock_zip_instance.namelist.return_value = ["file1.txt", "file2.txt"]
-    mock_zipfile.return_value = mock_zip_instance
-    sdist.download_wheel_check(["prebuilt1", "prebuilt2"], "http://example.com/fake_wheel.csv")
-    assertRaises(exceptions.TypeError, sdist.download_wheel_check)
+
+def test_invalid_wheel_file_exception(tmp_path: pathlib.Path):
+    fake_dir = tmp_path / "test"
+    fake_dir.mkdir()
+    text_file = fake_dir / "fake_wheel.txt"
+    text_file.write_text("This is a test file")
+
+    with pytest.raises(zipfile.BadZipFile):
+        sdist._download_wheel_check(fake_dir, text_file)

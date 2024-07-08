@@ -129,26 +129,26 @@ def default_download_source(
     url, version = resolve_dist(
         ctx, req, sdist_server_url, include_sdists=True, include_wheels=False
     )
-    source_filename = download_source_check(ctx.sdists_downloads, url)
+    source_filename = _download_source_check(ctx.sdists_downloads, url)
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"
     )
     return (source_filename, version, url)
 
+
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
 # It will throw exception if any other file is encountered. Eg: index.html
-def download_source_check(sdists_downloads, url):
-    source_filename = download_url(sdists_downloads, url)
+def _download_source_check(destination_dir, url):
+    source_filename = download_url(destination_dir, url)
     if source_filename.suffix == ".zip":
-        source_file_contents = ZipFile(source_filename).namelist()
-        if len(source_file_contents) == 0:
-            raise TypeError("Bad Zip File encountered")
+        source_file_contents = zipfile.ZipFile(source_filename).namelist()
+        if not source_file_contents:
+            raise zipfile.BadZipFile("Bad Zip File encountered")
     elif source_filename.suffix == ".tgz" or source_filename.suffix == ".gz":
-        tar = tarfile.open(source_filename)
-        contents = tar.getnames()
-        tar.close()
-        if len(contents) == 0:
-            raise TypeError("Bad Tar file encountered")
+        with tarfile.open(source_filename) as tar:
+            contents = tar.getnames()
+            if not contents:
+                raise TypeError("Bad Tar file encountered")
 
     return source_filename
 
@@ -166,7 +166,9 @@ def download_url(destination_dir: pathlib.Path, url: str) -> pathlib.Path:
     with requests.get(url, stream=True) as r:
         # Raising exception if status is not 200
         if r.status_code != 200:
-            raise requests.exceptions.HTTPError("Error in fetching url, status_code: ", r.status_code)
+            raise requests.exceptions.HTTPError(
+                "Error in fetching url, status_code: ", r.status_code
+            )
         with open(outfile, "wb") as f:
             logger.debug(f"writing to {outfile}")
             for chunk in r.iter_content(chunk_size=1024 * 1024):
