@@ -20,12 +20,8 @@ from . import context, dependencies, overrides, resolver, tarballs, vendor_rust
 logger = logging.getLogger(__name__)
 
 PYPI_SERVER_URL = "https://pypi.org/simple"
-PYAI_SOURCE_SERVER_URL = (
-    "https://pyai.fedorainfracloud.org/experimental/sources/+simple/"
-)
 DEFAULT_SDIST_SERVER_URLS = [
     PYPI_SERVER_URL,
-    PYAI_SOURCE_SERVER_URL,
 ]
 
 
