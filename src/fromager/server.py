@@ -20,8 +20,16 @@ def start_wheel_server(ctx: context.WorkContext):
     if ctx.wheel_server_url:
         logger.debug("using external wheel server at %s", ctx.wheel_server_url)
         return
+    run_wheel_server(ctx)
+
+
+def run_wheel_server(
+    ctx: context.WorkContext,
+    address: str = "localhost",
+    port: int = 0,
+) -> threading.Thread:
     server = http.server.ThreadingHTTPServer(
-        ("localhost", 0),
+        (address, port),
         functools.partial(LoggingHTTPRequestHandler, directory=ctx.wheels_repo),
         bind_and_activate=False,
     )
@@ -30,7 +38,7 @@ def start_wheel_server(ctx: context.WorkContext):
 
     logger.debug(f"address {server.server_address}")
     server.server_bind()
-    ctx.wheel_server_url = f"http://localhost:{server.server_port}/simple/"
+    ctx.wheel_server_url = f"http://{address}:{server.server_port}/simple/"
 
     logger.debug("starting wheel server at %s", ctx.wheel_server_url)
     server.server_activate()
@@ -43,6 +51,7 @@ def start_wheel_server(ctx: context.WorkContext):
     t = threading.Thread(target=serve_forever, args=(server,))
     t.setDaemon(True)
     t.start()
+    return t
 
 
 def update_wheel_mirror(ctx: context.WorkContext):

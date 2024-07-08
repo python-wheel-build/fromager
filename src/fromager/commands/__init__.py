@@ -5,6 +5,7 @@ from . import (
     canonicalize,
     download_sequence,
     list_overrides,
+    server,
     step,
 )
 
@@ -17,4 +18,5 @@ commands = [
     step.step,
     canonicalize.canonicalize,
     download_sequence.download_sequence,
+    server.wheel_server,
 ]
