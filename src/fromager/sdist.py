@@ -95,6 +95,8 @@ def handle_requirement(
         if not wheel_filename.exists():
             logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
             wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
+            if not wheel_filename.endswith(".whl"):
+                raise ValueError("Extension of wheel file name is not .whl")
         else:
             logger.info(f"{req.name}: have pre-built wheel {wheel_filename}")
         # Add the wheel to the mirror so it is available to anything

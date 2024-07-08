@@ -130,6 +130,13 @@ def default_download_source(
         ctx, req, sdist_server_url, include_sdists=True, include_wheels=False
     )
     source_filename = download_url(ctx.sdists_downloads, url)
+    
+    if not source_filename.endswith(".tar.gz"):
+        raise ValueError("Extension of source file name is not .tar.gz")
+        
+    if not req.name.lower() in source_filename.lower():
+        raise ValueError("The requirement does not match source file name")
+
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"
     )
