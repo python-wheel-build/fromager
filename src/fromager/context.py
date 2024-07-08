@@ -120,7 +120,11 @@ class WorkContext:
             json.dump(self._build_stack, f, indent=2, default=str)
         with open(self._constraints_filename, "w") as f:
             for step in self._build_stack:
-                f.write(f'{step["dist"]}=={step["version"]}\n')
+                comment = " ".join(
+                    f"-{dep_type}-> {req.name}({version})"
+                    for dep_type, req, version in step["why"]
+                )
+                f.write(f'{step["dist"]}=={step["version"]}  # {comment}\n')
 
     def setup(self):
         # The work dir must already exist, so don't try to create it.

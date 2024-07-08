@@ -61,7 +61,8 @@ done
 
 # Verify that the constraints file matches the build order file.
 jq -r '.[] | .dist + "==" + .version' "$OUTDIR/work-dir/build-order.json" > "$OUTDIR/build-order-constraints.txt"
-if ! diff "$OUTDIR/work-dir/constraints.txt" "$OUTDIR/build-order-constraints.txt";
+cat "$OUTDIR/work-dir/constraints.txt" | sed 's/  #.*//g' > "$OUTDIR/constraints-without-comments.txt"
+if ! diff "$OUTDIR/constraints-without-comments.txt" "$OUTDIR/build-order-constraints.txt";
 then
   echo "FAIL: constraints do not match build order"
   pass=false
