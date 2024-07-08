@@ -159,7 +159,7 @@ the way requirement specifications are converted to fixed
 versions. The default implementation looks for published versions on a
 Python package index. Most overrides do not need to implement this
 hook unless they are building versions of packages not released to
-https://pypi.org.
+[https://pypi.org](pypi.org).
 
 For examples, refer to `fromager.resolver.PyPIProvider` and
 `fromager.resolver.GitHubTagProvider`.
@@ -288,6 +288,28 @@ def get_build_backend_dependencies(ctx, req, sdist_root_dir):
     )
 ```
 
+### get_build_sdist_dependencies
+
+The `get_build_sdist_dependencies()` function should return the PEP 517
+dependencies for building the source distribution for a package.
+
+The return value is an iterable of requirement specification strings
+for build backend dependencies for the package. The caller is
+responsible for evaluating the requirements with the current build
+environment settings to determine if they are actually needed.
+
+```python
+# pyarrow.py
+def get_build_sdist_dependencies(ctx, req, sdist_root_dir):
+    # The _actual_ directory with our requirements is different than
+    # the source root directory detected for the build because the
+    # source tree doesn't just include the python package.
+    return dependencies.default_get_build_sdist_dependencies(
+        ctx, req,
+        sdist_root_dir / 'python',
+    )
+```
+
 ### get_install_dependencies
 
 The `get_install_dependencies()` function should return the PEP 517
@@ -308,6 +330,25 @@ def get_install_dependencies(ctx, req, sdist_root_dir):
     # the source root directory detected for the build because the
     # source tree doesn't just include the python package.
     return dependencies.default_get_install_dependencies(
+        ctx, req,
+        sdist_root_dir / 'python',
+    )
+```
+
+### build_sdist
+
+The `build_sdist()` function is responsible for creating a new source
+distribution from the prepared source tree and placing it in `ctx.sdists_build`.
+
+The arguments are the `WorkContext`, the `Requirement` being evaluated, and the
+`Path` to the root of the source tree.
+
+The return value is the `Path` to the newly created source distribution.
+
+```python
+# pyarrow.py
+def build_sdist(ctx, req, sdist_root_dir):
+    return sources.build_sdist(
         ctx, req,
         sdist_root_dir / 'python',
     )
