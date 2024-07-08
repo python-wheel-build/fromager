@@ -56,7 +56,7 @@ def test_build_order(tmp_context):
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
-            "constrained_req": "None",
+            "constraint": "",
         },
         {
             "type": "dependency",
@@ -67,7 +67,7 @@ def test_build_order(tmp_context):
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
-            "constrained_req": "None",
+            "constraint": "",
         },
     ]
     assert expected == contents
@@ -110,7 +110,7 @@ def test_build_order_repeats(tmp_context):
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
-            "constrained_req": "None",
+            "constraint": "",
         },
     ]
     assert expected == contents
@@ -145,7 +145,7 @@ def test_build_order_name_canonicalization(tmp_context):
             "prebuilt": False,
             "source_url": "url",
             "source_url_type": "sdist",
-            "constrained_req": "None",
+            "constraint": "",
         },
     ]
     assert expected == contents

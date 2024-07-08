@@ -89,7 +89,7 @@ class WorkContext:
         source_url: str,
         source_url_type: str,
         prebuilt: bool = False,
-        constrained_req: Requirement | None = None,
+        constraint: Requirement | None = None,
     ):
         # We only care if this version of this package has been built,
         # and don't want to trigger building it twice. The "extras"
@@ -104,7 +104,7 @@ class WorkContext:
         info = {
             "type": req_type,
             "req": str(req),
-            "constrained_req": str(constrained_req),
+            "constraint": str(constraint) if constraint else "",
             "dist": canonicalize_name(req.name),
             "version": str(version),
             "why": why,

@@ -175,7 +175,7 @@ def handle_requirement(
         source_url=source_url,
         source_url_type=source_url_type,
         prebuilt=pre_built,
-        constrained_req=req,
+        constraint=constraint,
     )
 
     if not pre_built:
