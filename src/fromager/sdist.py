@@ -169,12 +169,13 @@ def handle_requirement(
     # fails.
     ctx.add_to_build_order(
         req_type=req_type,
-        req=req,
+        req=original_req,
         version=resolved_version,
         why=why,
         source_url=source_url,
         source_url_type=source_url_type,
         prebuilt=pre_built,
+        constrained_req=req,
     )
 
     if not pre_built:
