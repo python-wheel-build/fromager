@@ -5,26 +5,20 @@ import typing
 import click
 from packaging.requirements import Requirement
 
-from .. import clickext, context, sdist, server
+from .. import clickext, context, requirements_file, sdist, server
 
 logger = logging.getLogger(__name__)
 
 
 def _get_requirements_from_args(
     toplevel: typing.Iterable[str],
-    requirements_files: typing.Iterable[pathlib.Path],
+    req_files: typing.Iterable[pathlib.Path],
 ) -> typing.Iterable[tuple[str, str]]:
     to_build = []
     to_build.extend(("toplevel", t) for t in toplevel)
-    for filename in requirements_files:
-        with open(filename, "r") as f:
-            for line in f:
-                useful, _, _ = line.partition("#")
-                useful = useful.strip()
-                logger.debug("line %r useful %r", line, useful)
-                if not useful:
-                    continue
-                to_build.append((str(filename), useful))
+    for filename in req_files:
+        parsed_req = requirements_file.parse_requirements_file(req_files)
+        to_build.extend((filename, req) for req in parsed_req)
     return to_build
 
 

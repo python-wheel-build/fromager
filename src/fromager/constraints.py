@@ -1,9 +1,11 @@
 import copy
 import logging
 import pathlib
-from io import TextIOWrapper
+import typing
 
 from packaging.requirements import Requirement
+
+from . import requirements_file
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +44,10 @@ class Constraints:
         return new_req, constraint
 
 
-def _parse(content: TextIOWrapper) -> Constraints:
+def _parse(content: typing.Iterable[str]) -> Constraints:
     constraints = {}
     for line in content:
-        req = Requirement(line.strip())
+        req = Requirement(line)
         constraints[req.name] = req
     return Constraints(constraints)
 
@@ -58,6 +60,6 @@ def load(filename: pathlib.Path | None) -> Constraints:
         raise FileNotFoundError(
             f"constraints file {filepath.absolute()} does not exist, ignoring"
         )
-    with open(filepath, "r") as f:
-        logger.info("loading constraints from %s", filepath.absolute())
-        return _parse(f)
+    logger.info("loading constraints from %s", filepath.absolute())
+    parsed_req_file = requirements_file.parse_requirements_file(filename)
+    return _parse(parsed_req_file[str(filename)])
