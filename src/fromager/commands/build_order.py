@@ -268,3 +268,42 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
     finally:
         if output:
             outfile.close()
+
+
+@build_order.command()
+@click.argument("build_order_file", type=clickext.ClickPath())
+@click.option(
+    "-i",
+    "--install-only",
+    default=False,
+    is_flag=True,
+    help="only include install dependencies",
+)
+def show_duplicates(build_order_file: pathlib.Path, install_only: bool):
+    """Report on any duplicate versions of the same package in the build order file.
+
+    BUILD_ORDER_FILE is a build-order.json files to examine.
+
+    """
+    with open(build_order_file, "r") as f:
+        build_order = json.load(f)
+
+    dependencies = collections.defaultdict(list)
+
+    for step in build_order:
+        if install_only and step["type"] != "install":
+            continue
+        dependencies[step["dist"]].append(step)
+
+    for name, steps in sorted(dependencies.items()):
+        if len(steps) == 1:
+            continue
+        print(f"{name}: building {len(steps)} versions")
+        for step in steps:
+            why = step["why"]
+            req_type = why[-1][0]
+            req = step["req"]
+            parents = ", ".join(w[1] for w in why[:-1])
+            print(
+                f"  '{req}' resolved to {step['version']} as a {req_type} dependency of {parents}"
+            )
