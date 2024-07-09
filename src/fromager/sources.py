@@ -199,7 +199,7 @@ def unpack_source(
     return (next(iter(unpack_dir.glob("*"))), True)
 
 
-def _patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path):
+def patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path):
     for p in overrides.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
         logger.info("applying patch file %s to %s", p, source_root_dir)
         with open(p, "r") as f:
@@ -261,7 +261,7 @@ def _default_prepare_source(
 ) -> pathlib.Path:
     source_root_dir, is_new = unpack_source(ctx, source_filename)
     if is_new:
-        _patch_source(ctx, source_root_dir)
+        patch_source(ctx, source_root_dir)
         vendor_rust.vendor_rust(req, source_root_dir)
     return source_root_dir
 
