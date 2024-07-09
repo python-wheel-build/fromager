@@ -14,4 +14,4 @@ def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
     text_file = fake_dir / "fake_wheel.txt"
     text_file.write_text("This is a test file")
     with pytest.raises(TypeError):
-        sources._download_source_check(fake_dir, mock_download_url)
+        sources._download_source_check(fake_dir, text_file)
