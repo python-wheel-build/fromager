@@ -125,11 +125,29 @@ def default_download_source(
     url, version = resolve_dist(
         ctx, req, sdist_server_url, include_sdists=True, include_wheels=False
     )
-    source_filename = download_url(ctx.sdists_downloads, url)
+    source_filename = _download_source_check(ctx.sdists_downloads, url)
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"
     )
     return (source_filename, version, url)
+
+
+# Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
+# It will throw exception if any other file is encountered. Eg: index.html
+def _download_source_check(destination_dir, url):
+    source_filename = download_url(destination_dir, url)
+    if source_filename.suffix == ".zip":
+        source_file_contents = zipfile.ZipFile(source_filename).namelist()
+        if not source_file_contents:
+            raise zipfile.BadZipFile("Bad Zip File encountered")
+    elif source_filename.suffix == ".tgz" or source_filename.suffix == ".gz":
+        with tarfile.open(source_filename) as tar:
+            contents = tar.getnames()
+            if not contents:
+                raise TypeError("Bad Tar file encountered")
+    else:
+        raise TypeError("Bad source file encountered")
+    return source_filename
 
 
 def download_url(destination_dir: pathlib.Path, url: str) -> pathlib.Path:
@@ -143,6 +161,10 @@ def download_url(destination_dir: pathlib.Path, url: str) -> pathlib.Path:
     # Open the URL first in case that fails, so we don't end up with an empty file.
     logger.debug(f"reading from {url}")
     with requests.get(url, stream=True) as r:
+        if r.status_code != 200:
+            raise requests.exceptions.HTTPError(
+                "Error in fetching url, status_code: ", r.status_code
+            )
         with open(outfile, "wb") as f:
             logger.debug(f"writing to {outfile}")
             for chunk in r.iter_content(chunk_size=1024 * 1024):

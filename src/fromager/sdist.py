@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import typing
+import zipfile
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
@@ -105,7 +106,7 @@ def handle_requirement(
         )
         if not wheel_filename.exists():
             logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
-            wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
+            wheel_filename = _download_wheel_check(ctx.wheels_prebuilt, wheel_url)
         else:
             logger.info(f"{req.name}: have pre-built wheel {wheel_filename}")
         # Add the wheel to the mirror so it is available to anything
@@ -243,6 +244,17 @@ def handle_requirement(
             logger.debug(f"{req.name}: cleaned up build environment {build_env.path}")
 
     return resolved_version
+
+
+# Helper method to check whether the .whl file is a zip file and has contents in it.
+# It will throw BadZipFile exception if any other file is encountered. Eg: index.html
+def _download_wheel_check(destination_dir, wheel_url):
+    wheel_filename = sources.download_url(destination_dir, wheel_url)
+    wheel_directory_contents = zipfile.ZipFile(wheel_filename).namelist()
+    if not wheel_directory_contents:
+        raise zipfile.BadZipFile("Empty zip file encountered")
+
+    return wheel_filename
 
 
 def _sort_requirements(

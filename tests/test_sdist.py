@@ -1,6 +1,9 @@
+import pathlib
 import typing
+import zipfile
 from unittest.mock import patch
 
+import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -45,3 +48,12 @@ def test_ignore_based_on_marker(tmp_context: WorkContext):
         why=[],
     )
     assert version == ""
+
+
+def test_invalid_wheel_file_exception(tmp_path: pathlib.Path):
+    fake_dir = tmp_path / "test"
+    fake_dir.mkdir()
+    test_url = "https://github.com/python-wheel-build/fromager/blob/main/README.md"
+
+    with pytest.raises(zipfile.BadZipFile):
+        sdist._download_wheel_check(fake_dir, test_url)
