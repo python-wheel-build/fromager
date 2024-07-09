@@ -149,7 +149,8 @@ def _download_source_check(destination_dir, url):
             contents = tar.getnames()
             if not contents:
                 raise TypeError("Bad Tar file encountered")
-
+    else:
+        raise TypeError("Bad source file encountered")
     return source_filename
 
 

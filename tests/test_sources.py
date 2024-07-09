@@ -1,5 +1,4 @@
 import pathlib
-import tarfile
 
 import pytest
 
@@ -14,7 +13,6 @@ def test_invalid_tarfile(tmp_path: pathlib.Path):
 
     fake_dir = tmp_path / "test"
     fake_dir.mkdir()
-    text_file = fake_dir / "fake_wheel.txt"
-    text_file.write_text("This is a test file")
-    with pytest.raises(tarfile.ReadError):
-        sources._download_source_check(fake_dir, text_file)
+    test_url = "https://github.com/python-wheel-build/fromager/blob/main/README.md"
+    with pytest.raises(TypeError):
+        sources._download_source_check(fake_dir, test_url)
