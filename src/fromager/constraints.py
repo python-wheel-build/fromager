@@ -62,4 +62,4 @@ def load(filename: pathlib.Path | None) -> Constraints:
         )
     logger.info("loading constraints from %s", filepath.absolute())
     parsed_req_file = requirements_file.parse_requirements_file(filename)
-    return _parse(parsed_req_file[str(filename)])
+    return _parse(parsed_req_file)

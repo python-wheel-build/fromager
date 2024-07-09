@@ -69,7 +69,7 @@ def test_load_constraints_file(
 ):
     constraint_file = tmp_path / "constraint.txt"
     constraint_file.write_text("a\n")
-    parse_requirements_file.return_value = {str(constraint_file): ["torch==3.1.0"]}
+    parse_requirements_file.return_value = ["torch==3.1.0"]
     assert constraints.load(constraint_file)._data == {
         "torch": Requirement("torch==3.1.0")
     }
