@@ -39,3 +39,11 @@ def test_apply_constraint():
     new_req, constraint = c.get_constrained_requirement(old_req)
     assert new_req == Requirement("torch==2.3.0")
     assert constraint == Requirement("torch==2.3.0")
+
+
+def test_apply_constraint_to_req_with_extras():
+    c = constraints.Constraints({"foo": Requirement("foo==1.1")})
+    old_req = Requirement("foo[bar]>=1.0")
+    new_req, constraint = c.get_constrained_requirement(old_req)
+    assert new_req == Requirement("foo[bar]==1.1")
+    assert constraint == Requirement("foo==1.1")
