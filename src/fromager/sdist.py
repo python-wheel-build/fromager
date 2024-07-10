@@ -66,7 +66,7 @@ def handle_requirement(
 ) -> str:
     if why is None:
         why = []
-    if not dependencies.evaluate_marker(original_req):
+    if not dependencies.evaluate_marker(original_req, original_req):
         logger.info(
             f"{original_req.name}: ignoring {req_type} dependency because of its marker expression"
         )
@@ -97,17 +97,12 @@ def handle_requirement(
         servers = [sources.PYPI_SERVER_URL]
         if ctx.wheel_server_url:
             servers.insert(0, ctx.wheel_server_url)
-        wheel_url, resolved_version = _resolve_prebuilt_wheel(ctx, req, servers)
+        wheel_filename, resolved_version, wheel_url = download_wheel(
+            ctx, req, ctx.wheels_prebuilt, servers
+        )
+        # Remember that this is a prebuilt wheel, and where we got it.
         source_url = wheel_url
         source_url_type = "prebuilt"
-        wheel_filename = ctx.wheels_prebuilt / os.path.basename(
-            urlparse(wheel_url).path
-        )
-        if not wheel_filename.exists():
-            logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
-            wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
-        else:
-            logger.info(f"{req.name}: have pre-built wheel {wheel_filename}")
         # Add the wheel to the mirror so it is available to anything
         # that needs to install it. We leave a copy in the prebuilt
         # directory to make it easy to remove the wheel from the
@@ -249,6 +244,24 @@ def _sort_requirements(
     requirements: typing.Iterable[Requirement],
 ) -> typing.Iterable[Requirement]:
     return sorted(requirements, key=operator.attrgetter("name"))
+
+
+def download_wheel(
+    ctx: context.WorkContext,
+    req: Requirement,
+    output_directory: pathlib.Path,
+    wheel_server_urls: list[str],
+) -> tuple[pathlib.Path, str, str]:
+    wheel_url, resolved_version = _resolve_prebuilt_wheel(ctx, req, wheel_server_urls)
+    wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
+    if not wheel_filename.exists():
+        logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
+        wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
+        logger.info(f"{req.name}: saved wheel to {wheel_filename}")
+    else:
+        logger.info(f"{req.name}: have existing wheel {wheel_filename}")
+
+    return wheel_filename, resolved_version, wheel_url
 
 
 def _resolve_prebuilt_wheel(

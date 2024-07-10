@@ -94,7 +94,7 @@ def resolve_dist(
         resolvelib.RequirementsConflicted,
         resolvelib.ResolutionImpossible,
     ) as err:
-        logger.warning(f"{req.name}: could not resolve {req}: {err}")
+        logger.debug(f"{req.name}: could not resolve {req}: {err}")
         raise
 
     for candidate in result.mapping.values():

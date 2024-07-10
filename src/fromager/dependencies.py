@@ -32,14 +32,17 @@ def get_build_system_dependencies(
 
 
 def _filter_requirements(
-    req: Requirement, requirements: typing.Iterable[Requirement]
+    req: Requirement,
+    requirements: typing.Iterable[Requirement],
 ) -> set[Requirement]:
     requires = set()
     for r in requirements:
         if not isinstance(r, Requirement):
             r = Requirement(r)
-        if evaluate_marker(r, req.extras):
+        if evaluate_marker(req, r, req.extras):
             requires.add(r)
+        else:
+            logger.debug(f"{req.name}: ignoring requirement {r}")
     return requires
 
 
@@ -154,7 +157,7 @@ def default_get_install_dependencies(
     with open(os.path.join(sdist_root_dir, metadata_path, "METADATA"), "r") as f:
         parsed = metadata.Metadata.from_email(f.read(), validate=False)
         for r in parsed.requires_dist or []:
-            if evaluate_marker(r, req.extras):
+            if evaluate_marker(req, r, req.extras):
                 requires.add(r)
     return requires
 
@@ -214,7 +217,11 @@ def get_build_backend_hook_caller(
     )
 
 
-def evaluate_marker(req: Requirement, extras: dict | None = None) -> bool:
+def evaluate_marker(
+    parent_req: Requirement,
+    req: Requirement,
+    extras: dict | None = None,
+) -> bool:
     if not req.marker:
         return True
 
@@ -227,11 +234,11 @@ def evaluate_marker(req: Requirement, extras: dict | None = None) -> bool:
     for marker_env in marker_envs:
         if req.marker.evaluate(marker_env):
             logger.debug(
-                f"adding {req} -- marker evaluates true with extras={extras} and default_env={default_env}"
+                f"{parent_req.name}: {req} -- marker evaluates true with extras={extras} and default_env={default_env}"
             )
             return True
 
     logger.debug(
-        f"ignoring {req} -- marker evaluates false with extras={extras} and default_env={default_env}"
+        f"{parent_req.name}: {req} -- marker evaluates false with extras={extras} and default_env={default_env}"
     )
     return False
