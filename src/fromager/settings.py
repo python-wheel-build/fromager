@@ -17,6 +17,19 @@ class Settings:
         names = p.get(variant) or []
         return set(overrides.pkgname_to_override_module(n) for n in names)
 
+    def download_source(self) -> dict[str, dict[str, str]]:
+        return self._data.get("download_source") or {}
+
+    def sdist_download_url(self, pkg: str) -> str | None:
+        p = self.download_source()
+        download_source = p.get(pkg) or {}
+        return download_source.get("url")
+
+    def sdist_local_filename(self, pkg: str) -> str | None:
+        p = self.download_source()
+        download_source = p.get(pkg) or {}
+        return download_source.get("rename_to")
+
 
 def _parse(content: str) -> Settings:
     data = yaml.safe_load(content)

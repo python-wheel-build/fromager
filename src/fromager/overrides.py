@@ -128,7 +128,12 @@ def find_override_method(distname: str, method: str) -> typing.Callable:
     return getattr(mod, method)
 
 
-def list_all(patches_dir: pathlib.Path, envs_dir: pathlib.Path, test: bool = False):
+def list_all(
+    patches_dir: pathlib.Path,
+    envs_dir: pathlib.Path,
+    download_source: dict[str, dict[str, str]],
+    test: bool = False,
+):
     exts = _get_extensions()
 
     def patched_projects():
@@ -162,6 +167,9 @@ def list_all(patches_dir: pathlib.Path, envs_dir: pathlib.Path, test: bool = Fal
         for item in envs_dir.glob("*/*.env"):
             yield item.stem
 
+    def projects_with_predefined_download_source():
+        yield from download_source
+
     # Use canonicalize_name() to ensure we can correctly remove duplicate
     # entries from the return list.
     return sorted(
@@ -172,6 +180,7 @@ def list_all(patches_dir: pathlib.Path, envs_dir: pathlib.Path, test: bool = Fal
                 patched_projects(),
                 patched_projects_legacy(),
                 env_projects(),
+                projects_with_predefined_download_source(),
             )
             if not test
             or n != "fromager_test"  # filter out test package except in test mode

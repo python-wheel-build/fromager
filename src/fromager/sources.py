@@ -4,6 +4,7 @@ import logging
 import os.path
 import pathlib
 import shutil
+import string
 import subprocess
 import tarfile
 import typing
@@ -20,6 +21,7 @@ from . import context, dependencies, overrides, resolver, tarballs, vendor_rust
 logger = logging.getLogger(__name__)
 
 PYPI_SERVER_URL = "https://pypi.org/simple"
+GITHUB_URL = "https://github.com"
 DEFAULT_SDIST_SERVER_URLS = [
     PYPI_SERVER_URL,
 ]
@@ -122,10 +124,23 @@ def default_download_source(
     sdist_server_url: str,
 ) -> tuple[pathlib.Path, str, str]:
     "Download the requirement and return the name of the output path."
-    url, version = resolve_dist(
-        ctx, req, sdist_server_url, include_sdists=True, include_wheels=False
+    url_template = ctx.settings.sdist_download_url(req.name)
+    rename_to_template = ctx.settings.sdist_local_filename(req.name)
+
+    # don't include sdists if the user wants to download source from a predefined url
+    include_sdists = url_template is None
+    include_wheels = not include_sdists
+
+    org_url, version = resolve_dist(
+        ctx, req, sdist_server_url, include_sdists, include_wheels
     )
-    source_filename = _download_source_check(ctx.sdists_downloads, url)
+
+    url = _resolve_template(url_template, req, version) or org_url
+    logger.debug(f"{req.name}: using {url} instead of {org_url}")
+
+    rename_to = _resolve_template(rename_to_template, req, version)
+
+    source_filename = _download_source_check(ctx.sdists_downloads, url, rename_to)
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"
     )
@@ -134,8 +149,10 @@ def default_download_source(
 
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
 # It will throw exception if any other file is encountered. Eg: index.html
-def _download_source_check(destination_dir, url):
-    source_filename = download_url(destination_dir, url)
+def _download_source_check(
+    destination_dir: pathlib.Path, url: str, rename_to: str | None = None
+) -> str:
+    source_filename = download_url(destination_dir, url, rename_to)
     if source_filename.suffix == ".zip":
         source_file_contents = zipfile.ZipFile(source_filename).namelist()
         if not source_file_contents:
@@ -152,8 +169,11 @@ def _download_source_check(destination_dir, url):
     return source_filename
 
 
-def download_url(destination_dir: pathlib.Path, url: str) -> pathlib.Path:
-    outfile = pathlib.Path(destination_dir) / os.path.basename(urlparse(url).path)
+def download_url(
+    destination_dir: pathlib.Path, url: str, rename_to: str | None = None
+) -> pathlib.Path:
+    basename = rename_to if rename_to else os.path.basename(urlparse(url).path)
+    outfile = pathlib.Path(destination_dir) / basename
     logger.debug(
         "looking for %s %s", outfile, "(exists)" if outfile.exists() else "(not there)"
     )
@@ -170,6 +190,19 @@ def download_url(destination_dir: pathlib.Path, url: str) -> pathlib.Path:
                 f.write(chunk)
     logger.info(f"saved {outfile}")
     return outfile
+
+
+def _resolve_template(template: str | None, req: Requirement, version: str):
+    if not template:
+        return None
+    template_env = {"version": version}
+    try:
+        return string.Template(template).substitute(template_env)
+    except KeyError:
+        logger.warning(
+            f"{req.name}: Couldn't resolve url or name for {req} using the template: {template_env}"
+        )
+        raise
 
 
 def _sdist_root_name(source_filename: pathlib.Path) -> str:
