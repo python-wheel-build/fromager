@@ -256,7 +256,7 @@ def download_wheel(
     wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
     if not wheel_filename.exists():
         logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
-        wheel_filename = sources.download_url(ctx.wheels_prebuilt, wheel_url)
+        wheel_filename = sources.download_url(output_directory, wheel_url)
         logger.info(f"{req.name}: saved wheel to {wheel_filename}")
     else:
         logger.info(f"{req.name}: have existing wheel {wheel_filename}")
