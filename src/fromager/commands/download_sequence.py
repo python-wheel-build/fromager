@@ -55,9 +55,12 @@ def download_sequence(
                 )
 
             if include_wheels:
-                sdist.download_wheel(
-                    wkctx,
-                    req,
-                    wkctx.wheels_downloads,
-                    wheel_servers,
-                )
+                try:
+                    sdist.download_wheel(
+                        wkctx,
+                        req,
+                        wkctx.wheels_downloads,
+                        wheel_servers,
+                    )
+                except Exception as err:
+                    logger.error(f"Failed to download wheel for {req}: {err}")
