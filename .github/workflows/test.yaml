@@ -62,6 +62,7 @@ jobs:
           - "1.75"
         test-script:
           - bootstrap
+          - bootstrap_constraint
           - build
           - build_order
           - build_steps

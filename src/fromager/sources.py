@@ -70,7 +70,10 @@ def resolve_dist(
     include_wheels: bool = True,
 ) -> tuple[str, str]:
     "Return URL to source and its version."
-    logger.debug(f"{req.name}: resolving requirement {req} using {sdist_server_url}")
+    constraint = ctx.constraints.get_constraint(req)
+    logger.debug(
+        f"{req.name}: resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
+    )
 
     # Create the (reusable) resolver. Limit to sdists.
     provider_factory = overrides.find_override_method(req.name, "get_resolver_provider")
@@ -94,7 +97,7 @@ def resolve_dist(
         resolvelib.RequirementsConflicted,
         resolvelib.ResolutionImpossible,
     ) as err:
-        logger.debug(f"{req.name}: could not resolve {req}: {err}")
+        logger.debug(f"{req.name}: could not resolve {req} with {constraint}: {err}")
         raise
 
     for candidate in result.mapping.values():
@@ -113,6 +116,7 @@ def default_resolver_provider(
         include_sdists=include_sdists,
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
+        constraints=ctx.constraints,
     )
 
 

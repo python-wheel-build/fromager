@@ -40,7 +40,7 @@ def test_missing_dependency_format(
 def test_ignore_based_on_marker(tmp_context: WorkContext):
     version = sdist.handle_requirement(
         ctx=tmp_context,
-        original_req=Requirement('foo; python_version<"3.9"'),
+        req=Requirement('foo; python_version<"3.9"'),
         req_type="toplevel",
         why=[],
     )
