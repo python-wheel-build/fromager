@@ -1,9 +1,9 @@
-import copy
 import logging
 import pathlib
 import typing
 
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from . import requirements_file
 
@@ -14,41 +14,22 @@ class Constraints:
     def __init__(self, data: dict[str, Requirement]):
         self._data = data
 
-    def get_constrained_requirement(self, req: Requirement):
-        constraint = self._data.get(req.name)
-        new_req = copy.deepcopy(req)
+    def get_constraint(self, req: Requirement):
+        return self._data.get(req.name)
 
-        if not constraint:
-            return new_req, None
-
-        # only allow one constraint per package
-        if len(constraint.specifier) != 1:
-            raise ValueError(
-                f"{constraint} is not allowed. Only one constraint per package is allowed"
-            )
-
-        for spec in constraint.specifier:
-            # only allow "=="
-            if spec.operator != "==":
-                raise ValueError(
-                    f"{constraint} is not allowed. Only '<package>==<version>' constraints are allowed"
-                )
-
-            # ensure that constraint and req don't conflict
-            if spec.version not in req.specifier:
-                raise ValueError(
-                    f"Constraint {constraint} conflicts with requirement {req}"
-                )
-
-        new_req.specifier = constraint.specifier
-        return new_req, constraint
+    def is_satisfied_by(self, pkg_name: str, version: Version):
+        constraint = self._data.get(pkg_name)
+        if constraint:
+            return version in constraint.specifier
+        return True
 
 
 def _parse(content: typing.Iterable[str]) -> Constraints:
     constraints = {}
     for line in content:
         req = Requirement(line)
-        constraints[req.name] = req
+        if requirements_file.evaluate_marker(req, req):
+            constraints[req.name] = req
     return Constraints(constraints)
 
 

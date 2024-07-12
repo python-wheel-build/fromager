@@ -19,6 +19,7 @@ from . import (
     external_commands,
     finders,
     overrides,
+    requirements_file,
     server,
     sources,
     wheels,
@@ -61,25 +62,25 @@ class MissingDependency(Exception):  # noqa: N818
 
 def handle_requirement(
     ctx: context.WorkContext,
-    original_req: Requirement,
+    req: Requirement,
     req_type: str = "toplevel",
     why: list | None = None,
 ) -> str:
     if why is None:
         why = []
-    if not dependencies.evaluate_marker(original_req, original_req):
+    if not requirements_file.evaluate_marker(req, req):
         logger.info(
-            f"{original_req.name}: ignoring {req_type} dependency because of its marker expression"
+            f"{req.name}: ignoring {req_type} dependency because of its marker expression"
         )
         return ""
     logger.info(
-        f'{original_req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {original_req} {why}'
+        f'{req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}'
     )
 
-    req, constraint = ctx.constraints.get_constrained_requirement(original_req)
+    constraint = ctx.constraints.get_constraint(req)
     if constraint:
         logger.info(
-            f"{original_req.name}: incoming requirement {original_req} matches constraint {constraint}, the new requirement is {req}"
+            f"{req.name}: incoming requirement {req} matches constraint {constraint}. Will apply both."
         )
 
     pre_built = overrides.pkgname_to_override_module(
@@ -165,7 +166,7 @@ def handle_requirement(
     # fails.
     ctx.add_to_build_order(
         req_type=req_type,
-        req=original_req,
+        req=req,
         version=resolved_version,
         why=why,
         source_url=source_url,

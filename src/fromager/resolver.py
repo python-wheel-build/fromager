@@ -27,6 +27,7 @@ from packaging.utils import (
 )
 from packaging.version import Version
 
+from .constraints import Constraints
 from .extras_provider import ExtrasProvider
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class Candidate:
     def __init__(
         self,
         name: str,
-        version: str,
+        version: Version,
         url: str | None = None,
         extras: dict | None = None,
         is_sdist: bool | None = None,
@@ -188,11 +189,13 @@ class PyPIProvider(ExtrasProvider):
         include_sdists: bool = True,
         include_wheels: bool = True,
         sdist_server_url: str = "https://pypi.org/simple/",
+        constraints: Constraints | None = None,
     ):
         super().__init__()
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
+        self.constraints = constraints or Constraints({})
 
     def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
@@ -227,6 +230,9 @@ class PyPIProvider(ExtrasProvider):
             # Skip versions that do not match the requirement
             if not all(candidate.version in r.specifier for r in requirements):
                 continue
+            # Skip versions that do not match the constraint
+            if not self.constraints.is_satisfied_by(identifier, candidate.version):
+                continue
             # Only include sdists if we're asked to
             if self.include_sdists and not candidate.is_sdist:
                 continue
@@ -239,7 +245,10 @@ class PyPIProvider(ExtrasProvider):
     def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
         if canonicalize_name(requirement.name) != candidate.name:
             return False
-        return candidate.version in requirement.specifier
+        return (
+            candidate.version in requirement.specifier
+            and self.constraints.is_satisfied_by(requirement.name, candidate.version)
+        )
 
     def get_dependencies(self, candidate: Candidate) -> list:
         # return candidate.dependencies
@@ -248,9 +257,7 @@ class PyPIProvider(ExtrasProvider):
 
 class GitHubTagProvider(ExtrasProvider):
     def __init__(
-        self,
-        organization: str,
-        repo: str,
+        self, organization: str, repo: str, constraints: Constraints | None = None
     ):
         super().__init__()
         self.organization = organization
@@ -258,6 +265,7 @@ class GitHubTagProvider(ExtrasProvider):
         token = os.getenv("GITHUB_TOKEN")
         auth = github.Auth.Token(token) if token else None
         self.client = github.Github(auth=auth)
+        self.constraints = constraints or Constraints({})
 
     def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
@@ -298,13 +306,19 @@ class GitHubTagProvider(ExtrasProvider):
             # Skip versions that do not match the requirement
             if not all(version in r.specifier for r in requirements):
                 continue
+            # Skip versions that do not match the constraint
+            if not self.constraints.is_satisfied_by(identifier, version):
+                continue
             candidates.append(Candidate(identifier, version, url=tag.name))
         return sorted(candidates, key=attrgetter("version"), reverse=True)
 
     def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
         if canonicalize_name(requirement.name) != candidate.name:
             return False
-        return candidate.version in requirement.specifier
+        return (
+            candidate.version in requirement.specifier
+            and self.constraints.is_satisfied_by(requirement.name, candidate.version)
+        )
 
     def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies

@@ -8,10 +8,10 @@ import typing
 import pkginfo
 import pyproject_hooks
 import toml
-from packaging import markers, metadata
+from packaging import metadata
 from packaging.requirements import Requirement
 
-from . import context, external_commands, overrides
+from . import context, external_commands, overrides, requirements_file
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _filter_requirements(
     for r in requirements:
         if not isinstance(r, Requirement):
             r = Requirement(r)
-        if evaluate_marker(req, r, req.extras):
+        if requirements_file.evaluate_marker(req, r, req.extras):
             requires.add(r)
         else:
             logger.debug(f"{req.name}: ignoring requirement {r}")
@@ -157,7 +157,7 @@ def default_get_install_dependencies(
     with open(os.path.join(sdist_root_dir, metadata_path, "METADATA"), "r") as f:
         parsed = metadata.Metadata.from_email(f.read(), validate=False)
         for r in parsed.requires_dist or []:
-            if evaluate_marker(req, r, req.extras):
+            if requirements_file.evaluate_marker(req, r, req.extras):
                 requires.add(r)
     return requires
 
@@ -215,30 +215,3 @@ def get_build_backend_hook_caller(
         backend_path=backend["backend-path"],
         runner=_run_hook_with_extra_environ,
     )
-
-
-def evaluate_marker(
-    parent_req: Requirement,
-    req: Requirement,
-    extras: dict | None = None,
-) -> bool:
-    if not req.marker:
-        return True
-
-    default_env = markers.default_environment()
-    if not extras:
-        marker_envs = [default_env]
-    else:
-        marker_envs = [default_env.copy() | {"extra": e} for e in extras]
-
-    for marker_env in marker_envs:
-        if req.marker.evaluate(marker_env):
-            logger.debug(
-                f"{parent_req.name}: {req} -- marker evaluates true with extras={extras} and default_env={default_env}"
-            )
-            return True
-
-    logger.debug(
-        f"{parent_req.name}: {req} -- marker evaluates false with extras={extras} and default_env={default_env}"
-    )
-    return False
