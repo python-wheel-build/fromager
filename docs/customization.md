@@ -433,8 +433,7 @@ To use predefined urls to download sources from, instead of overriding the entir
 download_source:
   torch:
       url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
-      rename_to: "torch-${version}"
+      rename_to: "torch-${version}.tar.gz"
 ```
 
-User can define a predefined url for a package from which all its sources will be downloaded from. Optionally they can rename the downloaded sdist to whatever they want. The only supported template variable is `version` - it is replaced by the version returned by the resolver.  
-**Important**: Providing a version mapping doesn't set the version of whats being built. It simply maps a version to something that can be applied to get the sdist download url. If you want to download something with version X and have it built thinking it is version Y, you have to provide your own patch to do that.
+User can define a predefined url for a package from which all its sources will be downloaded from. Optionally they can rename the downloaded sdist to whatever they want. The only supported template variable is `version` - it is replaced by the version returned by the resolver.
