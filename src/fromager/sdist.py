@@ -195,7 +195,15 @@ def handle_requirement(
                 | build_sdist_dependencies,
             )
             try:
-                sources.build_sdist(ctx, req, sdist_root_dir)
+                find_sdist_result = finders.find_sdist(
+                    ctx.sdists_builds, req, resolved_version
+                )
+                if not find_sdist_result:
+                    sources.build_sdist(ctx, req, sdist_root_dir)
+                else:
+                    logger.info(
+                        f"{req.name} have sdist version {resolved_version}: {find_sdist_result}"
+                    )
             except Exception as err:
                 logger.warning(
                     f"{req.name}: failed to build source distribution: {err}"
