@@ -92,7 +92,7 @@ def test_extra_environ_for_pkg_expansion(tmp_path: pathlib.Path):
         extra_environ = overrides.extra_environ_for_pkg(tmp_path, pkg_name, variant)
 
 
-def test_list_all(tmp_path):
+def test_list_all(tmp_path: pathlib.Path):
     patches_dir = tmp_path / "patches"
     patches_dir.mkdir()
 
@@ -124,17 +124,25 @@ def test_list_all(tmp_path):
     project_env2 = variant_dir / "fromager_test.env"
     project_env2.write_text("VAR1=VALUE1\nVAR2=VALUE2")  # duplicate
 
+    download_source = {
+        "project-with-download-source": {"url": "url"},
+        "another-project-with-download-source": {"url": "url"},
+    }
+
     expected = [
         "project-with-patch",
         "legacy-project",
         "project-with-env",
         "fromager-test",
+        "project-with-download-source",
+        "another-project-with-download-source",
     ]
     expected.sort()
 
     packages = overrides.list_all(
         patches_dir=patches_dir,
         envs_dir=env_dir,
+        download_source=download_source,
         test=True,
     )
 

@@ -424,3 +424,16 @@ def post_build(
         f"{req.name}: running post build hook for {sdist_filename} and {wheel_filename}"
     )
 ```
+
+## Customizations using settings.yaml  
+
+To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml:
+
+```yaml
+download_source:
+  torch:
+      url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
+      rename_to: "torch-${version}.tar.gz"
+```
+
+User can define a predefined url for a package from which all its sources will be downloaded from. Optionally they can rename the downloaded sdist to whatever they want. The only supported template variable is `version` - it is replaced by the version returned by the resolver.
