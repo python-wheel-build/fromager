@@ -1,5 +1,4 @@
-import typing
-from unittest.mock import patch
+import pathlib
 
 from fromager.commands import bootstrap
 
@@ -14,10 +13,9 @@ def test_get_requirements_multiple_args():
     assert [("toplevel", "a"), ("toplevel", "b")] == requirements
 
 
-@patch("fromager.requirements_file.parse_requirements_file")
-def test_get_requirements_args_and_file(parse_requirements_file: typing.Callable):
-    requirements_file = "requirements.txt"
-    parse_requirements_file.return_value = ["c"]
+def test_get_requirements_args_and_file(tmp_path: pathlib.Path):
+    requirements_file = tmp_path / "requirements.txt"
+    requirements_file.write_text("c\n")
     requirements = bootstrap._get_requirements_from_args(
         ["a", "b"], [requirements_file]
     )

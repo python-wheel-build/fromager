@@ -17,8 +17,10 @@ def _get_requirements_from_args(
     to_build = []
     to_build.extend(("toplevel", t) for t in toplevel)
     for filename in req_files:
-        parsed_req = requirements_file.parse_requirements_file(req_files)
-        to_build.extend((filename, req) for req in parsed_req)
+        to_build.extend(
+            (str(filename), req)
+            for req in requirements_file.parse_requirements_file(filename)
+        )
     return to_build
 
 
