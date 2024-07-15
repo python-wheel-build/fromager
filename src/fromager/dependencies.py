@@ -152,21 +152,6 @@ def default_get_build_sdist_dependencies(
     return hook_caller.get_requires_for_build_wheel()
 
 
-def get_install_dependencies(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_root_dir: pathlib.Path,
-) -> set[Requirement]:
-    logger.info(
-        f"{req.name}: getting installation dependencies for {req} in {sdist_root_dir}"
-    )
-    dep_func = overrides.find_override_method(req.name, "get_install_dependencies")
-    if not dep_func:
-        dep_func = default_get_install_dependencies
-    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
-    return deps
-
-
 def get_install_dependencies_of_wheel(
     req: Requirement, wheel_filename: pathlib.Path, requirements_file_dir: pathlib.Path
 ) -> set[Requirement]:

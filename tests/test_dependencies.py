@@ -94,17 +94,3 @@ def test_get_build_sdist_dependencies(tmp_context: context.WorkContext):
     )
     names = set(r.name for r in results)
     assert names == set()
-
-
-@_clean_build_artifacts
-def test_get_install_dependencies(tmp_context: context.WorkContext):
-    pyproject_contents = dependencies.get_pyproject_contents(_fromager_root)
-    expected = set(
-        Requirement(d) for d in pyproject_contents["project"]["dependencies"]
-    )
-    actual = dependencies.get_install_dependencies(
-        tmp_context,
-        Requirement("fromager"),
-        _fromager_root,
-    )
-    assert actual == expected
