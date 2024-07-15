@@ -28,7 +28,7 @@ def get_build_system_dependencies(
     build_system_req_file = sdist_root_dir.parent / "build-system-requirements.txt"
     if build_system_req_file.exists():
         logger.info(
-            f"{req.name}: {build_system_req_file} already exists. Loading build system dependencies from {build_system_req_file.name}"
+            f"{req.name}: loading build system dependencies from {build_system_req_file.name}"
         )
         return _read_requirements_file(build_system_req_file)
 
@@ -80,7 +80,7 @@ def get_build_backend_dependencies(
     build_backend_req_file = sdist_root_dir.parent / "build-backend-requirements.txt"
     if build_backend_req_file.exists():
         logger.info(
-            f"{req.name}: {build_backend_req_file} already exists. Loading build backend dependencies from {build_backend_req_file.name}"
+            f"{req.name}: loading build backend dependencies from {build_backend_req_file.name}"
         )
         return _read_requirements_file(build_backend_req_file)
 
@@ -123,7 +123,7 @@ def get_build_sdist_dependencies(
     build_sdist_req_file = sdist_root_dir.parent / "build-sdist-requirements.txt"
     if build_sdist_req_file.exists():
         logger.info(
-            f"{req.name}: {build_sdist_req_file} already exists. Loading build sdist dependencies from {build_sdist_req_file.name}"
+            f"{req.name}: loading build sdist dependencies from {build_sdist_req_file.name}"
         )
         return _read_requirements_file(build_sdist_req_file)
 

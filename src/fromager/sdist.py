@@ -462,15 +462,6 @@ def prepare_build_environment(
     return build_env.path
 
 
-def _write_requirements_file(
-    requirements: typing.Iterable[Requirement],
-    filename: pathlib.Path,
-):
-    with open(filename, "w") as f:
-        for r in requirements:
-            f.write(f"{r}\n")
-
-
 def _maybe_install(
     ctx: context.WorkContext,
     req: Requirement,
