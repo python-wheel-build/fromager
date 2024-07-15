@@ -74,6 +74,20 @@ def test_get_build_system_dependencies(tmp_context: context.WorkContext):
     assert names == set(["setuptools", "setuptools_scm"])
 
 
+def test_get_build_system_dependencies_cached(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+):
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    req_file = tmp_path / "build-system-requirements.txt"
+    req_file.write_text("foo==1.0")
+    results = dependencies.get_build_system_dependencies(
+        tmp_context, Requirement("fromager"), sdist_root_dir
+    )
+    assert results == set([Requirement("foo==1.0")])
+
+
 @_clean_build_artifacts
 def test_get_build_backend_dependencies(tmp_context: context.WorkContext):
     results = dependencies.get_build_backend_dependencies(
@@ -83,6 +97,20 @@ def test_get_build_backend_dependencies(tmp_context: context.WorkContext):
     )
     names = set(r.name for r in results)
     assert names == set()
+
+
+def test_get_build_backend_dependencies_cached(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+):
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    req_file = tmp_path / "build-backend-requirements.txt"
+    req_file.write_text("foo==1.0")
+    results = dependencies.get_build_backend_dependencies(
+        tmp_context, Requirement("fromager"), sdist_root_dir
+    )
+    assert results == set([Requirement("foo==1.0")])
 
 
 @_clean_build_artifacts
@@ -96,15 +124,15 @@ def test_get_build_sdist_dependencies(tmp_context: context.WorkContext):
     assert names == set()
 
 
-@_clean_build_artifacts
-def test_get_install_dependencies(tmp_context: context.WorkContext):
-    pyproject_contents = dependencies.get_pyproject_contents(_fromager_root)
-    expected = set(
-        Requirement(d) for d in pyproject_contents["project"]["dependencies"]
+def test_get_build_sdist_dependencies_cached(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+):
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    req_file = tmp_path / "build-sdist-requirements.txt"
+    req_file.write_text("foo==1.0")
+    results = dependencies.get_build_sdist_dependencies(
+        tmp_context, Requirement("fromager"), sdist_root_dir
     )
-    actual = dependencies.get_install_dependencies(
-        tmp_context,
-        Requirement("fromager"),
-        _fromager_root,
-    )
-    assert actual == expected
+    assert results == set([Requirement("foo==1.0")])

@@ -220,12 +220,9 @@ def handle_requirement(
     # Process installation dependencies for all wheels.
     next_req_type = "install"
     install_dependencies = dependencies.get_install_dependencies_of_wheel(
-        req, wheel_filename
+        req, wheel_filename, unpack_dir
     )
-    _write_requirements_file(
-        install_dependencies,
-        unpack_dir / "requirements.txt",
-    )
+
     for dep in _sort_requirements(install_dependencies):
         try:
             handle_requirement(ctx, dep, next_req_type, why)
@@ -317,10 +314,7 @@ def _handle_build_system_requirements(
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx, req, sdist_root_dir
     )
-    _write_requirements_file(
-        build_system_dependencies,
-        sdist_root_dir.parent / "build-system-requirements.txt",
-    )
+
     for dep in _sort_requirements(build_system_dependencies):
         try:
             resolved = handle_requirement(ctx, dep, "build-system", why)
@@ -344,10 +338,7 @@ def _handle_build_backend_requirements(
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
         ctx, req, sdist_root_dir
     )
-    _write_requirements_file(
-        build_backend_dependencies,
-        sdist_root_dir.parent / "build-backend-requirements.txt",
-    )
+
     for dep in _sort_requirements(build_backend_dependencies):
         try:
             resolved = handle_requirement(ctx, dep, "build-backend", why)
@@ -371,10 +362,7 @@ def _handle_build_sdist_requirements(
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
         ctx, req, sdist_root_dir
     )
-    _write_requirements_file(
-        build_sdist_dependencies,
-        sdist_root_dir.parent / "build-sdist-requirements.txt",
-    )
+
     for dep in _sort_requirements(build_sdist_dependencies):
         try:
             resolved = handle_requirement(ctx, dep, "build-sdist", why)
@@ -397,10 +385,7 @@ def prepare_build_environment(
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx, req, sdist_root_dir
     )
-    _write_requirements_file(
-        build_system_dependencies,
-        sdist_root_dir.parent / "build-system-requirements.txt",
-    )
+
     for dep in build_system_dependencies:
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
@@ -422,10 +407,7 @@ def prepare_build_environment(
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
         ctx, req, sdist_root_dir
     )
-    _write_requirements_file(
-        build_backend_dependencies,
-        sdist_root_dir.parent / "build-backend-requirements.txt",
-    )
+
     for dep in build_backend_dependencies:
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
@@ -447,10 +429,7 @@ def prepare_build_environment(
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
         ctx, req, sdist_root_dir
     )
-    _write_requirements_file(
-        build_sdist_dependencies,
-        sdist_root_dir.parent / "build-sdist-requirements.txt",
-    )
+
     for dep in build_sdist_dependencies:
         try:
             _maybe_install(ctx, dep, next_req_type, None)
@@ -488,15 +467,6 @@ def prepare_build_environment(
             ) from err
         raise
     return build_env.path
-
-
-def _write_requirements_file(
-    requirements: typing.Iterable[Requirement],
-    filename: pathlib.Path,
-):
-    with open(filename, "w") as f:
-        for r in requirements:
-            f.write(f"{r}\n")
 
 
 def _maybe_install(

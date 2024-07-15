@@ -24,10 +24,23 @@ def get_build_system_dependencies(
     logger.info(
         f"{req.name}: getting build system dependencies for {req} in {sdist_root_dir}"
     )
+
+    build_system_req_file = sdist_root_dir.parent / "build-system-requirements.txt"
+    if build_system_req_file.exists():
+        logger.info(
+            f"{req.name}: loading build system dependencies from {build_system_req_file.name}"
+        )
+        return _read_requirements_file(build_system_req_file)
+
     dep_func = overrides.find_override_method(req.name, "get_build_system_dependencies")
     if not dep_func:
         dep_func = default_get_build_system_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
+
+    _write_requirements_file(
+        deps,
+        build_system_req_file,
+    )
     return deps
 
 
@@ -63,12 +76,25 @@ def get_build_backend_dependencies(
     logger.info(
         f"{req.name}: getting build backend dependencies for {req} in {sdist_root_dir}"
     )
+
+    build_backend_req_file = sdist_root_dir.parent / "build-backend-requirements.txt"
+    if build_backend_req_file.exists():
+        logger.info(
+            f"{req.name}: loading build backend dependencies from {build_backend_req_file.name}"
+        )
+        return _read_requirements_file(build_backend_req_file)
+
     dep_func = overrides.find_override_method(
         req.name, "get_build_backend_dependencies"
     )
     if not dep_func:
         dep_func = default_get_build_backend_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
+
+    _write_requirements_file(
+        deps,
+        build_backend_req_file,
+    )
     return deps
 
 
@@ -93,10 +119,23 @@ def get_build_sdist_dependencies(
     logger.info(
         f"{req.name}: getting build sdist dependencies for {req} in {sdist_root_dir}"
     )
+
+    build_sdist_req_file = sdist_root_dir.parent / "build-sdist-requirements.txt"
+    if build_sdist_req_file.exists():
+        logger.info(
+            f"{req.name}: loading build sdist dependencies from {build_sdist_req_file.name}"
+        )
+        return _read_requirements_file(build_sdist_req_file)
+
     dep_func = overrides.find_override_method(req.name, "get_build_sdist_dependencies")
     if not dep_func:
         dep_func = default_get_build_sdist_dependencies
     deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
+
+    _write_requirements_file(
+        deps,
+        build_sdist_req_file,
+    )
     return deps
 
 
@@ -113,27 +152,17 @@ def default_get_build_sdist_dependencies(
     return hook_caller.get_requires_for_build_wheel()
 
 
-def get_install_dependencies(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_root_dir: pathlib.Path,
-) -> set[Requirement]:
-    logger.info(
-        f"{req.name}: getting installation dependencies for {req} in {sdist_root_dir}"
-    )
-    dep_func = overrides.find_override_method(req.name, "get_install_dependencies")
-    if not dep_func:
-        dep_func = default_get_install_dependencies
-    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
-    return deps
-
-
 def get_install_dependencies_of_wheel(
-    req: Requirement, wheel_filename: pathlib.Path
+    req: Requirement, wheel_filename: pathlib.Path, requirements_file_dir: pathlib.Path
 ) -> set[Requirement]:
     logger.info(f"{req.name}: getting installation dependencies from {wheel_filename}")
     wheel = pkginfo.Wheel(wheel_filename)
-    return _filter_requirements(req, wheel.requires_dist)
+    deps = _filter_requirements(req, wheel.requires_dist)
+    _write_requirements_file(
+        deps,
+        requirements_file_dir / "requirements.txt",
+    )
+    return deps
 
 
 def default_get_install_dependencies(
@@ -215,3 +244,19 @@ def get_build_backend_hook_caller(
         backend_path=backend["backend-path"],
         runner=_run_hook_with_extra_environ,
     )
+
+
+def _write_requirements_file(
+    requirements: typing.Iterable[Requirement],
+    filename: pathlib.Path,
+):
+    with open(filename, "w") as f:
+        for r in requirements:
+            f.write(f"{r}\n")
+
+
+def _read_requirements_file(
+    filename: pathlib.Path,
+) -> set[Requirement] | None:
+    lines = requirements_file.parse_requirements_file(filename)
+    return set([Requirement(line) for line in lines])
