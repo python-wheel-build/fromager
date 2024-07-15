@@ -68,9 +68,16 @@ def handle_requirement(
 ) -> str:
     if why is None:
         why = []
-    if not requirements_file.evaluate_marker(req, req):
+    # If we're given a requirements file as input, we might be iterating over a
+    # list of requirements with marker expressions that limit their use to
+    # specific platforms or python versions. Evaluate the markers to filter out
+    # anything we shouldn't build. Only apply the filter to toplevel
+    # requirements (items without a why list leading up to them) because other
+    # dependencies are already filtered based on their markers in the context of
+    # their parent, so they include values like the parent's extras settings.
+    if (not why) and (not requirements_file.evaluate_marker(req, req)):
         logger.info(
-            f"{req.name}: ignoring {req_type} dependency because of its marker expression"
+            f"{req.name}: ignoring {req_type} dependency {req} because of its marker expression"
         )
         return ""
     logger.info(

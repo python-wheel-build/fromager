@@ -1,0 +1,2 @@
+requests[socks]==2.32.3
+stevedore ; python_version < "3.7"  # should not be included in output of test
