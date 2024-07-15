@@ -63,6 +63,7 @@ jobs:
         test-script:
           - bootstrap
           - bootstrap_constraint
+          - bootstrap_extras
           - build
           - build_order
           - build_steps
