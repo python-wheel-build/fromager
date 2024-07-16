@@ -116,15 +116,15 @@ def find_override_method(distname: str, method: str) -> typing.Callable:
         mod = _get_extensions()[distname].plugin
     except KeyError:
         logger.debug(
-            "no override module for %s among %s",
+            "%s: no override module among %s",
             distname,
             _get_extensions().entry_points_names(),
         )
         return None
     if not hasattr(mod, method):
-        logger.debug("no %s override for %s", method, distname)
+        logger.debug("%s: no %s override", distname, method)
         return None
-    logger.info("found %s override for %s", method, distname)
+    logger.info("%s: found %s override", distname, method)
     return getattr(mod, method)
 
 
