@@ -59,14 +59,28 @@ for pattern in $EXPECTED_FILES; do
   fi
 done
 
+build_order="$OUTDIR/work-dir/build-order.json"
+bootstrap_constraints="$OUTDIR/work-dir/constraints.txt"
+build_order_constraints="$OUTDIR/build-order-constraints.txt"
+constraints_without_comments="$OUTDIR/constraints-without-comments.txt"
+
 # Verify that the constraints file matches the build order file.
-jq -r '.[] | .dist + "==" + .version' "$OUTDIR/work-dir/build-order.json" > "$OUTDIR/build-order-constraints.txt"
-cat "$OUTDIR/work-dir/constraints.txt" | sed 's/  #.*//g' > "$OUTDIR/constraints-without-comments.txt"
-sort -o "$OUTDIR/constraints-without-comments.txt" "$OUTDIR/constraints-without-comments.txt"
-sort -o "$OUTDIR/build-order-constraints.txt" "$OUTDIR/build-order-constraints.txt"
-if ! diff "$OUTDIR/constraints-without-comments.txt" "$OUTDIR/build-order-constraints.txt";
+jq -r '.[] | .dist + "==" + .version' "$build_order" > "$build_order_constraints"
+cat "$bootstrap_constraints" | sed 's/  #.*//g' > "$constraints_without_comments"
+sort -o "$constraints_without_comments" "$constraints_without_comments"
+sort -o "$build_order_constraints" "$build_order_constraints"
+if ! diff "$constraints_without_comments" "$build_order_constraints";
 then
   echo "FAIL: constraints do not match build order"
+  pass=false
+fi
+
+# Verify that regenerating the constraints file from the build-order file gives
+# the same results.
+generated_constraints="$OUTDIR/generated-constraints.txt"
+fromager build-order to-constraints "$build_order" "$generated_constraints"
+if ! diff "$bootstrap_constraints" "$generated_constraints"; then
+  echo "FAIL: generated constraints do not match original"
   pass=false
 fi
 

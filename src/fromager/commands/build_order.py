@@ -8,7 +8,7 @@ import sys
 import click
 from packaging.requirements import Requirement
 
-from .. import clickext, overrides
+from .. import clickext, constraints, overrides
 
 
 @click.group()
@@ -307,3 +307,26 @@ def show_duplicates(build_order_file: pathlib.Path, install_only: bool):
             print(
                 f"  '{req}' resolved to {step['version']} as a {req_type} dependency of {parents}"
             )
+
+
+@build_order.command()
+@click.argument("build_order_file", type=clickext.ClickPath())
+@click.argument("constraints_file", type=clickext.ClickPath())
+def to_constraints(build_order_file: pathlib.Path, constraints_file: pathlib.Path):
+    """Convert a build-order file to a pip constraints file.
+
+    BUILD_ORDER_FILE is a build-order.json file to convert.
+
+    CONSTRAINTS_FILE is the name of the output file to create.
+
+    """
+    with open(build_order_file, "r") as f:
+        build_order = json.load(f)
+    for step in build_order:
+        step["req"] = Requirement(step["req"])
+        if step["constraint"]:
+            step["constraint"] = Requirement(step["constraint"])
+        for w in step["why"]:
+            w[1] = Requirement(w[1])
+
+    constraints.write_from_build_order(constraints_file, build_order)
