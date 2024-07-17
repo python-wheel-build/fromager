@@ -206,8 +206,9 @@ def handle_requirement(
                 sources.build_sdist(
                     ctx=ctx,
                     req=req,
-                    sdist_root_dir=sdist_root_dir,
                     version=resolved_version,
+                    sdist_root_dir=sdist_root_dir,
+                    build_env=build_env,
                 )
             except Exception as err:
                 logger.warning(

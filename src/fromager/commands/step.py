@@ -95,7 +95,14 @@ def build_sdist(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
-    sdist_filename = sources.build_sdist(wkctx, req, source_root_dir, dist_version)
+    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
+    sdist_filename = sources.build_sdist(
+        ctx=wkctx,
+        req=req,
+        version=dist_version,
+        sdist_root_dir=source_root_dir,
+        build_env=build_env,
+    )
     print(sdist_filename)
 
 
