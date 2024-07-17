@@ -5,6 +5,7 @@ import platform
 import sys
 import tempfile
 import typing
+from datetime import datetime
 
 from packaging.requirements import Requirement
 
@@ -77,6 +78,9 @@ def build_wheel(
     logger.info(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
+    # Start the timer
+    start = datetime.now().replace(microsecond=0)
+
     builder = overrides.find_override_method(req.name, "build_wheel")
     if not builder:
         builder = default_build_wheel
@@ -94,6 +98,11 @@ def build_wheel(
 
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
     wheels = list(ctx.wheels_build.glob("*.whl"))
+
+    # End the timer
+    end = datetime.now().replace(microsecond=0)
+    logger.info(f"Time taken to build wheel for {req.name}: {end - start}")
+
     if wheels:
         return wheels[0]
     return None
