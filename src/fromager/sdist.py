@@ -203,12 +203,23 @@ def handle_requirement(
                 | build_sdist_dependencies,
             )
             try:
-                sources.build_sdist(ctx, req, sdist_root_dir)
+                sources.build_sdist(
+                    ctx=ctx,
+                    req=req,
+                    sdist_root_dir=sdist_root_dir,
+                    version=resolved_version,
+                )
             except Exception as err:
                 logger.warning(
                     f"{req.name}: failed to build source distribution: {err}"
                 )
-            built_filename = wheels.build_wheel(ctx, req, sdist_root_dir, build_env)
+            built_filename = wheels.build_wheel(
+                ctx=ctx,
+                req=req,
+                sdist_root_dir=sdist_root_dir,
+                version=resolved_version,
+                build_env=build_env,
+            )
             server.update_wheel_mirror(ctx)
             # When we update the mirror, the built file moves to the
             # downloads directory.

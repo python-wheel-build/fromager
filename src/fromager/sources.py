@@ -328,20 +328,30 @@ def build_sdist(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    version: Version,
 ) -> pathlib.Path:
     logger.info(f"{req.name}: building source distribution in {sdist_root_dir}")
     builder = overrides.find_override_method(req.name, "build_sdist")
     if not builder:
         builder = default_build_sdist
-    sdist_filename = builder(ctx, req, sdist_root_dir)
+    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    sdist_filename = builder(
+        ctx=ctx,
+        extra_environ=extra_environ,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+        version=version,
+    )
     logger.info(f"{req.name}: built source distribution {sdist_filename}")
     return sdist_filename
 
 
 def default_build_sdist(
     ctx: context.WorkContext,
+    extra_environ: dict,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    version: Version,
 ) -> pathlib.Path:
     # It seems like the "correct" way to do this would be to run the
     # PEP 517 API in the source tree we have modified. However, quite
@@ -365,11 +375,12 @@ def default_build_sdist(
 
 def pep517_build_sdist(
     ctx: context.WorkContext,
+    extra_environ: dict,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    version: Version,
 ) -> pathlib.Path:
     """Use the PEP 517 API to build a source distribution from a modified source tree."""
-    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     pyproject_toml = dependencies.get_pyproject_contents(sdist_root_dir)
     hook_caller = dependencies.get_build_backend_hook_caller(
         sdist_root_dir, pyproject_toml, extra_environ

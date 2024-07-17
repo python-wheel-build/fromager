@@ -95,7 +95,7 @@ def build_sdist(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
-    sdist_filename = sources.build_sdist(wkctx, req, source_root_dir)
+    sdist_filename = sources.build_sdist(wkctx, req, source_root_dir, dist_version)
     print(sdist_filename)
 
 
@@ -154,5 +154,11 @@ def build_wheel(
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
     build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
-    wheel_filename = wheels.build_wheel(wkctx, req, source_root_dir, build_env)
+    wheel_filename = wheels.build_wheel(
+        ctx=wkctx,
+        req=req,
+        sdist_root_dir=source_root_dir,
+        version=dist_version,
+        build_env=build_env,
+    )
     print(wheel_filename)
