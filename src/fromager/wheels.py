@@ -78,8 +78,6 @@ def build_wheel(
     logger.info(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
-    # Start the timer
-    start = datetime.now().replace(microsecond=0)
 
     builder = overrides.find_override_method(req.name, "build_wheel")
     if not builder:
@@ -96,12 +94,16 @@ def build_wheel(
         extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = f"{ctx.jobs}"
         extra_environ["MAX_JOBS"] = f"{ctx.jobs}"
 
+    # Start the timer
+    start = datetime.now().replace(microsecond=0)
+
     builder(ctx, build_env, extra_environ, req, sdist_root_dir)
-    wheels = list(ctx.wheels_build.glob("*.whl"))
 
     # End the timer
     end = datetime.now().replace(microsecond=0)
-    logger.info(f"Time taken to build wheel for {req.name}: {end - start}")
+
+    wheels = list(ctx.wheels_build.glob("*.whl"))
+    logger.info(f"{req.name}: time taken to build wheel {end - start}")
 
     if wheels:
         return wheels[0]
