@@ -107,12 +107,18 @@ def _build(
 
     # Build environment
     sdist.prepare_build_environment(wkctx, req, source_root_dir)
+    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
 
     # Make a new source distribution, in case we patched the code.
-    sdist_filename = sources.build_sdist(wkctx, req, source_root_dir, dist_version)
+    sdist_filename = sources.build_sdist(
+        ctx=wkctx,
+        req=req,
+        version=dist_version,
+        sdist_root_dir=source_root_dir,
+        build_env=build_env,
+    )
 
     # Build
-    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(
         ctx=wkctx,
         req=req,

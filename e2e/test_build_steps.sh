@@ -49,7 +49,13 @@ pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/s
 # because podman won't see the server via localhost.
 python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9999 &
 HTTP_SERVER_PID=$!
-IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
+if which ip 2>&1 >/dev/null; then
+    # Linux
+    IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
+else
+    # macOS
+    IP=$(ipconfig getifaddr en0)
+fi
 export WHEEL_SERVER_URL="http://${IP}:9999/simple"
 
 # Define the function used in the build script

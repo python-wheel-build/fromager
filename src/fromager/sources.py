@@ -16,7 +16,7 @@ import resolvelib
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from . import context, dependencies, overrides, resolver, tarballs, vendor_rust
+from . import context, dependencies, overrides, resolver, tarballs, vendor_rust, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -327,8 +327,9 @@ def _default_prepare_source(
 def build_sdist(
     ctx: context.WorkContext,
     req: Requirement,
-    sdist_root_dir: pathlib.Path,
     version: Version,
+    sdist_root_dir: pathlib.Path,
+    build_env: wheels.BuildEnvironment,
 ) -> pathlib.Path:
     logger.info(f"{req.name}: building source distribution in {sdist_root_dir}")
     builder = overrides.find_override_method(req.name, "build_sdist")
@@ -339,8 +340,9 @@ def build_sdist(
         ctx=ctx,
         extra_environ=extra_environ,
         req=req,
-        sdist_root_dir=sdist_root_dir,
         version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
     )
     logger.info(f"{req.name}: built source distribution {sdist_filename}")
     return sdist_filename
@@ -350,8 +352,9 @@ def default_build_sdist(
     ctx: context.WorkContext,
     extra_environ: dict,
     req: Requirement,
-    sdist_root_dir: pathlib.Path,
     version: Version,
+    sdist_root_dir: pathlib.Path,
+    build_env: wheels.BuildEnvironment,
 ) -> pathlib.Path:
     # It seems like the "correct" way to do this would be to run the
     # PEP 517 API in the source tree we have modified. However, quite
