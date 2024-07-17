@@ -7,6 +7,7 @@ import tempfile
 import typing
 
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from . import context, external_commands, overrides
 
@@ -72,6 +73,7 @@ def build_wheel(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    version: Version,
     build_env: BuildEnvironment,
 ) -> pathlib.Path | None:
     logger.info(
@@ -92,7 +94,14 @@ def build_wheel(
         extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = f"{ctx.jobs}"
         extra_environ["MAX_JOBS"] = f"{ctx.jobs}"
 
-    builder(ctx, build_env, extra_environ, req, sdist_root_dir)
+    builder(
+        ctx=ctx,
+        build_env=build_env,
+        extra_environ=extra_environ,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+        version=version,
+    )
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if wheels:
         return wheels[0]
@@ -105,6 +114,7 @@ def default_build_wheel(
     extra_environ: dict,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    version: Version,
 ):
     logger.debug(f"{req.name}: building wheel in {sdist_root_dir} with {extra_environ}")
 
