@@ -5,6 +5,7 @@ import platform
 import sys
 import tempfile
 import typing
+from datetime import datetime
 
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -94,6 +95,8 @@ def build_wheel(
         extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = f"{ctx.jobs}"
         extra_environ["MAX_JOBS"] = f"{ctx.jobs}"
 
+    # Start the timer
+    start = datetime.now().replace(microsecond=0)
     builder(
         ctx=ctx,
         build_env=build_env,
@@ -102,6 +105,9 @@ def build_wheel(
         sdist_root_dir=sdist_root_dir,
         version=version,
     )
+    # End the timer
+    end = datetime.now().replace(microsecond=0)
+    logger.info(f"{req.name}: time taken to build wheel {end - start}")
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if wheels:
         return wheels[0]
