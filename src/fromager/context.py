@@ -1,7 +1,6 @@
 import json
 import logging
 import pathlib
-from collections import Counter
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
@@ -119,22 +118,8 @@ class WorkContext:
             # Requirement and Version instances that can't be
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
-        with open(self._constraints_filename, "w") as f:
-            for step in self._process_constraints(self._build_stack):
-                comment = " ".join(
-                    f"-{dep_type}-> {req.name}({version})"
-                    for dep_type, req, version in step["why"]
-                )
-                f.write(f'{step["dist"]}=={step["version"]}  # {comment}\n')
-
-    # This is a helper method to find and write duplicates to start of the file from constraints.txt
-    # Input: list of objects (self._build_stack in this case)
-    # Returns: list of objects (processed_constraints in this case)
-    def _process_constraints(self, info):
-        count = Counter([item["dist"] for item in info])
-        processed_build_stack = sorted(info, key=lambda item: item["dist"])
-        return sorted(
-            processed_build_stack, key=lambda item: count[item["dist"]], reverse=True
+        constraints.write_from_build_order(
+            self._constraints_filename, self._build_stack
         )
 
     def setup(self):
