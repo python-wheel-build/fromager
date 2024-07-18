@@ -42,7 +42,12 @@ def download_source(
             logger.debug(
                 f"{req.name}: trying to resolve and download {req} using {url}"
             )
-            download_details = downloader(ctx, req, url)
+            download_details = overrides.invoke(
+                downloader,
+                ctx=ctx,
+                req=req,
+                sdist_server_url=url,
+            )
             if len(download_details) == 3:
                 source_filename, version, source_url = download_details
             elif len(download_details) == 2:
@@ -78,16 +83,17 @@ def resolve_dist(
     )
 
     # Create the (reusable) resolver. Limit to sdists.
-    provider_factory = overrides.find_override_method(req.name, "get_resolver_provider")
-    if not provider_factory:
-        provider_factory = default_resolver_provider
-    provider = provider_factory(
+    provider = overrides.find_and_invoke(
+        req.name,
+        "get_resolver_provider",
+        default_resolver_provider,
         ctx=ctx,
         req=req,
         include_sdists=include_sdists,
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
     )
+
     reporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
 
@@ -301,10 +307,15 @@ def prepare_source(
     version: Version,
 ) -> pathlib.Path:
     logger.info(f"{req.name}: preparing source for {req} from {source_filename}")
-    preparer = overrides.find_override_method(req.name, "prepare_source")
-    if not preparer:
-        preparer = _default_prepare_source
-    source_root_dir = preparer(ctx, req, source_filename, version)
+    source_root_dir = overrides.find_and_invoke(
+        req.name,
+        "prepare_source",
+        _default_prepare_source,
+        ctx=ctx,
+        req=req,
+        source_filename=source_filename,
+        version=version,
+    )
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
         logger.info(f"{req.name}: prepared source for {req} at {source_root_dir}")
@@ -332,11 +343,11 @@ def build_sdist(
     build_env: wheels.BuildEnvironment,
 ) -> pathlib.Path:
     logger.info(f"{req.name}: building source distribution in {sdist_root_dir}")
-    builder = overrides.find_override_method(req.name, "build_sdist")
-    if not builder:
-        builder = default_build_sdist
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
-    sdist_filename = builder(
+    sdist_filename = overrides.find_and_invoke(
+        req.name,
+        "build_sdist",
+        default_build_sdist,
         ctx=ctx,
         extra_environ=extra_environ,
         req=req,

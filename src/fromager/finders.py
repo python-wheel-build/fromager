@@ -32,7 +32,10 @@ def find_sdist(
 
     if sdist_name_func:
         # The file must exist exactly as given.
-        sdist_file = downloads_dir / sdist_name_func(req, dist_version)
+        sdist_file_name = overrides.invoke(
+            sdist_name_func, req=req, dist_version=dist_version
+        )
+        sdist_file = downloads_dir / sdist_file_name
         if sdist_file.exists():
             return sdist_file
 
@@ -119,7 +122,10 @@ def find_source_dir(
     )
     if sdir_name_func:
         # The directory must exist exactly as given, inside the work_dir.
-        source_dir = work_dir / sdir_name_func(req, dist_version)
+        source_dir_name = overrides.invoke(
+            sdir_name_func, req=req, dist_version=dist_version
+        )
+        source_dir = work_dir / source_dir_name
         if source_dir.exists():
             return source_dir
         raise ValueError(f"looked for {source_dir} and did not find")
@@ -129,7 +135,9 @@ def find_source_dir(
     )
     if sdist_name_func:
         # The directory must exist exactly as given.
-        sdist_name = sdist_name_func(req, dist_version)
+        sdist_name = overrides.invoke(
+            sdist_name_func, req=req, dist_version=dist_version
+        )
         if sdist_name.endswith(".tar.gz"):
             ext_to_strip = ".tar.gz"
         elif sdist_name.endswith(".zip"):
