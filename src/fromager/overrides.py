@@ -1,3 +1,4 @@
+import inspect
 import itertools
 import logging
 import os
@@ -38,6 +39,22 @@ def _die_on_plugin_load_failure(
     err: Exception,
 ):
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
+
+
+def find_and_invoke(distname: str, method: str, default_fn: typing.Callable, **kwargs):
+    fn = find_override_method(distname, method)
+    if not fn:
+        fn = default_fn
+    return invoke(fn, **kwargs)
+
+
+def invoke(fn: typing.Callable, **kwargs):
+    sig = inspect.signature(fn)
+    for arg_name in list(kwargs):
+        if arg_name not in sig.parameters:
+            logger.warning(f"{fn.__name__} override does not take argument {arg_name}")
+            kwargs.pop(arg_name)
+    return fn(**kwargs)
 
 
 def log_overrides():

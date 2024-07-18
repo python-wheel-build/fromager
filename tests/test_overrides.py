@@ -1,6 +1,8 @@
 import os
 import pathlib
+import typing
 from unittest import mock
+from unittest.mock import patch
 
 import pytest
 
@@ -147,3 +149,61 @@ def test_list_all(tmp_path: pathlib.Path):
     )
 
     assert expected == packages
+
+
+@patch("fromager.overrides.find_override_method")
+def test_invoke_override_with_exact_args(find_override_method: typing.Callable):
+    def default_foo():
+        return False
+
+    def foo(arg1, arg2):
+        return arg1 is not None and arg2 is not None
+
+    find_override_method.return_value = foo
+
+    assert overrides.invoke(foo, arg1="value1", arg2="value2")
+
+
+@patch("fromager.overrides.find_override_method")
+def test_invoke_override_with_more_args_than_needed(
+    find_override_method: typing.Callable,
+):
+    def default_foo():
+        return False
+
+    def foo(arg1, arg2):
+        return arg1 is not None and arg2 is not None
+
+    find_override_method.return_value = foo
+
+    assert overrides.invoke(foo, arg1="value1", arg2="value2", arg3="value3")
+
+
+@patch("fromager.overrides.find_override_method")
+def test_invoke_override_with_not_enough_args(
+    find_override_method: typing.Callable,
+):
+    def default_foo():
+        return False
+
+    def foo(arg1, arg2):
+        return arg1 is not None and arg2 is not None
+
+    find_override_method.return_value = foo
+
+    with pytest.raises(TypeError):
+        overrides.invoke(foo, default_foo, arg1="value1")
+
+
+@patch("fromager.overrides.find_override_method")
+def test_find_and_invoke(
+    find_override_method: typing.Callable,
+):
+    def default_foo(arg1):
+        return arg1 is not None
+
+    find_override_method.return_value = None
+
+    assert overrides.find_and_invoke(
+        "pkg", "foo", default_foo, arg1="value1", arg2="value2"
+    )
