@@ -52,7 +52,9 @@ def invoke(fn: typing.Callable, **kwargs):
     sig = inspect.signature(fn)
     for arg_name in list(kwargs):
         if arg_name not in sig.parameters:
-            logger.warning(f"{fn.__name__} override does not take argument {arg_name}")
+            logger.warning(
+                f"{fn.__module__}.{fn.__name__} override does not take argument {arg_name}"
+            )
             kwargs.pop(arg_name)
     return fn(**kwargs)
 
