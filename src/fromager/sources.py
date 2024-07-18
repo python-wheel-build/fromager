@@ -14,7 +14,8 @@ from urllib.parse import urlparse
 import requests
 import resolvelib
 from packaging.requirements import Requirement
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
+from packaging.version import parse as validate_version
 
 from . import context, dependencies, overrides, resolver, tarballs, vendor_rust, wheels
 
@@ -52,13 +53,19 @@ def download_source(
                 raise ValueError(
                     f"do not know how to unpack {download_details}, expected 2 or 3 members"
                 )
+
+            # Validate version string by passing it to parse
+            validate_version(str(version))
+
         except (
             resolvelib.InconsistentCandidate,
             resolvelib.RequirementsConflicted,
             resolvelib.ResolutionImpossible,
+            InvalidVersion,
         ) as err:
             logger.debug(f"{req.name}: failed to resolve {req} using {url}: {err}")
             continue
+
         return (source_filename, version, source_url, source_type)
     servers = ", ".join(sdist_server_urls)
     raise ValueError(f"failed to find source for {req} at {servers}")

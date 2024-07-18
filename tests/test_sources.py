@@ -84,3 +84,17 @@ def test_default_download_source_with_predefined_url(
     download_source_check.assert_called_with(
         tmp_context.sdists_downloads, "predefined_url-1.0", "foo-1.0"
     )
+
+
+@patch("fromager.sources.default_download_source")
+def test_invalid_version(mock_default_download):
+    ctx = context.WorkContext
+    req = Requirement("fake==1.0")
+    sdist_server_urls = [sources.PYPI_SERVER_URL]
+    mock_default_download.return_value = (
+        "fake-1.tar.gz",
+        "fake version 1.0",
+        "fakesdisturl.com",
+    )
+    with pytest.raises(ValueError):
+        sources.download_source(ctx, req, sdist_server_urls)
