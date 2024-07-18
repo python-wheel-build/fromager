@@ -70,6 +70,17 @@ fromager = "fromager.__main__:invoke_main"
 # This test plugin should stay in the package.
 fromager_test = "fromager.example_override"
 
+[project.entry-points."fromager.override_methods"]
+# override methods and their default implementations
+get_build_system_dependencies = "fromager.dependencies:default_get_build_system_dependencies"
+get_build_backend_dependencies = "fromager.dependencies:default_get_build_backend_dependencies"
+get_build_sdist_dependencies = "fromager.dependencies:default_get_build_sdist_dependencies"
+get_install_dependencies = "fromager.dependencies:default_get_install_dependencies"
+resolver_provider = "fromager.sources:default_resolver_provider"
+download_source = "fromager.sources:default_download_source"
+build_sdist = "fromager.sources:default_build_sdist"
+build_wheel = "fromager.wheels:default_build_wheel"
+
 [tool.setuptools_scm]
 version_file = "src/fromager/version.py"
 

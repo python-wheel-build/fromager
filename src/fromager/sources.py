@@ -228,7 +228,7 @@ def _takes_arg(f: typing.Callable, arg_name: str) -> bool:
 def unpack_source(
     ctx: context.WorkContext,
     source_filename: pathlib.Path,
-) -> pathlib.Path:
+) -> tuple[pathlib.Path, bool]:
     unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
     if unpack_dir.exists():
         if ctx.cleanup:
@@ -257,7 +257,7 @@ def unpack_source(
     return (next(iter(unpack_dir.glob("*"))), True)
 
 
-def patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path):
+def patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path) -> None:
     for p in overrides.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
         logger.info("applying patch file %s to %s", p, source_root_dir)
         with open(p, "r") as f:
@@ -273,7 +273,7 @@ def write_build_meta(
     req: Requirement,
     source_filename: pathlib.Path,
     version: Version,
-):
+) -> pathlib.Path:
     meta_file = unpack_dir / "build-meta.json"
     with open(meta_file, "w") as f:
         json.dump(

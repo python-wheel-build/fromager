@@ -115,7 +115,7 @@ def default_build_wheel(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
-):
+) -> None:
     logger.debug(f"{req.name}: building wheel in {sdist_root_dir} with {extra_environ}")
 
     # Activate the virtualenv for the subprocess:
