@@ -96,5 +96,6 @@ def test_invalid_version(mock_default_download):
         "fake version 1.0",
         "fakesdisturl.com",
     )
+    mock_default_download.__name__ = "mock_default_download"
     with pytest.raises(ValueError):
         sources.download_source(ctx, req, sdist_server_urls)
