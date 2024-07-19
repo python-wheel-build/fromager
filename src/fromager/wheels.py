@@ -80,9 +80,6 @@ def build_wheel(
     logger.info(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
-    builder = overrides.find_override_method(req.name, "build_wheel")
-    if not builder:
-        builder = default_build_wheel
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     # TODO: refactor?
     # Build Rust without network access
@@ -97,7 +94,10 @@ def build_wheel(
 
     # Start the timer
     start = datetime.now().replace(microsecond=0)
-    builder(
+    overrides.find_and_invoke(
+        req.name,
+        "build_wheel",
+        default_build_wheel,
         ctx=ctx,
         build_env=build_env,
         extra_environ=extra_environ,

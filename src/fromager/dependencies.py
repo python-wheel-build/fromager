@@ -32,10 +32,15 @@ def get_build_system_dependencies(
         )
         return _read_requirements_file(build_system_req_file)
 
-    dep_func = overrides.find_override_method(req.name, "get_build_system_dependencies")
-    if not dep_func:
-        dep_func = default_get_build_system_dependencies
-    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
+    orig_deps = overrides.find_and_invoke(
+        req.name,
+        "get_build_system_dependencies",
+        default_get_build_system_dependencies,
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+    )
+    deps = _filter_requirements(req, orig_deps)
 
     _write_requirements_file(
         deps,
@@ -84,12 +89,15 @@ def get_build_backend_dependencies(
         )
         return _read_requirements_file(build_backend_req_file)
 
-    dep_func = overrides.find_override_method(
-        req.name, "get_build_backend_dependencies"
+    orig_deps = overrides.find_and_invoke(
+        req.name,
+        "get_build_backend_dependencies",
+        default_get_build_backend_dependencies,
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
     )
-    if not dep_func:
-        dep_func = default_get_build_backend_dependencies
-    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
+    deps = _filter_requirements(req, orig_deps)
 
     _write_requirements_file(
         deps,
@@ -127,10 +135,15 @@ def get_build_sdist_dependencies(
         )
         return _read_requirements_file(build_sdist_req_file)
 
-    dep_func = overrides.find_override_method(req.name, "get_build_sdist_dependencies")
-    if not dep_func:
-        dep_func = default_get_build_sdist_dependencies
-    deps = _filter_requirements(req, dep_func(ctx, req, sdist_root_dir))
+    orig_deps = overrides.find_and_invoke(
+        req.name,
+        "get_build_sdist_dependencies",
+        default_get_build_sdist_dependencies,
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+    )
+    deps = _filter_requirements(req, orig_deps)
 
     _write_requirements_file(
         deps,
