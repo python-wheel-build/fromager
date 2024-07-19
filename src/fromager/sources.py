@@ -84,7 +84,7 @@ def resolve_dist(
     include_wheels: bool = True,
 ) -> tuple[str, str]:
     "Return URL to source and its version."
-    constraint = ctx.constraints.get_constraint(req)
+    constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
         f"{req.name}: resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
     )

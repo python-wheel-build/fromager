@@ -84,7 +84,7 @@ def handle_requirement(
         f'{req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}'
     )
 
-    constraint = ctx.constraints.get_constraint(req)
+    constraint = ctx.constraints.get_constraint(req.name)
     if constraint:
         logger.info(
             f"{req.name}: incoming requirement {req} matches constraint {constraint}. Will apply both."
