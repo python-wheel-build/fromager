@@ -298,15 +298,23 @@ def show_duplicates(build_order_file: pathlib.Path, install_only: bool):
     for name, steps in sorted(dependencies.items()):
         if len(steps) == 1:
             continue
-        print(f"{name}: building {len(steps)} versions")
+        print(f"\n{name}: building {len(steps)} versions")
         for step in steps:
             why = step["why"]
             req_type = why[-1][0]
+            if req_type[0] in "aeiou":
+                article = "an"
+            else:
+                article = "a"
             req = step["req"]
-            parents = ", ".join(w[1] for w in why[:-1])
-            print(
-                f"  '{req}' resolved to {step['version']} as a {req_type} dependency of {parents}"
+            print(f"  {req}")
+            show_duplicate_msg = (
+                f"    resolved to {step['version']} as {article} {req_type} dependency"
             )
+            if len(why) > 1:
+                parents = " -- ".join(f"'{w[1]}'" for w in why[:-1])
+                show_duplicate_msg = f"{show_duplicate_msg} of {parents}"
+            print(show_duplicate_msg)
 
 
 @build_order.command()
