@@ -35,9 +35,10 @@ def download_sequence(
     the build order file.
 
     """
-    wheel_servers = [sources.PYPI_SERVER_URL]
     if wkctx.wheel_server_url:
-        wheel_servers.insert(0, wkctx.wheel_server_url)
+        wheel_servers = [wkctx.wheel_server_url]
+    else:
+        wheel_servers = [sdist_server_url]
 
     with open(build_order_file, "r") as f:
         for entry in json.load(f):
