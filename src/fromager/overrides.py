@@ -108,6 +108,9 @@ def extra_environ_for_pkg(
                 key, _, value = line.strip().partition("=")
                 key = key.strip()
                 value = value.strip()
+                # remove quotes if they surround the value
+                if value[0] == value[-1] and (value[0] == '"' or value[0] == "'"):
+                    value = value[1:-1]
                 if "$(" in value:
                     raise ValueError(f"'{value}': subshell '$()' is not supported.")
                 value = string.Template(value).substitute(template_env)

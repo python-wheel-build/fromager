@@ -68,13 +68,23 @@ def test_extra_environ_for_pkg_expansion(tmp_path: pathlib.Path):
         f.write("EGG = Python\n")
         f.write("SPAM=Monty ${EGG}!\n")
         f.write("KNIGHT=$NAME\n")
+        f.write("FOO='Bar'\n")
+        f.write("XYZ=A\"BC'\n")
+        f.write('HELLO="World"\n')
 
     with mock.patch.dict(os.environ) as environ:
         environ.clear()
         environ["NAME"] = "Ni"
         extra_environ = overrides.extra_environ_for_pkg(tmp_path, pkg_name, variant)
 
-    assert extra_environ == {"EGG": "Python", "SPAM": "Monty Python!", "KNIGHT": "Ni"}
+    assert extra_environ == {
+        "EGG": "Python",
+        "SPAM": "Monty Python!",
+        "KNIGHT": "Ni",
+        "FOO": "Bar",
+        "XYZ": "A\"BC'",
+        "HELLO": "World",
+    }
 
     # unknown key
     with env_file.open("w", encoding="utf=8") as f:
