@@ -1,0 +1,6 @@
+coverage!=4.4,>=4.0
+pytest
+pytest-cov
+requests-mock
+setuptools_scm>=8
+setuptools>=64

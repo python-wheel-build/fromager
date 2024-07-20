@@ -1,0 +1,13 @@
+click>=8.1.7
+html5lib
+packaging
+pkginfo
+PyGithub
+pyproject_hooks>=1.0.0,!=1.1.0
+python-pypi-mirror
+PyYAML
+requests
+resolvelib
+stevedore
+toml
+virtualenv
