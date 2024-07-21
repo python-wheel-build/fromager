@@ -21,6 +21,8 @@ tox -e e2e -n -r
 source .tox/e2e/bin/activate
 
 fromager \
+  --log-file="$OUTDIR/bootstrap.log" \
+  --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
@@ -45,6 +47,9 @@ $OUTDIR/sdists-repo/builds/pbr-*.tar.gz
 
 $OUTDIR/work-dir/build-order.json
 $OUTDIR/work-dir/constraints.txt
+
+$OUTDIR/bootstrap.log
+$OUTDIR/fromager-errors.log
 
 $OUTDIR/work-dir/pbr-*/build.log
 $OUTDIR/work-dir/setuptools-*/build.log
