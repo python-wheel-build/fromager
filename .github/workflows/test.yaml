@@ -68,6 +68,7 @@ jobs:
           - build_order
           - build_steps
           - override
+          - pep517_build_sdist
           - prebuilt_wheels_alt_server
           - report_missing_dependency
           - rust_vendor

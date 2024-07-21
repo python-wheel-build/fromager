@@ -404,7 +404,9 @@ def pep517_build_sdist(
     """Use the PEP 517 API to build a source distribution from a modified source tree."""
     pyproject_toml = dependencies.get_pyproject_contents(sdist_root_dir)
     hook_caller = dependencies.get_build_backend_hook_caller(
-        sdist_root_dir, pyproject_toml, extra_environ
+        sdist_root_dir,
+        pyproject_toml,
+        extra_environ,
     )
     sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
-    return sdist_filename
+    return ctx.sdists_builds / sdist_filename
