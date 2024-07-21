@@ -28,6 +28,11 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
     help="save detailed report of actions to file",
 )
 @click.option(
+    "--error-log-file",
+    type=clickext.ClickPath(),
+    help="save error messages to a file",
+)
+@click.option(
     "-o",
     "--sdists-repo",
     default=pathlib.Path("sdists-repo"),
@@ -97,6 +102,7 @@ def main(
     ctx,
     verbose: bool,
     log_file: pathlib.Path,
+    error_log_file: pathlib.Path,
     sdists_repo: pathlib.Path,
     wheels_repo: pathlib.Path,
     work_dir: pathlib.Path,
@@ -109,12 +115,26 @@ def main(
     variant: str,
     jobs: int,
 ):
-    # Configure console and log output.
+    # Set the overall logger level to debug and allow the handlers to filter
+    # messages at their own level.
+    logging.getLogger().setLevel(logging.DEBUG)
+    # Configure a stream handler for console messages at the requested verbosity
+    # level.
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
     stream_formatter = logging.Formatter(VERBOSE_LOG_FMT if verbose else TERSE_LOG_FMT)
     stream_handler.setFormatter(stream_formatter)
     logging.getLogger().addHandler(stream_handler)
+    # If we're given an error log file, configure a file handler for all error
+    # messages to make them easier to find without sifting through the full
+    # debug log.
+    if error_log_file:
+        error_handler = logging.FileHandler(error_log_file)
+        error_handler.setLevel(logging.ERROR)
+        error_formatter = logging.Formatter(VERBOSE_LOG_FMT)
+        error_handler.setFormatter(error_formatter)
+        logging.getLogger().addHandler(error_handler)
+    # If we're given a debug log filename, configure the file handler.
     if log_file:
         # Always log to the file at debug level
         file_handler = logging.FileHandler(log_file)
@@ -122,9 +142,11 @@ def main(
         file_formatter = logging.Formatter(VERBOSE_LOG_FMT)
         file_handler.setFormatter(file_formatter)
         logging.getLogger().addHandler(file_handler)
-    # We need to set the overall logger level to debug and allow the
-    # handlers to filter messages at their own level.
-    logging.getLogger().setLevel(logging.DEBUG)
+        logger.info("logging debug information to %s", log_file)
+    # Report the error log file after configuring the debug log file so the
+    # message is saved to the debug log.
+    if error_log_file:
+        logger.info("logging errors to %s", error_log_file)
 
     overrides.log_overrides()
 
