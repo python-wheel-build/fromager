@@ -234,10 +234,10 @@ class PyPIProvider(ExtrasProvider):
             if not self.constraints.is_satisfied_by(identifier, candidate.version):
                 continue
             # Only include sdists if we're asked to
-            if self.include_sdists and not candidate.is_sdist:
+            if candidate.is_sdist and not self.include_sdists:
                 continue
             # Only include wheels if we're asked to
-            if self.include_wheels and candidate.is_sdist:
+            if not candidate.is_sdist and not self.include_wheels:
                 continue
             candidates.append(candidate)
         return sorted(candidates, key=attrgetter("version"), reverse=True)
