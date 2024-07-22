@@ -270,8 +270,14 @@ def unpack_source(
     return (next(iter(unpack_dir.glob("*"))), True)
 
 
-def patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path) -> None:
+def patch_source(
+    ctx: context.WorkContext,
+    source_root_dir: pathlib.Path,
+    version: Version | None = None,
+) -> None:
     for p in overrides.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
+        if version:
+            _warn_for_old_patch(source_root_dir, p, version)
         logger.info("applying patch file %s to %s", p, source_root_dir)
         with open(p, "r") as f:
             subprocess.check_call(
@@ -279,6 +285,20 @@ def patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path) -> Non
                 stdin=f,
                 cwd=source_root_dir,
             )
+
+
+def _warn_for_old_patch(
+    source_root_dir: pathlib.Path, patch_filename: pathlib.Path, version: Version
+) -> None:
+    # Get the existing version and req name as per the source_root_dir naming conventions
+    req_name = source_root_dir.name.rsplit("-", 1)[0]
+    existing_version = Version(source_root_dir.name.rsplit("-", 1)[1])
+
+    # Check to see if patches for older version exists
+    if patch_filename.parent.name == source_root_dir.name:
+        logger.warning(
+            f"Patches for version {existing_version!s} of {req_name} exist but will not be applied"
+        )
 
 
 def write_build_meta(
