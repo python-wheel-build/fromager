@@ -141,20 +141,29 @@ def default_download_source(
     sdist_server_url: str,
 ) -> tuple[pathlib.Path, str, str]:
     "Download the requirement and return the name of the output path."
-    include_sdists = ctx.settings.resolver_include_sdist(req.name, True)
+    logger.debug(f"{req.name}: loading resolver parameters from settings")
+
+    include_sdists = ctx.settings.resolver_include_sdists(req.name, True)
     include_wheels = ctx.settings.resolver_include_wheels(req.name, False)
     override_sdist_server_url = ctx.settings.resolver_sdist_server_url(
         req.name, sdist_server_url
+    )
+
+    logger.debug(
+        f"{req.name}: using {override_sdist_server_url} instead of {sdist_server_url} to resolve requirement"
     )
 
     org_url, version = resolve_dist(
         ctx, req, override_sdist_server_url, include_sdists, include_wheels
     )
 
+    logger.debug(f"{req.name}: loading sdist download url from settings")
+
     dest_filename_template = ctx.settings.download_source_destination_filename(req.name)
     destination_filename = _resolve_template(dest_filename_template, req, version)
     url_template = ctx.settings.download_source_url(req.name, org_url)
     url = _resolve_template(url_template, req, version)
+
     logger.debug(f"{req.name}: using {url} instead of {org_url}")
 
     source_filename = _download_source_check(
@@ -249,7 +258,8 @@ def unpack_source(
     ctx: context.WorkContext,
     source_filename: pathlib.Path,
 ) -> tuple[pathlib.Path, bool]:
-    unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
+    sdist_root_name = _sdist_root_name(source_filename)
+    unpack_dir = ctx.work_dir / sdist_root_name
     if unpack_dir.exists():
         if ctx.cleanup:
             logger.debug("cleaning up %s", unpack_dir)
@@ -274,7 +284,19 @@ def unpack_source(
             zf.extractall(path=unpack_dir)
     else:
         raise ValueError(f"Do not know how to unpack source archive {source_filename}")
-    return (next(iter(unpack_dir.glob("*"))), True)
+
+    # if tarball named foo-2.3.1.tar.gz was downloaded, then ensure that after unpacking, the source directory's path is foo-2.3.1/foo-2.3.1
+    unpacked_root_dir = next(iter(unpack_dir.glob("*")))
+    new_unpacked_root_dir = unpacked_root_dir.parent / sdist_root_name
+    if unpacked_root_dir.name != new_unpacked_root_dir.name:
+        try:
+            shutil.move(str(unpacked_root_dir), str(new_unpacked_root_dir))
+        except Exception as err:
+            raise Exception(
+                f"Could not rename {unpacked_root_dir.name} to {new_unpacked_root_dir.name}: {err}"
+            ) from err
+
+    return (new_unpacked_root_dir, True)
 
 
 def patch_source(ctx: context.WorkContext, source_root_dir: pathlib.Path) -> None:

@@ -440,5 +440,5 @@ packages:
         resolver_dist:
             sdist_server_url: "https://pypi.org/simple"
             include_wheels: true
-            include_sdist: false
+            include_sdists: false
 ```

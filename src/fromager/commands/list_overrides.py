@@ -10,6 +10,6 @@ def list_overrides(
 ) -> None:
     """List all of the packages with overrides in the current configuration."""
     for name in overrides.list_all(
-        wkctx.patches_dir, wkctx.envs_dir, wkctx.settings.package()
+        wkctx.patches_dir, wkctx.envs_dir, wkctx.settings.packages()
     ):
         print(name)

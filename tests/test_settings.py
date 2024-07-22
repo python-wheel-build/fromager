@@ -62,12 +62,12 @@ def test_with_resolver_dist():
       foo:
         resolver_dist:
             sdist_server_url: url
-            include_sdist: true
+            include_sdists: true
             include_wheels: false
     """)
     )
-    assert type(s.resolver_include_sdist("foo")) is bool
-    assert s.resolver_include_sdist("foo")
+    assert type(s.resolver_include_sdists("foo")) is bool
+    assert s.resolver_include_sdists("foo")
     assert type(s.resolver_include_wheels("foo")) is bool
     assert not s.resolver_include_wheels("foo")
     assert s.resolver_sdist_server_url("foo") == "url"
@@ -83,6 +83,6 @@ def test_no_resolver_dist():
             destination_filename: rename
     """)
     )
-    assert s.resolver_include_sdist("foo") is None
+    assert s.resolver_include_sdists("foo") is None
     assert s.resolver_include_wheels("foo") is None
     assert s.resolver_sdist_server_url("foo") is None

@@ -64,20 +64,20 @@ def test_default_download_source_from_settings(
 
 @patch("fromager.sources.resolve_dist")
 @patch("fromager.sources._download_source_check")
-@patch.object(settings.Settings, "resolver_include_sdist")
+@patch.object(settings.Settings, "resolver_include_sdists")
 @patch.object(settings.Settings, "resolver_include_wheels")
 @patch.object(settings.Settings, "resolver_sdist_server_url")
 def test_default_download_source_with_predefined_resolve_dist(
     resolver_sdist_server_url: typing.Callable,
     resolver_include_wheels: typing.Callable,
-    resolver_include_sdist: typing.Callable,
+    resolver_include_sdists: typing.Callable,
     download_source_check: typing.Callable,
     resolve_dist: typing.Callable,
     tmp_context: context.WorkContext,
 ):
     resolve_dist.return_value = ("url", "1.0")
     download_source_check.return_value = pathlib.Path("filename")
-    resolver_include_sdist.return_value = False
+    resolver_include_sdists.return_value = False
     resolver_include_wheels.return_value = True
     resolver_sdist_server_url.return_value = "url"
     req = Requirement("foo==1.0")

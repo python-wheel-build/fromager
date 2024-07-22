@@ -17,7 +17,7 @@ class Settings:
         names = p.get(variant) or []
         return set(overrides.pkgname_to_override_module(n) for n in names)
 
-    def package(self) -> dict[str, dict[str, str]]:
+    def packages(self) -> dict[str, dict[str, str]]:
         return self._return_value_or_default(self._data.get("packages"), {})
 
     def download_source_url(self, pkg: str, default: str | None = None) -> str | None:
@@ -48,14 +48,16 @@ class Settings:
             resolve_dist.get("include_wheels"), default
         )
 
-    def resolver_include_sdist(
+    def resolver_include_sdists(
         self, pkg: str, default: bool | None = None
     ) -> bool | None:
         resolve_dist = self._get_package_resolver_dist_settings(pkg)
-        return self._return_value_or_default(resolve_dist.get("include_sdist"), default)
+        return self._return_value_or_default(
+            resolve_dist.get("include_sdists"), default
+        )
 
     def _get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
-        p = self.package()
+        p = self.packages()
         return self._return_value_or_default(p.get(pkg), {})
 
     def _get_package_download_source_settings(self, pkg: str) -> dict[str, str]:
