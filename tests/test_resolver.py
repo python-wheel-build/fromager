@@ -72,6 +72,34 @@ def test_provider_choose_sdist():
         assert str(candidate.version) == "1.3.2"
 
 
+def test_provider_choose_either_with_constraint():
+    constraint = constraints.Constraints(
+        {"hydra-core": Requirement("hydra-core==1.3.2")}
+    )
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(
+            include_wheels=True, include_sdists=True, constraints=constraint
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("hydra-core")])
+        assert "hydra-core" in result.mapping
+
+        candidate = result.mapping["hydra-core"]
+        assert (
+            candidate.url
+            == "https://files.pythonhosted.org/packages/6d/8e/07e42bc434a847154083b315779b0a81d567154504624e181caf2c71cd98/hydra-core-1.3.2.tar.gz#sha256=8a878ed67216997c3e9d88a8e72e7b4767e81af37afb4ea3334b269a4390a824"
+            or candidate.url
+            == "https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-1.3.2-py3-none-any.whl#sha256=fa0238a9e31df3373b35b0bfb672c34cc92718d21f81311d8996a16de1141d8b"
+        )
+
+
 def test_provider_constraint_mismatch():
     constraint = constraints.Constraints({"hydra-core": Requirement("hydra-core<=1.1")})
     with requests_mock.Mocker() as r:
