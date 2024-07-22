@@ -16,6 +16,13 @@ def test_constraint_is_satisfied_by():
     assert c.is_satisfied_by("bar", Version("2.0"))
 
 
+def test_constraint_canonical_name():
+    c = constraints.Constraints({"flash_attn": Requirement("flash_attn<=1.1")})
+    assert c.is_satisfied_by("flash_attn", "1.1")
+    assert c.is_satisfied_by("flash-attn", "1.1")
+    assert c.is_satisfied_by("Flash-ATTN", "1.1")
+
+
 def test_constraint_not_is_satisfied_by():
     c = constraints.Constraints({"foo": Requirement("foo<=1.1")})
     assert not c.is_satisfied_by("foo", "1.2")

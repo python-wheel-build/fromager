@@ -4,6 +4,7 @@ import pathlib
 import typing
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from . import requirements_file
@@ -13,13 +14,13 @@ logger = logging.getLogger(__name__)
 
 class Constraints:
     def __init__(self, data: dict[str, Requirement]):
-        self._data = data
+        self._data = {canonicalize_name(n): v for n, v in data.items()}
 
-    def get_constraint(self, req: Requirement):
-        return self._data.get(req.name)
+    def get_constraint(self, name: str):
+        return self._data.get(canonicalize_name(name))
 
     def is_satisfied_by(self, pkg_name: str, version: Version):
-        constraint = self._data.get(pkg_name)
+        constraint = self.get_constraint(pkg_name)
         if constraint:
             return version in constraint.specifier
         return True
