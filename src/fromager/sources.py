@@ -11,11 +11,12 @@ import typing
 import zipfile
 from urllib.parse import urlparse
 
-import requests
 import resolvelib
 from packaging.requirements import Requirement
 from packaging.version import InvalidVersion, Version
 from packaging.version import parse as validate_version
+
+from fromager.http_client import HTTPClient
 
 from . import context, dependencies, overrides, resolver, tarballs, vendor_rust, wheels
 
@@ -199,12 +200,16 @@ def download_url(
         return outfile
     # Open the URL first in case that fails, so we don't end up with an empty file.
     logger.debug(f"reading from {url}")
-    with requests.get(url, stream=True) as r:
-        r.raise_for_status()
-        with open(outfile, "wb") as f:
-            logger.debug(f"writing to {outfile}")
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
+
+    # Initialize the HTTPClient module
+    client = HTTPClient(url)
+    # Call HTTP GET for the URL
+    r = client.get_request()
+
+    with open(outfile, "wb") as f:
+        logger.debug(f"writing to {outfile}")
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
+            f.write(chunk)
     logger.info(f"saved {outfile}")
     return outfile
 
