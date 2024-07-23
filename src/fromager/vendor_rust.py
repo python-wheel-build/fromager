@@ -93,7 +93,15 @@ def vendor_rust(
     ``False``.
     """
     # check for Cargo.toml
-    manifests = list(project_dir.glob("**/Cargo.toml"))
+    manifests = []
+    for manifest in project_dir.glob("**/Cargo.toml"):
+        if any((d in manifest.parts) for d in ["22 cargo subproject", "25 cargo lock"]):
+            # HACK: meson 1.5.0 tests have broken Cargo.toml. Don't vendor
+            # test cases of meson and vendored copies of meson NumPy 2.0.1
+            # vendors meson.
+            logger.debug(f"{req.name}: ignore {manifest}")
+            continue
+        manifests.append(manifest)
     if not manifests:
         logger.debug(f"{req.name}: has no Cargo.toml files")
         return False

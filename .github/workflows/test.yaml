@@ -67,6 +67,7 @@ jobs:
           - build
           - build_order
           - build_steps
+          - meson
           - override
           - pep517_build_sdist
           - prebuilt_wheels_alt_server
