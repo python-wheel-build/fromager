@@ -8,7 +8,7 @@ import sys
 import click
 from packaging.requirements import Requirement
 
-from .. import clickext, constraints, overrides
+from .. import clickext, constraints, overrides, system_packages
 
 
 @click.group()
@@ -338,3 +338,43 @@ def to_constraints(build_order_file: pathlib.Path, constraints_file: pathlib.Pat
             w[1] = Requirement(w[1])
 
     constraints.write_from_build_order(constraints_file, build_order)
+
+
+@build_order.command()
+@click.argument("build_order_file", type=clickext.ClickPath())
+def rpms(build_order_file: pathlib.Path):
+    """Search for items in a build-order.json file as system packages using rpmquery.
+
+    BUILD_ORDER_FILE is a build-order.json file to convert.
+
+    Produce JSON document with the build-order entry and any system package(s)
+    that seem to be the same thing.
+    """
+    with open(build_order_file, "r") as f:
+        build_order = json.load(f)
+
+    packages = system_packages.list_rpms()
+
+    results = []
+    for step in build_order:
+        package_names = []
+        for name in [step["dist"], f"python-{step['dist']}", f"python3-{step['dist']}"]:
+            if name in packages:
+                package_names.append(name)
+        results.append(
+            {
+                "dist": step["dist"],
+                "version": step["version"],
+                "system-packages": [
+                    {"name": n, "versions": packages[n]} for n in package_names
+                ],
+            }
+        )
+    results.sort(key=lambda x: x["dist"])
+
+    json.dump(
+        results,
+        sys.stdout,
+        indent=2,
+        default=str,
+    )
