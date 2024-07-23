@@ -16,10 +16,10 @@ class Constraints:
     def __init__(self, data: dict[str, Requirement]):
         self._data = {canonicalize_name(n): v for n, v in data.items()}
 
-    def get_constraint(self, name: str):
+    def get_constraint(self, name: str) -> Requirement | None:
         return self._data.get(canonicalize_name(name))
 
-    def is_satisfied_by(self, pkg_name: str, version: Version):
+    def is_satisfied_by(self, pkg_name: str, version: Version) -> bool:
         constraint = self.get_constraint(pkg_name)
         if constraint:
             return version in constraint.specifier
@@ -51,7 +51,7 @@ def load(filename: pathlib.Path | None) -> Constraints:
 # This is a helper function to find and write duplicates to start of the file
 # from constraints.txt Input: list of objects (self._build_stack in this case)
 # Returns: list of objects (processed_constraints in this case)
-def _organize_constraints(info: dict):
+def _organize_constraints(info: list[typing.Any]) -> list[typing.Any]:
     count = collections.Counter([item["dist"] for item in info])
     processed_build_stack = sorted(info, key=lambda item: item["dist"])
     return sorted(
@@ -59,7 +59,9 @@ def _organize_constraints(info: dict):
     )
 
 
-def write_from_build_order(filename: pathlib.Path, build_stack: list[typing.Any]):
+def write_from_build_order(
+    filename: pathlib.Path, build_stack: list[typing.Any]
+) -> None:
     with open(filename, "w") as f:
         for step in _organize_constraints(build_stack):
             comment = " ".join(
