@@ -66,4 +66,5 @@ def write_from_build_order(filename: pathlib.Path, build_stack: list[typing.Any]
                 f"-{dep_type}-> {req.name}({version})"
                 for dep_type, req, version in step["why"]
             )
-            f.write(f'{step["dist"]}=={step["version"]}  # {comment}\n')
+            constraint = f' Constraints: {step["constraint"]}'
+            f.write(f'{step["dist"]}=={step["version"]}  # {comment}  {constraint}\n')
