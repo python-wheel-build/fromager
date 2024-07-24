@@ -33,13 +33,13 @@ class BuildEnvironment:
     def python(self) -> pathlib.Path:
         return (self.path / "bin/python3").absolute()
 
-    def _createenv(self):
+    def _createenv(self) -> None:
         if self.path.exists():
             logger.info("reusing build environment in %s", self.path)
             return
 
         logger.debug("creating build environment in %s", self.path)
-        external_commands.run([sys.executable, "-m", "virtualenv", self.path])
+        external_commands.run([sys.executable, "-m", "virtualenv", str(self.path)])
         logger.info("created build environment in %s", self.path)
 
         req_filename = self.path / "requirements.txt"
@@ -52,7 +52,7 @@ class BuildEnvironment:
             return
         external_commands.run(
             [
-                self.python,
+                str(self.python),
                 "-m",
                 "pip",
                 "install",
@@ -63,9 +63,9 @@ class BuildEnvironment:
             + self._ctx.pip_wheel_server_args
             + [
                 "-r",
-                req_filename.absolute(),
+                str(req_filename.absolute()),
             ],
-            cwd=self.path.parent,
+            cwd=str(self.path.parent),
         )
         logger.info("installed dependencies into build environment in %s", self.path)
 
@@ -117,7 +117,7 @@ def build_wheel(
 def default_build_wheel(
     ctx: context.WorkContext,
     build_env: BuildEnvironment,
-    extra_environ: dict,
+    extra_environ: dict[str, typing.Any],
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
