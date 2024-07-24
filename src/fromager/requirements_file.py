@@ -26,12 +26,13 @@ def parse_requirements_file(
 def evaluate_marker(
     parent_req: Requirement,
     req: Requirement,
-    extras: dict | None = None,
+    extras: set[str] | None = None,
 ) -> bool:
     if not req.marker:
         return True
 
-    default_env = markers.default_environment()
+    # fixes mypy complaining about types: https://github.com/pypa/packaging/blob/main/src/packaging/markers.py#L310
+    default_env = typing.cast(dict[str, str], markers.default_environment())
     if not extras:
         marker_envs = [default_env]
     else:
