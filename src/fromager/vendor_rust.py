@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 """Vendor Rust crates into an sdist"""
 
 import json
@@ -144,40 +143,3 @@ def vendor_rust(
     _cargo_config(project_dir)
 
     return True
-
-
-def test():
-    import argparse
-    import tarfile
-    import tempfile
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("sdists", type=pathlib.Path, nargs="+")
-    parser.add_argument("--outdir", type=pathlib.Path, default="outdir")
-
-    args = parser.parse_args()
-    args.outdir.mkdir(exist_ok=True)
-
-    logging.basicConfig(level=logging.INFO)
-
-    for sdist in args.sdists:
-        out_sdist = args.outdir / sdist.name
-        if out_sdist.is_file():
-            out_sdist.unlink()
-        logger.info("Vendoring '%s'", sdist)
-        with tempfile.TemporaryDirectory() as tmp:
-            tmpdir = pathlib.Path(tmp)
-            with tarfile.open(sdist) as tar:
-                # filter argument was added in 3.10.12, 3.11.4, 3.12.0
-                tar.extractall(path=tmpdir, filter="data")
-
-            project_name = sdist.name[: -len(".tar.gz")]
-            project_dir = tmpdir / project_name
-            vendor_rust(project_dir)
-
-            with tarfile.open(out_sdist, "x:gz") as tar:
-                tar.add(project_dir, arcname=project_name)
-
-
-if __name__ == "__main__":
-    test()
