@@ -24,7 +24,7 @@ def download_sequence(
     build_order_file: str,
     sdist_server_url: str,
     include_wheels: str,
-):
+) -> None:
     """Download a sequence of source distributions in order.
 
     BUILD_ORDER_FILE is the build-order.json files to build
