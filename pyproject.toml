@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fromager"
 authors = [
-    {name = "Mark McLoughlin", email="markmc@redhat.com"},
-    {name = "Doug Hellmann", email="dhellmann@redhat.com"},
+    { name = "Mark McLoughlin", email = "markmc@redhat.com" },
+    { name = "Doug Hellmann", email = "dhellmann@redhat.com" },
 ]
 description = "Wheel maker"
 readme = "README.md"
-dynamic = ["version"]
-license = {file = "LICENSE"}
+dynamic = ["version", "dependencies", "optional-dependencies"]
+license = { file = "LICENSE" }
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
@@ -30,35 +30,13 @@ classifiers = [
 
 requires-python = ">=3.10"
 
-dependencies = [
-    "click>=8.1.7",
-    "html5lib",
-    "packaging",
-    "pkginfo",
-    "PyYAML",
-    "pyproject_hooks>=1.0.0,!=1.1.0",
-    "python-pypi-mirror",
-    "requests",
-    "resolvelib",
-    "stevedore",
-    "toml",
-    "virtualenv",
-    "PyGithub",
-]
-
-[project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-cov",
-    "coverage!=4.4,>=4.0",
-    "requests-mock",
-    "setuptools>=64", 
-    "setuptools_scm>=8",
-]
-build = [
-    "build",
-    "twine",
-]
+[tool.setuptools.dynamic]
+optional-dependencies = { test = { file = [
+    "requirements-test.txt",
+] }, build = { file = [
+    "requirements-build.txt",
+] } }
+dependencies = { file = ["requirements.txt"] }
 
 [project.urls]
 Repository = "https://github.com/python-wheel-build/fromager"
@@ -89,7 +67,7 @@ target-version = "py310"
 # same as black's default line length
 line-length = 88
 exclude = [
-    "src/fromager/version.py",  # file is generated dynamically, out of our control
+    "src/fromager/version.py", # file is generated dynamically, out of our control
 ]
 
 [tool.ruff.lint]
@@ -97,21 +75,21 @@ exclude = [
 fixable = ["ALL"]
 unfixable = []
 select = [
-  "B",  # flake8-bugbear
-  "E",  # pycodestyle
-  "F",  # pyflakes
-  "Q",  # flake8-quotes
-  "I",  # isort
-  "N",  # pep8-naming
-  "W",  # pycodestyle
-  "RUF", # ruff-specific rules
-  "UP",  # pyupgrade
-  "TID", # flake8-tidy-imports
+    "B",   # flake8-bugbear
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "Q",   # flake8-quotes
+    "I",   # isort
+    "N",   # pep8-naming
+    "W",   # pycodestyle
+    "RUF", # ruff-specific rules
+    "UP",  # pyupgrade
+    "TID", # flake8-tidy-imports
 ]
 ignore = [
-    "E501",  # Line too long
-    "RUF005",  # Consider iterable unpacking instead of concatenation
-    "TID252",  # Prefer absolute imports over relative imports from parent modules
+    "E501",   # Line too long
+    "RUF005", # Consider iterable unpacking instead of concatenation
+    "TID252", # Prefer absolute imports over relative imports from parent modules
     "UP015",  # Unnecessary open mode parameters
 ]
 
@@ -123,10 +101,5 @@ mypy_path = ["src"]
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = [
-    "pyproject_hooks",
-    "requests_mock",
-    "resolver",
-    "stevedore",
-]
+module = ["pyproject_hooks", "requests_mock", "resolver", "stevedore"]
 ignore_missing_imports = true
