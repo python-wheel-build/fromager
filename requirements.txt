@@ -3,7 +3,7 @@ html5lib
 packaging
 pkginfo
 PyGithub
-pyproject_hooks>=1.0.0,!=1.1.0
+pyproject_hooks
 python-pypi-mirror
 PyYAML
 requests
