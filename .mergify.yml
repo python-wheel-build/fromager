@@ -62,6 +62,10 @@ pull_request_rules:
           - check-success=e2e (3.11, 1.75, override)
           - check-success=e2e (3.12, 1.75, override)
 
+          - check-success=e2e (3.10, 1.75, meson)
+          - check-success=e2e (3.11, 1.75, meson)
+          - check-success=e2e (3.12, 1.75, meson)
+
           - check-success=e2e (3.10, 1.75, pep517_build_sdist)
           - check-success=e2e (3.11, 1.75, pep517_build_sdist)
           - check-success=e2e (3.12, 1.75, pep517_build_sdist)

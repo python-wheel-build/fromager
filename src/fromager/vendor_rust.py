@@ -10,7 +10,7 @@ import typing
 import toml
 from packaging.requirements import Requirement
 
-from . import external_commands
+from . import dependencies, external_commands
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,9 @@ CARGO_CONFIG = {
         "vendored-sources": {"directory": VENDOR_DIR},
     },
 }
+
+# vendor when project depends on a Rust build system
+RUST_BUILD_REQUIRES = frozenset({"setuptools-rust", "maturin"})
 
 
 def _cargo_vendor(
@@ -39,7 +42,7 @@ def _cargo_vendor(
     return sorted(project_dir.joinpath(VENDOR_DIR).iterdir())
 
 
-def _cargo_shrink(crate_dir: pathlib.Path):
+def _cargo_shrink(crate_dir: pathlib.Path) -> None:
     """Remove pre-compiled archive and lib files.
 
     They are only used on Windows, macOS, and iOS. This makes the vendor
@@ -65,7 +68,7 @@ def _cargo_shrink(crate_dir: pathlib.Path):
             json.dump(checksums, f)
 
 
-def _cargo_config(project_dir: pathlib.Path):
+def _cargo_config(project_dir: pathlib.Path) -> None:
     """create .cargo/config.toml"""
     dotcargo = project_dir / ".cargo"
     config_toml = dotcargo / "config.toml"
@@ -84,23 +87,47 @@ def _cargo_config(project_dir: pathlib.Path):
         toml.dump(cfg, f)
 
 
+def _should_vendor_rust(req: Requirement, project_dir: pathlib.Path) -> bool:
+    """Detect if project has build requirement on Rust
+
+    Detects setuptools-rust and maturin.
+    """
+    pyproject_toml = dependencies.get_pyproject_contents(project_dir)
+    if not pyproject_toml:
+        logger.debug(f"{req.name}: has no pyproject.toml")
+        return False
+
+    build_backend = dependencies.get_build_backend(pyproject_toml)
+
+    for reqstring in build_backend["requires"]:
+        req = Requirement(reqstring)
+        if req.name in RUST_BUILD_REQUIRES:
+            logger.debug(
+                f"{req.name}: build-system requires {req.name}, vendoring crates"
+            )
+            return True
+
+    logger.debug(f"{req.name}: no Rust build plugin detected")
+    return False
+
+
 def vendor_rust(
     req: Requirement, project_dir: pathlib.Path, *, shrink_vendored: bool = True
 ) -> bool:
     """Vendor Rust crates into a source directory
 
-    Returns ``True`` if the project has a ``Cargo.toml``, otherwise
+    Returns ``True`` if the project has a build dependency on
+    ``setuptools-rust`` or ``maturin``, and has a ``Cargo.toml``, otherwise
     ``False``.
     """
+    if not _should_vendor_rust(req, project_dir):
+        return False
+
     # check for Cargo.toml
     manifests = list(project_dir.glob("**/Cargo.toml"))
     if not manifests:
         logger.debug(f"{req.name}: has no Cargo.toml files")
         return False
-
-    # setuptools-rust and maturin-based projects have a pyproject.toml
-    if not project_dir.joinpath("pyproject.toml").is_file():
-        raise ValueError("pyproject.toml is missing")
 
     the_manifests = sorted(str(d.relative_to(project_dir)) for d in manifests)
     logger.debug(f"{req.name}: {project_dir} has cargo manifests: {the_manifests}")
