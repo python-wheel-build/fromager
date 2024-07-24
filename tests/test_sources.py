@@ -57,7 +57,9 @@ def test_default_download_source_no_predefined_url(
     sources.default_download_source(tmp_context, req, sdist_server_url)
 
     resolve_dist.assert_called_with(tmp_context, req, sdist_server_url, True, False)
-    download_source_check.assert_called_with(tmp_context.sdists_downloads, "url", None)
+    download_source_check.assert_called_with(
+        tmp_context.sdists_downloads, "url", tmp_context, None
+    )
 
 
 @patch("fromager.sources.resolve_dist")
@@ -82,7 +84,7 @@ def test_default_download_source_with_predefined_url(
 
     resolve_dist.assert_called_with(tmp_context, req, sdist_server_url, False, True)
     download_source_check.assert_called_with(
-        tmp_context.sdists_downloads, "predefined_url-1.0", "foo-1.0"
+        tmp_context.sdists_downloads, "predefined_url-1.0", tmp_context, "foo-1.0"
     )
 
 

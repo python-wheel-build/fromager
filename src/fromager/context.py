@@ -3,9 +3,11 @@ import logging
 import pathlib
 from urllib.parse import urlparse
 
+import requests
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
+from requests.adapters import HTTPAdapter, Retry
 
 from . import constraints, settings
 
@@ -60,6 +62,9 @@ class WorkContext:
         # than the package, in case we do have multiple rules for the same
         # package.
         self._seen_requirements = set()
+
+        # create a requests session
+        self.requests = self._make_requests_session()
 
     @property
     def pip_wheel_server_args(self) -> list[str]:
@@ -138,3 +143,23 @@ class WorkContext:
             if not p.exists():
                 logger.debug("creating %s", p)
                 p.mkdir(parents=True)
+
+    def _make_requests_session(
+        self, retries=5, backoff_factor=0.1, status_forcelist=None
+    ) -> requests.Session:
+        session = requests.Session()
+        if status_forcelist is None:
+            status_forcelist = [500, 502, 503, 504]
+
+        # Initialize the retries object
+        retries = Retry(
+            total=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=status_forcelist,
+        )
+
+        # Initialize the adapter object
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session

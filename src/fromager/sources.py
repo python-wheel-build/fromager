@@ -16,8 +16,6 @@ from packaging.requirements import Requirement
 from packaging.version import InvalidVersion, Version
 from packaging.version import parse as validate_version
 
-from fromager.http_client import HTTPClient
-
 from . import context, dependencies, overrides, resolver, tarballs, vendor_rust, wheels
 
 logger = logging.getLogger(__name__)
@@ -158,7 +156,7 @@ def default_download_source(
 
     rename_to = _resolve_template(rename_to_template, req, version)
 
-    source_filename = _download_source_check(ctx.sdists_downloads, url, rename_to)
+    source_filename = _download_source_check(ctx.sdists_downloads, url, ctx, rename_to)
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"
     )
@@ -168,9 +166,12 @@ def default_download_source(
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
 # It will throw exception if any other file is encountered. Eg: index.html
 def _download_source_check(
-    destination_dir: pathlib.Path, url: str, rename_to: str | None = None
+    destination_dir: pathlib.Path,
+    url: str,
+    ctx: context.WorkContext,
+    rename_to: str | None = None,
 ) -> str:
-    source_filename = download_url(destination_dir, url, rename_to)
+    source_filename = download_url(destination_dir, url, ctx, rename_to)
     if source_filename.suffix == ".zip":
         source_file_contents = zipfile.ZipFile(source_filename).namelist()
         if not source_file_contents:
@@ -188,7 +189,10 @@ def _download_source_check(
 
 
 def download_url(
-    destination_dir: pathlib.Path, url: str, rename_to: str | None = None
+    destination_dir: pathlib.Path,
+    url: str,
+    ctx: context.WorkContext,
+    rename_to: str | None = None,
 ) -> pathlib.Path:
     basename = rename_to if rename_to else os.path.basename(urlparse(url).path)
     outfile = pathlib.Path(destination_dir) / basename
@@ -201,15 +205,12 @@ def download_url(
     # Open the URL first in case that fails, so we don't end up with an empty file.
     logger.debug(f"reading from {url}")
 
-    # Initialize the HTTPClient module
-    client = HTTPClient(url)
-    # Call HTTP GET for the URL
-    r = client.get_request()
-
-    with open(outfile, "wb") as f:
-        logger.debug(f"writing to {outfile}")
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
-            f.write(chunk)
+    with ctx.requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(outfile, "wb") as f:
+            logger.debug(f"writing to {outfile}")
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                f.write(chunk)
     logger.info(f"saved {outfile}")
     return outfile
 
