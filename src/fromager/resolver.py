@@ -226,18 +226,39 @@ class PyPIProvider(ExtrasProvider):
         ):
             # Skip versions that are known bad
             if candidate.version in bad_versions:
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        f"{identifier}: skipping bad version {candidate.version} from {bad_versions}"
+                    )
                 continue
             # Skip versions that do not match the requirement
             if not all(candidate.version in r.specifier for r in requirements):
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        f"{identifier}: skipping {candidate.version} because it does not match {requirements}"
+                    )
                 continue
             # Skip versions that do not match the constraint
             if not self.constraints.is_satisfied_by(identifier, candidate.version):
+                if DEBUG_RESOLVER:
+                    c = self.constraints.get_constraint(identifier)
+                    logger.debug(
+                        f"{identifier}: skipping {candidate.version} due to constraint {c}"
+                    )
                 continue
             # Only include sdists if we're asked to
             if candidate.is_sdist and not self.include_sdists:
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        f"{identifier}: skipping {candidate} because it is an sdist"
+                    )
                 continue
             # Only include wheels if we're asked to
             if not candidate.is_sdist and not self.include_wheels:
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        f"{identifier}: skipping {candidate} because it is a wheel"
+                    )
                 continue
             candidates.append(candidate)
         return sorted(candidates, key=attrgetter("version"), reverse=True)
