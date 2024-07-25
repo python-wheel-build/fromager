@@ -45,7 +45,7 @@ def find_and_invoke(
     distname: str,
     method: str,
     default_fn: typing.Callable,
-    **kwargs: dict[str, typing.Any],
+    **kwargs: typing.Any,
 ) -> typing.Any:
     fn = find_override_method(distname, method)
     if not fn:
@@ -53,7 +53,7 @@ def find_and_invoke(
     return invoke(fn, **kwargs)
 
 
-def invoke(fn: typing.Callable, **kwargs: dict[str, typing.Any]) -> typing.Any:
+def invoke(fn: typing.Callable, **kwargs: typing.Any) -> typing.Any:
     sig = inspect.signature(fn)
     for arg_name in list(kwargs):
         if arg_name not in sig.parameters:
