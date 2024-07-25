@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import typing
 
 import yaml
 
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class Settings:
-    def __init__(self, data: dict):
+    def __init__(self, data: dict[typing.Any, typing.Any]):
         self._data = data
 
     def pre_built(self, variant: str) -> set[str]:
@@ -43,4 +44,4 @@ def load(filename: pathlib.Path) -> Settings:
         return Settings({})
     with open(filepath, "r") as f:
         logger.info("loading settings from %s", filepath.absolute())
-        return _parse(f)
+        return _parse(f.read())
