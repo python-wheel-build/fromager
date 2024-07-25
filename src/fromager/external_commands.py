@@ -2,15 +2,16 @@ import logging
 import os
 import shlex
 import subprocess
+import typing
 
 logger = logging.getLogger(__name__)
 
 
 # based on pyproject_hooks/_impl.py: quiet_subprocess_runner
 def run(
-    cmd: list[str],
+    cmd: typing.Sequence[str],
     cwd: str | None = None,
-    extra_environ: dict | None = None,
+    extra_environ: dict[str, typing.Any] | None = None,
     log_filename: str | None = None,
 ) -> str:
     """Call the subprocess while logging output"""

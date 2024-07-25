@@ -51,7 +51,7 @@ def get_build_system_dependencies(
 
 def _filter_requirements(
     req: Requirement,
-    requirements: typing.Iterable[Requirement],
+    requirements: typing.Iterable[Requirement | str],
 ) -> set[Requirement]:
     requires = set()
     for r in requirements:
@@ -68,9 +68,9 @@ def default_get_build_system_dependencies(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
-) -> typing.Iterable[Requirement]:
+) -> typing.Iterable[str]:
     pyproject_toml = get_pyproject_contents(sdist_root_dir)
-    return get_build_backend(pyproject_toml)["requires"]
+    return typing.cast(list[str], get_build_backend(pyproject_toml)["requires"])
 
 
 def get_build_backend_dependencies(
@@ -110,7 +110,7 @@ def default_get_build_backend_dependencies(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
-) -> set[Requirement]:
+) -> typing.Iterable[str]:
     pyproject_toml = get_pyproject_contents(sdist_root_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
@@ -156,7 +156,7 @@ def default_get_build_sdist_dependencies(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
-) -> set[Requirement]:
+) -> typing.Iterable[str]:
     pyproject_toml = get_pyproject_contents(sdist_root_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
@@ -169,7 +169,7 @@ def get_install_dependencies_of_wheel(
     req: Requirement, wheel_filename: pathlib.Path, requirements_file_dir: pathlib.Path
 ) -> set[Requirement]:
     logger.info(f"{req.name}: getting installation dependencies from {wheel_filename}")
-    wheel = pkginfo.Wheel(wheel_filename)
+    wheel = pkginfo.Wheel(str(wheel_filename))
     deps = _filter_requirements(req, wheel.requires_dist)
     _write_requirements_file(
         deps,
@@ -195,7 +195,7 @@ def default_get_install_dependencies(
         logger.debug(f"{req.name}: removing existing dist-info dir {info_dir}")
         shutil.rmtree(info_dir)
 
-    metadata_path = hook_caller.prepare_metadata_for_build_wheel(sdist_root_dir)
+    metadata_path = hook_caller.prepare_metadata_for_build_wheel(str(sdist_root_dir))
     with open(os.path.join(sdist_root_dir, metadata_path, "METADATA"), "r") as f:
         parsed = metadata.Metadata.from_email(f.read(), validate=False)
         for r in parsed.requires_dist or []:
@@ -204,7 +204,7 @@ def default_get_install_dependencies(
     return requires
 
 
-def get_pyproject_contents(sdist_root_dir: pathlib.Path) -> dict:
+def get_pyproject_contents(sdist_root_dir: pathlib.Path) -> dict[str, typing.Any]:
     pyproject_toml_filename = sdist_root_dir / "pyproject.toml"
     if not os.path.exists(pyproject_toml_filename):
         return {}
@@ -219,7 +219,7 @@ _DEFAULT_BACKEND = {
 }
 
 
-def get_build_backend(pyproject_toml: dict) -> dict:
+def get_build_backend(pyproject_toml: dict[str, typing.Any]) -> dict[str, typing.Any]:
     # Build a set of defaults. Use a copy to ensure that if anything
     # modifies the values returned by this function our defaults are
     # not changed.
@@ -236,23 +236,29 @@ def get_build_backend(pyproject_toml: dict) -> dict:
 
 
 def get_build_backend_hook_caller(
-    sdist_root_dir: pathlib.Path, pyproject_toml: dict, override_environ: dict
+    sdist_root_dir: pathlib.Path,
+    pyproject_toml: dict[str, typing.Any],
+    override_environ: dict[str, typing.Any],
 ) -> pyproject_hooks.BuildBackendHookCaller:
     backend = get_build_backend(pyproject_toml)
 
-    def _run_hook_with_extra_environ(cmd, cwd=None, extra_environ=None):
+    def _run_hook_with_extra_environ(
+        cmd: typing.Sequence[str],
+        cwd: str | None = None,
+        extra_environ: typing.Mapping[str, str] | None = None,
+    ) -> None:
         """The BuildBackendHookCaller is going to pass extra_environ
         and our build system may want to set some values, too. Merge
         the 2 sets of values before calling the actual runner function.
         """
-        full_environ = {}
+        full_environ: dict[str, typing.Any] = {}
         if extra_environ is not None:
             full_environ.update(extra_environ)
         full_environ.update(override_environ)
-        return external_commands.run(cmd, cwd=cwd, extra_environ=full_environ)
+        external_commands.run(cmd, cwd=cwd, extra_environ=full_environ)
 
     return pyproject_hooks.BuildBackendHookCaller(
-        source_dir=sdist_root_dir,
+        source_dir=str(sdist_root_dir),
         build_backend=backend["build-backend"],
         backend_path=backend["backend-path"],
         runner=_run_hook_with_extra_environ,
@@ -262,7 +268,7 @@ def get_build_backend_hook_caller(
 def _write_requirements_file(
     requirements: typing.Iterable[Requirement],
     filename: pathlib.Path,
-):
+) -> None:
     with open(filename, "w") as f:
         for r in requirements:
             f.write(f"{r}\n")
@@ -270,6 +276,6 @@ def _write_requirements_file(
 
 def _read_requirements_file(
     filename: pathlib.Path,
-) -> set[Requirement] | None:
+) -> set[Requirement]:
     lines = requirements_file.parse_requirements_file(filename)
     return set([Requirement(line) for line in lines])
