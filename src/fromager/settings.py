@@ -18,7 +18,10 @@ class Settings:
         return set(overrides.pkgname_to_override_module(n) for n in names)
 
     def packages(self) -> dict[str, dict[str, str]]:
-        return self._return_value_or_default(self._data.get("packages"), {})
+        p = self._return_value_or_default(self._data.get("packages"), {})
+        return {
+            overrides.pkgname_to_override_module(key): value for key, value in p.items()
+        }
 
     def download_source_url(self, pkg: str, default: str | None = None) -> str | None:
         download_source = self._get_package_download_source_settings(pkg)
@@ -58,7 +61,9 @@ class Settings:
 
     def get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
         p = self.packages()
-        return self._return_value_or_default(p.get(pkg), {})
+        return self._return_value_or_default(
+            p.get(overrides.pkgname_to_override_module(pkg)), {}
+        )
 
     def _get_package_download_source_settings(self, pkg: str) -> dict[str, str]:
         p = self.get_package_settings(pkg)
