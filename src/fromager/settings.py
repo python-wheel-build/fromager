@@ -56,16 +56,16 @@ class Settings:
             resolve_dist.get("include_sdists"), default
         )
 
-    def _get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
+    def get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
         p = self.packages()
         return self._return_value_or_default(p.get(pkg), {})
 
     def _get_package_download_source_settings(self, pkg: str) -> dict[str, str]:
-        p = self._get_package_settings(pkg)
+        p = self.get_package_settings(pkg)
         return self._return_value_or_default(p.get("download_source"), {})
 
     def _get_package_resolver_dist_settings(self, pkg: str) -> dict[str, str]:
-        p = self._get_package_settings(pkg)
+        p = self.get_package_settings(pkg)
         return self._return_value_or_default(p.get("resolver_dist"), {})
 
     def _return_value_or_default(self, value, default):

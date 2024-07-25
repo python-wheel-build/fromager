@@ -141,7 +141,11 @@ def default_download_source(
     sdist_server_url: str,
 ) -> tuple[pathlib.Path, str, str]:
     "Download the requirement and return the name of the output path."
-    logger.debug(f"{req.name}: loading resolver parameters from settings")
+    pkg_settings = ctx.settings.get_package_settings(req.name)
+    if pkg_settings:
+        logger.info(
+            f"{req.name}: using package specific settings to resolve and download sdist - {pkg_settings}"
+        )
 
     include_sdists = ctx.settings.resolver_include_sdists(req.name, True)
     include_wheels = ctx.settings.resolver_include_wheels(req.name, False)
@@ -149,22 +153,14 @@ def default_download_source(
         req.name, sdist_server_url
     )
 
-    logger.debug(
-        f"{req.name}: using {override_sdist_server_url} instead of {sdist_server_url} to resolve requirement"
-    )
-
     org_url, version = resolve_dist(
         ctx, req, override_sdist_server_url, include_sdists, include_wheels
     )
-
-    logger.debug(f"{req.name}: loading sdist download url from settings")
 
     dest_filename_template = ctx.settings.download_source_destination_filename(req.name)
     destination_filename = _resolve_template(dest_filename_template, req, version)
     url_template = ctx.settings.download_source_url(req.name, org_url)
     url = _resolve_template(url_template, req, version)
-
-    logger.debug(f"{req.name}: using {url} instead of {org_url}")
 
     source_filename = _download_source_check(
         ctx.sdists_downloads, url, destination_filename
