@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from fromager import context, settings, sources
 
@@ -99,3 +100,18 @@ def test_invalid_version(mock_default_download):
     mock_default_download.__name__ = "mock_default_download"
     with pytest.raises(ValueError):
         sources.download_source(ctx, req, sdist_server_urls)
+
+
+@patch("logging.Logger.warning")
+def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
+    source = "deepspeed-0.5.0"
+    patches_dir = tmp_path / source
+    patches_dir.mkdir()
+    patch_file = patches_dir / "deepspeed-0.5.0.patch"
+    patch_file.write_text("This is a test patch")
+
+    new_version = Version("0.6.0")
+    sources._warn_for_old_patch(patches_dir, patch_file, new_version)
+    mock.assert_called_with(
+        "Patches for version 0.5.0 of deepspeed exist but will not be applied"
+    )
