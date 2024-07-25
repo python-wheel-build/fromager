@@ -22,7 +22,7 @@ class BuildEnvironment:
         self,
         ctx: context.WorkContext,
         parent_dir: pathlib.Path,
-        build_requirements: typing.Iterable[Requirement],
+        build_requirements: typing.Iterable[Requirement] | None,
     ):
         self._ctx = ctx
         self.path = parent_dir / f"build-{platform.python_version()}"
