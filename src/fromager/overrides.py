@@ -6,7 +6,7 @@ import pathlib
 import string
 import typing
 
-from packaging.utils import canonicalize_name, parse_sdist_filename
+from packaging.utils import NormalizedName, canonicalize_name, parse_sdist_filename
 from packaging.version import Version
 from stevedore import extension
 
@@ -37,18 +37,23 @@ def _die_on_plugin_load_failure(
     mgr: extension.ExtensionManager,
     ep: extension.Extension,
     err: Exception,
-):
+) -> None:
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 
 
-def find_and_invoke(distname: str, method: str, default_fn: typing.Callable, **kwargs):
+def find_and_invoke(
+    distname: str,
+    method: str,
+    default_fn: typing.Callable,
+    **kwargs: dict[str, typing.Any],
+) -> typing.Any:
     fn = find_override_method(distname, method)
     if not fn:
         fn = default_fn
     return invoke(fn, **kwargs)
 
 
-def invoke(fn: typing.Callable, **kwargs):
+def invoke(fn: typing.Callable, **kwargs: dict[str, typing.Any]) -> typing.Any:
     sig = inspect.signature(fn)
     for arg_name in list(kwargs):
         if arg_name not in sig.parameters:
@@ -59,7 +64,7 @@ def invoke(fn: typing.Callable, **kwargs):
     return fn(**kwargs)
 
 
-def log_overrides():
+def log_overrides() -> None:
     logger.debug("loaded overrides for %s", _get_extensions().entry_points_names())
 
 
@@ -82,7 +87,7 @@ def extra_environ_for_pkg(
     envs_dir: pathlib.Path,
     pkgname: str,
     variant: str,
-) -> dict:
+) -> dict[str, str]:
     """Return a dict of extra environment variables for a particular package.
 
     Extra environment variables are stored in per-package .env files in the
@@ -126,7 +131,7 @@ def pkgname_to_override_module(pkgname: str) -> str:
     return module_name
 
 
-def find_override_method(distname: str, method: str) -> typing.Callable:
+def find_override_method(distname: str, method: str) -> typing.Callable | None:
     """Given a distname and method name, look for an override implementation of the method.
 
     If there is no module or no method, return None.
@@ -147,7 +152,7 @@ def find_override_method(distname: str, method: str) -> typing.Callable:
         logger.debug("%s: no %s override", distname, method)
         return None
     logger.info("%s: found %s override", distname, method)
-    return getattr(mod, method)
+    return typing.cast(typing.Callable, getattr(mod, method))
 
 
 def list_all(
@@ -155,10 +160,10 @@ def list_all(
     envs_dir: pathlib.Path,
     download_source: dict[str, dict[str, str]],
     test: bool = False,
-):
+) -> list[NormalizedName]:
     exts = _get_extensions()
 
-    def patched_projects():
+    def patched_projects() -> typing.Generator[NormalizedName, None, None]:
         for item in patches_dir.glob("*"):
             if not item.is_dir():
                 continue
@@ -166,7 +171,7 @@ def list_all(
             name, _ = parse_sdist_filename(fake_sdist)
             yield name
 
-    def patched_projects_legacy():
+    def patched_projects_legacy() -> typing.Generator[NormalizedName, None, None]:
         for item in patches_dir.glob("*.patch"):
             parts = []
             for p in item.stem.split("-"):
@@ -185,11 +190,11 @@ def list_all(
                 continue
             yield name
 
-    def env_projects():
+    def env_projects() -> typing.Generator[str, None, None]:
         for item in envs_dir.glob("*/*.env"):
             yield item.stem
 
-    def projects_with_predefined_download_source():
+    def projects_with_predefined_download_source() -> typing.Generator[str, None, None]:
         yield from download_source
 
     # Use canonicalize_name() to ensure we can correctly remove duplicate
