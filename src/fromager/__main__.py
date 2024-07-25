@@ -99,7 +99,7 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
 )
 @click.pass_context
 def main(
-    ctx,
+    ctx: click.Context,
     verbose: bool,
     log_file: pathlib.Path,
     error_log_file: pathlib.Path,
@@ -114,7 +114,7 @@ def main(
     cleanup: bool,
     variant: str,
     jobs: int,
-):
+) -> None:
     # Set the overall logger level to debug and allow the handlers to filter
     # messages at their own level.
     logging.getLogger().setLevel(logging.DEBUG)
@@ -171,7 +171,7 @@ for cmd in commands.commands:
     main.add_command(cmd)
 
 
-def invoke_main():
+def invoke_main() -> None:
     # Wrapper for the click main command that ensures any exceptions
     # are logged so that build pipeline outputs include the traceback.
     try:
