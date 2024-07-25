@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import logging
-import os
 import pathlib
 
 import click
@@ -119,7 +118,8 @@ else:
     "-j",
     "--jobs",
     type=int,
-    help="number of jobs available to run in parallel",
+    default=None,
+    help="maximum number of jobs to run in parallel",
 )
 @click.option(
     "--network-isolation/--no-network-isolation",
@@ -143,7 +143,7 @@ def main(
     wheel_server_url: str,
     cleanup: bool,
     variant: str,
-    jobs: int,
+    jobs: int | None,
     network_isolation: bool,
 ) -> None:
     # Set the overall logger level to debug and allow the handlers to filter
@@ -190,6 +190,7 @@ def main(
             settings_dir=settings_dir,
             patches_dir=patches_dir,
             variant=variant,
+            max_jobs=jobs,
         ),
         constraints_file=constraints_file,
         patches_dir=patches_dir,
@@ -199,8 +200,8 @@ def main(
         wheel_server_url=wheel_server_url,
         cleanup=cleanup,
         variant=variant,
-        jobs=jobs if jobs is None or jobs > 0 else os.cpu_count(),
         network_isolation=network_isolation,
+        max_jobs=jobs,
     )
     wkctx.setup()
     ctx.obj = wkctx

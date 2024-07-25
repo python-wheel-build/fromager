@@ -6,6 +6,7 @@ import types
 import typing
 from collections.abc import Mapping
 
+import psutil
 import pydantic
 import yaml
 from packaging.utils import BuildTag, NormalizedName, canonicalize_name
@@ -142,6 +143,27 @@ class DownloadSource(pydantic.BaseModel):
         return v
 
 
+class BuildOptions(pydantic.BaseModel):
+    """Build system options"""
+
+    model_config = MODEL_CONFIG
+
+    cpu_cores_per_job: int = Field(default=1, ge=1)
+    """Scale parallel jobs by available CPU cores
+
+    Examples:
+    1: as many parallel jobs as CPU logical cores
+    2: allocate 2 cores per job
+    """
+
+    memory_per_job_gb: float = Field(default=1.0, ge=0.1)
+    """Scale parallel jobs by available virtual memory (without swap)
+
+    Examples:
+    0.5: assume each parallel job requires 512 MB virtual memory
+    """
+
+
 class VariantInfo(pydantic.BaseModel):
     """Variant information for a package"""
 
@@ -208,6 +230,9 @@ class PackageSettings(pydantic.BaseModel):
 
     resolve_source: ResolveSource = Field(default_factory=ResolveSource)
     """Resolve distribution version"""
+
+    build_options: BuildOptions = Field(default_factory=BuildOptions)
+    """Build system options"""
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
     """Variant configuration"""
@@ -320,16 +345,30 @@ def _resolve_template(
         raise
 
 
+def get_cpu_count() -> int:
+    """CPU count from scheduler affinity"""
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    else:
+        return os.cpu_count() or 1
+
+
+def get_available_memory_gib() -> float:
+    """available virtual memory in GiB"""
+    return psutil.virtual_memory().available / (1024**3)
+
+
 class PackageBuildInfo:
     """Package build information
 
     Public API for PackageSettings with i
     """
 
-    def __init__(self, ctx: "Settings", ps: PackageSettings) -> None:
-        self._variant = typing.cast(Variant, ctx.variant)
-        self._patches_dir = ctx.patches_dir
-        self._variant_changelog = ctx.variant_changelog()
+    def __init__(self, settings: "Settings", ps: PackageSettings) -> None:
+        self._variant = typing.cast(Variant, settings.variant)
+        self._patches_dir = settings.patches_dir
+        self._variant_changelog = settings.variant_changelog()
+        self._max_jobs: int | None = settings.max_jobs
         self._ps = ps
         self._plugin_module: types.ModuleType | None | typing.Literal[False] = False
         self._patches: PatchMap | None = None
@@ -497,6 +536,35 @@ class PackageBuildInfo:
 
         return extra_environ
 
+    def parallel_jobs(self) -> int:
+        """How many parallel jobs?"""
+        # adjust by CPU cores, at least 1
+        cpu_cores_per_job = self._ps.build_options.cpu_cores_per_job
+        cpu_count = get_cpu_count()
+        max_num_job_cores = int(max(1, cpu_count // cpu_cores_per_job))
+        logger.debug(
+            f"{self.package}: {max_num_job_cores=}, {cpu_cores_per_job=}, {cpu_count=}"
+        )
+
+        # adjust by memory consumption per job, at least 1
+        memory_per_job_gb = self._ps.build_options.memory_per_job_gb
+        free_memory = get_available_memory_gib()
+        max_num_jobs_memory = int(max(1.0, free_memory // memory_per_job_gb))
+        logger.debug(
+            f"{self.package}: {max_num_jobs_memory=}, {memory_per_job_gb=}, {free_memory=:0.1f} GiB"
+        )
+
+        # limit by smallest amount of CPU, memory, and --jobs parameter
+        max_jobs = cpu_count if self._max_jobs is None else self._max_jobs
+        parallel_builds = min(max_num_job_cores, max_num_jobs_memory, max_jobs)
+
+        logger.debug(
+            f"{self.package}: parallel builds {parallel_builds=} "
+            f"({free_memory=:0.1f} GiB, {cpu_count=}, {max_jobs=})"
+        )
+
+        return parallel_builds
+
     def serialize(self, **kwargs) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)
 
@@ -556,6 +624,7 @@ class Settings:
         package_settings: typing.Iterable[PackageSettings],
         variant: Variant | str,
         patches_dir: pathlib.Path,
+        max_jobs: int | None,
     ) -> None:
         self._settings = settings
         self._package_settings: dict[Package, PackageSettings] = {
@@ -563,6 +632,7 @@ class Settings:
         }
         self._variant = typing.cast(Variant, variant)
         self._patches_dir = patches_dir
+        self._max_jobs = max_jobs
         self._pbi_cache: dict[Package, PackageBuildInfo] = {}
 
     @classmethod
@@ -573,6 +643,7 @@ class Settings:
         settings_dir: pathlib.Path,
         variant: Variant | str,
         patches_dir: pathlib.Path,
+        max_jobs: int | None,
     ) -> "Settings":
         """Create Settings from settings.yaml and directory"""
         if settings_file.is_file():
@@ -591,6 +662,7 @@ class Settings:
             package_settings=package_settings,
             variant=variant,
             patches_dir=patches_dir,
+            max_jobs=max_jobs,
         )
 
     @property
@@ -612,9 +684,20 @@ class Settings:
 
     @patches_dir.setter
     def patches_dir(self, path: pathlib.Path) -> None:
-        """Change patches_dr (for testing)"""
+        """Change patches_dir (for testing)"""
         self._pbi_cache.clear()
         self._patches_dir = path
+
+    @property
+    def max_jobs(self) -> int | None:
+        """Get max parallel jobs"""
+        return self._max_jobs
+
+    @max_jobs.setter
+    def max_jobs(self, jobs: int | None) -> None:
+        """Change max jobs (for testing)"""
+        self._pbi_cache.clear()
+        self._max_jobs = jobs
 
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""

@@ -234,13 +234,13 @@ def build_wheel(
     # TODO: refactor?
     # Build Rust without network access
     extra_environ["CARGO_NET_OFFLINE"] = "true"
-    # configure max jobs settings. should cover most of the cases, if not then the user can use ctx.jobs in their plugin
-    if ctx.jobs:
-        extra_environ["MAKEFLAGS"] = (
-            f"{extra_environ.get('MAKEFLAGS', '')} -j{ctx.jobs}"
-        )
-        extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = f"{ctx.jobs}"
-        extra_environ["MAX_JOBS"] = f"{ctx.jobs}"
+
+    # configure max jobs settings, settings depend on package, available
+    # CPU cores, and available virtual memory.
+    jobs = pbi.parallel_jobs()
+    extra_environ["MAKEFLAGS"] = f"{extra_environ.get('MAKEFLAGS', '')} -j{jobs}"
+    extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
+    extra_environ["MAX_JOBS"] = str(jobs)
 
     # Start the timer
     start = datetime.now().replace(microsecond=0)

@@ -45,6 +45,7 @@ def testdata_context(
             settings_dir=overrides / "settings",
             patches_dir=patches_dir,
             variant=variant,
+            max_jobs=None,
         ),
         constraints_file=None,
         patches_dir=overrides / "patches",

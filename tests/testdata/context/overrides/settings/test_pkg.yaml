@@ -1,4 +1,7 @@
 build_dir: python
+build_options:
+    cpu_cores_per_job: 4
+    memory_per_job_gb: 4
 changelog:
     "1.0.1":
         - fixed bug

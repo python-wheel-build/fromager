@@ -1,4 +1,5 @@
 import pathlib
+from unittest.mock import Mock, patch
 
 import pydantic
 import pytest
@@ -21,6 +22,10 @@ TEST_OTHER_PKG = "test-other-pkg"
 
 FULL_EXPECTED = {
     "build_dir": pathlib.Path("python"),
+    "build_options": {
+        "cpu_cores_per_job": 4,
+        "memory_per_job_gb": 4.0,
+    },
     "changelog": {
         Version("1.0.1"): ["fixed bug"],
         Version("1.0.2"): ["more bugs", "rebuild"],
@@ -64,6 +69,10 @@ FULL_EXPECTED = {
 EMPTY_EXPECTED = {
     "name": "test-empty-pkg",
     "build_dir": None,
+    "build_options": {
+        "cpu_cores_per_job": 1,
+        "memory_per_job_gb": 1.0,
+    },
     "changelog": {},
     "env": {},
     "download_source": {
@@ -302,3 +311,45 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
     assert testdata_context.settings.variant_changelog() == [
         "setuptools upgraded to 82.0.0"
     ]
+
+
+@patch("fromager.packagesettings.get_cpu_count", return_value=8)
+@patch("fromager.packagesettings.get_available_memory_gib", return_value=7.1)
+def test_parallel_jobs(
+    get_available_memory_gib: Mock,
+    get_cpu_count: Mock,
+    testdata_context: context.WorkContext,
+) -> None:
+    assert testdata_context.settings.max_jobs is None
+
+    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    assert pbi.parallel_jobs() == 7
+
+    get_cpu_count.return_value = 4
+    assert pbi.parallel_jobs() == 4
+
+    get_available_memory_gib.return_value = 2.1
+    assert pbi.parallel_jobs() == 2
+
+    get_available_memory_gib.return_value = 1.5
+    assert pbi.parallel_jobs() == 1
+
+    testdata_context.settings.max_jobs = 2
+    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    get_available_memory_gib.return_value = 23
+    assert pbi.parallel_jobs() == 2
+
+    # test-pkg needs more memory
+    testdata_context.settings.max_jobs = 200
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    get_cpu_count.return_value = 16
+    get_available_memory_gib.return_value = 20
+    assert pbi.parallel_jobs() == 4
+
+    get_cpu_count.return_value = 32
+    get_available_memory_gib.return_value = 25
+    assert pbi.parallel_jobs() == 6
+
+    testdata_context.settings.max_jobs = 4
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.parallel_jobs() == 4

@@ -36,8 +36,8 @@ class WorkContext:
         wheel_server_url: str,
         cleanup: bool = True,
         variant: str = "cpu",
-        jobs: int | None = None,
         network_isolation: bool = False,
+        max_jobs: int | None = None,
     ):
         if active_settings is None:
             active_settings = packagesettings.Settings(
@@ -45,6 +45,7 @@ class WorkContext:
                 package_settings=[],
                 patches_dir=patches_dir,
                 variant=variant,
+                max_jobs=max_jobs,
             )
         self.settings = active_settings
         self.input_constraints_file = constraints_file
@@ -64,7 +65,6 @@ class WorkContext:
         self.wheel_server_url = wheel_server_url
         self.cleanup = cleanup
         self.variant = variant
-        self.jobs = jobs
         self.network_isolation = network_isolation
 
         self._build_order_filename = self.work_dir / "build-order.json"
