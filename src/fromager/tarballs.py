@@ -22,7 +22,7 @@ def _tar_reset(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
     return tarinfo
 
 
-def tar_reproducible(tar: tarfile.TarFile, basedir: pathlib.Path):
+def tar_reproducible(tar: tarfile.TarFile, basedir: pathlib.Path) -> None:
     """Create reproducible tar file"""
 
     content = [str(basedir)]  # convert from pathlib.Path, if that's what we have
