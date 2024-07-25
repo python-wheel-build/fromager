@@ -43,6 +43,7 @@ def build(
     separately.
 
     """
+    server.start_wheel_server(wkctx)
     wheel_filename = _build(wkctx, dist_name, dist_version, sdist_server_url)
     print(wheel_filename)
 
@@ -50,11 +51,17 @@ def build(
 @click.command()
 @click.argument("build_order_file")
 @click.argument("sdist_server_url")
+@click.option(
+    "--skip-existing",
+    default=False,
+    is_flag=True,
+)
 @click.pass_obj
 def build_sequence(
     wkctx: context.WorkContext,
     build_order_file: str,
     sdist_server_url: str,
+    skip_existing: bool,
 ) -> None:
     """Build a sequence of wheels in order
 
@@ -66,12 +73,25 @@ def build_sequence(
     the build order file.
 
     """
+    server.start_wheel_server(wkctx)
+
     with open(build_order_file, "r") as f:
         for entry in progress.progress(json.load(f)):
             dist_name = entry["dist"]
             dist_version = Version(entry["version"])
+
+            if skip_existing and _is_wheel_built(wkctx, dist_name, dist_version):
+                logger.info(
+                    "%s: skipping building wheels for %s==%s since it already exists",
+                    dist_name,
+                    dist_name,
+                    dist_version,
+                )
+                continue
+
             logger.info("%s: building %s==%s", dist_name, dist_name, dist_version)
             wheel_filename = _build(wkctx, dist_name, dist_version, sdist_server_url)
+
             server.update_wheel_mirror(wkctx)
             # After we update the wheel mirror, the built file has
             # moved to a new directory.
@@ -85,8 +105,6 @@ def _build(
     dist_version: Version,
     sdist_server_url: str,
 ) -> pathlib.Path:
-    server.start_wheel_server(wkctx)
-
     req = Requirement(f"{dist_name}=={dist_version}")
 
     # Download
@@ -138,3 +156,17 @@ def _build(
     )
 
     return wheel_filename
+
+
+def _is_wheel_built(
+    wkctx: context.WorkContext, dist_name: str, dist_version: Version
+) -> bool:
+    req = Requirement(f"{dist_name}=={dist_version}")
+
+    try:
+        logger.info(f"{req.name}: checking if {req} was already built")
+        sdist.resolve_prebuilt_wheel(wkctx, req, [wkctx.wheel_server_url])
+        return True
+    except Exception:
+        logger.info(f"{req.name}: could not locate prebuilt wheel. Will build {req}")
+        return False
