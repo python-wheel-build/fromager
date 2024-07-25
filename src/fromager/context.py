@@ -1,9 +1,11 @@
 import json
 import logging
+import os
 import pathlib
 import typing
 from urllib.parse import urlparse
 
+import psutil
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
@@ -26,7 +28,9 @@ class WorkContext:
         wheel_server_url: str,
         cleanup: bool = True,
         variant: str = "cpu",
-        jobs: int | None = None,
+        max_jobs: int | None = None,
+        jobs_cpu_scaling: int = 1,
+        jobs_memory_scaling: int = 2,
     ):
         self.settings = active_settings
         self.constraints = pkg_constraints
@@ -44,7 +48,9 @@ class WorkContext:
         self.wheel_server_url = wheel_server_url
         self.cleanup = cleanup
         self.variant = variant
-        self.jobs = jobs
+        self.max_jobs = max_jobs
+        self.jobs_cpu_scaling = jobs_cpu_scaling
+        self.jobs_memory_scaling = jobs_memory_scaling
 
         self._build_order_filename = self.work_dir / "build-order.json"
         self._constraints_filename = self.work_dir / "constraints.txt"
@@ -63,6 +69,52 @@ class WorkContext:
         self._seen_requirements: set[tuple[NormalizedName, tuple[str, ...], str]] = (
             set()
         )
+
+    @classmethod
+    def cpu_count(cls) -> int:
+        """CPU count from scheduler affinity"""
+        return len(os.sched_getaffinity(0))
+
+    @classmethod
+    def available_memory_gib(cls) -> float:
+        """available virtual memory in GiB"""
+        return psutil.virtual_memory().available / (1024**3)
+
+    def parallel_jobs(self, req: Requirement) -> int:
+        # get CPU and memory scale option from build options
+        # falls back to arguments if settings are n/a or None
+        build_option = self.settings.build_option(req.name)
+        cpu_scaling = memory_scaling = None
+        if build_option:
+            logger.debug(f"{req.name}: custom build option {build_option}")
+            cpu_scaling = build_option.cpu_scaling
+            memory_scaling = build_option.memory_scaling
+        if cpu_scaling is None:
+            cpu_scaling = self.jobs_cpu_scaling
+        if memory_scaling is None:
+            memory_scaling = self.jobs_memory_scaling
+        logger.debug(f"{req.name}: using {cpu_scaling=}, {memory_scaling=}")
+
+        # adjust by CPU cores, at least 1
+        cpu_count = self.cpu_count()
+        max_num_job_cores = int(max(1, cpu_count // cpu_scaling))
+        logger.debug(f"{req.name}: {max_num_job_cores=}, {cpu_count=}")
+
+        # adjust by memory consumption per job, at least 1
+        free_memory = self.available_memory_gib()
+        max_num_jobs_memory = int(max(1, free_memory // memory_scaling))
+        logger.debug(f"{req.name}: {max_num_jobs_memory=}, {free_memory=:0.1f} GiB")
+
+        # limit by smallest amount of CPU, memory, and --jobs parameter
+        max_jobs = cpu_count if self.max_jobs is None else self.max_jobs
+        parallel_builds = min(max_num_job_cores, max_num_jobs_memory, max_jobs)
+
+        logger.info(
+            f"{req.name}: parallel builds {parallel_builds=} "
+            f"({free_memory=:0.1f} GiB, {cpu_count=}, {max_jobs=})"
+        )
+
+        return parallel_builds
 
     @property
     def pip_wheel_server_args(self) -> list[str]:

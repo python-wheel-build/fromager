@@ -2,6 +2,8 @@ import json
 
 from packaging.requirements import Requirement
 
+from fromager import context, settings
+
 
 def test_seen(tmp_context):
     req = Requirement("testdist")
@@ -166,3 +168,40 @@ def test_build_order_name_canonicalization(tmp_context):
         },
     ]
     assert expected == contents
+
+
+def test_parallel_jobs(tmp_context: context.WorkContext):
+    req = Requirement("testdist")
+    tmp_context.jobs_cpu_scaling = 1
+    tmp_context.jobs_memory_scaling = 2
+    assert tmp_context.cpu_count() == 8
+    assert tmp_context.available_memory_gib() == 15.1
+
+    assert tmp_context.parallel_jobs(req) == 7
+
+    tmp_context.cpu_count.return_value = 4
+    assert tmp_context.parallel_jobs(req) == 4
+
+    tmp_context.available_memory_gib.return_value = 4.1
+    assert tmp_context.parallel_jobs(req) == 2
+
+    tmp_context.available_memory_gib.return_value = 1.5
+    assert tmp_context.parallel_jobs(req) == 1
+
+    tmp_context.available_memory_gib.return_value = 23
+    tmp_context.jobs_memory_scaling = 10
+    assert tmp_context.parallel_jobs(req) == 2
+
+    tmp_context.cpu_count.return_value = 16
+    tmp_context.available_memory_gib.return_value = 20
+    tmp_context.settings = settings.Settings(
+        {"build_option": {req.name: {"cpu_scaling": 4, "memory_scaling": 4}}}
+    )
+    assert tmp_context.parallel_jobs(req) == 4
+
+    tmp_context.cpu_count.return_value = 32
+    tmp_context.available_memory_gib.return_value = 25
+    assert tmp_context.parallel_jobs(req) == 6
+
+    tmp_context.max_jobs = 4
+    assert tmp_context.parallel_jobs(req) == 4
