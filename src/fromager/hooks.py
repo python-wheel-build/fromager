@@ -1,12 +1,13 @@
 import logging
 import pathlib
+import typing
 
 from packaging.requirements import Requirement
 from stevedore import extension, hook
 
 from fromager import context
 
-_mgrs = {}
+_mgrs: dict[str, hook.HookManager] = {}
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +30,7 @@ def _die_on_plugin_load_failure(
     mgr: hook.HookManager,
     ep: extension.Extension,
     err: Exception,
-):
+) -> typing.NoReturn:
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 
 
@@ -40,7 +41,7 @@ def run_post_build_hooks(
     dist_version: str,
     sdist_filename: pathlib.Path,
     wheel_filename: pathlib.Path,
-):
+) -> None:
     hook_mgr = _get_hooks("post_build")
     if hook_mgr.names():
         logger.info(f"{req.name}: starting post-build hooks")
