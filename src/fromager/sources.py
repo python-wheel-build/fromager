@@ -273,22 +273,35 @@ def unpack_source(
 def patch_source(
     ctx: context.WorkContext,
     source_root_dir: pathlib.Path,
-    version: Version | None = None,
+    req: Requirement,
 ) -> None:
-    for p in overrides.patches_for_source_dir(ctx.patches_dir, source_root_dir.name):
-        if version:
-            _warn_for_old_patch(source_root_dir, p, version)
-        logger.info("applying patch file %s to %s", p, source_root_dir)
-        with open(p, "r") as f:
-            subprocess.check_call(
-                ["patch", "-p1"],
-                stdin=f,
-                cwd=source_root_dir,
-            )
+    # apply any unversioned patch first
+    for p in overrides.patches_for_source_dir(
+        ctx.patches_dir, overrides.pkgname_to_override_module(req.name)
+    ):
+        _apply_patch(p, source_root_dir)
+
+    # make sure that we don't apply the generic unversioned patch again
+    if source_root_dir.name != overrides.pkgname_to_override_module(req.name):
+        for p in overrides.patches_for_source_dir(
+            ctx.patches_dir, source_root_dir.name
+        ):
+            _warn_for_old_patch(source_root_dir, p)
+            _apply_patch(p, source_root_dir)
+
+
+def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
+    logger.info("applying patch file %s to %s", patch, source_root_dir)
+    with open(patch, "r") as f:
+        subprocess.check_call(
+            ["patch", "-p1"],
+            stdin=f,
+            cwd=source_root_dir,
+        )
 
 
 def _warn_for_old_patch(
-    source_root_dir: pathlib.Path, patch_filename: pathlib.Path, version: Version
+    source_root_dir: pathlib.Path, patch_filename: pathlib.Path
 ) -> None:
     # Get the existing version and req name as per the source_root_dir naming conventions
     req_name = source_root_dir.name.rsplit("-", 1)[0]
@@ -357,7 +370,7 @@ def _default_prepare_source(
 ) -> pathlib.Path:
     source_root_dir, is_new = unpack_source(ctx, source_filename)
     if is_new:
-        patch_source(ctx, source_root_dir)
+        patch_source(ctx, source_root_dir, req)
         vendor_rust.vendor_rust(req, source_root_dir)
     return source_root_dir
 
