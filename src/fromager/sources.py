@@ -141,23 +141,31 @@ def default_download_source(
     sdist_server_url: str,
 ) -> tuple[pathlib.Path, str, str]:
     "Download the requirement and return the name of the output path."
-    url_template = ctx.settings.sdist_download_url(req.name)
-    rename_to_template = ctx.settings.sdist_local_filename(req.name)
+    pkg_settings = ctx.settings.get_package_settings(req.name)
+    if pkg_settings:
+        logger.info(
+            f"{req.name}: using package specific settings to resolve and download sdist - {pkg_settings}"
+        )
 
-    # don't include sdists if the user wants to download source from a predefined url
-    include_sdists = url_template is None
-    include_wheels = not include_sdists
-
-    org_url, version = resolve_dist(
-        ctx, req, sdist_server_url, include_sdists, include_wheels
+    include_sdists = ctx.settings.resolver_include_sdists(req.name, True)
+    include_wheels = ctx.settings.resolver_include_wheels(req.name, False)
+    override_sdist_server_url = ctx.settings.resolver_sdist_server_url(
+        req.name, sdist_server_url
     )
 
-    url = _resolve_template(url_template, req, version) or org_url
-    logger.debug(f"{req.name}: using {url} instead of {org_url}")
+    org_url, version = resolve_dist(
+        ctx, req, override_sdist_server_url, include_sdists, include_wheels
+    )
 
-    rename_to = _resolve_template(rename_to_template, req, version)
+    dest_filename_template = ctx.settings.download_source_destination_filename(req.name)
+    destination_filename = _resolve_template(dest_filename_template, req, version)
+    url_template = ctx.settings.download_source_url(req.name, org_url)
+    url = _resolve_template(url_template, req, version)
 
-    source_filename = _download_source_check(ctx.sdists_downloads, url, rename_to)
+    source_filename = _download_source_check(
+        ctx.sdists_downloads, url, destination_filename
+    )
+
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"
     )
@@ -167,9 +175,9 @@ def default_download_source(
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
 # It will throw exception if any other file is encountered. Eg: index.html
 def _download_source_check(
-    destination_dir: pathlib.Path, url: str, rename_to: str | None = None
+    destination_dir: pathlib.Path, url: str, destination_filename: str | None = None
 ) -> str:
-    source_filename = download_url(destination_dir, url, rename_to)
+    source_filename = download_url(destination_dir, url, destination_filename)
     if source_filename.suffix == ".zip":
         source_file_contents = zipfile.ZipFile(source_filename).namelist()
         if not source_file_contents:
@@ -187,9 +195,13 @@ def _download_source_check(
 
 
 def download_url(
-    destination_dir: pathlib.Path, url: str, rename_to: str | None = None
+    destination_dir: pathlib.Path, url: str, destination_filename: str | None = None
 ) -> pathlib.Path:
-    basename = rename_to if rename_to else os.path.basename(urlparse(url).path)
+    basename = (
+        destination_filename
+        if destination_filename
+        else os.path.basename(urlparse(url).path)
+    )
     outfile = pathlib.Path(destination_dir) / basename
     logger.debug(
         "looking for %s %s", outfile, "(exists)" if outfile.exists() else "(not there)"
@@ -242,7 +254,8 @@ def unpack_source(
     ctx: context.WorkContext,
     source_filename: pathlib.Path,
 ) -> tuple[pathlib.Path, bool]:
-    unpack_dir = ctx.work_dir / _sdist_root_name(source_filename)
+    sdist_root_name = _sdist_root_name(source_filename)
+    unpack_dir = ctx.work_dir / sdist_root_name
     if unpack_dir.exists():
         if ctx.cleanup:
             logger.debug("cleaning up %s", unpack_dir)
@@ -267,7 +280,19 @@ def unpack_source(
             zf.extractall(path=unpack_dir)
     else:
         raise ValueError(f"Do not know how to unpack source archive {source_filename}")
-    return (next(iter(unpack_dir.glob("*"))), True)
+
+    # if tarball named foo-2.3.1.tar.gz was downloaded, then ensure that after unpacking, the source directory's path is foo-2.3.1/foo-2.3.1
+    unpacked_root_dir = next(iter(unpack_dir.glob("*")))
+    new_unpacked_root_dir = unpacked_root_dir.parent / sdist_root_name
+    if unpacked_root_dir.name != new_unpacked_root_dir.name:
+        try:
+            shutil.move(str(unpacked_root_dir), str(new_unpacked_root_dir))
+        except Exception as err:
+            raise Exception(
+                f"Could not rename {unpacked_root_dir.name} to {new_unpacked_root_dir.name}: {err}"
+            ) from err
+
+    return (new_unpacked_root_dir, True)
 
 
 def patch_source(

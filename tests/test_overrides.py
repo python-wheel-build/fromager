@@ -136,9 +136,9 @@ def test_list_all(tmp_path: pathlib.Path):
     project_env2 = variant_dir / "fromager_test.env"
     project_env2.write_text("VAR1=VALUE1\nVAR2=VALUE2")  # duplicate
 
-    download_source = {
-        "project-with-download-source": {"url": "url"},
-        "another-project-with-download-source": {"url": "url"},
+    settings = {
+        "project-with-download-source": {"download_source": {"url": "url"}},
+        "project-with-resolver-dist": {"resolver_dist": {"include_wheels": "true"}},
     }
 
     expected = [
@@ -147,14 +147,14 @@ def test_list_all(tmp_path: pathlib.Path):
         "project-with-env",
         "fromager-test",
         "project-with-download-source",
-        "another-project-with-download-source",
+        "project-with-resolver-dist",
     ]
     expected.sort()
 
     packages = overrides.list_all(
         patches_dir=patches_dir,
         envs_dir=env_dir,
-        download_source=download_source,
+        settings=settings,
         test=True,
     )
 

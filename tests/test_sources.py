@@ -39,52 +39,53 @@ def test_resolve_template_with_no_matching_template():
 
 @patch("fromager.sources.resolve_dist")
 @patch("fromager.sources._download_source_check")
-@patch.object(settings.Settings, "sdist_download_url")
-@patch.object(settings.Settings, "sdist_local_filename")
-def test_default_download_source_no_predefined_url(
-    sdist_local_filename: typing.Callable,
-    sdist_download_url: typing.Callable,
+@patch.object(settings.Settings, "download_source_url")
+@patch.object(settings.Settings, "download_source_destination_filename")
+def test_default_download_source_from_settings(
+    download_source_destination_filename: typing.Callable,
+    download_source_url: typing.Callable,
     download_source_check: typing.Callable,
     resolve_dist: typing.Callable,
     tmp_context: context.WorkContext,
 ):
     resolve_dist.return_value = ("url", "1.0")
     download_source_check.return_value = pathlib.Path("filename.zip")
-    sdist_download_url.return_value = None
-    sdist_local_filename.return_value = None
+    download_source_url.return_value = "predefined_url-${version}"
+    download_source_destination_filename.return_value = "foo-${version}"
     req = Requirement("foo==1.0")
     sdist_server_url = sources.PYPI_SERVER_URL
 
     sources.default_download_source(tmp_context, req, sdist_server_url)
 
     resolve_dist.assert_called_with(tmp_context, req, sdist_server_url, True, False)
-    download_source_check.assert_called_with(tmp_context.sdists_downloads, "url", None)
+    download_source_check.assert_called_with(
+        tmp_context.sdists_downloads, "predefined_url-1.0", "foo-1.0"
+    )
 
 
 @patch("fromager.sources.resolve_dist")
 @patch("fromager.sources._download_source_check")
-@patch.object(settings.Settings, "sdist_download_url")
-@patch.object(settings.Settings, "sdist_local_filename")
-def test_default_download_source_with_predefined_url(
-    sdist_local_filename: typing.Callable,
-    sdist_download_url: typing.Callable,
+@patch.object(settings.Settings, "resolver_include_sdists")
+@patch.object(settings.Settings, "resolver_include_wheels")
+@patch.object(settings.Settings, "resolver_sdist_server_url")
+def test_default_download_source_with_predefined_resolve_dist(
+    resolver_sdist_server_url: typing.Callable,
+    resolver_include_wheels: typing.Callable,
+    resolver_include_sdists: typing.Callable,
     download_source_check: typing.Callable,
     resolve_dist: typing.Callable,
     tmp_context: context.WorkContext,
 ):
     resolve_dist.return_value = ("url", "1.0")
     download_source_check.return_value = pathlib.Path("filename")
-    sdist_download_url.return_value = "predefined_url-${version}"
-    sdist_local_filename.return_value = "foo-${version}"
+    resolver_include_sdists.return_value = False
+    resolver_include_wheels.return_value = True
+    resolver_sdist_server_url.return_value = "url"
     req = Requirement("foo==1.0")
-    sdist_server_url = sources.PYPI_SERVER_URL
 
-    sources.default_download_source(tmp_context, req, sdist_server_url)
+    sources.default_download_source(tmp_context, req, sources.PYPI_SERVER_URL)
 
-    resolve_dist.assert_called_with(tmp_context, req, sdist_server_url, False, True)
-    download_source_check.assert_called_with(
-        tmp_context.sdists_downloads, "predefined_url-1.0", "foo-1.0"
-    )
+    resolve_dist.assert_called_with(tmp_context, req, "url", False, True)
 
 
 @patch("fromager.sources.default_download_source")

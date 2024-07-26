@@ -158,7 +158,7 @@ def find_override_method(distname: str, method: str) -> typing.Callable | None:
 def list_all(
     patches_dir: pathlib.Path,
     envs_dir: pathlib.Path,
-    download_source: dict[str, dict[str, str]],
+    settings: dict[str, dict],
     test: bool = False,
 ) -> list[NormalizedName]:
     exts = _get_extensions()
@@ -195,7 +195,7 @@ def list_all(
             yield item.stem
 
     def projects_with_predefined_download_source() -> typing.Generator[str, None, None]:
-        yield from download_source
+        yield from settings
 
     # Use canonicalize_name() to ensure we can correctly remove duplicate
     # entries from the return list.
