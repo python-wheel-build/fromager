@@ -97,9 +97,7 @@ def get_project_from_pypi(
 ) -> typing.Iterable[Candidate]:
     """Return candidates created from the project name and extras."""
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
-    logger.debug(
-        "get available versions of project %s from %s", project, simple_index_url
-    )
+    logger.debug("%s: getting available versions from %s", project, simple_index_url)
     data = requests.get(simple_index_url).content
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
@@ -108,7 +106,7 @@ def get_project_from_pypi(
         path = urlparse(candidate_url).path
         filename = path.rpartition("/")[-1]
         if DEBUG_RESOLVER:
-            logger.debug("candidate %r -> %r", candidate_url, filename)
+            logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
         # Skip items that need a different Python version
         if py_req:
             try:
@@ -118,13 +116,13 @@ def get_project_from_pypi(
                 # e.g. shellingham has files with ">= '2.7'"
                 if DEBUG_RESOLVER:
                     logger.debug(
-                        f"skipping {filename} because of an invalid python version specifier {py_req}: {err}"
+                        f"{project}: skipping {filename} because of an invalid python version specifier {py_req}: {err}"
                     )
                 continue
             if PYTHON_VERSION not in spec:
                 if DEBUG_RESOLVER:
                     logger.debug(
-                        f"skipping {filename} because of python version {py_req}"
+                        f"{project}: skipping {filename} because of python version {py_req}"
                     )
                 continue
 
@@ -144,12 +142,14 @@ def get_project_from_pypi(
                 matching_tags = SUPPORTED_TAGS.intersection(tags)
                 if not matching_tags:
                     if DEBUG_RESOLVER:
-                        logger.debug(f"ignoring {filename} with tags {tags}")
+                        logger.debug(f"{project}: ignoring {filename} with tags {tags}")
                     continue
         except Exception as err:
             # Ignore files with invalid versions
             if DEBUG_RESOLVER:
-                logger.debug(f'could not determine version for "{filename}": {err}')
+                logger.debug(
+                    f'{project}: could not determine version for "{filename}": {err}'
+                )
             continue
         # Look for and ignore cases like `cffi-1.0.2-2.tar.gz` which
         # produces the name `cffi-1-0-2`. We can't just compare the
@@ -160,14 +160,16 @@ def get_project_from_pypi(
         # case.
         if len(name) != len(project):
             if DEBUG_RESOLVER:
-                logger.debug(f'skipping invalid filename "{filename}"')
+                logger.debug(f'{project}: skipping invalid filename "{filename}"')
             continue
 
         c = Candidate(
             name, version, url=candidate_url, extras=extras, is_sdist=is_sdist
         )
         if DEBUG_RESOLVER:
-            logger.debug("candidate %s (%s) %s", filename, c, candidate_url)
+            logger.debug(
+                "%s: candidate %s (%s) %s", project, filename, c, candidate_url
+            )
         yield c
 
 
@@ -318,17 +320,30 @@ class GitHubTagProvider(ExtrasProvider):
                 version = Version(tag.name)
             except Exception as err:
                 logger.debug(
-                    f"could not parse version from git tag {tag.name} on {repo.full_name}: {err}"
+                    f"{identifier}: could not parse version from git tag {tag.name} on {repo.full_name}: {err}"
                 )
                 continue
             # Skip versions that are known bad
             if version in bad_versions:
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        f"{identifier}: skipping bad version {version} from {bad_versions}"
+                    )
                 continue
             # Skip versions that do not match the requirement
             if not all(version in r.specifier for r in requirements):
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        f"{identifier}: skipping {version} because it does not match {requirements}"
+                    )
                 continue
             # Skip versions that do not match the constraint
             if not self.constraints.is_satisfied_by(identifier, version):
+                if DEBUG_RESOLVER:
+                    c = self.constraints.get_constraint(identifier)
+                    logger.debug(
+                        f"{identifier}: skipping {version} due to constraint {c}"
+                    )
                 continue
             candidates.append(Candidate(identifier, version, url=tag.name))
         return sorted(candidates, key=attrgetter("version"), reverse=True)

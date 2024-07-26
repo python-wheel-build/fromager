@@ -51,7 +51,7 @@ def _cargo_shrink(crate_dir: pathlib.Path) -> None:
     removed_files: list[str] = []
     for pattern in ["**/*.a", "**/*.lib"]:
         for filename in crate_dir.glob(pattern):
-            logger.debug("Removing '%s'", filename.relative_to(crate_dir.parent))
+            logger.debug("removing '%s'", filename.relative_to(crate_dir.parent))
             filename.unlink()
             filename.touch()  # create empty file
             removed_files.append(str(filename.relative_to(crate_dir)))
@@ -74,9 +74,9 @@ def _cargo_config(project_dir: pathlib.Path) -> None:
     try:
         with open(config_toml, "r", encoding="utf-8") as f:
             cfg = toml.load(f)
-        logger.debug("Extending existing '.cargo/config.toml'")
+        logger.debug("extending existing '.cargo/config.toml'")
     except FileNotFoundError:
-        logger.debug("Creating new '.cargo/config.toml'")
+        logger.debug("creating new '.cargo/config.toml'")
         dotcargo.mkdir(exist_ok=True)
         cfg = {}
 

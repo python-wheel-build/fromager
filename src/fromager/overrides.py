@@ -106,7 +106,10 @@ def extra_environ_for_pkg(
 
     if env_file.exists():
         logger.debug(
-            "found %s environment settings for %s in %s", variant, pkgname, env_file
+            "%s: found %s environment settings in %s",
+            pkgname,
+            variant,
+            env_file,
         )
         with open(env_file, "r") as f:
             for line in f:

@@ -70,7 +70,7 @@ def build_sequence(
         for entry in progress.progress(json.load(f)):
             dist_name = entry["dist"]
             dist_version = Version(entry["version"])
-            logger.info("%s: Building %s==%s", dist_name, dist_name, dist_version)
+            logger.info("%s: building %s==%s", dist_name, dist_name, dist_version)
             wheel_filename = _build(wkctx, dist_name, dist_version, sdist_server_url)
             server.update_wheel_mirror(wkctx)
             # After we update the wheel mirror, the built file has
@@ -96,7 +96,7 @@ def _build(
         [sdist_server_url],
     )
     logger.debug(
-        "saved %s version %s from %s to %s",
+        "%s: saved sdist of version %s from %s to %s",
         req.name,
         dist_version,
         source_url,

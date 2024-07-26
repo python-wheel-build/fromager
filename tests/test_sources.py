@@ -114,5 +114,5 @@ def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
     new_version = Version("0.6.0")
     sources._warn_for_old_patch(patches_dir, patch_file, new_version)
     mock.assert_called_with(
-        "Patches for version 0.5.0 of deepspeed exist but will not be applied"
+        "deepspeed: patches for version 0.5.0 exist but will not be applied"
     )
