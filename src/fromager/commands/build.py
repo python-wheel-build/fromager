@@ -21,7 +21,7 @@ def build(
     dist_name: str,
     dist_version: Version,
     sdist_server_url: str,
-):
+) -> None:
     """Build a single version of a single wheel
 
     DIST_NAME is the name of a distribution
@@ -55,7 +55,7 @@ def build_sequence(
     wkctx: context.WorkContext,
     build_order_file: str,
     sdist_server_url: str,
-):
+) -> None:
     """Build a sequence of wheels in order
 
     BUILD_ORDER_FILE is the build-order.json files to build
@@ -132,7 +132,7 @@ def _build(
         ctx=wkctx,
         req=req,
         dist_name=dist_name,
-        dist_version=dist_version,
+        dist_version=str(dist_version),
         sdist_filename=sdist_filename,
         wheel_filename=wheel_filename,
     )
