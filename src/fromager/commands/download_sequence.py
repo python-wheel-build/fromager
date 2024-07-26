@@ -4,7 +4,7 @@ import logging
 import click
 from packaging.requirements import Requirement
 
-from .. import context, sdist, sources
+from .. import context, progress, sdist, sources
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def download_sequence(
         wheel_servers = [sdist_server_url]
 
     with open(build_order_file, "r") as f:
-        for entry in json.load(f):
+        for entry in progress.progress(json.load(f)):
             if entry["prebuilt"]:
                 logger.info(f"{entry['dist']} uses a pre-built wheel, skipping")
                 continue

@@ -5,7 +5,7 @@ import typing
 import click
 from packaging.requirements import Requirement
 
-from .. import clickext, context, requirements_file, sdist, server
+from .. import clickext, context, progress, requirements_file, sdist, server
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def bootstrap(
 
     server.start_wheel_server(wkctx)
 
-    for origin, toplevel in to_build:
+    for origin, toplevel in progress.progress(to_build):
         sdist.handle_requirement(wkctx, Requirement(toplevel), req_type=origin)
 
     # If we put pre-built wheels in the downloads directory, we should
