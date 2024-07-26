@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @click.group()
-def step():
+def step() -> None:
     "Step-by-step commands"
     pass
 
@@ -26,7 +26,7 @@ def download_source_archive(
     dist_name: str,
     dist_version: Version,
     sdist_server_url: str,
-):
+) -> None:
     """download the source code archive for one version of one package
 
     DIST_NAME is the name of a distribution
@@ -51,7 +51,7 @@ def prepare_source(
     wkctx: context.WorkContext,
     dist_name: str,
     dist_version: Version,
-):
+) -> None:
     """ensure the source code is in a form ready for building a wheel
 
     DIST_NAME is the name of a distribution
@@ -61,9 +61,9 @@ def prepare_source(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
-    source_filename = finders.find_sdist(wkctx.sdists_downloads, req, dist_version)
+    source_filename = finders.find_sdist(wkctx.sdists_downloads, req, str(dist_version))
     if source_filename is None:
-        dir_contents = []
+        dir_contents: list[str] = []
         for ext in ["*.tar.gz", "*.zip"]:
             dir_contents.extend(str(e) for e in wkctx.sdists_downloads.glob(ext))
         raise RuntimeError(
@@ -82,7 +82,7 @@ def build_sdist(
     wkctx: context.WorkContext,
     dist_name: str,
     dist_version: Version,
-):
+) -> None:
     """build a new source distribution for the package
 
     DIST_NAME is the name of a distribution
@@ -109,9 +109,9 @@ def build_sdist(
 def _find_source_root_dir(
     work_dir: pathlib.Path,
     req: Requirement,
-    dist_version: str,
+    dist_version: Version,
 ) -> pathlib.Path:
-    source_root_dir = finders.find_source_dir(pathlib.Path(work_dir), req, dist_version)
+    source_root_dir = finders.find_source_dir(work_dir, req, str(dist_version))
     if source_root_dir:
         return source_root_dir
     work_dir_contents = list(str(e) for e in work_dir.glob("*"))
@@ -128,7 +128,7 @@ def prepare_build(
     wkctx: context.WorkContext,
     dist_name: str,
     dist_version: Version,
-):
+) -> None:
     """set up build environment to build the package
 
     DIST_NAME is the name of a distribution
@@ -150,7 +150,7 @@ def build_wheel(
     wkctx: context.WorkContext,
     dist_name: str,
     dist_version: Version,
-):
+) -> None:
     """build a wheel from prepared source
 
     DIST_NAME is the name of a distribution
