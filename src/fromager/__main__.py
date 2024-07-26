@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import logging
-import os
 import pathlib
 
 import click
@@ -94,8 +93,21 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
 @click.option(
     "-j",
     "--jobs",
+    "max_jobs",
     type=int,
-    help="number of jobs available to run in parallel",
+    help="maximum number of jobs to run in parallel",
+)
+@click.option(
+    "--jobs-cpu-scaling",
+    type=int,
+    default=1,
+    help="CPU core scaling for parallel jobs (allocate N CPU cores per job)",
+)
+@click.option(
+    "--jobs-memory-scaling",
+    type=int,
+    default=2,
+    help="Memory scaling for parallel jobs (allocate N GB per job)",
 )
 @click.pass_context
 def main(
@@ -113,7 +125,9 @@ def main(
     wheel_server_url: str,
     cleanup: bool,
     variant: str,
-    jobs: int,
+    max_jobs: int | None,
+    jobs_cpu_scaling: int,
+    jobs_memory_scaling: int,
 ):
     # Set the overall logger level to debug and allow the handlers to filter
     # messages at their own level.
@@ -161,7 +175,9 @@ def main(
         wheel_server_url=wheel_server_url,
         cleanup=cleanup,
         variant=variant,
-        jobs=jobs if jobs is None or jobs > 0 else os.cpu_count(),
+        max_jobs=max_jobs,
+        jobs_cpu_scaling=jobs_cpu_scaling,
+        jobs_memory_scaling=jobs_memory_scaling,
     )
     wkctx.setup()
     ctx.obj = wkctx

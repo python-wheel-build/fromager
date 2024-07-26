@@ -2,6 +2,7 @@ click>=8.1.7
 html5lib
 packaging
 pkginfo
+psutil
 PyGithub
 pyproject_hooks>=1.0.0,!=1.1.0
 python-pypi-mirror

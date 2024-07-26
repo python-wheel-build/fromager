@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from fromager import constraints, context, settings
@@ -15,5 +17,9 @@ def tmp_context(tmp_path):
         work_dir=tmp_path / "work-dir",
         wheel_server_url="",
     )
-    ctx.setup()
-    return ctx
+    with (
+        patch.object(ctx, "cpu_count", return_value=8),
+        patch.object(ctx, "available_memory_gib", return_value=15.1),
+    ):
+        ctx.setup()
+        yield ctx
