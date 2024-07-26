@@ -6,7 +6,7 @@ import click
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import clickext, context, hooks, sdist, server, sources, wheels
+from fromager import clickext, context, hooks, progress, sdist, server, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +67,11 @@ def build_sequence(
 
     """
     with open(build_order_file, "r") as f:
-        for entry in json.load(f):
-            wheel_filename = _build(
-                wkctx, entry["dist"], Version(entry["version"]), sdist_server_url
-            )
+        for entry in progress.progress(json.load(f)):
+            dist_name = entry["dist"]
+            dist_version = Version(entry["version"])
+            logger.info("%s: Building %s==%s", dist_name, dist_name, dist_version)
+            wheel_filename = _build(wkctx, dist_name, dist_version, sdist_server_url)
             server.update_wheel_mirror(wkctx)
             # After we update the wheel mirror, the built file has
             # moved to a new directory.
