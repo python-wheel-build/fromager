@@ -126,6 +126,16 @@ def handle_requirement(
         if not unpack_dir.exists():
             unpack_dir.mkdir()
 
+    # Update the dependency graph after we determine that this requirement is
+    # useful but before we determine if it is redundant so that we capture all
+    # edges to use for building a valid constraints file.
+    ctx.update_dependency_graph(
+        parent_req=why[-1][1] if why else None,
+        req_type=req_type,
+        req=req,
+        version=resolved_version,
+    )
+
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
         logger.debug(
