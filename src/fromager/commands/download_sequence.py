@@ -43,7 +43,7 @@ def download_sequence(
     with open(build_order_file, "r") as f:
         for entry in progress.progress(json.load(f)):
             if entry["prebuilt"]:
-                logger.info(f"{entry['dist']} uses a pre-built wheel, skipping")
+                logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
                 continue
 
             req = Requirement(f"{entry['dist']}=={entry['version']}")
@@ -52,7 +52,7 @@ def download_sequence(
                 sources.download_source(wkctx, req, [sdist_server_url])
             else:
                 logger.info(
-                    f"{entry['dist']} uses a {entry['source_url_type']} downloader, skipping"
+                    f"{entry['dist']}: uses a {entry['source_url_type']} downloader, skipping"
                 )
 
             if include_wheels:
@@ -64,4 +64,4 @@ def download_sequence(
                         wheel_servers,
                     )
                 except Exception as err:
-                    logger.error(f"Failed to download wheel for {req}: {err}")
+                    logger.error(f"failed to download wheel for {req}: {err}")

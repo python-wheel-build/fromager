@@ -107,7 +107,7 @@ def build_wheel(
     )
     # End the timer
     end = datetime.now().replace(microsecond=0)
-    logger.info(f"{req.name}: time taken to build wheel {end - start}")
+    logger.info(f"{req.name}: built wheel in {end - start}")
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if wheels:
         return wheels[0]

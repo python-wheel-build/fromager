@@ -143,9 +143,7 @@ def default_download_source(
     "Download the requirement and return the name of the output path."
     pkg_settings = ctx.settings.get_package_settings(req.name)
     if pkg_settings:
-        logger.info(
-            f"{req.name}: using package specific settings to resolve and download sdist - {pkg_settings}"
-        )
+        logger.info(f"{req.name}: resolving and downloading sdist with: {pkg_settings}")
 
     include_sdists = ctx.settings.resolver_include_sdists(req.name, True)
     include_wheels = ctx.settings.resolver_include_wheels(req.name, False)
@@ -322,7 +320,7 @@ def _warn_for_old_patch(
     # Check to see if patches for older version exists
     if patch_filename.parent.name == source_root_dir.name:
         logger.warning(
-            f"Patches for version {existing_version!s} of {req_name} exist but will not be applied"
+            f"{req_name}: patches for version {existing_version!s} exist but will not be applied"
         )
 
 
@@ -342,7 +340,7 @@ def write_build_meta(
             },
             f,
         )
-    logger.debug("wrote build metadata to %s", meta_file)
+    logger.debug("%s: wrote build metadata to %s", req.name, meta_file)
     return meta_file
 
 
