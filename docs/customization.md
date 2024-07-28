@@ -186,6 +186,27 @@ def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server
     ...
 ```
 
+The `GenericProvider` is a convenient base class, or can be instantiated
+directly if given a `version_source` callable that returns an iterator of
+version values as `str` or `Version` objects.
+
+```python
+from fromager import resolver
+
+VERSION_MAP = {'1.0': 'first-release', '2.0': 'second-release'}
+
+def _version_source(
+        identifier: str,
+        requirements: resolver.RequirementsMap,
+        incompatibilities: resolver.CandidatesMap,
+    ) -> typing.Iterable[Version]:
+    return VERSION_MAP.keys()
+
+
+def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
+    return resolver.GenericProvider(version_source=_version_source, constraints=ctx.constraints)
+```
+
 ### prepare_source
 
 The `prepare_source()` function is responsible for setting up a tree
@@ -425,7 +446,7 @@ def post_build(
     )
 ```
 
-## Customizations using settings.yaml  
+## Customizations using settings.yaml
 
 To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml. Optionally the downloaded sdist can be renamed. Both the url and the destination filename support templating. The only supported template variable is `version` - it is replaced by the version returned by the resolver.
 

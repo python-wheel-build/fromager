@@ -465,3 +465,18 @@ def test_github_constraint_match():
         assert str(candidate.version) == "0.8.1"
         # check the "URL" in case tag syntax does not match version syntax
         assert str(candidate.url) == "0.8.1"
+
+
+def test_resolve_generic():
+    def _versions(*args, **kwds):
+        return ["1.2", "1.3", "1.4.1"]
+
+    provider = resolver.GenericProvider(_versions, None)
+    reporter = resolvelib.BaseReporter()
+    rslvr = resolvelib.Resolver(provider, reporter)
+
+    result = rslvr.resolve([Requirement("fromager")])
+    assert "fromager" in result.mapping
+
+    candidate = result.mapping["fromager"]
+    assert str(candidate.version) == "1.4.1"
