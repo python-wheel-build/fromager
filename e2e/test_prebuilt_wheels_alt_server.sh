@@ -21,6 +21,8 @@ fromager \
   --work-dir="$INIT/work-dir" \
   bootstrap "${DIST}==${VERSION}"
 
+start_local_wheel_server "$INIT/wheels-repo"
+
 # Modify the wheel so we can identify it as coming from the right
 # server.
 cd "$OUTDIR"
@@ -36,8 +38,6 @@ cp "$filename" "$INIT/wheels-repo/downloads"
 
 # Make sure the mirror is up to date
 pypi-mirror create -d "$INIT/wheels-repo/downloads/" -m "$INIT/wheels-repo/simple/"
-
-start_local_wheel_server
 
 TESTDIR="$OUTDIR/test"
 mkdir -p "$TESTDIR"

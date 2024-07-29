@@ -36,10 +36,11 @@ on_exit() {
 trap on_exit EXIT SIGINT SIGTERM
 
 start_local_wheel_server() {
+    local serve_dir="${1:-$OUTDIR/wheels-repo/}"
     # Start a web server for the wheels-repo. We remember the PID so we
     # can stop it later, and we determine the primary IP of the host
     # because podman won't see the server via localhost.
-    python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9999 &
+    python3 -m http.server --directory "$serve_dir" 9999 &
     HTTP_SERVER_PID=$!
     if which ip 2>&1 >/dev/null; then
         # Linux
