@@ -22,3 +22,5 @@ on_exit() {
     fi
 }
 trap on_exit EXIT SIGINT SIGTERM
+
+export FROMAGER_CONSTRAINTS_FILE="${SCRIPTDIR}/constraints.txt"
