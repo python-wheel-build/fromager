@@ -3,6 +3,7 @@ import itertools
 import logging
 import os
 import pathlib
+import re
 import string
 import typing
 
@@ -81,6 +82,32 @@ def patches_for_source_dir(
 
     """
     return sorted((patches_dir / source_dir_name).glob("*.patch"))
+
+
+def get_patch_directories(
+    patches_dir: pathlib.Path, source_root_dir: pathlib.Path
+) -> list[pathlib.Path]:
+    """
+    This function will return directories that may contain patches for a specific requirement.
+    It takes in patches directory and a source root directory as input.
+    The output will be a list of all directories containing patches for that requirement
+    """
+    # Get the req name as per the source_root_dir naming conventions
+    req_name = source_root_dir.name.rsplit("-", 1)[0]
+    patches = sorted((patches_dir).glob(f"{req_name}*"))
+    filtered_patches = _filter_patches_based_on_req(patches, req_name)
+    return filtered_patches
+
+
+# Helper method to filter the unwanted patches using a regex
+def _filter_patches_based_on_req(
+    patches: list[pathlib.Path], req_name: str
+) -> list[pathlib.Path]:
+    # Set up regex to filter out unwanted patches.
+    pattern = re.compile(rf"^{req_name}-v?(\d+\.)+\d+")
+    filtered_patches = [s for s in patches if pattern.match(s.name)]
+    # filtered_patches won't contain patches for current version of req
+    return filtered_patches
 
 
 def extra_environ_for_pkg(

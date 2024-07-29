@@ -102,20 +102,6 @@ def test_invalid_version(mock_default_download):
         sources.download_source(ctx, req, sdist_server_urls)
 
 
-@patch("logging.Logger.warning")
-def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
-    source = "deepspeed-0.5.0"
-    patches_dir = tmp_path / source
-    patches_dir.mkdir()
-    patch_file = patches_dir / "deepspeed-0.5.0.patch"
-    patch_file.write_text("This is a test patch")
-
-    sources._warn_for_old_patch(patches_dir, patch_file)
-    mock.assert_called_with(
-        "deepspeed: patches for version 0.5.0 exist but will not be applied"
-    )
-
-
 @patch("fromager.sources._apply_patch")
 def test_patch_sources_apply_unversioned_and_versioned(
     apply_patch: typing.Callable,
@@ -179,3 +165,43 @@ def test_patch_sources_apply_only_unversioned(
             call(unversioned_patch_file, source_root_dir),
         ]
     )
+
+
+@patch("logging.Logger.warning")
+def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
+    # create patches dir
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+
+    # create patches dir for old version of deepspeed
+    deepspeed_old_patch = patches_dir / "deepspeed-0.5.0"
+    deepspeed_old_patch.mkdir()
+    patch_file = deepspeed_old_patch / "deepspeed-0.5.0.patch"
+    patch_file.write_text("This is a test patch")
+
+    # set current source to be a new version of deepspeed
+    source_root_dir = tmp_path / "deepspeed-0.6.0"
+    source_root_dir.mkdir()
+
+    sources._warn_for_old_patch(source_root_dir, patches_dir)
+    mock.assert_called()
+
+
+@patch("logging.Logger.warning")
+def test_warning_for_older_patch_different_req(mock, tmp_path: pathlib.Path):
+    # create patches dir
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+
+    # create patches dir for old version of deepspeed
+    deepspeed_old_patch = patches_dir / "foo-0.5.0"
+    deepspeed_old_patch.mkdir()
+    patch_file = deepspeed_old_patch / "foo-0.5.0.patch"
+    patch_file.write_text("This is a test patch")
+
+    # set current source to be a new version of deepspeed
+    source_root_dir = tmp_path / "deepspeed-0.5.0"
+    source_root_dir.mkdir()
+
+    sources._warn_for_old_patch(source_root_dir, patches_dir)
+    mock.assert_not_called()

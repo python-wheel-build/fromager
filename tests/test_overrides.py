@@ -199,3 +199,79 @@ def test_find_and_invoke(
     assert overrides.find_and_invoke(
         "pkg", "foo", default_foo, arg1="value1", arg2="value2"
     )
+
+
+def test_regex_dummy_package(tmp_path: pathlib.Path):
+    req_name = "foo"
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+
+    lst = [
+        patches_dir / "foo-1.1.0",
+        patches_dir / "foo-bar-2.0.0",
+        patches_dir / "foo-v2.3.0",
+        patches_dir / "foo-bar-bar-v2.3.1",
+        patches_dir / "foo-bar-v5.5.5",
+        patches_dir / "foo-3.4.4",
+        patches_dir / "foo-v2.3.0.1",
+    ]
+
+    expected = [
+        patches_dir / "foo-1.1.0",
+        patches_dir / "foo-v2.3.0",
+        patches_dir / "foo-3.4.4",
+        patches_dir / "foo-v2.3.0.1",
+    ]
+
+    actual = overrides._filter_patches_based_on_req(lst, req_name)
+    assert len(expected) == len(actual)
+    assert expected == actual
+
+
+def test_regex_for_deepspeed(tmp_path: pathlib.Path):
+    req_name = "deepspeed"
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+
+    lst = [
+        patches_dir / "deepspeed-1.1.0",
+        patches_dir / "deepspeed-deep-2.0.0",
+        patches_dir / "deepspeed-v2.3.0.post1",
+        patches_dir / "deepspeed-v5.5.5",
+        patches_dir / "deepspeed-3.4.4",
+        patches_dir / "deepspeed-sdg-3.4.4",
+    ]
+
+    expected = [
+        patches_dir / "deepspeed-1.1.0",
+        patches_dir / "deepspeed-v2.3.0.post1",
+        patches_dir / "deepspeed-v5.5.5",
+        patches_dir / "deepspeed-3.4.4",
+    ]
+
+    actual = overrides._filter_patches_based_on_req(lst, req_name)
+    assert len(expected) == len(actual)
+    assert expected == actual
+
+
+def test_regex_for_vllm(tmp_path: pathlib.Path):
+    req_name = "vllm"
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+
+    lst = [
+        patches_dir / "vllm-1.1.0.9",
+        patches_dir / "vllm-llm-2.1.0.0",
+        patches_dir / "vllm-v2.3.5.0.post1",
+        patches_dir / "vllm-v5.5.5.1",
+    ]
+
+    expected = [
+        patches_dir / "vllm-1.1.0.9",
+        patches_dir / "vllm-v2.3.5.0.post1",
+        patches_dir / "vllm-v5.5.5.1",
+    ]
+
+    actual = overrides._filter_patches_based_on_req(lst, req_name)
+    assert len(expected) == len(actual)
+    assert expected == actual
