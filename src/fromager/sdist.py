@@ -507,6 +507,8 @@ def _maybe_install(
             logger.info(
                 f"{req.name}: found {req.name} {actual_version} installed, updating to {resolved_version}"
             )
+            safe_install(ctx, Requirement(f"{req.name}=={resolved_version}"), req_type)
+            return
         except importlib.metadata.PackageNotFoundError as err:
             logger.debug(
                 f"{req.name}: could not determine version of {req.name}, will install: {err}"
@@ -537,5 +539,4 @@ def safe_install(
             f"{req}",
         ]
     )
-    version = importlib.metadata.version(req.name)
-    logger.info("installed %s %s using %s", req_type, req, version)
+    logger.info("installed %s %s using %s", req_type, req, req.specifier)
