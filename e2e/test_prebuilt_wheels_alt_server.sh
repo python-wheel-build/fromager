@@ -37,13 +37,7 @@ cp "$filename" "$INIT/wheels-repo/downloads"
 # Make sure the mirror is up to date
 pypi-mirror create -d "$INIT/wheels-repo/downloads/" -m "$INIT/wheels-repo/simple/"
 
-# Start a web server for the wheels-repo. We remember the PID so we
-# can stop it later, and we determine the primary IP of the host
-# because podman won't see the server via localhost.
-python3 -m http.server --directory "$INIT/wheels-repo/" 9999 &
-HTTP_SERVER_PID=$!
-IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
-export WHEEL_SERVER_URL="http://${IP}:9999/simple"
+start_local_wheel_server
 
 TESTDIR="$OUTDIR/test"
 mkdir -p "$TESTDIR"
