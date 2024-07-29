@@ -8,8 +8,8 @@ python-pypi-mirror
 PyYAML
 requests
 resolvelib
+setuptools<72.0.0
 stevedore
 toml
 tqdm
 virtualenv
-
