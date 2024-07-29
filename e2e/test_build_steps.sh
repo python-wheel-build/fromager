@@ -5,30 +5,11 @@
 # not available when setting up to build a package.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-set -x
-set -e
-set -o pipefail
-
-on_exit() {
-  [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
-}
-trap on_exit EXIT SIGINT SIGTERM
-
-# Bootstrap to create the build order file.
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
+source "$SCRIPTDIR/common.sh"
 
 # What are we building?
 DIST="stevedore"
 VERSION="5.2.0"
-
-# Recreate output directory
-rm -rf "$OUTDIR"
-mkdir -p "$OUTDIR/build-logs"
-
-# Set up virtualenv with the CLI and dependencies.
-tox -e e2e -n -r
-source ".tox/e2e/bin/activate"
 
 # Bootstrap the test project
 fromager \
@@ -44,19 +25,7 @@ rm -r "$OUTDIR/work-dir" "$OUTDIR/sdists-repo" "$OUTDIR/wheels-repo"
 # Rebuild the wheel mirror to be empty
 pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
-# Start a web server for the wheels-repo. We remember the PID so we
-# can stop it later, and we determine the primary IP of the host
-# because podman won't see the server via localhost.
-python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9999 &
-HTTP_SERVER_PID=$!
-if which ip 2>&1 >/dev/null; then
-    # Linux
-    IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
-else
-    # macOS
-    IP=$(ipconfig getifaddr en0)
-fi
-export WHEEL_SERVER_URL="http://${IP}:9999/simple"
+start_local_wheel_server
 
 # Define the function used in the build script
 build_wheel() {

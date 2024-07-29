@@ -7,17 +7,9 @@
 # the overall logic of the build tools separately from the isolated
 # build pipelines.
 
-set -x
-set -e
-set -o pipefail
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source "$SCRIPTDIR/common.sh"
 
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
-
-rm -rf "$OUTDIR"
-mkdir "$OUTDIR"
-
-tox -e e2e -n -r
-source .tox/e2e/bin/activate
 pip install e2e/flit_core_override
 
 fromager \

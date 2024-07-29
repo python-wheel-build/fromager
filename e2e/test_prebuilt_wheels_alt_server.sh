@@ -4,23 +4,8 @@
 # Test that when resolving a pre-built wheel the --wheel-server-url is
 # given preference over PyPI.org.
 
-set -x
-set -e
-set -o pipefail
-
-on_exit() {
-  [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
-}
-trap on_exit EXIT SIGINT SIGTERM
-
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
-
-rm -rf "$OUTDIR"
-mkdir "$OUTDIR"
-OUTDIR="$(cd "$OUTDIR" && pwd)"  # use full path so when we cd we can still find things
-
-tox -e e2e -n -r
-source .tox/e2e/bin/activate
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source "$SCRIPTDIR/common.sh"
 
 INIT="$OUTDIR/init"
 mkdir -p "$INIT"
@@ -35,6 +20,8 @@ fromager \
   --wheels-repo="$INIT/wheels-repo" \
   --work-dir="$INIT/work-dir" \
   bootstrap "${DIST}==${VERSION}"
+
+start_local_wheel_server "$INIT/wheels-repo"
 
 # Modify the wheel so we can identify it as coming from the right
 # server.
@@ -51,14 +38,6 @@ cp "$filename" "$INIT/wheels-repo/downloads"
 
 # Make sure the mirror is up to date
 pypi-mirror create -d "$INIT/wheels-repo/downloads/" -m "$INIT/wheels-repo/simple/"
-
-# Start a web server for the wheels-repo. We remember the PID so we
-# can stop it later, and we determine the primary IP of the host
-# because podman won't see the server via localhost.
-python3 -m http.server --directory "$INIT/wheels-repo/" 9999 &
-HTTP_SERVER_PID=$!
-IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
-export WHEEL_SERVER_URL="http://${IP}:9999/simple"
 
 TESTDIR="$OUTDIR/test"
 mkdir -p "$TESTDIR"

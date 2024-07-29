@@ -5,21 +5,7 @@
 # sources.download_source.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-set -x
-set -e
-set -o pipefail
-
-# Bootstrap to create the build order file.
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
-
-# Recreate output directory for idempotency
-rm -rf "$OUTDIR"
-mkdir -p "$OUTDIR/build-logs"
-
-# Set up virtualenv with the CLI and dependencies.
-tox -e e2e -n -r
-source ".tox/e2e/bin/activate"
+source "$SCRIPTDIR/common.sh"
 
 # Bootstrap the test project
 fromager \

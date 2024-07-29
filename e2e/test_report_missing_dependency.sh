@@ -5,29 +5,11 @@
 # not available when setting up to build a package.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-set -x
-set -e
-set -o pipefail
-
-on_exit() {
-  [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
-}
-trap on_exit EXIT SIGINT SIGTERM
-
-# Bootstrap to create the build order file.
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
+source "$SCRIPTDIR/common.sh"
 
 # What are we building?
 DIST="stevedore"
 VERSION="5.2.0"
-
-# Recreate output directory
-rm -rf "$OUTDIR"
-mkdir -p "$OUTDIR/build-logs"
-
-tox -e e2e -n -r
-source .tox/e2e/bin/activate
 
 fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
@@ -50,13 +32,7 @@ done
 rm -rf "$OUTDIR/wheels-repo/simple"
 pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
-# Start a web server for the wheels-repo. We remember the PID so we
-# can stop it later, and we determine the primary IP of the host
-# because podman won't see the server via localhost.
-python3 -m http.server --directory "$OUTDIR/wheels-repo/" 9999 &
-HTTP_SERVER_PID=$!
-IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
-export WHEEL_SERVER_URL="http://${IP}:9999/simple"
+start_local_wheel_server
 
 # Rebuild the original toplevel wheel, expecting a failure.
 version=$(jq -r '.[] | select ( .dist == "'$DIST'" ) | .version' "$OUTDIR/work-dir/build-order.json")
