@@ -5,30 +5,11 @@
 # not available when setting up to build a package.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-set -x
-set -e
-set -o pipefail
-
-on_exit() {
-  [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
-}
-trap on_exit EXIT SIGINT SIGTERM
-
-# Bootstrap to create the build order file.
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
+source "$SCRIPTDIR/common.sh"
 
 # What are we building?
 DIST="stevedore"
 VERSION="5.2.0"
-
-# Recreate output directory
-rm -rf "$OUTDIR"
-mkdir -p "$OUTDIR/build-logs"
-
-# Set up virtualenv with the CLI and dependencies.
-tox -e e2e -n -r
-source ".tox/e2e/bin/activate"
 
 # Bootstrap the test project
 fromager \

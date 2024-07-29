@@ -4,23 +4,8 @@
 # Test that when resolving a pre-built wheel the --wheel-server-url is
 # given preference over PyPI.org.
 
-set -x
-set -e
-set -o pipefail
-
-on_exit() {
-  [ "$HTTP_SERVER_PID" ] && kill "$HTTP_SERVER_PID"
-}
-trap on_exit EXIT SIGINT SIGTERM
-
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
-
-rm -rf "$OUTDIR"
-mkdir "$OUTDIR"
-OUTDIR="$(cd "$OUTDIR" && pwd)"  # use full path so when we cd we can still find things
-
-tox -e e2e -n -r
-source .tox/e2e/bin/activate
+SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source "$SCRIPTDIR/common.sh"
 
 INIT="$OUTDIR/init"
 mkdir -p "$INIT"

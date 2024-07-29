@@ -7,18 +7,8 @@
 # the overall logic of the build tools separately from the isolated
 # build pipelines.
 
-set -x
-set -e
-set -o pipefail
-
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
-
-rm -rf "$OUTDIR"
-mkdir "$OUTDIR"
-
-tox -e e2e -n -r
-source .tox/e2e/bin/activate
+source "$SCRIPTDIR/common.sh"
 
 fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
