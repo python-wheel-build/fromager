@@ -29,7 +29,7 @@ start_local_wheel_server
 
 # Rebuild everything
 fromager \
-    --log-file "$OUTDIR/build-logs/${dist}-build.log" \
+    --log-file "$OUTDIR/build-logs/${DIST}-build.log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
