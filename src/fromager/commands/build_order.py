@@ -4,6 +4,7 @@ import itertools
 import json
 import pathlib
 import sys
+import typing
 
 import click
 from packaging.requirements import Requirement
@@ -12,7 +13,7 @@ from .. import clickext, constraints, overrides
 
 
 @click.group()
-def build_order():
+def build_order() -> None:
     "Commands for working with build-order files"
     pass
 
@@ -25,7 +26,7 @@ def build_order():
     help="output file to create",
 )
 @click.argument("build_order_file")
-def as_csv(build_order_file: str, output: pathlib.Path | None):
+def as_csv(build_order_file: str, output: pathlib.Path | None) -> None:
     """Create a comma-separated-value file from the build order file
 
     BUILD_ORDER_FILE is one or more build-order.json files to convert
@@ -65,10 +66,7 @@ def as_csv(build_order_file: str, output: pathlib.Path | None):
             )
             build_order.append(new_entry)
 
-    if output:
-        outfile = open(output, "w")
-    else:
-        outfile = sys.stdout
+    outfile = open(output, "w") if output else sys.stdout
 
     try:
         writer = csv.DictWriter(
@@ -89,7 +87,7 @@ def as_csv(build_order_file: str, output: pathlib.Path | None):
     help="output file to create",
 )
 @click.argument("build_order_file", nargs=-1)
-def summary(build_order_file: list[str], output: pathlib.Path | None):
+def summary(build_order_file: list[str], output: pathlib.Path | None) -> None:
     """Summarize the build order files
 
     BUILD_ORDER_FILE is one or more build-order.json files to convert
@@ -99,7 +97,7 @@ def summary(build_order_file: list[str], output: pathlib.Path | None):
     used in each, and where they match.
 
     """
-    dist_to_input_file = collections.defaultdict(dict)
+    dist_to_input_file: dict[str, dict[str, str]] = collections.defaultdict(dict)
     for filename in build_order_file:
         with open(filename, "r") as f:
             build_order = json.load(f)
@@ -107,10 +105,7 @@ def summary(build_order_file: list[str], output: pathlib.Path | None):
             key = overrides.pkgname_to_override_module(step["dist"])
             dist_to_input_file[key][filename] = step["version"]
 
-    if output:
-        outfile = open(output, "w")
-    else:
-        outfile = sys.stdout
+    outfile = open(output, "w") if output else sys.stdout
 
     # The build order files are organized in directories named for the
     # image. Pull those names out of the files given.
@@ -128,7 +123,7 @@ def summary(build_order_file: list[str], output: pathlib.Path | None):
             row.append(v)
             if v:
                 all_versions.add(v)
-        row.append(len(all_versions) == 1)
+        row.append(str(len(all_versions) == 1))
         writer.writerow(row)
 
     if output:
@@ -143,21 +138,21 @@ def summary(build_order_file: list[str], output: pathlib.Path | None):
     help="output file to create",
 )
 @click.argument("build_order_file", nargs=-1)
-def graph(build_order_file: list[str], output: pathlib.Path | None):
+def graph(build_order_file: list[str], output: pathlib.Path | None) -> None:
     """Write a graphviz-compatible dot file representing the build order dependencies
 
     BUILD_ORDER_FILE is one or more build-order.json files to convert
 
     """
 
-    def fmt_req(req, version):
-        req = Requirement(req)
+    def fmt_req(req_str: str, version: str) -> str:
+        req = Requirement(req_str)
         name = overrides.pkgname_to_override_module(req.name)
         return (
             f'{name}{"[" + ",".join(req.extras) + "]" if req.extras else ""}=={version}'
         )
 
-    def new_node(req):
+    def new_node(req: str) -> dict[str, typing.Any]:
         if req not in nodes:
             nodes[req] = {
                 "nid": "node" + str(next(node_ids)),
@@ -165,7 +160,7 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
             }
         return nodes[req]
 
-    def update_node(req, prebuilt=False):
+    def update_node(req: str, prebuilt: bool = False) -> str:
         node_details = new_node(req)
         if (not node_details["prebuilt"]) and prebuilt:
             node_details["prebuilt"] = True
@@ -175,7 +170,7 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
     # syntactically correct.
     node_ids = itertools.count(1)
     # Map formatted requirement text to node details
-    nodes = {}
+    nodes: dict[str, dict[str, typing.Any]] = {}
     edges = []
 
     for filename in build_order_file:
@@ -207,10 +202,8 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
             except Exception as err:
                 raise Exception(f"Error processing {filename} at {step}") from err
 
-    if output:
-        outfile = open(output, "w")
-    else:
-        outfile = sys.stdout
+    outfile = open(output, "w") if output else sys.stdout
+
     try:
         outfile.write("digraph {\n")
 
@@ -279,7 +272,7 @@ def graph(build_order_file: list[str], output: pathlib.Path | None):
     is_flag=True,
     help="only include install dependencies",
 )
-def show_duplicates(build_order_file: pathlib.Path, install_only: bool):
+def show_duplicates(build_order_file: pathlib.Path, install_only: bool) -> None:
     """Report on any duplicate versions of the same package in the build order file.
 
     BUILD_ORDER_FILE is a build-order.json files to examine.
@@ -320,7 +313,9 @@ def show_duplicates(build_order_file: pathlib.Path, install_only: bool):
 @build_order.command()
 @click.argument("build_order_file", type=clickext.ClickPath())
 @click.argument("constraints_file", type=clickext.ClickPath())
-def to_constraints(build_order_file: pathlib.Path, constraints_file: pathlib.Path):
+def to_constraints(
+    build_order_file: pathlib.Path, constraints_file: pathlib.Path
+) -> None:
     """Convert a build-order file to a pip constraints file.
 
     BUILD_ORDER_FILE is a build-order.json file to convert.
