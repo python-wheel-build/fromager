@@ -1,0 +1,7 @@
+  mypy
+  pytest
+  types-html5lib
+  types-PyYAML
+  types-requests
+  types-toml
+  types-tqdm
