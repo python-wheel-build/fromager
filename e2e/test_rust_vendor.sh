@@ -13,6 +13,7 @@ VERSION="1.6.0"
 
 # Bootstrap the test project
 fromager \
+    --network-isolation \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \

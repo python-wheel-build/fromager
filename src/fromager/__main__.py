@@ -6,12 +6,29 @@ import pathlib
 
 import click
 
-from . import clickext, commands, constraints, context, overrides, settings
+from . import (
+    clickext,
+    commands,
+    constraints,
+    context,
+    external_commands,
+    overrides,
+    settings,
+)
 
 logger = logging.getLogger(__name__)
 
 TERSE_LOG_FMT = "%(message)s"
 VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
+
+try:
+    external_commands.detect_network_isolation()
+except Exception as e:
+    SUPPORTS_NETWORK_ISOLATION: bool = False
+    NETWORK_ISOLATION_ERROR: str | None = str(e)
+else:
+    SUPPORTS_NETWORK_ISOLATION = True
+    NETWORK_ISOLATION_ERROR = None
 
 
 @click.group()
@@ -97,6 +114,12 @@ VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
     type=int,
     help="number of jobs available to run in parallel",
 )
+@click.option(
+    "--network-isolation/--no-network-isolation",
+    default=SUPPORTS_NETWORK_ISOLATION,
+    help="Build sdist and wheen with network isolation (unshare -cn)",
+    show_default=True,
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -114,6 +137,7 @@ def main(
     cleanup: bool,
     variant: str,
     jobs: int,
+    network_isolation: bool,
 ) -> None:
     # Set the overall logger level to debug and allow the handlers to filter
     # messages at their own level.
@@ -150,6 +174,9 @@ def main(
 
     overrides.log_overrides()
 
+    if network_isolation and not SUPPORTS_NETWORK_ISOLATION:
+        ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
+
     wkctx = context.WorkContext(
         active_settings=settings.load(settings_file),
         pkg_constraints=constraints.load(constraints_file),
@@ -162,6 +189,7 @@ def main(
         cleanup=cleanup,
         variant=variant,
         jobs=jobs if jobs is None or jobs > 0 else os.cpu_count(),
+        network_isolation=network_isolation,
     )
     wkctx.setup()
     ctx.obj = wkctx

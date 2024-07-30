@@ -27,6 +27,7 @@ class WorkContext:
         cleanup: bool = True,
         variant: str = "cpu",
         jobs: int | None = None,
+        network_isolation: bool = False,
     ):
         self.settings = active_settings
         self.constraints = pkg_constraints
@@ -45,6 +46,7 @@ class WorkContext:
         self.cleanup = cleanup
         self.variant = variant
         self.jobs = jobs
+        self.network_isolation = network_isolation
 
         self._build_order_filename = self.work_dir / "build-order.json"
         self._constraints_filename = self.work_dir / "constraints.txt"

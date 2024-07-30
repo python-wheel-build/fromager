@@ -16,6 +16,7 @@ pip install e2e/post_build_hook
 
 # Bootstrap the test project
 fromager \
+    --network-isolation \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \

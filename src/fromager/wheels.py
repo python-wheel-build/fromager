@@ -39,7 +39,10 @@ class BuildEnvironment:
             return
 
         logger.debug("creating build environment in %s", self.path)
-        external_commands.run([sys.executable, "-m", "virtualenv", str(self.path)])
+        external_commands.run(
+            [sys.executable, "-m", "virtualenv", str(self.path)],
+            network_isolation=False,
+        )
         logger.info("created build environment in %s", self.path)
 
         req_filename = self.path / "requirements.txt"
@@ -66,6 +69,7 @@ class BuildEnvironment:
                 str(req_filename.absolute()),
             ],
             cwd=str(self.path.parent),
+            network_isolation=False,
         )
         logger.info("installed dependencies into build environment in %s", self.path)
 
@@ -160,4 +164,9 @@ def default_build_wheel(
             os.fspath(sdist_root_dir.parent / "build.log"),
             os.fspath(sdist_root_dir),
         ]
-        external_commands.run(cmd, cwd=dir_name, extra_environ=override_env)
+        external_commands.run(
+            cmd,
+            cwd=dir_name,
+            extra_environ=override_env,
+            network_isolation=ctx.network_isolation,
+        )

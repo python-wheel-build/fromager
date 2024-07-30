@@ -537,6 +537,7 @@ def safe_install(
         + ctx.pip_wheel_server_args
         + [
             f"{req}",
-        ]
+        ],
+        network_isolation=False,
     )
     logger.info("installed %s %s using %s", req_type, req, req.specifier)

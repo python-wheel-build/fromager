@@ -452,6 +452,7 @@ def pep517_build_sdist(
         sdist_root_dir,
         pyproject_toml,
         extra_environ,
+        network_isolation=ctx.network_isolation,
     )
     sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
     return ctx.sdists_builds / sdist_filename

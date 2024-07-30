@@ -37,7 +37,7 @@ def _cargo_vendor(
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
     args.append(os.fspath(project_dir / VENDOR_DIR))
-    external_commands.run(args)
+    external_commands.run(args, network_isolation=False)
     return sorted(project_dir.joinpath(VENDOR_DIR).iterdir())
 
 
