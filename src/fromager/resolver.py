@@ -6,13 +6,9 @@
 import logging
 import os
 import typing
-from email.message import EmailMessage
-from email.parser import BytesParser
-from io import BytesIO
 from operator import attrgetter
 from platform import python_version
 from urllib.parse import urljoin, urlparse
-from zipfile import ZipFile
 
 import github
 import html5lib
@@ -27,6 +23,7 @@ from packaging.utils import (
 )
 from packaging.version import Version
 
+from .candidate import Candidate
 from .constraints import Constraints
 from .extras_provider import ExtrasProvider
 
@@ -35,59 +32,6 @@ logger = logging.getLogger(__name__)
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
 SUPPORTED_TAGS = set(sys_tags())
-
-
-class Candidate:
-    def __init__(
-        self,
-        name: str,
-        version: Version,
-        url: str | None = None,
-        extras: dict | None = None,
-        is_sdist: bool | None = None,
-    ):
-        self.name = canonicalize_name(name)
-        self.version = version
-        self.url = url
-        self.extras = extras
-        self.is_sdist = is_sdist
-
-        self._metadata = None
-        self._dependencies = None
-
-    def __repr__(self) -> str:
-        if not self.extras:
-            return f"<{self.name}=={self.version}>"
-        return f"<{self.name}[{','.join(self.extras)}]=={self.version}>"
-
-    @property
-    def metadata(self):
-        if self._metadata is None:
-            self._metadata = get_metadata_for_wheel(self.url)
-        return self._metadata
-
-    @property
-    def requires_python(self) -> bool:
-        return self.metadata.get("Requires-Python")
-
-    def _get_dependencies(self) -> typing.Iterable[Requirement]:
-        deps = self.metadata.get_all("Requires-Dist", [])
-        extras = self.extras if self.extras else [""]
-
-        for d in deps:
-            r = Requirement(d)
-            if r.marker is None:
-                yield r
-            else:
-                for e in extras:
-                    if r.marker.evaluate({"extra": e}):
-                        yield r
-
-    @property
-    def dependencies(self) -> list[Requirement]:
-        if self._dependencies is None:
-            self._dependencies = list(self._get_dependencies())
-        return self._dependencies
 
 
 def get_project_from_pypi(
@@ -171,18 +115,6 @@ def get_project_from_pypi(
                 "%s: candidate %s (%s) %s", project, filename, c, candidate_url
             )
         yield c
-
-
-def get_metadata_for_wheel(url: str) -> EmailMessage:
-    data = requests.get(url).content
-    with ZipFile(BytesIO(data)) as z:
-        for n in z.namelist():
-            if n.endswith(".dist-info/METADATA"):
-                p = BytesParser()
-                return p.parse(z.open(n), headersonly=True)
-
-    # If we didn't find the metadata, return an empty dict
-    return EmailMessage()
 
 
 RequirementsMap: typing.TypeAlias = dict[str, typing.Iterable[Requirement]]
