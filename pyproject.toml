@@ -31,11 +31,9 @@ classifiers = [
 requires-python = ">=3.10"
 
 [tool.setuptools.dynamic]
-optional-dependencies = { test = { file = [
-    "requirements-test.txt",
-] }, build = { file = [
-    "requirements-build.txt",
-] } }
+optional-dependencies.build = { file = ["requirements-build.txt"] }
+optional-dependencies.mypy = { file = ["requirements-mypy.txt"] }
+optional-dependencies.test = { file = ["requirements-test.txt"] }
 dependencies = { file = ["requirements.txt"] }
 
 [project.urls]
