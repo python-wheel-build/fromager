@@ -239,6 +239,8 @@ def get_build_backend_hook_caller(
     sdist_root_dir: pathlib.Path,
     pyproject_toml: dict[str, typing.Any],
     override_environ: dict[str, typing.Any],
+    *,
+    network_isolation: bool = False,
 ) -> pyproject_hooks.BuildBackendHookCaller:
     backend = get_build_backend(pyproject_toml)
 
@@ -255,7 +257,12 @@ def get_build_backend_hook_caller(
         if extra_environ is not None:
             full_environ.update(extra_environ)
         full_environ.update(override_environ)
-        external_commands.run(cmd, cwd=cwd, extra_environ=full_environ)
+        external_commands.run(
+            cmd,
+            cwd=cwd,
+            extra_environ=full_environ,
+            network_isolation=network_isolation,
+        )
 
     return pyproject_hooks.BuildBackendHookCaller(
         source_dir=str(sdist_root_dir),
