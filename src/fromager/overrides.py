@@ -113,7 +113,10 @@ def extra_environ_for_pkg(
         )
         with open(env_file, "r") as f:
             for line in f:
-                key, _, value = line.strip().partition("=")
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                key, _, value = line.partition("=")
                 key = key.strip()
                 value = value.strip()
                 # remove quotes if they surround the value
