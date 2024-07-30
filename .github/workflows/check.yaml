@@ -85,3 +85,24 @@ jobs:
         #   files: 'docs/**/*.md'
         #   ignore: node_modules
         #   version: 0.28.1
+
+  docs:
+    name: readthedocs
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.ref, 'refs/tags') }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"  # minimum supported lang version
+
+      - name: Install dependencies
+        run: python -m pip install tox
+
+      - name: Run
+        run: tox -e docs
