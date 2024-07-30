@@ -53,6 +53,10 @@ def test_extra_environ_for_pkg(tmp_path: pathlib.Path):
     result = overrides.extra_environ_for_pkg(env_dir, "project", "variant")
     assert result == {"VAR1": "VALUE1", "VAR2": "VALUE2"}
 
+    project_env.write_text("VAR1=VALUE3\n# some comment\n\nVAR2=VALUE4\n\n")
+    result = overrides.extra_environ_for_pkg(env_dir, "project", "variant")
+    assert result == {"VAR1": "VALUE3", "VAR2": "VALUE4"}
+
     result = overrides.extra_environ_for_pkg(env_dir, "non_existant_project", "variant")
     assert result == {}
 
