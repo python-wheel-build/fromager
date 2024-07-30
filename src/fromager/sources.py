@@ -82,7 +82,7 @@ def resolve_dist(
     sdist_server_url: str,
     include_sdists: bool = True,
     include_wheels: bool = True,
-) -> tuple[str, str]:
+) -> tuple[str | None, Version]:
     "Return URL to source and its version."
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
@@ -102,7 +102,7 @@ def resolve_dist(
     )
 
     reporter = resolvelib.BaseReporter()
-    rslvr = resolvelib.Resolver(provider, reporter)
+    rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
 
     # Kick off the resolution process, and get the final result.
     try:
@@ -115,9 +115,11 @@ def resolve_dist(
         logger.debug(f"{req.name}: could not resolve {req} with {constraint}: {err}")
         raise
 
+    candidate: resolver.Candidate
     for candidate in result.mapping.values():
-        return (candidate.url, candidate.version)
-    return (None, None)
+        return candidate.url, candidate.version
+
+    raise ValueError(f"Unable to resolve {req}")
 
 
 def default_resolver_provider(
