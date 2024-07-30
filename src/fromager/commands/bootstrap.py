@@ -4,6 +4,8 @@ import typing
 
 import click
 from packaging.requirements import Requirement
+from packaging.utils import NormalizedName
+from packaging.version import Version
 
 from .. import clickext, context, progress, requirements_file, sdist, server
 
@@ -72,3 +74,28 @@ def bootstrap(
                 f"removing prebuilt wheel {prebuilt_wheel.name} from download cache"
             )
             filename.unlink()
+
+    constraints_filename = wkctx.work_dir / "constraints.txt"
+    logger.info(f"writing installation dependencies to {constraints_filename}")
+    with open(wkctx.work_dir / "constraints.txt", "w") as f:
+        for name, version in sorted(
+            set(
+                _installation_dependencies(
+                    wkctx.all_edges, context.ROOT_BUILD_REQUIREMENT
+                )
+            )
+        ):
+            f.write(f"{name}=={version}\n")
+
+
+def _installation_dependencies(
+    # The keys of all_edges will be either a validate package name or an empty
+    # string.
+    all_edges: context.BuildRequirements,
+    name: NormalizedName,
+) -> typing.Iterable[tuple[NormalizedName, Version]]:
+    for req_type, dep_name, dep_version in all_edges.get(name, []):
+        if req_type != "install":
+            continue
+        yield (dep_name, dep_version)
+        yield from _installation_dependencies(all_edges, dep_name)
