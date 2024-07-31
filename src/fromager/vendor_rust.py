@@ -6,7 +6,7 @@ import os
 import pathlib
 import typing
 
-import toml
+import tomlkit
 from packaging.requirements import Requirement
 
 from . import dependencies, external_commands
@@ -73,7 +73,7 @@ def _cargo_config(project_dir: pathlib.Path) -> None:
     config_toml = dotcargo / "config.toml"
     try:
         with open(config_toml, "r", encoding="utf-8") as f:
-            cfg = toml.load(f)
+            cfg = tomlkit.load(f)
         logger.debug("extending existing '.cargo/config.toml'")
     except FileNotFoundError:
         logger.debug("creating new '.cargo/config.toml'")
@@ -83,7 +83,7 @@ def _cargo_config(project_dir: pathlib.Path) -> None:
     cfg.update(CARGO_CONFIG)
 
     with open(config_toml, "w", encoding="utf-8") as f:
-        toml.dump(cfg, f)
+        tomlkit.dump(cfg, f)
 
 
 def _should_vendor_rust(req: Requirement, project_dir: pathlib.Path) -> bool:

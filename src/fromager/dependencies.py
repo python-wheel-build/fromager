@@ -7,7 +7,7 @@ import typing
 
 import pkginfo
 import pyproject_hooks
-import toml
+import tomlkit
 from packaging import metadata
 from packaging.requirements import Requirement
 
@@ -208,7 +208,7 @@ def get_pyproject_contents(sdist_root_dir: pathlib.Path) -> dict[str, typing.Any
     pyproject_toml_filename = sdist_root_dir / "pyproject.toml"
     if not os.path.exists(pyproject_toml_filename):
         return {}
-    return toml.loads(pyproject_toml_filename.read_text())
+    return tomlkit.loads(pyproject_toml_filename.read_text())
 
 
 # From pypa/build/src/build/__main__.py
