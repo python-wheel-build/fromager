@@ -288,7 +288,7 @@ def download_wheel(
     output_directory: pathlib.Path,
     wheel_server_urls: list[str],
 ) -> tuple[pathlib.Path, str, str]:
-    wheel_url, resolved_version = _resolve_prebuilt_wheel(ctx, req, wheel_server_urls)
+    wheel_url, resolved_version = resolve_prebuilt_wheel(ctx, req, wheel_server_urls)
     wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
     if not wheel_filename.exists():
         logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
@@ -311,7 +311,7 @@ def _download_wheel_check(destination_dir, wheel_url):
     return wheel_filename
 
 
-def _resolve_prebuilt_wheel(
+def resolve_prebuilt_wheel(
     ctx: context.WorkContext,
     req: Requirement,
     wheel_server_urls: list[str],
