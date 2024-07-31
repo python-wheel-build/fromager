@@ -1,10 +1,9 @@
 import pathlib
 import typing
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 from packaging.requirements import Requirement
-from packaging.version import Version
 
 from fromager import context, settings, sources
 
@@ -111,8 +110,72 @@ def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
     patch_file = patches_dir / "deepspeed-0.5.0.patch"
     patch_file.write_text("This is a test patch")
 
-    new_version = Version("0.6.0")
-    sources._warn_for_old_patch(patches_dir, patch_file, new_version)
+    sources._warn_for_old_patch(patches_dir, patch_file)
     mock.assert_called_with(
         "deepspeed: patches for version 0.5.0 exist but will not be applied"
+    )
+
+
+@patch("fromager.sources._apply_patch")
+def test_patch_sources_apply_unversioned_and_versioned(
+    apply_patch: typing.Callable,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+):
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+    tmp_context.patches_dir = patches_dir
+
+    deepspeed_version_patch = patches_dir / "deepspeed-0.5.0"
+    deepspeed_version_patch.mkdir()
+    version_patch_file = deepspeed_version_patch / "deepspeed-0.5.0.patch"
+    version_patch_file.write_text("This is a test patch")
+
+    deepspeed_unversioned_patch = patches_dir / "deepspeed"
+    deepspeed_unversioned_patch.mkdir()
+    unversioned_patch_file = deepspeed_unversioned_patch / "deepspeed-update.patch"
+    unversioned_patch_file.write_text("This is a test patch")
+
+    source_root_dir = tmp_path / "deepspeed-0.5.0"
+    source_root_dir.mkdir()
+
+    sources.patch_source(tmp_context, source_root_dir, Requirement("deepspeed==0.5.0"))
+    assert apply_patch.call_count == 2
+    apply_patch.assert_has_calls(
+        [
+            call(unversioned_patch_file, source_root_dir),
+            call(version_patch_file, source_root_dir),
+        ]
+    )
+
+
+@patch("fromager.sources._apply_patch")
+def test_patch_sources_apply_only_unversioned(
+    apply_patch: typing.Callable,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+):
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+    tmp_context.patches_dir = patches_dir
+
+    deepspeed_version_patch = patches_dir / "deepspeed-0.5.0"
+    deepspeed_version_patch.mkdir()
+    version_patch_file = deepspeed_version_patch / "deepspeed-0.5.0.patch"
+    version_patch_file.write_text("This is a test patch")
+
+    deepspeed_unversioned_patch = patches_dir / "deepspeed"
+    deepspeed_unversioned_patch.mkdir()
+    unversioned_patch_file = deepspeed_unversioned_patch / "deepspeed-update.patch"
+    unversioned_patch_file.write_text("This is a test patch")
+
+    source_root_dir = tmp_path / "deepspeed"
+    source_root_dir.mkdir()
+
+    sources.patch_source(tmp_context, source_root_dir, Requirement("deepspeed==0.5.0"))
+    assert apply_patch.call_count == 1
+    apply_patch.assert_has_calls(
+        [
+            call(unversioned_patch_file, source_root_dir),
+        ]
     )
