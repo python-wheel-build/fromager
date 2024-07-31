@@ -477,3 +477,24 @@ resolver_dist:
     include_sdists: false
 build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
 ```
+
+### `pyproject_overrides` section
+
+The `pyproject_overrides` configures the `pyproject.toml` auto-fixer. It can automatically create a missing `pyproject.toml` or modify it.
+
+- `auto_build_requires` is a mapping of Python top-level import name to a requirement (Python distribution name with optional version constraints). The auto-fixer scans `setup.py` for imports and automatically injects `[build-system] requires` for each detected import.
+- `remove_build_requires` is a list of distribution names. Any build requirement in the list is removed from `[build-system] requires`.
+- `replace_build_requires` is a mapping of Python distribution name to a requirement. Any matching build requirement is replaced by the new requirement.
+
+```yaml
+pyproject_overrides:
+    enable: true
+    auto_build_requires:
+        ninja: ninja
+        torch: torch<2.4.0,>=2.3.1
+    remove_build_requires:
+        - cmake
+    replace_build_requires:
+        distutils: setuptools>=68.0.0
+        setuptools: setuptools>=68.0.0
+```

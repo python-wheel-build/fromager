@@ -8,7 +8,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from . import overrides
+from . import overrides, pyproject
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 class Settings:
     def __init__(self, data: dict[typing.Any, typing.Any]):
         self._data = data
+        self._pyproject_overrides = pyproject.PyprojectOverrides.from_dict(
+            self._data.get("pyproject_overrides", {})
+        )
+
+    def get_pypyproject_overrides(self) -> pyproject.PyprojectOverrides:
+        return self._pyproject_overrides
 
     def pre_built(self, variant: str) -> set[str]:
         p = self._data.get("pre_built") or {}

@@ -240,3 +240,29 @@ def test_load_package_files_precedence(tmp_path):
             "foo_bar": {"build_dir": "dotted-build-dir"},
         },
     }
+
+
+def test_pyproject_overrides():
+    s = settings._parse(
+        textwrap.dedent("""
+    pyproject_overrides:
+      enable: true
+      auto_build_requires:
+        ninja: ninja
+        torch: torch<2.4.0,>=2.3.1
+      remove_build_requires:
+        - cmake
+      replace_build_requires:
+        setuptools: setuptools>=68.0.0
+    """)
+    )
+    p = s.get_pypyproject_overrides()
+    assert p.enable
+    assert p.auto_build_requires == {
+        "ninja": Requirement("ninja"),
+        "torch": Requirement("torch<2.4.0,>=2.3.1"),
+    }
+    assert p.remove_build_requires == ["cmake"]
+    assert p.replace_build_requires == {
+        "setuptools": Requirement("setuptools>=68.0.0"),
+    }
