@@ -1,5 +1,7 @@
 import textwrap
 
+from packaging.requirements import Requirement
+
 from fromager import settings
 
 
@@ -86,3 +88,29 @@ def test_no_resolver_dist():
     assert s.resolver_include_sdists("foo") is None
     assert s.resolver_include_wheels("foo") is None
     assert s.resolver_sdist_server_url("foo") is None
+
+
+def test_pyproject_overrides():
+    s = settings._parse(
+        textwrap.dedent("""
+    pyproject_overrides:
+      enable: true
+      auto_build_requires:
+        ninja: ninja
+        torch: torch<2.4.0,>=2.3.1
+      remove_build_requires:
+        - cmake
+      replace_build_requires:
+        setuptools: setuptools>=68.0.0
+    """)
+    )
+    p = s.get_pypyproject_overrides()
+    assert p.enable
+    assert p.auto_build_requires == {
+        "ninja": Requirement("ninja"),
+        "torch": Requirement("torch<2.4.0,>=2.3.1"),
+    }
+    assert p.remove_build_requires == ["cmake"]
+    assert p.replace_build_requires == {
+        "setuptools": Requirement("setuptools>=68.0.0"),
+    }

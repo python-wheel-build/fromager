@@ -448,6 +448,8 @@ def post_build(
 
 ## Customizations using settings.yaml
 
+### `packages` sections
+
 To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml. Optionally the downloaded sdist can be renamed. Both the url and the destination filename support templating. The only supported template variable is `version` - it is replaced by the version returned by the resolver.
 
 Additionally, the source distribution index server used by the package resolver can be overriden for a particular package. The resolver can also be told to whether include wheels or sdist sources while trying to resolve the package. Templating is not supported here.
@@ -462,4 +464,25 @@ packages:
             sdist_server_url: "https://pypi.org/simple"
             include_wheels: true
             include_sdists: false
+```
+
+### `pyproject_overrides` section
+
+The `pyproject_overrides` configures the `pyproject.toml` auto-fixer. It can automatically create a missing `pyproject.toml` or modify it.
+
+- `auto_build_requires` is a mapping of Python top-level import name to a requirement (Python distribution name with optional version constraints). The auto-fixer scans `setup.py` for imports and automatically injects `[build-system] requires` for each detected import.
+- `remove_build_requires` is a list of distribution names. Any build requirement in the list is removed from `[build-system] requires`.
+- `replace_build_requires` is a mapping of Python distribution name to a requirement. Any matching build requirement is replaced by the new requirement.
+
+```yaml
+pyproject_overrides:
+    enable: true
+    auto_build_requires:
+        ninja: ninja
+        torch: torch<2.4.0,>=2.3.1
+    remove_build_requires:
+        - cmake
+    replace_build_requires:
+        distutils: setuptools>=68.0.0
+        setuptools: setuptools>=68.0.0
 ```
