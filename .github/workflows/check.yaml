@@ -44,9 +44,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install tox
 
-      # tox -e mypy is failing, ignore errors for now
       - name: Check MyPy
-        continue-on-error: true
         run: tox -e mypy
 
   pkglint:

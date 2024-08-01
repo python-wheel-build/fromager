@@ -1,7 +1,6 @@
 import pathlib
-import typing
 import zipfile
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from packaging.requirements import Requirement
@@ -13,7 +12,7 @@ from fromager.context import WorkContext
 
 @patch("fromager.sources.resolve_dist")
 def test_missing_dependency_format(
-    resolve_dist: typing.Callable,
+    resolve_dist: Mock,
     tmp_context: WorkContext,
 ):
     resolutions = {

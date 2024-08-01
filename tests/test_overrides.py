@@ -1,6 +1,5 @@
 import os
 import pathlib
-import typing
 from unittest import mock
 from unittest.mock import patch
 
@@ -189,7 +188,7 @@ def test_invoke_override_with_not_enough_args():
 
 @patch("fromager.overrides.find_override_method")
 def test_find_and_invoke(
-    find_override_method: typing.Callable,
+    find_override_method: mock.Mock,
 ):
     def default_foo(arg1):
         return arg1 is not None
