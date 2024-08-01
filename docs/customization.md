@@ -448,7 +448,10 @@ def post_build(
 
 ## Customizations using settings.yaml
 
-To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml. Optionally the downloaded sdist can be renamed. Both the url and the destination filename support templating. The only supported template variable is `version` - it is replaced by the version returned by the resolver.
+To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml. Optionally the downloaded sdist can be renamed. Both the url and the destination filename support templating. The only supported template variable are:  
+
+- `version` - it is replaced by the version returned by the resolver  
+- `canonicalized_name` - it is replaced by the canonicalized name of the package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`  
 
 Additionally, the source distribution index server used by the package resolver can be overriden for a particular package. The resolver can also be told to whether include wheels or sdist sources while trying to resolve the package. Templating is not supported here.
 
@@ -457,7 +460,7 @@ packages:
     torch:
         download_source:
             url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
-            destination_filename: "torch-${version}.tar.gz"
+            destination_filename: "${canonicalized_name}-${version}.tar.gz"
         resolver_dist:
             sdist_server_url: "https://pypi.org/simple"
             include_wheels: true

@@ -1,8 +1,12 @@
 import logging
 import pathlib
+import string
 import typing
 
 import yaml
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 from . import overrides
 
@@ -24,17 +28,35 @@ class Settings:
             overrides.pkgname_to_override_module(key): value for key, value in p.items()
         }
 
-    def download_source_url(self, pkg: str, default: str | None = None) -> str | None:
-        download_source = self._get_package_download_source_settings(pkg)
-        return self._return_value_or_default(download_source.get("url"), default)
-
-    def download_source_destination_filename(
-        self, pkg: str, default: str | None = None
+    def download_source_url(
+        self,
+        pkg: str,
+        req: Requirement | None = None,
+        version: Version | str | None = None,
+        default: str | None = None,
+        resolve_template: bool = True,
     ) -> str | None:
         download_source = self._get_package_download_source_settings(pkg)
-        return self._return_value_or_default(
+        url = self._return_value_or_default(download_source.get("url"), default)
+        if url and resolve_template:
+            url = _resolve_template(url, req, version)
+        return url
+
+    def download_source_destination_filename(
+        self,
+        pkg: str,
+        req: Requirement | None = None,
+        version: Version | str | None = None,
+        default: str | None = None,
+        resolve_template: bool = True,
+    ) -> str | None:
+        download_source = self._get_package_download_source_settings(pkg)
+        destination_filename = self._return_value_or_default(
             download_source.get("destination_filename"), default
         )
+        if destination_filename and resolve_template:
+            destination_filename = _resolve_template(destination_filename, req, version)
+        return destination_filename
 
     def resolver_sdist_server_url(
         self, pkg: str, default: str | None = None
@@ -77,6 +99,34 @@ class Settings:
     def _return_value_or_default(self, value, default):
         # can't use the "or" method since certain values can be false. Need to explicitly check for None
         return value if value is not None else default
+
+
+def _resolve_template(
+    template: str | None,
+    req: Requirement | None = None,
+    version: Version | str | None = None,
+):
+    if not template:
+        return None
+
+    template_env = {}
+    if version:
+        template_env["version"] = str(version)
+    if req:
+        template_env["canonicalized_name"] = str(canonicalize_name(req.name))
+
+    try:
+        return string.Template(template).substitute(template_env)
+    except KeyError:
+        if req:
+            logger.warning(
+                f"{req.name}: Couldn't resolve url or name for {req} using the template: {template_env}"
+            )
+        else:
+            logger.warning(
+                f"Couldn't resolve {template} using the template: {template_env}"
+            )
+        raise
 
 
 def _parse(content: str) -> Settings:

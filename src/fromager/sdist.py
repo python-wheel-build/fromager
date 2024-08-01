@@ -214,7 +214,7 @@ def handle_requirement(
             )
             try:
                 find_sdist_result = finders.find_sdist(
-                    ctx.sdists_builds, req, resolved_version
+                    ctx, ctx.sdists_builds, req, resolved_version
                 )
                 if not find_sdist_result:
                     sources.build_sdist(

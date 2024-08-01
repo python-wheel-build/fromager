@@ -61,7 +61,9 @@ def prepare_source(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
-    source_filename = finders.find_sdist(wkctx.sdists_downloads, req, str(dist_version))
+    source_filename = finders.find_sdist(
+        wkctx, wkctx.sdists_downloads, req, str(dist_version)
+    )
     if source_filename is None:
         dir_contents: list[str] = []
         for ext in ["*.tar.gz", "*.zip"]:
@@ -94,7 +96,7 @@ def build_sdist(
 
     """
     req = Requirement(f"{dist_name}=={dist_version}")
-    source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
+    source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
     build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
     sdist_filename = sources.build_sdist(
         ctx=wkctx,
@@ -107,11 +109,12 @@ def build_sdist(
 
 
 def _find_source_root_dir(
+    wkctx: context.WorkContext,
     work_dir: pathlib.Path,
     req: Requirement,
     dist_version: Version,
 ) -> pathlib.Path:
-    source_root_dir = finders.find_source_dir(work_dir, req, str(dist_version))
+    source_root_dir = finders.find_source_dir(wkctx, work_dir, req, str(dist_version))
     if source_root_dir:
         return source_root_dir
     work_dir_contents = list(str(e) for e in work_dir.glob("*"))
@@ -138,7 +141,7 @@ def prepare_build(
     """
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
-    source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
+    source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
     sdist.prepare_build_environment(wkctx, req, source_root_dir)
 
 
@@ -159,7 +162,7 @@ def build_wheel(
 
     """
     req = Requirement(f"{dist_name}=={dist_version}")
-    source_root_dir = _find_source_root_dir(wkctx.work_dir, req, dist_version)
+    source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
     build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(
         ctx=wkctx,

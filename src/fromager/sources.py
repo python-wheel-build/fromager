@@ -4,7 +4,6 @@ import logging
 import os.path
 import pathlib
 import shutil
-import string
 import subprocess
 import tarfile
 import typing
@@ -37,7 +36,7 @@ def download_source(
     source_type = "override"
     if not downloader:
         downloader = default_download_source
-        if not ctx.settings.download_source_url(req.name):
+        if not ctx.settings.download_source_url(req.name, resolve_template=False):
             source_type = "sdist"
     for url in sdist_server_urls:
         try:
@@ -158,10 +157,12 @@ def default_download_source(
         ctx, req, override_sdist_server_url, include_sdists, include_wheels
     )
 
-    dest_filename_template = ctx.settings.download_source_destination_filename(req.name)
-    destination_filename = _resolve_template(dest_filename_template, req, version)
-    url_template = ctx.settings.download_source_url(req.name, org_url)
-    url = _resolve_template(url_template, req, version)
+    destination_filename = ctx.settings.download_source_destination_filename(
+        req.name, req=req, version=version
+    )
+    url = ctx.settings.download_source_url(
+        req.name, default=org_url, req=req, version=version
+    )
 
     source_filename = _download_source_check(
         ctx.sdists_downloads, url, destination_filename
@@ -220,19 +221,6 @@ def download_url(
                 f.write(chunk)
     logger.info(f"saved {outfile}")
     return outfile
-
-
-def _resolve_template(template: str | None, req: Requirement, version: str):
-    if not template:
-        return None
-    template_env = {"version": version}
-    try:
-        return string.Template(template).substitute(template_env)
-    except KeyError:
-        logger.warning(
-            f"{req.name}: Couldn't resolve url or name for {req} using the template: {template_env}"
-        )
-        raise
 
 
 def _sdist_root_name(source_filename: pathlib.Path) -> str:

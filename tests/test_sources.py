@@ -19,37 +19,21 @@ def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
         sources._download_source_check(fake_dir, fake_url)
 
 
-def test_resolve_template_with_no_template():
-    req = Requirement("foo==1.0")
-    assert sources._resolve_template(None, req, "1.0") is None
-
-
-def test_resolve_template_with_version():
-    req = Requirement("foo==1.0")
-    assert sources._resolve_template("url-${version}", req, "1.0") == "url-1.0"
-
-
-def test_resolve_template_with_no_matching_template():
-    req = Requirement("foo==1.0")
-    with pytest.raises(KeyError):
-        sources._resolve_template("url-${flag}", req, "1.0")
-
-
 @patch("fromager.sources.resolve_dist")
 @patch("fromager.sources._download_source_check")
-@patch.object(settings.Settings, "download_source_url")
-@patch.object(settings.Settings, "download_source_destination_filename")
+@patch.object(settings.Settings, "_get_package_download_source_settings")
 def test_default_download_source_from_settings(
-    download_source_destination_filename: Mock,
-    download_source_url: Mock,
+    get_package_download_source_settings: Mock,
     download_source_check: Mock,
     resolve_dist: Mock,
     tmp_context: context.WorkContext,
 ):
     resolve_dist.return_value = ("url", "1.0")
     download_source_check.return_value = pathlib.Path("filename.zip")
-    download_source_url.return_value = "predefined_url-${version}"
-    download_source_destination_filename.return_value = "foo-${version}"
+    get_package_download_source_settings.return_value = {
+        "url": "predefined_url-${version}",
+        "destination_filename": "${canonicalized_name}-${version}",
+    }
     req = Requirement("foo==1.0")
     sdist_server_url = sources.PYPI_SERVER_URL
 

@@ -7,7 +7,7 @@ import re
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from . import overrides
+from . import context, overrides
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +21,35 @@ def _dist_name_to_filename(dist_name: str) -> str:
     return re.sub(r"[^\w\d.]+", "_", canonical_name, flags=re.UNICODE)
 
 
+def _check_archive_name_in_settings(
+    ctx: context.WorkContext,
+    req: Requirement,
+    dist_version: str,
+):
+    destination_filename_from_settings = (
+        ctx.settings.download_source_destination_filename(
+            req.name, req=req, version=dist_version
+        )
+    )
+    return destination_filename_from_settings
+
+
 def find_sdist(
+    ctx: context.WorkContext,
     downloads_dir: pathlib.Path,
     req: Requirement,
     dist_version: str,
 ) -> pathlib.Path | None:
-    sdist_name_func = overrides.find_override_method(
-        req.name, "expected_source_archive_name"
+    sdist_file_name = overrides.find_and_invoke(
+        req.name,
+        "expected_source_archive_name",
+        _check_archive_name_in_settings,
+        req=req,
+        dist_version=dist_version,
+        ctx=ctx,
     )
 
-    if sdist_name_func:
-        # The file must exist exactly as given.
-        sdist_file_name = overrides.invoke(
-            sdist_name_func, req=req, dist_version=dist_version
-        )
+    if sdist_file_name:
         sdist_file = downloads_dir / sdist_file_name
         if sdist_file.exists():
             return sdist_file
@@ -113,6 +128,7 @@ def find_wheel(
 
 
 def find_source_dir(
+    ctx: context.WorkContext,
     work_dir: pathlib.Path,
     req: Requirement,
     dist_version: str,
@@ -130,14 +146,17 @@ def find_source_dir(
             return source_dir
         raise ValueError(f"looked for {source_dir} and did not find")
 
-    sdist_name_func = overrides.find_override_method(
-        req.name, "expected_source_archive_name"
+    sdist_name = overrides.find_and_invoke(
+        req.name,
+        "expected_source_archive_name",
+        _check_archive_name_in_settings,
+        req=req,
+        dist_version=dist_version,
+        ctx=ctx,
     )
-    if sdist_name_func:
+
+    if sdist_name:
         # The directory must exist exactly as given.
-        sdist_name = overrides.invoke(
-            sdist_name_func, req=req, dist_version=dist_version
-        )
         if sdist_name.endswith(".tar.gz"):
             ext_to_strip = ".tar.gz"
         elif sdist_name.endswith(".zip"):
