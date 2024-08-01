@@ -37,7 +37,8 @@ def download_source(
     source_type = "override"
     if not downloader:
         downloader = default_download_source
-        source_type = "sdist"
+        if not ctx.settings.download_source_url(req.name):
+            source_type = "sdist"
     for url in sdist_server_urls:
         try:
             logger.debug(

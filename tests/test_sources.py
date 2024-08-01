@@ -88,8 +88,7 @@ def test_default_download_source_with_predefined_resolve_dist(
 
 
 @patch("fromager.sources.default_download_source")
-def test_invalid_version(mock_default_download):
-    ctx = context.WorkContext
+def test_invalid_version(mock_default_download, tmp_context: context.WorkContext):
     req = Requirement("fake==1.0")
     sdist_server_urls = [sources.PYPI_SERVER_URL]
     mock_default_download.return_value = (
@@ -99,7 +98,7 @@ def test_invalid_version(mock_default_download):
     )
     mock_default_download.__name__ = "mock_default_download"
     with pytest.raises(ValueError):
-        sources.download_source(ctx, req, sdist_server_urls)
+        sources.download_source(tmp_context, req, sdist_server_urls)
 
 
 @patch("logging.Logger.warning")
