@@ -78,7 +78,7 @@ def _cargo_config(project_dir: pathlib.Path) -> None:
     except FileNotFoundError:
         logger.debug("creating new '.cargo/config.toml'")
         dotcargo.mkdir(exist_ok=True)
-        cfg = {}
+        cfg = tomlkit.parse("")
 
     cfg.update(CARGO_CONFIG)
 

@@ -15,7 +15,7 @@ else:
     NETWORK_ISOLATION = None
 
 
-def network_isolation_cmd() -> tuple[str, ...]:
+def network_isolation_cmd() -> typing.Sequence[str]:
     """Detect network isolation wrapper
 
     Raises ValueError when network isolation is not supported
@@ -37,7 +37,8 @@ def detect_network_isolation():
     """
     cmd = network_isolation_cmd()
     if os.name == "posix":
-        subprocess.check_call(cmd + ["true"], stderr=subprocess.STDOUT)
+        check = [*cmd, "true"]
+        subprocess.check_call(check, stderr=subprocess.STDOUT)
 
 
 # based on pyproject_hooks/_impl.py: quiet_subprocess_runner
@@ -58,7 +59,10 @@ def run(
     if network_isolation:
         # prevent network access by creating a new network namespace that
         # has no routing configured.
-        cmd = network_isolation_cmd() + cmd
+        cmd = [
+            *network_isolation_cmd(),
+            *cmd,
+        ]
 
     logger.debug(
         "running: %s %s in %s",

@@ -1,6 +1,5 @@
 import pathlib
-import typing
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 from packaging.requirements import Requirement
@@ -41,10 +40,10 @@ def test_resolve_template_with_no_matching_template():
 @patch.object(settings.Settings, "download_source_url")
 @patch.object(settings.Settings, "download_source_destination_filename")
 def test_default_download_source_from_settings(
-    download_source_destination_filename: typing.Callable,
-    download_source_url: typing.Callable,
-    download_source_check: typing.Callable,
-    resolve_dist: typing.Callable,
+    download_source_destination_filename: Mock,
+    download_source_url: Mock,
+    download_source_check: Mock,
+    resolve_dist: Mock,
     tmp_context: context.WorkContext,
 ):
     resolve_dist.return_value = ("url", "1.0")
@@ -68,11 +67,11 @@ def test_default_download_source_from_settings(
 @patch.object(settings.Settings, "resolver_include_wheels")
 @patch.object(settings.Settings, "resolver_sdist_server_url")
 def test_default_download_source_with_predefined_resolve_dist(
-    resolver_sdist_server_url: typing.Callable,
-    resolver_include_wheels: typing.Callable,
-    resolver_include_sdists: typing.Callable,
-    download_source_check: typing.Callable,
-    resolve_dist: typing.Callable,
+    resolver_sdist_server_url: Mock,
+    resolver_include_wheels: Mock,
+    resolver_include_sdists: Mock,
+    download_source_check: Mock,
+    resolve_dist: Mock,
     tmp_context: context.WorkContext,
 ):
     resolve_dist.return_value = ("url", "1.0")
@@ -117,7 +116,7 @@ def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
 
 @patch("fromager.sources._apply_patch")
 def test_patch_sources_apply_unversioned_and_versioned(
-    apply_patch: typing.Callable,
+    apply_patch: Mock,
     tmp_path: pathlib.Path,
     tmp_context: context.WorkContext,
 ):
@@ -150,7 +149,7 @@ def test_patch_sources_apply_unversioned_and_versioned(
 
 @patch("fromager.sources._apply_patch")
 def test_patch_sources_apply_only_unversioned(
-    apply_patch: typing.Callable,
+    apply_patch: Mock,
     tmp_path: pathlib.Path,
     tmp_context: context.WorkContext,
 ):

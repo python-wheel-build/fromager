@@ -1,6 +1,5 @@
 import pathlib
-import typing
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from packaging.requirements import Requirement
@@ -40,9 +39,7 @@ def test_load_non_existant_constraints_file(tmp_path: pathlib.Path):
 
 
 @patch("fromager.requirements_file.parse_requirements_file")
-def test_load_constraints_file(
-    parse_requirements_file: typing.Callable, tmp_path: pathlib.Path
-):
+def test_load_constraints_file(parse_requirements_file: Mock, tmp_path: pathlib.Path):
     constraint_file = tmp_path / "constraint.txt"
     constraint_file.write_text("a\n")
     parse_requirements_file.return_value = ["torch==3.1.0"]
