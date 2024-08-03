@@ -13,6 +13,7 @@ source "$SCRIPTDIR/common.sh"
 pip install e2e/flit_core_override
 
 fromager \
+  --verbose \
   --log-file="$OUTDIR/bootstrap.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
@@ -25,7 +26,13 @@ find "$OUTDIR/wheels-repo/simple/" -name '*.whl'
 # Default to passing
 pass=true
 
-# Check for log message
+# Check for log message that the override is loaded
+if ! grep -q "from package_plugins.flit_core" "$OUTDIR/bootstrap.log"; then
+  echo "FAIL: Did not find log message from loading override in $OUTDIR/bootstrap.log" 1>&2
+  pass=false
+fi
+
+# Check for log message that the override is being used
 if ! grep -q "using override to build flit_core wheel" "$OUTDIR/bootstrap.log"; then
     echo "FAIL: Did not find log message from override in $OUTDIR/bootstrap.log" 1>&2
     pass=false

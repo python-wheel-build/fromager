@@ -6,6 +6,7 @@ import pathlib
 import re
 import string
 import typing
+from importlib import metadata
 
 from packaging.utils import NormalizedName, canonicalize_name, parse_sdist_filename
 from packaging.version import Version
@@ -65,8 +66,30 @@ def invoke(fn: typing.Callable, **kwargs: typing.Any) -> typing.Any:
     return fn(**kwargs)
 
 
+def _get_dist_info(package_name: str) -> tuple[str, str]:
+    dists = metadata.packages_distributions()
+    dist_names = dists.get(package_name.split(".")[0])
+    if not dist_names:
+        return (package_name, "unknown version")
+    # package_distributions() returns a mapping of top-level package name to a
+    # list of distribution names. The list will only have more than one element
+    # if it is a namespace package. For now, assume we do not have that case and
+    # take the first element of the list.
+    dist_name = dist_names[0]
+    dist_version = metadata.version(dist_name)
+    return (dist_name, dist_version)
+
+
 def log_overrides() -> None:
-    logger.debug("loaded overrides for %s", _get_extensions().entry_points_names())
+    for ext in _get_extensions():
+        dist_name, dist_version = _get_dist_info(ext.module_name)
+        logger.debug(
+            "loaded override %r: from %s (%s %s)",
+            ext.name,
+            ext.module_name,
+            dist_name,
+            dist_version,
+        )
 
 
 def patches_for_source_dir(
