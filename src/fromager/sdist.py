@@ -19,6 +19,7 @@ from . import (
     external_commands,
     finders,
     overrides,
+    progress,
     requirements_file,
     server,
     sources,
@@ -65,9 +66,13 @@ def handle_requirement(
     req: Requirement,
     req_type: str = "toplevel",
     why: list | None = None,
+    progressbar: progress.Progressbar | None = None,
 ) -> str:
     if why is None:
         why = []
+    if progressbar is None:
+        progressbar = progress.Progressbar(None)
+
     # If we're given a requirements file as input, we might be iterating over a
     # list of requirements with marker expressions that limit their use to
     # specific platforms or python versions. Evaluate the markers to filter out
@@ -165,17 +170,29 @@ def handle_requirement(
 
         next_req_type = "build_system"
         build_system_dependencies = _handle_build_system_requirements(
-            ctx, req, why, sdist_root_dir
+            ctx,
+            req,
+            why,
+            sdist_root_dir,
+            progressbar=progressbar,
         )
 
         next_req_type = "build_backend"
         build_backend_dependencies = _handle_build_backend_requirements(
-            ctx, req, why, sdist_root_dir
+            ctx,
+            req,
+            why,
+            sdist_root_dir,
+            progressbar=progressbar,
         )
 
         next_req_type = "build_sdist"
         build_sdist_dependencies = _handle_build_sdist_requirements(
-            ctx, req, why, sdist_root_dir
+            ctx,
+            req,
+            why,
+            sdist_root_dir,
+            progressbar=progressbar,
         )
 
     # Add the new package to the build order list before trying to
@@ -252,14 +269,16 @@ def handle_requirement(
     install_dependencies = dependencies.get_install_dependencies_of_wheel(
         req, wheel_filename, unpack_dir
     )
+    progressbar.update_total(len(install_dependencies))
 
     for dep in _sort_requirements(install_dependencies):
         try:
-            handle_requirement(ctx, dep, next_req_type, why)
+            handle_requirement(ctx, dep, next_req_type, why, progressbar=progressbar)
         except Exception as err:
             raise ValueError(
                 f"could not handle {next_req_type} dependency {dep} for {why}"
             ) from err
+        progressbar.update()
 
     # Cleanup the source tree and build environment, leaving any other
     # artifacts that were created.
@@ -340,14 +359,18 @@ def _handle_build_system_requirements(
     req: Requirement,
     why: list | None,
     sdist_root_dir: pathlib.Path,
+    progressbar: progress.Progressbar,
 ) -> set[Requirement]:
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx, req, sdist_root_dir
     )
+    progressbar.update_total(len(build_system_dependencies))
 
     for dep in _sort_requirements(build_system_dependencies):
         try:
-            resolved = handle_requirement(ctx, dep, "build-system", why)
+            resolved = handle_requirement(
+                ctx, dep, "build-system", why, progressbar=progressbar
+            )
         except Exception as err:
             raise ValueError(
                 f"could not handle build-system dependency {dep} for {why}"
@@ -356,6 +379,7 @@ def _handle_build_system_requirements(
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
         _maybe_install(ctx, dep, "build-system", resolved)
+        progressbar.update()
     return build_system_dependencies
 
 
@@ -364,14 +388,18 @@ def _handle_build_backend_requirements(
     req: Requirement,
     why: list,
     sdist_root_dir: pathlib.Path,
+    progressbar: progress.Progressbar,
 ) -> set[Requirement]:
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
         ctx, req, sdist_root_dir
     )
+    progressbar.update_total(len(build_backend_dependencies))
 
     for dep in _sort_requirements(build_backend_dependencies):
         try:
-            resolved = handle_requirement(ctx, dep, "build-backend", why)
+            resolved = handle_requirement(
+                ctx, dep, "build-backend", why, progressbar=progressbar
+            )
         except Exception as err:
             raise ValueError(
                 f"could not handle build-backend dependency {dep} for {why}"
@@ -380,6 +408,7 @@ def _handle_build_backend_requirements(
         # order to determine their dependencies they may need to be
         # installed.
         _maybe_install(ctx, dep, "build-backend", resolved)
+        progressbar.update()
     return build_backend_dependencies
 
 
@@ -388,19 +417,24 @@ def _handle_build_sdist_requirements(
     req: Requirement,
     why: list | None,
     sdist_root_dir: pathlib.Path,
+    progressbar: progress.Progressbar,
 ) -> set[Requirement]:
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
         ctx, req, sdist_root_dir
     )
+    progressbar.update_total(len(build_sdist_dependencies))
 
     for dep in _sort_requirements(build_sdist_dependencies):
         try:
-            resolved = handle_requirement(ctx, dep, "build-sdist", why)
+            resolved = handle_requirement(
+                ctx, dep, "build-sdist", why, progressbar=progressbar
+            )
         except Exception as err:
             raise ValueError(
                 f"could not handle build-sdist dependency {dep} for {why}"
             ) from err
         _maybe_install(ctx, dep, "build-sdist", resolved)
+        progressbar.update()
     return build_sdist_dependencies
 
 

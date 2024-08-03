@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 def _get_requirements_from_args(
     toplevel: typing.Iterable[str],
     req_files: typing.Iterable[pathlib.Path],
-) -> typing.Iterable[tuple[str, str]]:
+) -> typing.Sequence[tuple[str, str]]:
     to_build: list[tuple[str, str]] = []
     to_build.extend(("toplevel", t) for t in toplevel)
     for filename in req_files:
@@ -61,8 +61,12 @@ def bootstrap(
 
     server.start_wheel_server(wkctx)
 
-    for origin, dep in progress.progress(to_build):
-        sdist.handle_requirement(wkctx, Requirement(dep), req_type=origin)
+    with progress.progress_context(total=len(to_build)) as progressbar:
+        for origin, dep in to_build:
+            sdist.handle_requirement(
+                wkctx, Requirement(dep), req_type=origin, progressbar=progressbar
+            )
+            progressbar.update()
 
     # If we put pre-built wheels in the downloads directory, we should
     # remove them so we can treat that directory as a source of wheels
