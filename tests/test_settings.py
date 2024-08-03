@@ -1,5 +1,8 @@
 import textwrap
 
+import pytest
+from packaging.requirements import Requirement
+
 from fromager import settings
 
 
@@ -86,3 +89,19 @@ def test_no_resolver_dist():
     assert s.resolver_include_sdists("foo") is None
     assert s.resolver_include_wheels("foo") is None
     assert s.resolver_sdist_server_url("foo") is None
+
+
+def test_resolve_template_with_no_template():
+    req = Requirement("foo==1.0")
+    assert settings._resolve_template(None, req, "1.0") is None
+
+
+def test_resolve_template_with_version():
+    req = Requirement("foo==1.0")
+    assert settings._resolve_template("url-${version}", req, "1.0") == "url-1.0"
+
+
+def test_resolve_template_with_no_matching_template():
+    req = Requirement("foo==1.0")
+    with pytest.raises(KeyError):
+        settings._resolve_template("url-${flag}", req, "1.0")

@@ -17,7 +17,7 @@ from fromager import finders
         ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6.tar.gz"),
     ],
 )
-def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
+def test_find_sdist(tmp_path, tmp_context, dist_name, version_string, expected_base):
     sdists_repo = pathlib.Path(tmp_path)
     downloads = sdists_repo / "downloads"
     downloads.mkdir()
@@ -26,7 +26,7 @@ def test_find_sdist(tmp_path, dist_name, version_string, expected_base):
 
     req = Requirement(dist_name)
     ver = Version(version_string)
-    actual = finders.find_sdist(downloads, req, ver)
+    actual = finders.find_sdist(tmp_context, downloads, req, ver)
     assert str(archive) == str(actual)
 
 
@@ -68,7 +68,9 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
         ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6", "ruamel.yaml-0.18.6"),
     ],
 )
-def test_find_source_dir(tmp_path, dist_name, version_string, unpack_base, source_base):
+def test_find_source_dir(
+    tmp_path, tmp_context, dist_name, version_string, unpack_base, source_base
+):
     work_dir = pathlib.Path(tmp_path)
     unpack_dir = work_dir / unpack_base
     unpack_dir.mkdir()
@@ -78,5 +80,5 @@ def test_find_source_dir(tmp_path, dist_name, version_string, unpack_base, sourc
 
     req = Requirement(dist_name)
     ver = Version(version_string)
-    actual = finders.find_source_dir(work_dir, req, ver)
+    actual = finders.find_source_dir(tmp_context, work_dir, req, ver)
     assert str(source_dir) == str(actual)
