@@ -1,12 +1,10 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "flit-core-overrides"
-authors = [
-    {name = "Doug Hellmann", email="dhellmann@redhat.com"},
-]
+authors = [{ name = "Doug Hellmann", email = "dhellmann@redhat.com" }]
 description = "test package"
 dynamic = ["version"]
 classifiers = [
