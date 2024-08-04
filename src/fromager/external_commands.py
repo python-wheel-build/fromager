@@ -41,6 +41,10 @@ def detect_network_isolation():
         subprocess.check_call(check, stderr=subprocess.STDOUT)
 
 
+class NetworkIsolationError(subprocess.CalledProcessError):
+    pass
+
+
 # based on pyproject_hooks/_impl.py: quiet_subprocess_runner
 def run(
     cmd: typing.Sequence[str],
@@ -92,6 +96,17 @@ def run(
         output = completed.stdout.decode("utf-8") if completed.stdout else ""
     if completed.returncode != 0:
         logger.error("%s failed with %s", cmd, output)
-        raise subprocess.CalledProcessError(completed.returncode, cmd, output)
+        err_type = subprocess.CalledProcessError
+        if network_isolation:
+            # Look for a few common messages that mean there is a network
+            # isolation problem and change the exception type to make it easier
+            # for the caller to recognize that case.
+            for substr in [
+                "network unreachable",
+                "Network is unreachable",
+            ]:
+                if substr in output:
+                    err_type = NetworkIsolationError
+        raise err_type(completed.returncode, cmd, output)
     logger.debug("output: %s", output)
     return output

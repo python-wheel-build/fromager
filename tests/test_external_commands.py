@@ -73,7 +73,7 @@ else:
     not SUPPORTS_NETWORK_ISOLATION, reason="network isolation is not supported"
 )
 def test_external_commands_network_isolation_real():
-    with pytest.raises(subprocess.CalledProcessError) as e:
+    with pytest.raises(external_commands.NetworkIsolationError) as e:
         external_commands.run(
             ["host", "github.com"],
             network_isolation=True,
@@ -81,4 +81,3 @@ def test_external_commands_network_isolation_real():
         )
     exc = typing.cast(subprocess.CalledProcessError, e.value)
     assert exc.returncode == 1
-    assert "network unreachable" in exc.stdout
