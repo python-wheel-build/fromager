@@ -22,8 +22,17 @@ def _tar_reset(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
     return tarinfo
 
 
-def tar_reproducible(tar: tarfile.TarFile, basedir: pathlib.Path) -> None:
-    """Create reproducible tar file"""
+def tar_reproducible(
+    tar: tarfile.TarFile,
+    basedir: pathlib.Path,
+    prefix: pathlib.Path | None = None,
+) -> None:
+    """Create reproducible tar file
+
+    Add content from basedir to already opened tar. If prefix is provided, use
+    it to set relative paths for the content being added.
+
+    """
 
     content = [str(basedir)]  # convert from pathlib.Path, if that's what we have
     for root, dirs, files in os.walk(basedir):
@@ -34,4 +43,7 @@ def tar_reproducible(tar: tarfile.TarFile, basedir: pathlib.Path) -> None:
     content.sort()
 
     for fn in content:
-        tar.add(fn, filter=_tar_reset, recursive=False, arcname=fn)
+        # Ensure that the paths in the tarfile are rooted at the prefix
+        # directory, if we have one.
+        arcname = fn if prefix is None else os.path.relpath(fn, prefix)
+        tar.add(fn, filter=_tar_reset, recursive=False, arcname=arcname)

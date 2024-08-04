@@ -437,7 +437,11 @@ def default_build_sdist(
     # The format argument is specified based on
     # https://peps.python.org/pep-0517/#build-sdist.
     with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
-        tarballs.tar_reproducible(sdist, sdist_root_dir)
+        tarballs.tar_reproducible(
+            tar=sdist,
+            basedir=sdist_root_dir,
+            prefix=sdist_root_dir.parent,
+        )
     return sdist_filename
 
 
