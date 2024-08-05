@@ -1,2 +1,4 @@
 sphinx
 sphinx-click
+myst-parser
+

@@ -33,6 +33,7 @@ to support different build variants, such as to enable different
 hardware accelerators. Therefore, the environment file directory is
 organized with a subdirectory per variant.
 
+(canonical-distribution-names)=
 Environment files are named using the [canonical distribution
 name](#canonical-distribution-names) and the suffix `.env`.
 
@@ -154,6 +155,7 @@ def download_source(ctx, req, sdist_server_url):
 
 ### get_resolver_provider
 
+(pypi.org)=
 The `get_resolver_provider()` function allows an override to change
 the way requirement specifications are converted to fixed
 versions. The default implementation looks for published versions on a
