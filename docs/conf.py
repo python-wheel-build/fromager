@@ -16,7 +16,14 @@ release = metadata.version("fromager")
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["sphinx_click"]
+extensions = ["sphinx_click", 
+              "myst_parser"
+        ]
+
+# Recognized suffixes
+source_suffix = [
+    ".rst", ".md",
+]
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
