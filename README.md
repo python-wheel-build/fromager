@@ -129,7 +129,7 @@ token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html#creat
 as documented in [this
 issue](https://gitlab.com/gitlab-org/gitlab/-/issues/350582):
 
-```plaintext
+```
 machine gitlab.com login oauth2 password $token
 ```  
 
