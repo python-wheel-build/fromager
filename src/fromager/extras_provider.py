@@ -18,7 +18,7 @@ candidate with an extra - X[foo] version v depends on X version v. By doing
 this, we constrain the solution to require a unique version of X.
 """
 
-from typing import TYPE_CHECKING
+import typing
 
 from packaging.requirements import Requirement
 from resolvelib.providers import AbstractProvider
@@ -27,7 +27,7 @@ from .candidate import Candidate
 
 # fix for runtime errors caused by inheriting classes that are generic in stubs but not runtime
 # https://mypy.readthedocs.io/en/latest/runtime_troubles.html#using-classes-that-are-generic-in-stubs-but-not-at-runtime
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     BaseAbstractProvider = AbstractProvider[Requirement, Candidate, str]
 else:
     BaseAbstractProvider = AbstractProvider
@@ -38,7 +38,7 @@ class ExtrasProvider(BaseAbstractProvider):
 
     def get_extras_for(
         self, requirement_or_candidate: Requirement | Candidate
-    ) -> tuple[str]:
+    ) -> typing.Iterable[str]:
         """Given a requirement or candidate, return its extras.
 
         The extras should be a hashable value.
