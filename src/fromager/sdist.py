@@ -136,9 +136,10 @@ def handle_requirement(
     # edges to use for building a valid constraints file.
     ctx.update_dependency_graph(
         parent_req=why[-1][1] if why else None,
+        parent_version=why[-1][2] if why else None,
         req_type=req_type,
         req=req,
-        version=resolved_version,
+        req_version=resolved_version,
     )
 
     # Avoid cyclic dependencies and redundant processing.
