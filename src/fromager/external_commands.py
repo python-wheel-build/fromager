@@ -29,7 +29,7 @@ def network_isolation_cmd() -> typing.Sequence[str]:
     raise ValueError(f"unsupported platform {sys.platform}")
 
 
-def detect_network_isolation():
+def detect_network_isolation() -> None:
     """Detect if network isolation is available and working
 
     unshare needs 'unshare' and 'clone' syscall. Docker's seccomp policy

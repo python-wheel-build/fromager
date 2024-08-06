@@ -141,7 +141,7 @@ class WorkContext:
         req_type: str,
         req: Requirement,
         version: Version,
-    ):
+    ) -> None:
         logger.debug(
             "recording %s dependency %s -> %s %s",
             req_type,
