@@ -1,3 +1,4 @@
+import collections
 import logging
 import os
 import pathlib
@@ -5,9 +6,12 @@ import platform
 import sys
 import tempfile
 import typing
+import zipfile
 from datetime import datetime
 
+import elfdeps
 from packaging.requirements import Requirement
+from packaging.utils import parse_wheel_filename
 from packaging.version import Version
 
 from . import context, external_commands, overrides
@@ -74,6 +78,57 @@ class BuildEnvironment:
         logger.info("installed dependencies into build environment in %s", self.path)
 
 
+def analyze_wheel_elfdeps(
+    ctx: context.WorkContext, req: Requirement, wheel: pathlib.Path
+) -> tuple[set[elfdeps.SOInfo], set[elfdeps.SOInfo]] | tuple[None, None]:
+    """Analyze a wheel's ELF dependencies
+
+    Logs and returns library dependencies and library provides
+    """
+    _, _, _, tags = parse_wheel_filename(wheel.name)
+    if all(tag.platform == "all" for tag in tags):
+        logger.debug("%s: %s is a purelib wheel", req.name, wheel)
+        return None, None
+
+    # mapping of required libraries to list of versions
+    requires: set[elfdeps.SOInfo] = set()
+    provides: set[elfdeps.SOInfo] = set()
+
+    settings = elfdeps.ELFAnalyzeSettings(filter_soname=True)
+    with zipfile.ZipFile(wheel) as zf:
+        for zipinfo in zf.infolist():
+            if zipinfo.filename.endswith(".so"):
+                info = elfdeps.analyze_zipmember(zf, zipinfo, settings=settings)
+                provides.update(info.provides)
+                requires.update(info.requires)
+
+    # Don't show provided names as required names
+    requires = requires.difference(provides)
+
+    if requires:
+        reqmap: dict[str, list[str]] = collections.defaultdict(list)
+        for r in requires:
+            reqmap[r.soname].append(r.version)
+
+        names = sorted(
+            name for name in reqmap if not name.startswith(("ld-linux", "rtld"))
+        )
+        logger.info("%s: Requires libraries: %s", req.name, ", ".join(names))
+        for name, versions in sorted(reqmap.items()):
+            logger.debug(
+                "%s: Requires %s(%s)",
+                req.name,
+                name,
+                ", ".join(v for v in versions if v),
+            )
+
+    if provides:
+        names = sorted(p.soname for p in provides)
+        logger.info("%s: Provides libraries: %s", req.name, ", ".join(names))
+
+    return requires, provides
+
+
 def build_wheel(
     ctx: context.WorkContext,
     req: Requirement,
@@ -111,11 +166,14 @@ def build_wheel(
     )
     # End the timer
     end = datetime.now().replace(microsecond=0)
-    logger.info(f"{req.name}: built wheel in {end - start}")
     wheels = list(ctx.wheels_build.glob("*.whl"))
-    if wheels:
-        return wheels[0]
-    return None
+    if len(wheels) != 1:
+        # TODO: raise error?
+        return None
+    wheel = wheels[0]
+    logger.info(f"{req.name}: built wheel '{wheel}' in {end - start}")
+    analyze_wheel_elfdeps(ctx, req, wheel)
+    return wheel
 
 
 def default_build_wheel(
