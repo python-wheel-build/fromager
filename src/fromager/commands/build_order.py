@@ -1,10 +1,8 @@
 import collections
 import csv
-import itertools
 import json
 import pathlib
 import sys
-import typing
 
 import click
 from packaging.requirements import Requirement
