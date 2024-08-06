@@ -289,19 +289,26 @@ def patch_source(
     source_root_dir: pathlib.Path,
     req: Requirement,
 ) -> None:
+    # Flag to check whether patch has been applied
+    has_applied = False
     # apply any unversioned patch first
     for p in overrides.patches_for_source_dir(
         ctx.patches_dir, overrides.pkgname_to_override_module(req.name)
     ):
         _apply_patch(p, source_root_dir)
+        has_applied = True
 
     # make sure that we don't apply the generic unversioned patch again
     if source_root_dir.name != overrides.pkgname_to_override_module(req.name):
         for p in overrides.patches_for_source_dir(
             ctx.patches_dir, source_root_dir.name
         ):
-            _warn_for_old_patch(source_root_dir, p)
             _apply_patch(p, source_root_dir)
+            has_applied = True
+
+    # If no patch has been applied, call warn for old patch
+    if not has_applied:
+        _warn_for_old_patch(source_root_dir, ctx.patches_dir)
 
 
 def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
@@ -315,17 +322,18 @@ def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
 
 
 def _warn_for_old_patch(
-    source_root_dir: pathlib.Path, patch_filename: pathlib.Path
+    source_root_dir: pathlib.Path,
+    patches_dir: pathlib.Path,
 ) -> None:
-    # Get the existing version and req name as per the source_root_dir naming conventions
+    # Get the req name as per the source_root_dir naming conventions
     req_name = source_root_dir.name.rsplit("-", 1)[0]
-    existing_version = Version(source_root_dir.name.rsplit("-", 1)[1])
 
-    # Check to see if patches for older version exists
-    if patch_filename.parent.name == source_root_dir.name:
-        logger.warning(
-            f"{req_name}: patches for version {existing_version!s} exist but will not be applied"
-        )
+    # Filter the patch directories using regex
+    patch_directories = overrides.get_patch_directories(patches_dir, source_root_dir)
+
+    for dirs in patch_directories:
+        for p in dirs.iterdir():
+            logger.warning(f"{req_name}: patch {p} exists but will not be applied")
 
 
 def write_build_meta(
