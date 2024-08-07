@@ -142,9 +142,10 @@ def write_constraints_file(
             parent_info = reverse_graph.get(key, [])
             user_counter += len(parent_info)
             for parent_version, req in parent_info:
-                match_versions = [str(v) for v in req.specifier.filter(versions)]
-                for mv in match_versions:
-                    usable_versions.setdefault(mv, []).append(parent_version)
+                for matching_version in req.specifier.filter(versions):
+                    usable_versions.setdefault(str(matching_version), []).append(
+                        parent_version
+                    )
 
         # Look for one version that can be used by all the parent dependencies
         # and output that if we find it. Otherwise, include a warning and report
