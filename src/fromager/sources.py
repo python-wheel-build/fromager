@@ -10,7 +10,6 @@ import typing
 import zipfile
 from urllib.parse import urlparse
 
-import requests
 import resolvelib
 from packaging.requirements import Requirement
 from packaging.version import InvalidVersion, Version
@@ -165,7 +164,7 @@ def default_download_source(
     )
 
     source_filename = _download_source_check(
-        ctx.sdists_downloads, url, destination_filename
+        ctx, ctx.sdists_downloads, url, destination_filename
     )
 
     logger.debug(
@@ -177,9 +176,12 @@ def default_download_source(
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
 # It will throw exception if any other file is encountered. Eg: index.html
 def _download_source_check(
-    destination_dir: pathlib.Path, url: str, destination_filename: str | None = None
+    ctx: context.WorkContext,
+    destination_dir: pathlib.Path,
+    url: str,
+    destination_filename: str | None = None,
 ) -> str:
-    source_filename = download_url(destination_dir, url, destination_filename)
+    source_filename = download_url(ctx, destination_dir, url, destination_filename)
     if source_filename.suffix == ".zip":
         source_file_contents = zipfile.ZipFile(source_filename).namelist()
         if not source_file_contents:
@@ -197,7 +199,10 @@ def _download_source_check(
 
 
 def download_url(
-    destination_dir: pathlib.Path, url: str, destination_filename: str | None = None
+    ctx: context.WorkContext,
+    destination_dir: pathlib.Path,
+    url: str,
+    destination_filename: str | None = None,
 ) -> pathlib.Path:
     basename = (
         destination_filename
@@ -209,13 +214,26 @@ def download_url(
         "looking for %s %s", outfile, "(exists)" if outfile.exists() else "(not there)"
     )
     if outfile.exists():
-        logger.debug(f"already have {outfile}")
-        return outfile
+        outfile_size_on_disk = outfile.stat().st_size
+        header_response = ctx.requests.head(url)
+        outfile_size_online = int(header_response.headers.get("Content-Length", 0))
+
+        # Check if size on disk matches the size of file online
+        if outfile_size_on_disk == outfile_size_online:
+            logger.debug(f"already have {outfile}")
+            return outfile
+        else:
+            # Set the range header
+            headers = {"Range": f"bytes={outfile_size_on_disk}-"}
+    else:
+        outfile_size_on_disk = 0
+        headers = {}
+
     # Open the URL first in case that fails, so we don't end up with an empty file.
     logger.debug(f"reading from {url}")
-    with requests.get(url, stream=True) as r:
+    with ctx.requests.get(url, stream=True, headers=headers) as r:
         r.raise_for_status()
-        with open(outfile, "wb") as f:
+        with open(outfile, "ab" if outfile_size_on_disk else "wb") as f:
             logger.debug(f"writing to {outfile}")
             for chunk in r.iter_content(chunk_size=1024 * 1024):
                 f.write(chunk)
