@@ -106,10 +106,9 @@ mypy_path = ["src"]
 # TODO: remove excludes and silent follow
 follow_imports = "silent"
 exclude = [
-    "^src/fromager/resolver\\.py$",
-    "^src/fromager/sources\\.py$",
-    "^src/fromager/sdist\\.py$",
-    "^src/fromager/commands/build\\.py$",
+  "^src/fromager/sources\\.py$",
+  "^src/fromager/sdist\\.py$",
+  "^src/fromager/commands/build\\.py$",
 ]
 
 [[tool.mypy.overrides]]
