@@ -127,6 +127,7 @@ def write_constraints_file(
         # Below this point we have built multiple versions of the same thing, so
         # we need to try to determine if any one of those versions meets all of
         # the requirements.
+        logger.debug("%s: found multiple versions in install requirements", dep_name)
 
         # Track which versions can be used by which parent requirement.
         usable_versions: dict[str, list[str]] = {}
@@ -155,6 +156,12 @@ def write_constraints_file(
                 output.write(
                     f"# NOTE: fromager selected {dep_name}=={v} from: {version_strs}\n"
                 )
+                logging.debug(
+                    "%s: selecting %s from multiple candidates %s",
+                    dep_name,
+                    v,
+                    version_strs,
+                )
                 output.write(f"{dep_name}=={v}\n")
                 break
         else:
@@ -163,6 +170,7 @@ def write_constraints_file(
             output.write(
                 f"# ERROR: no single version of {dep_name} met all requirements\n"
             )
+            logging.error("%s: no single version meets all requirements", dep_name)
             for dv in sorted(versions):
                 output.write(f"{dep_name}=={dv}\n")
 
