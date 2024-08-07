@@ -404,7 +404,9 @@ def build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: wheels.BuildEnvironment,
 ) -> pathlib.Path:
-    logger.info(f"{req.name}: building source distribution in {sdist_root_dir}")
+    logger.info(
+        f"{req.name}: building source distribution in {ctx.settings.build_dir(req.name, sdist_root_dir)}"
+    )
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     sdist_filename = overrides.find_and_invoke(
         req.name,
@@ -415,6 +417,7 @@ def build_sdist(
         req=req,
         version=version,
         sdist_root_dir=sdist_root_dir,
+        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
         build_env=build_env,
     )
     logger.info(f"{req.name}: built source distribution {sdist_filename}")
@@ -428,6 +431,7 @@ def default_build_sdist(
     version: Version,
     sdist_root_dir: pathlib.Path,
     build_env: wheels.BuildEnvironment,
+    build_dir: pathlib.Path,
 ) -> pathlib.Path:
     # It seems like the "correct" way to do this would be to run the
     # PEP 517 API in the source tree we have modified. However, quite
@@ -439,7 +443,7 @@ def default_build_sdist(
     #
     # For cases where the PEP 517 approach works, use
     # pep517_build_sdist().
-    sdist_filename = ctx.sdists_builds / (sdist_root_dir.name + ".tar.gz")
+    sdist_filename = ctx.sdists_builds / (build_dir.name + ".tar.gz")
     if sdist_filename.exists():
         sdist_filename.unlink()
     # The format argument is specified based on
@@ -447,8 +451,8 @@ def default_build_sdist(
     with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
         tarballs.tar_reproducible(
             tar=sdist,
-            basedir=sdist_root_dir,
-            prefix=sdist_root_dir.parent,
+            basedir=build_dir,
+            prefix=build_dir.parent,
         )
     return sdist_filename
 

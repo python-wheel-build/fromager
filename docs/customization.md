@@ -455,7 +455,9 @@ To use predefined urls to download sources from, instead of overriding the entir
 - `version` - it is replaced by the version returned by the resolver  
 - `canonicalized_name` - it is replaced by the canonicalized name of the package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`  
 
-Additionally, the source distribution index server used by the package resolver can be overriden for a particular package. The resolver can also be told to whether include wheels or sdist sources while trying to resolve the package. Templating is not supported here.
+The source distribution index server used by the package resolver can be overriden for a particular package. The resolver can also be told to whether include wheels or sdist sources while trying to resolve the package. Templating is not supported here.  
+
+A `build_dir` field can also be defined to indicate to fromager where the package should be build relative to the sdist root directory
 
 ```yaml
 packages:
@@ -467,4 +469,5 @@ packages:
             sdist_server_url: "https://pypi.org/simple"
             include_wheels: true
             include_sdists: false
+        build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
 ```

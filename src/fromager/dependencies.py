@@ -39,6 +39,7 @@ def get_build_system_dependencies(
         ctx=ctx,
         req=req,
         sdist_root_dir=sdist_root_dir,
+        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -68,8 +69,9 @@ def default_get_build_system_dependencies(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
-    pyproject_toml = get_pyproject_contents(sdist_root_dir)
+    pyproject_toml = get_pyproject_contents(build_dir)
     return typing.cast(list[str], get_build_backend(pyproject_toml)["requires"])
 
 
@@ -96,6 +98,7 @@ def get_build_backend_dependencies(
         ctx=ctx,
         req=req,
         sdist_root_dir=sdist_root_dir,
+        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -110,11 +113,12 @@ def default_get_build_backend_dependencies(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
-    pyproject_toml = get_pyproject_contents(sdist_root_dir)
+    pyproject_toml = get_pyproject_contents(build_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
-        sdist_root_dir, pyproject_toml, override_environ=extra_environ
+        build_dir, pyproject_toml, override_environ=extra_environ
     )
     return hook_caller.get_requires_for_build_wheel()
 
@@ -142,6 +146,7 @@ def get_build_sdist_dependencies(
         ctx=ctx,
         req=req,
         sdist_root_dir=sdist_root_dir,
+        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -156,11 +161,12 @@ def default_get_build_sdist_dependencies(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
+    build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
-    pyproject_toml = get_pyproject_contents(sdist_root_dir)
+    pyproject_toml = get_pyproject_contents(build_dir)
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     hook_caller = get_build_backend_hook_caller(
-        sdist_root_dir, pyproject_toml, override_environ=extra_environ
+        build_dir, pyproject_toml, override_environ=extra_environ
     )
     return hook_caller.get_requires_for_build_wheel()
 

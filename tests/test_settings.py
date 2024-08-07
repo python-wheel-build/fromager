@@ -1,3 +1,4 @@
+import pathlib
 import textwrap
 
 import pytest
@@ -89,6 +90,55 @@ def test_no_resolver_dist():
     assert s.resolver_include_sdists("foo") is None
     assert s.resolver_include_wheels("foo") is None
     assert s.resolver_sdist_server_url("foo") is None
+
+
+def test_relative_path_build_dir():
+    s = settings._parse(
+        textwrap.dedent("""
+    packages:
+      foo:
+        build_dir: "./build"
+    """)
+    )
+    sdist_root_dir = pathlib.Path("/foo/bar")
+    assert s.build_dir("foo", sdist_root_dir) == sdist_root_dir / "build"
+
+
+def test_only_name_build_dir():
+    s = settings._parse(
+        textwrap.dedent("""
+    packages:
+      foo:
+        build_dir: "build"
+    """)
+    )
+    sdist_root_dir = pathlib.Path("/foo/bar")
+    assert s.build_dir("foo", sdist_root_dir) == sdist_root_dir / "build"
+
+
+def test_absolute_path_build_dir():
+    s = settings._parse(
+        textwrap.dedent("""
+    packages:
+      foo:
+        build_dir: "/tmp/build"
+    """)
+    )
+    sdist_root_dir = pathlib.Path("/foo/bar")
+    assert s.build_dir("foo", sdist_root_dir) == sdist_root_dir / "tmp" / "build"
+
+
+def test_escape_sdist_root_build_dir():
+    s = settings._parse(
+        textwrap.dedent("""
+    packages:
+      foo:
+        build_dir: "../tmp/build"
+    """)
+    )
+    sdist_root_dir = pathlib.Path("/foo/bar")
+    with pytest.raises(ValueError):
+        str(s.build_dir("foo", sdist_root_dir)).startswith("/foo/bar")
 
 
 def test_resolve_template_with_no_template():

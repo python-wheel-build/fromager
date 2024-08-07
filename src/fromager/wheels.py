@@ -162,6 +162,7 @@ def build_wheel(
         extra_environ=extra_environ,
         req=req,
         sdist_root_dir=sdist_root_dir,
+        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
         version=version,
     )
     # End the timer
@@ -183,8 +184,9 @@ def default_build_wheel(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
+    build_dir: pathlib.Path,
 ) -> None:
-    logger.debug(f"{req.name}: building wheel in {sdist_root_dir} with {extra_environ}")
+    logger.debug(f"{req.name}: building wheel in {build_dir} with {extra_environ}")
 
     # Activate the virtualenv for the subprocess:
     # 1. Put the build environment at the front of the PATH to ensure
@@ -219,8 +221,8 @@ def default_build_wheel(
             "--index-url",
             ctx.wheel_server_url,  # probably redundant, but just in case
             "--log",
-            os.fspath(sdist_root_dir.parent / "build.log"),
-            os.fspath(sdist_root_dir),
+            os.fspath(build_dir.parent / "build.log"),
+            os.fspath(build_dir),
         ]
         external_commands.run(
             cmd,
