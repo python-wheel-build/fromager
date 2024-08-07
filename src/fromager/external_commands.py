@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import typing
+from io import TextIOWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def run(
     extra_environ: dict[str, typing.Any] | None = None,
     network_isolation: bool = False,
     log_filename: str | None = None,
+    stdin: TextIOWrapper | None = None,
 ) -> str:
     """Call the subprocess while logging output"""
     if extra_environ is None:
@@ -82,6 +84,7 @@ def run(
                 env=env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
+                stdin=stdin,
             )
         with open(log_filename, "r", encoding="utf-8") as f:
             output = f.read()
@@ -92,6 +95,7 @@ def run(
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            stdin=stdin,
         )
         output = completed.stdout.decode("utf-8") if completed.stdout else ""
     if completed.returncode != 0:

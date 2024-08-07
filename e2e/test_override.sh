@@ -17,6 +17,7 @@ fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
+  --patches-dir "$SCRIPTDIR/flit_core_patches" \
   bootstrap 'flit_core==3.9.0'
 
 find "$OUTDIR/wheels-repo/simple/" -name '*.whl'
@@ -26,6 +27,12 @@ pass=true
 
 # Check for log message
 if ! grep -q "using override to build flit_core wheel" "$OUTDIR/bootstrap.log"; then
+    echo "FAIL: Did not find log message from override in $OUTDIR/bootstrap.log" 1>&2
+    pass=false
+fi
+
+# Check for log message
+if ! grep -q "applying patch file" "$OUTDIR/bootstrap.log"; then
     echo "FAIL: Did not find log message from override in $OUTDIR/bootstrap.log" 1>&2
     pass=false
 fi
