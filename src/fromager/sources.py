@@ -369,32 +369,40 @@ def prepare_source(
     version: Version,
 ) -> pathlib.Path:
     logger.info(f"{req.name}: preparing source for {req} from {source_filename}")
-    source_root_dir = overrides.find_and_invoke(
+    prepare_source_details = overrides.find_and_invoke(
         req.name,
         "prepare_source",
-        _default_prepare_source,
+        default_prepare_source,
         ctx=ctx,
         req=req,
         source_filename=source_filename,
         version=version,
     )
+    if not isinstance(prepare_source_details, tuple):
+        source_root_dir = prepare_source_details
+    elif len(prepare_source_details) == 2:
+        source_root_dir, _ = prepare_source_details
+    else:
+        raise ValueError(
+            f"do not know how to unpack {prepare_source_details}, expected 1 or 2 members"
+        )
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
         logger.info(f"{req.name}: prepared source for {req} at {source_root_dir}")
     return source_root_dir
 
 
-def _default_prepare_source(
+def default_prepare_source(
     ctx: context.WorkContext,
     req: Requirement,
     source_filename: pathlib.Path,
     version: Version,
-) -> pathlib.Path:
+) -> tuple[pathlib.Path, bool]:
     source_root_dir, is_new = unpack_source(ctx, source_filename)
     if is_new:
         patch_source(ctx, source_root_dir, req)
         vendor_rust.vendor_rust(req, source_root_dir)
-    return source_root_dir
+    return source_root_dir, is_new
 
 
 def build_sdist(
