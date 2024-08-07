@@ -82,6 +82,12 @@ class Settings:
             resolve_dist.get("include_sdists"), default
         )
 
+    def build_dir(self, pkg: str, sdist_root_dir: pathlib.Path) -> pathlib.Path:
+        p = self.get_package_settings(pkg)
+        if p.get("build_dir"):
+            return sdist_root_dir / p.get("build_dir")
+        return sdist_root_dir
+
     def get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
         p = self.packages()
         return self._return_value_or_default(
