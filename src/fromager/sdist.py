@@ -584,4 +584,4 @@ def safe_install(
         ],
         network_isolation=False,
     )
-    logger.info("installed %s %s using %s", req_type, req, req.specifier)
+    logger.info("installed %s requirement %s", req_type, req)
