@@ -2,13 +2,11 @@ import copy
 import logging
 import os
 import pathlib
-import shutil
 import typing
 
 import pkginfo
 import pyproject_hooks
 import tomlkit
-from packaging import metadata
 from packaging.requirements import Requirement
 
 from . import context, external_commands, overrides, requirements_file
@@ -176,32 +174,6 @@ def get_install_dependencies_of_wheel(
         requirements_file_dir / "requirements.txt",
     )
     return deps
-
-
-def default_get_install_dependencies(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_root_dir: pathlib.Path,
-) -> set[Requirement]:
-    pyproject_toml = get_pyproject_contents(sdist_root_dir)
-    requires = set()
-    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
-    hook_caller = get_build_backend_hook_caller(
-        sdist_root_dir, pyproject_toml, override_environ=extra_environ
-    )
-
-    # Clean up any existing dist-info so we don't get an error regenerating it.
-    for info_dir in sdist_root_dir.glob("*.dist-info"):
-        logger.debug(f"{req.name}: removing existing dist-info dir {info_dir}")
-        shutil.rmtree(info_dir)
-
-    metadata_path = hook_caller.prepare_metadata_for_build_wheel(str(sdist_root_dir))
-    with open(os.path.join(sdist_root_dir, metadata_path, "METADATA"), "r") as f:
-        parsed = metadata.Metadata.from_email(f.read(), validate=False)
-        for r in parsed.requires_dist or []:
-            if requirements_file.evaluate_marker(req, r, req.extras):
-                requires.add(r)
-    return requires
 
 
 def get_pyproject_contents(sdist_root_dir: pathlib.Path) -> dict[str, typing.Any]:

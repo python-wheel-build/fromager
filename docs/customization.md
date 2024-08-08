@@ -333,31 +333,6 @@ def get_build_sdist_dependencies(ctx, req, sdist_root_dir):
     )
 ```
 
-### get_install_dependencies
-
-The `get_install_dependencies()` function should return the PEP 517
-installation and runtime dependencies for a package.
-
-The arguments are the `WorkContext`, the `Requirement` being
-evaluated, and the `Path` to the root of the source tree.
-
-The return value is an iterable of requirement specification strings
-for runtime and installation dependencies for the package. The caller
-is responsible for evaluating the requirements with the current build
-environment settings to determine if they are actually needed.
-
-```python
-# pyarrow.py
-def get_install_dependencies(ctx, req, sdist_root_dir):
-    # The _actual_ directory with our requirements is different than
-    # the source root directory detected for the build because the
-    # source tree doesn't just include the python package.
-    return dependencies.default_get_install_dependencies(
-        ctx, req,
-        sdist_root_dir / 'python',
-    )
-```
-
 ### build_sdist
 
 The `build_sdist()` function is responsible for creating a new source
