@@ -36,7 +36,7 @@ def get_build_system_dependencies(
         default_get_build_system_dependencies,
         ctx=ctx,
         req=req,
-        sdist_root_dir=sdist_root_dir,
+        sdist_root_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -93,7 +93,7 @@ def get_build_backend_dependencies(
         default_get_build_backend_dependencies,
         ctx=ctx,
         req=req,
-        sdist_root_dir=sdist_root_dir,
+        sdist_root_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -139,7 +139,7 @@ def get_build_sdist_dependencies(
         default_get_build_sdist_dependencies,
         ctx=ctx,
         req=req,
-        sdist_root_dir=sdist_root_dir,
+        sdist_root_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 

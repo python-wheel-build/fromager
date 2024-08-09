@@ -161,7 +161,7 @@ def build_wheel(
         build_env=build_env,
         extra_environ=extra_environ,
         req=req,
-        sdist_root_dir=sdist_root_dir,
+        sdist_root_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
         version=version,
     )
     # End the timer

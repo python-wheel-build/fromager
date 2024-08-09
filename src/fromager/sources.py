@@ -404,7 +404,9 @@ def build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: wheels.BuildEnvironment,
 ) -> pathlib.Path:
-    logger.info(f"{req.name}: building source distribution in {sdist_root_dir}")
+    logger.info(
+        f"{req.name}: building source distribution in {ctx.settings.build_dir(req.name, sdist_root_dir)}"
+    )
     extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
     sdist_filename = overrides.find_and_invoke(
         req.name,
@@ -414,7 +416,7 @@ def build_sdist(
         extra_environ=extra_environ,
         req=req,
         version=version,
-        sdist_root_dir=sdist_root_dir,
+        sdist_root_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
         build_env=build_env,
     )
     logger.info(f"{req.name}: built source distribution {sdist_filename}")
