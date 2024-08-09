@@ -74,6 +74,11 @@ def build_sequence(
 
     """
     server.start_wheel_server(wkctx)
+    if skip_existing:
+        logger.info(
+            "skipping builds for versions of packages available at %s",
+            wkctx.wheel_server_url,
+        )
 
     with open(build_order_file, "r") as f:
         for entry in progress.progress(json.load(f)):
