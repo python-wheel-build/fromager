@@ -4,7 +4,6 @@ import logging
 import os.path
 import pathlib
 import shutil
-import subprocess
 import tarfile
 import typing
 import zipfile
@@ -16,7 +15,16 @@ from packaging.requirements import Requirement
 from packaging.version import InvalidVersion, Version
 from packaging.version import parse as validate_version
 
-from . import context, dependencies, overrides, resolver, tarballs, vendor_rust, wheels
+from . import (
+    context,
+    dependencies,
+    external_commands,
+    overrides,
+    resolver,
+    tarballs,
+    vendor_rust,
+    wheels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -314,11 +322,7 @@ def patch_source(
 def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
     logger.info("applying patch file %s to %s", patch, source_root_dir)
     with open(patch, "r") as f:
-        subprocess.check_call(
-            ["patch", "-p1"],
-            stdin=f,
-            cwd=source_root_dir,
-        )
+        external_commands.run(["patch", "-p1"], stdin=f, cwd=source_root_dir)
 
 
 def _warn_for_old_patch(

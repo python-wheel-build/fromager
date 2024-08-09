@@ -1,0 +1,10 @@
+diff --git a/README.rst b/README.rst
+index 8ba0a83..0ae0786 100644
+--- a/README.rst
++++ b/README.rst
+@@ -7,3 +7,5 @@ interface is the API specified by PEP 517, at ``flit_core.buildapi``.
+ 
+ See the `Flit documentation <https://flit.pypa.io/en/stable/>`_ for more
+ information.
++
++Add dummy patch

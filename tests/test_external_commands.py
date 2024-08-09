@@ -58,6 +58,7 @@ def test_external_commands_network_isolation(
         env={},
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        stdin=None,
     )
 
 
