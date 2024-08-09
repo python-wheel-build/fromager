@@ -82,6 +82,20 @@ class Settings:
             resolve_dist.get("include_sdists"), default
         )
 
+    def build_dir(self, pkg: str, sdist_root_dir: pathlib.Path) -> pathlib.Path:
+        p = self.get_package_settings(pkg)
+        if p.get("build_dir"):
+            input_build_dir = pathlib.Path(p.get("build_dir"))
+            # hack: make path absolute to ensure that any directory escaping is contained
+            if ".." in str(input_build_dir):
+                raise ValueError(
+                    f"{pkg}: build dir {input_build_dir} defined in settings is not relative to sdist root dir"
+                )
+            # ensure that absolute build_dir path from settings is converted to a relative path
+            relative_build_dir = input_build_dir.relative_to(input_build_dir.anchor)
+            return sdist_root_dir / relative_build_dir
+        return sdist_root_dir
+
     def get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
         p = self.packages()
         return self._return_value_or_default(
