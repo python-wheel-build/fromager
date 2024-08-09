@@ -8,7 +8,9 @@ from fromager import context, settings, sources
 
 
 @patch("fromager.sources.download_url")
-def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
+def test_invalid_tarfile(
+    mock_download_url, tmp_path: pathlib.Path, tmp_context: context.WorkContext
+):
     mock_download_url.return_value = pathlib.Path(tmp_path / "test" / "fake_wheel.txt")
     fake_url = "https://www.thisisafakeurl.com"
     fake_dir = tmp_path / "test"
@@ -16,7 +18,7 @@ def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
     text_file = fake_dir / "fake_wheel.txt"
     text_file.write_text("This is a test file")
     with pytest.raises(TypeError):
-        sources._download_source_check(fake_dir, fake_url)
+        sources._download_source_check(tmp_context, fake_dir, fake_url)
 
 
 @patch("fromager.sources.resolve_dist")
@@ -41,7 +43,7 @@ def test_default_download_source_from_settings(
 
     resolve_dist.assert_called_with(tmp_context, req, sdist_server_url, True, False)
     download_source_check.assert_called_with(
-        tmp_context.sdists_downloads, "predefined_url-1.0", "foo-1.0"
+        tmp_context, tmp_context.sdists_downloads, "predefined_url-1.0", "foo-1.0"
     )
 
 

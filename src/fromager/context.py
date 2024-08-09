@@ -5,9 +5,11 @@ import pathlib
 import typing
 from urllib.parse import urlparse
 
+import requests
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
+from requests.adapters import HTTPAdapter, Retry
 
 from . import constraints, settings
 
@@ -71,6 +73,8 @@ class WorkContext:
         self._seen_requirements: set[tuple[NormalizedName, tuple[str, ...], str]] = (
             set()
         )
+        # create a requests session
+        self.requests = self._make_requests_session()
 
     @property
     def pip_wheel_server_args(self) -> list[str]:
@@ -79,6 +83,26 @@ class WorkContext:
         if parsed.scheme != "https" and parsed.hostname:
             args = args + ["--trusted-host", parsed.hostname]
         return args
+
+    def _make_requests_session(
+        self, retries=5, backoff_factor=0.1, status_forcelist=None
+    ) -> requests.Session:
+        session = requests.Session()
+        if status_forcelist is None:
+            status_forcelist = [500, 502, 503, 504]
+
+        # Initialize the retries object
+        retries = Retry(
+            total=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=status_forcelist,
+        )
+
+        # Initialize the adapter object
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
 
     def _resolved_key(
         self, req: Requirement, version: Version

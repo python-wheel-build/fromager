@@ -311,7 +311,7 @@ def download_wheel(
     wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
     if not wheel_filename.exists():
         logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
-        wheel_filename = _download_wheel_check(output_directory, wheel_url)
+        wheel_filename = _download_wheel_check(ctx, output_directory, wheel_url)
         logger.info(f"{req.name}: saved wheel to {wheel_filename}")
     else:
         logger.info(f"{req.name}: have existing wheel {wheel_filename}")
@@ -321,8 +321,8 @@ def download_wheel(
 
 # Helper method to check whether the .whl file is a zip file and has contents in it.
 # It will throw BadZipFile exception if any other file is encountered. Eg: index.html
-def _download_wheel_check(destination_dir, wheel_url):
-    wheel_filename = sources.download_url(destination_dir, wheel_url)
+def _download_wheel_check(ctx, destination_dir, wheel_url):
+    wheel_filename = sources.download_url(ctx, destination_dir, wheel_url)
     wheel_directory_contents = zipfile.ZipFile(wheel_filename).namelist()
     if not wheel_directory_contents:
         raise zipfile.BadZipFile(f"Empty zip file encountered: {wheel_filename}")
