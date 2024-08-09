@@ -55,4 +55,48 @@ for pattern in $EXPECTED_FILES; do
   fi
 done
 
+# Rebuild everything with the skip flag and verify we reuse the existing wheels
+log="$OUTDIR/build-logs/${DIST}-build-skip.log"
+fromager \
+    --wheel-server-url $WHEEL_SERVER_URL \
+    --log-file "$log" \
+    --work-dir "$OUTDIR/work-dir" \
+    --sdists-repo "$OUTDIR/sdists-repo" \
+    --wheels-repo "$OUTDIR/wheels-repo" \
+    build-sequence --skip-existing "$OUTDIR/build-order.json" "https://pypi.org/simple"
+
+find "$OUTDIR/wheels-repo/"
+
+if ! grep -q "skipping builds for versions of packages available" "$log"; then
+  echo "Did not find message indicating builds would be skipped" 1>&2
+  pass=false
+fi
+if ! grep -q "skipping building wheels for stevedore" "$log"; then
+  echo "Did not find message indicating build of stevedore was skipped" 1>&2
+  pass=false
+fi
+
+
+# Rebuild everything with the skip env var and verify we reuse the existing wheels
+export FROMAGER_BUILD_SEQUENCE_SKIP_EXISTING=true
+log="$OUTDIR/build-logs/${DIST}-build-skip-env.log"
+fromager \
+    --wheel-server-url $WHEEL_SERVER_URL \
+    --log-file "$log" \
+    --work-dir "$OUTDIR/work-dir" \
+    --sdists-repo "$OUTDIR/sdists-repo" \
+    --wheels-repo "$OUTDIR/wheels-repo" \
+    build-sequence "$OUTDIR/build-order.json" "https://pypi.org/simple"
+
+find "$OUTDIR/wheels-repo/"
+
+if ! grep -q "skipping builds for versions of packages available" "$log"; then
+  echo "Did not find message indicating builds would be skipped" 1>&2
+  pass=false
+fi
+if ! grep -q "skipping building wheels for stevedore" "$log"; then
+  echo "Did not find message indicating build of stevedore was skipped" 1>&2
+  pass=false
+fi
+
 $pass
