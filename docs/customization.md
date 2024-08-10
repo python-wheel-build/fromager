@@ -23,23 +23,32 @@ containers).
 
 ## Build environment variables
 
-Most python packages with configurable builds use environment
-variables to pass build parameters. The `--envs-dir` command line
-argument specifies a directory with environment files for passing
-variables to the builds. The default is `overrides/envs`.
-
-The most common reason for passing different environment variables is
-to support different build variants, such as to enable different
-hardware accelerators. Therefore, the environment file directory is
-organized with a subdirectory per variant.
+Most python packages with configurable builds use environment variables to pass
+build parameters. The environment variables set when `fromager` runs are passed
+to the build process for each wheel. Sometimes this does not provide sufficient
+opportunity for customization, so `fromager` also supports setting build
+variables for each package using environment files. The `--envs-dir` command
+line argument specifies a directory with environment files for passing variables
+to the builds. The default is `overrides/envs`.
 
 (canonical-distribution-names)=
 Environment files are named using the [canonical distribution
 name](#canonical-distribution-names) and the suffix `.env`.
 
+Settings common to all variants of a given package can be placed in an
+environment file at the root of the `--envs-dir`.
+
+The most common reason for passing different environment variables is to support
+different build variants, such as to enable different hardware accelerators.
+Therefore, the environment file directory is organized with a subdirectory per
+variant. Settings in the variant-specific file override and extend settings in
+the base directory.
+
 ```console
 $ tree overrides/envs/
 overrides/envs/
+├── flash_attn.env
+├── vllm.env
 ├── cpu
 │   └── vllm.env
 ├── cuda
@@ -425,12 +434,12 @@ def post_build(
 
 ## Customizations using settings.yaml
 
-To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml. Optionally the downloaded sdist can be renamed. Both the url and the destination filename support templating. The only supported template variable are:  
+To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml. Optionally the downloaded sdist can be renamed. Both the url and the destination filename support templating. The only supported template variable are:
 
-- `version` - it is replaced by the version returned by the resolver  
-- `canonicalized_name` - it is replaced by the canonicalized name of the package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`  
+- `version` - it is replaced by the version returned by the resolver
+- `canonicalized_name` - it is replaced by the canonicalized name of the package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`
 
-The source distribution index server used by the package resolver can be overriden for a particular package. The resolver can also be told to whether include wheels or sdist sources while trying to resolve the package. Templating is not supported here.  
+The source distribution index server used by the package resolver can be overriden for a particular package. The resolver can also be told to whether include wheels or sdist sources while trying to resolve the package. Templating is not supported here.
 
 A `build_dir` field can also be defined to indicate to fromager where the package should be build relative to the sdist root directory
 
