@@ -2,10 +2,16 @@ import pathlib
 import textwrap
 
 import pytest
+import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import settings
+
+
+def _parse(content: str) -> settings.Settings:
+    data = yaml.safe_load(content)
+    return settings.Settings(data)
 
 
 def test_empty():
@@ -14,7 +20,7 @@ def test_empty():
 
 
 def test_no_pre_built():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     pre_built:
     """)
@@ -23,7 +29,7 @@ def test_no_pre_built():
 
 
 def test_with_pre_built():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     pre_built:
       cuda:
@@ -35,7 +41,7 @@ def test_with_pre_built():
 
 
 def test_with_download_source():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
@@ -51,7 +57,7 @@ def test_with_download_source():
 
 
 def test_no_download_source():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
     """)
@@ -61,7 +67,7 @@ def test_no_download_source():
 
 
 def test_with_resolver_dist():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
@@ -79,7 +85,7 @@ def test_with_resolver_dist():
 
 
 def test_no_resolver_dist():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
@@ -94,7 +100,7 @@ def test_no_resolver_dist():
 
 
 def test_relative_path_build_dir():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
@@ -106,7 +112,7 @@ def test_relative_path_build_dir():
 
 
 def test_only_name_build_dir():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
@@ -118,7 +124,7 @@ def test_only_name_build_dir():
 
 
 def test_absolute_path_build_dir():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
@@ -130,7 +136,7 @@ def test_absolute_path_build_dir():
 
 
 def test_escape_sdist_root_build_dir():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
@@ -173,3 +179,64 @@ def test_resolve_template_with_no_matching_template():
     req = Requirement("foo==1.0")
     with pytest.raises(KeyError):
         settings._resolve_template("url-${flag}", req, "1.0")
+
+
+def test_load_package_files(tmp_path):
+    settings_filename = tmp_path / "settings.yaml"
+    settings_filename.write_text(
+        textwrap.dedent("""
+            packages:
+                foo:
+                    build_dir: "../tmp/build"
+        """)
+    )
+    other_settings = tmp_path / "settings"
+    other_settings.mkdir()
+    (other_settings / "bar.yaml").write_text(
+        textwrap.dedent("""
+        build_dir: "bar-build-dir"
+        """)
+    )
+    s = settings.load(settings_filename, other_settings)
+    assert s._data == {
+        "packages": {
+            "foo": {"build_dir": "../tmp/build"},
+            "bar": {"build_dir": "bar-build-dir"},
+        },
+    }
+
+
+def test_load_package_files_precedence(tmp_path):
+    # In this test we want to show both that settings from a package-specific
+    # file override the global values and that 2 files for the same package with
+    # different filename but same canonical form are handled in order. We can't
+    # guarantee that we are running on a case-sensitive filesystem (macOS), so
+    # use "." and "-" as differentiating forms and rely on their sort order. Use
+    # the non-canonical form of the name in the global file to show that it is
+    # also transformed into the canonical form.
+    settings_filename = tmp_path / "settings.yaml"
+    settings_filename.write_text(
+        textwrap.dedent("""
+            packages:
+                foo-bar:
+                    build_dir: "../tmp/build"
+        """)
+    )
+    other_settings = tmp_path / "settings"
+    other_settings.mkdir()
+    (other_settings / "foo-bar.yaml").write_text(
+        textwrap.dedent("""
+        build_dir: "dash-build-dir"
+        """)
+    )
+    (other_settings / "foo.bar.yaml").write_text(
+        textwrap.dedent("""
+        build_dir: "dotted-build-dir"
+        """)
+    )
+    s = settings.load(settings_filename, other_settings)
+    assert s._data == {
+        "packages": {
+            "foo_bar": {"build_dir": "dotted-build-dir"},
+        },
+    }

@@ -91,6 +91,12 @@ else:
     help="location of the application settings file",
 )
 @click.option(
+    "--settings-dir",
+    default=pathlib.Path("overrides/settings"),
+    type=clickext.ClickPath(),
+    help="location of per-package settings files",
+)
+@click.option(
     "-c",
     "--constraints-file",
     type=clickext.ClickPath(),
@@ -132,6 +138,7 @@ def main(
     patches_dir: pathlib.Path,
     envs_dir: pathlib.Path,
     settings_file: pathlib.Path,
+    settings_dir: pathlib.Path,
     constraints_file: pathlib.Path,
     wheel_server_url: str,
     cleanup: bool,
@@ -178,7 +185,7 @@ def main(
         ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
 
     wkctx = context.WorkContext(
-        active_settings=settings.load(settings_file),
+        active_settings=settings.load(settings_file, settings_dir),
         pkg_constraints=constraints.load(constraints_file),
         patches_dir=patches_dir,
         envs_dir=envs_dir,

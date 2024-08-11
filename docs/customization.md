@@ -455,3 +455,25 @@ packages:
             include_sdists: false
         build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
 ```
+
+### Customizations using package-specific settings files
+
+In addition to the unified settings file, package settings can be saved in their
+own file in the directory specified with `--settings-dir`. Files should be named
+using the canonicalized form of the package name with the suffix `.yaml`. The
+data from the file is treated as though it appears in the
+`packages.package_name` section of the main settings file.  Files are read in
+lexicographical order. Settings in package-specific files override all settings
+in the global file.
+
+```yaml
+# settings/torch.yaml
+download_source:
+    url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
+    destination_filename: "${canonicalized_name}-${version}.tar.gz"
+resolver_dist:
+    sdist_server_url: "https://pypi.org/simple"
+    include_wheels: true
+    include_sdists: false
+build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
+```
