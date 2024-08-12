@@ -1,5 +1,6 @@
 import os
 import pathlib
+from importlib import metadata
 from unittest import mock
 from unittest.mock import patch
 
@@ -297,3 +298,10 @@ def test_regex_for_vllm(tmp_path: pathlib.Path):
     actual = overrides._filter_patches_based_on_req(lst, req_name)
     assert len(expected) == len(actual)
     assert expected == actual
+
+
+def test_get_dist_info():
+    fromager_version = metadata.version("fromager")
+    plugin_dist, plugin_version = overrides._get_dist_info("fromager.submodule")
+    assert plugin_dist == "fromager"
+    assert plugin_version == fromager_version
