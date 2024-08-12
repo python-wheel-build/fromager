@@ -60,11 +60,31 @@ def test_extra_environ_for_pkg(tmp_path: pathlib.Path):
     assert result == {}
 
 
+def test_extra_environ_for_pkg_non_variant(tmp_path: pathlib.Path):
+    env_dir = tmp_path / "env"
+    env_dir.mkdir()
+
+    project_env1 = env_dir / "project.env"
+    project_env1.write_text("VAR1=VALUE0\nVAR3=VALUE3\n")
+
+    variant_dir = env_dir / "variant"
+    variant_dir.mkdir()
+
+    project_env2 = variant_dir / "project.env"
+    project_env2.write_text("VAR1=VALUE1\nVAR2=VALUE2")
+
+    result = overrides.extra_environ_for_pkg(env_dir, "project", "variant")
+    assert result == {"VAR1": "VALUE1", "VAR2": "VALUE2", "VAR3": "VALUE3"}
+
+
 def test_extra_environ_for_pkg_expansion(tmp_path: pathlib.Path):
     variant = "cpu"
     pkg_name = "another-shrubbery"
+    pkg_env_file = tmp_path / "another_shrubbery.env"
     env_file = tmp_path / variant / "another_shrubbery.env"
     env_file.parent.mkdir(parents=True)
+
+    pkg_env_file.write_text("GLOBAL=setting\n")
 
     # good case
     with env_file.open("w", encoding="utf=8") as f:
@@ -74,6 +94,7 @@ def test_extra_environ_for_pkg_expansion(tmp_path: pathlib.Path):
         f.write("FOO='Bar'\n")
         f.write("XYZ=A\"BC'\n")
         f.write('HELLO="World"\n')
+        f.write("GLOBAL_CHECK=${GLOBAL}\n")
 
     with mock.patch.dict(os.environ) as environ:
         environ.clear()
@@ -87,6 +108,8 @@ def test_extra_environ_for_pkg_expansion(tmp_path: pathlib.Path):
         "FOO": "Bar",
         "XYZ": "A\"BC'",
         "HELLO": "World",
+        "GLOBAL": "setting",
+        "GLOBAL_CHECK": "setting",
     }
 
     # unknown key

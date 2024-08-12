@@ -124,37 +124,54 @@ def extra_environ_for_pkg(
     previous keys in an env file. Raises 'KeyError' for unknown keys and
     'ValueError' for subshell "$()" expressions.
     """
-    extra_environ = {}
-    template_env = os.environ.copy()
 
     pkgname = pkgname_to_override_module(pkgname)
-    variant_dir = envs_dir / variant
-    env_file = variant_dir / (pkgname + ".env")
 
-    if env_file.exists():
+    template_env = os.environ.copy()
+    extra_environ = {}
+
+    for env_file in [
+        envs_dir / (pkgname + ".env"),
+        envs_dir / variant / (pkgname + ".env"),
+    ]:
+        if not env_file.exists():
+            continue
         logger.debug(
-            "%s: found %s environment settings in %s",
+            "%s: reading %s environment settings from %s",
             pkgname,
             variant,
             env_file,
         )
-        with open(env_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip()
-                # remove quotes if they surround the value
-                if value[0] == value[-1] and (value[0] == '"' or value[0] == "'"):
-                    value = value[1:-1]
-                if "$(" in value:
-                    raise ValueError(f"'{value}': subshell '$()' is not supported.")
-                value = string.Template(value).substitute(template_env)
-                extra_environ[key] = value
-                # subsequent key-value pairs can depend on previously vars.
-                template_env[key] = value
+        extra_environ.update(_parse_env_file(env_file, template_env))
+
+    return extra_environ
+
+
+def _parse_env_file(
+    env_file: pathlib.Path,
+    template_env: dict[str, str],
+) -> dict[str, str]:
+    """Read the file, parse the contents, and expand any templated values."""
+    extra_environ = {}
+
+    with open(env_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # remove quotes if they surround the value
+            if value[0] == value[-1] and (value[0] == '"' or value[0] == "'"):
+                value = value[1:-1]
+            if "$(" in value:
+                raise ValueError(f"'{value}': subshell '$()' is not supported.")
+            value = string.Template(value).substitute(template_env)
+            extra_environ[key] = value
+            # subsequent key-value pairs can depend on previously vars.
+            template_env[key] = value
+
     return extra_environ
 
 
