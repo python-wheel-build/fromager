@@ -3,6 +3,7 @@ import textwrap
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from fromager import settings
 
@@ -139,6 +140,23 @@ def test_escape_sdist_root_build_dir():
     sdist_root_dir = pathlib.Path("/foo/bar")
     with pytest.raises(ValueError):
         str(s.build_dir("foo", sdist_root_dir)).startswith("/foo/bar")
+
+
+def test_changelog():
+    s = settings._parse(
+        textwrap.dedent("""
+    packages:
+      foo:
+        changelog:
+          "2.1.0":
+            - "rebuild abc"
+            - "rebuild xyz"
+    """)
+    )
+    assert s.build_tag("foo", Version("2.1.0")) == 2
+    assert s.build_tag("foo", "2.1.0") == 2
+    assert s.build_tag("foo", "3.1.0") == 0
+    assert s.build_tag("bar", "2.1.0") == 0
 
 
 def test_resolve_template_with_no_template():

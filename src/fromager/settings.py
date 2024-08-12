@@ -96,6 +96,11 @@ class Settings:
             return sdist_root_dir / relative_build_dir
         return sdist_root_dir
 
+    def build_tag(self, pkg: str, version: Version | str) -> int:
+        p = self.get_package_settings(pkg)
+        changelog = p.get("changelog", {}).get(str(version), [])
+        return len(changelog)
+
     def get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
         p = self.packages()
         return self._return_value_or_default(
