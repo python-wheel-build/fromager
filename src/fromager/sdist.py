@@ -203,7 +203,6 @@ def handle_requirement(
         req_type=req_type,
         req=req,
         version=resolved_version,
-        why=why,
         source_url=source_url,
         source_url_type=source_url_type,
         prebuilt=pre_built,

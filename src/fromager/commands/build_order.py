@@ -5,7 +5,6 @@ import pathlib
 import sys
 
 import click
-from packaging.requirements import Requirement
 
 from .. import clickext, overrides
 
@@ -42,7 +41,6 @@ def as_csv(build_order_file: str, output: pathlib.Path | None) -> None:
         ("type", "Dependency Type"),
         ("prebuilt", "Pre-built Package"),
         ("order", "Build Order"),
-        ("why", "Dependency Chain"),
     ]
     headers = {n: v for n, v in fields}
     fieldkeys = [f[0] for f in fields]
@@ -57,11 +55,6 @@ def as_csv(build_order_file: str, output: pathlib.Path | None) -> None:
             # Replace the short keys with the longer human-readable
             # headers we want in the CSV output.
             new_entry = {headers[f]: entry[f] for f in fieldkeys}
-            # Reformat the why field
-            new_entry["Dependency Chain"] = " ".join(
-                f"-{dep_type}-> {Requirement(req).name}({version})"
-                for dep_type, req, version in entry["why"]
-            )
             build_order.append(new_entry)
 
     outfile = open(output, "w") if output else sys.stdout
