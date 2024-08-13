@@ -149,7 +149,7 @@ def test_escape_sdist_root_build_dir():
 
 
 def test_changelog():
-    s = settings._parse(
+    s = _parse(
         textwrap.dedent("""
     packages:
       foo:
