@@ -23,10 +23,7 @@ class Settings:
         return set(overrides.pkgname_to_override_module(n) for n in names)
 
     def packages(self) -> dict[str, dict[str, str]]:
-        p = self._return_value_or_default(self._data.get("packages"), {})
-        return {
-            overrides.pkgname_to_override_module(key): value for key, value in p.items()
-        }
+        return self._return_value_or_default(self._data.get("packages"), {})
 
     def download_source_url(
         self,
