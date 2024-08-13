@@ -61,6 +61,7 @@ jobs:
         test-script:
           - bootstrap
           - bootstrap_extras
+          - bootstrap_build_tags
           - build
           - build_order
           - build_steps

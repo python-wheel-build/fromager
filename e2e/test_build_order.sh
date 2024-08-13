@@ -1,8 +1,7 @@
 #!/bin/bash
 # -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
-# Test to show that we get a detailed error message if a dependency is
-# not available when setting up to build a package.
+# Test build-sequence (with and without skipping already built wheel)
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
@@ -16,26 +15,40 @@ fromager \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \
+    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
     bootstrap "${DIST}==${VERSION}"
 
 # Save the build order file but remove everything else.
 cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
-rm -r "$OUTDIR/work-dir" "$OUTDIR/sdists-repo" "$OUTDIR/wheels-repo"
-
-# Rebuild the wheel mirror to be empty
-pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
 start_local_wheel_server
 
+# copy sdists to wheel-repo/download so that it can be put on local pypi index server (even later when fromager calls update_wheel_mirror)
+rm -r "$OUTDIR/wheels-repo" "$OUTDIR/work-dir"
+mkdir -p "$OUTDIR/wheels-repo/downloads"
+
+# IMPORTANT: cp -r behaves differently on macos: adding a trailing / to the src directory will end up copying the contents of that directory
+cp -r "$OUTDIR/sdists-repo/downloads" "$OUTDIR/wheels-repo/"
+rm -r "$OUTDIR/sdists-repo"
+
+pypi-mirror create -c -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
+
 # Rebuild everything
+log="$OUTDIR/build-logs/${DIST}-build.log"
 fromager \
-    --log-file "$OUTDIR/build-logs/${DIST}-build.log" \
+    --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    build-sequence "$OUTDIR/build-order.json" "https://pypi.org/simple"
+    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+    build-sequence "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
 
 find "$OUTDIR/wheels-repo/"
+
+if grep -q "skipping building wheels for stevedore" "$log"; then
+  echo "Found message indicating build of stevedore was skipped" 1>&2
+  pass=false
+fi
 
 EXPECTED_FILES="
 $OUTDIR/wheels-repo/downloads/setuptools-*.whl
@@ -55,6 +68,8 @@ for pattern in $EXPECTED_FILES; do
   fi
 done
 
+$pass
+
 # Rebuild everything with the skip flag and verify we reuse the existing wheels
 log="$OUTDIR/build-logs/${DIST}-build-skip.log"
 fromager \
@@ -63,7 +78,8 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    build-sequence --skip-existing "$OUTDIR/build-order.json" "https://pypi.org/simple"
+    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+    build-sequence --skip-existing "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
 
 find "$OUTDIR/wheels-repo/"
 
@@ -76,6 +92,7 @@ if ! grep -q "skipping building wheels for stevedore" "$log"; then
   pass=false
 fi
 
+$pass
 
 # Rebuild everything with the skip env var and verify we reuse the existing wheels
 export FROMAGER_BUILD_SEQUENCE_SKIP_EXISTING=true
@@ -86,7 +103,8 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    build-sequence "$OUTDIR/build-order.json" "https://pypi.org/simple"
+    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+    build-sequence "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
 
 find "$OUTDIR/wheels-repo/"
 
@@ -98,5 +116,45 @@ if ! grep -q "skipping building wheels for stevedore" "$log"; then
   echo "Did not find message indicating build of stevedore was skipped" 1>&2
   pass=false
 fi
+
+$pass
+
+# Add a new changelog value to force build stevedore
+SETTINGS_FILE_WITH_ADDED_CHANGELOG=$OUTDIR/changelog_settings_$RANDOM.yaml
+cp $SCRIPTDIR/changelog_settings.yaml $SETTINGS_FILE_WITH_ADDED_CHANGELOG
+echo -e "\n        - test2\n" >> $SETTINGS_FILE_WITH_ADDED_CHANGELOG
+
+log="$OUTDIR/build-logs/${DIST}-build-changelog.log"
+fromager \
+    --wheel-server-url $WHEEL_SERVER_URL \
+    --log-file "$log" \
+    --work-dir "$OUTDIR/work-dir" \
+    --sdists-repo "$OUTDIR/sdists-repo" \
+    --wheels-repo "$OUTDIR/wheels-repo" \
+    --settings-file="$SETTINGS_FILE_WITH_ADDED_CHANGELOG" \
+    build-sequence --skip-existing "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
+
+find "$OUTDIR/wheels-repo/"
+
+if grep -q "skipping building wheels for stevedore" "$log"; then
+  echo "Found message indicating build of stevedore was skipped" 1>&2
+  pass=false
+fi
+
+find "$OUTDIR/wheels-repo/"
+
+EXPECTED_FILES="
+$OUTDIR/wheels-repo/downloads/stevedore-5.2.0-2*.whl
+
+$OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
+"
+
+pass=true
+for pattern in $EXPECTED_FILES; do
+  if [ ! -f "${pattern}" ]; then
+    echo "Did not find $pattern" 1>&2
+    pass=false
+  fi
+done
 
 $pass

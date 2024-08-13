@@ -46,7 +46,7 @@ fi
 
 # Check for output files
 EXPECTED_FILES="
-wheels-repo/downloads/flit_core-3.9.0-py3-none-any.whl
+wheels-repo/downloads/flit_core-3.9.0-0-py3-none-any.whl
 
 sdists-repo/downloads/flit_core-3.9.0.tar.gz
 "

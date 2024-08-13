@@ -35,7 +35,7 @@ done
 
 $pass
 
-wheel unpack $OUTDIR/wheels-repo/downloads/stevedore-5.2.0-py3-none-any.whl -d $OUTDIR
+wheel unpack $OUTDIR/wheels-repo/downloads/stevedore-5.2.0-0-py3-none-any.whl -d $OUTDIR
 
 EXPECTED_FILES="
 $OUTDIR/stevedore-5.2.0/stevedore-5.2.0.dist-info/fromager-build-settings

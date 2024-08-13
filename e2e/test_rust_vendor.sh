@@ -32,7 +32,7 @@ fromager \
 PYVER=$(python3 -c 'import sys; print("%s%s" % sys.version_info[:2])')
 
 EXPECTED_FILES="
-wheels-repo/downloads/${DIST}-${VERSION}-cp${PYVER}-cp${PYVER}-${WHEEL_PLATFORM_TAG}.whl
+wheels-repo/downloads/${DIST}-${VERSION}-0-cp${PYVER}-cp${PYVER}-${WHEEL_PLATFORM_TAG}.whl
 sdists-repo/downloads/${DIST}-${VERSION}.tar.gz
 "
 

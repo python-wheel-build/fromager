@@ -59,8 +59,8 @@ fromager \
 
 # Ensure we have both expected wheels
 EXPECTED_FILES="
-wheels-repo/prebuilt/flit_core-3.9.0-py3-none-any.whl
-wheels-repo/downloads/wheel-0.43.0-py3-none-any.whl
+wheels-repo/prebuilt/flit_core-3.9.0-0-py3-none-any.whl
+wheels-repo/downloads/wheel-0.43.0-0-py3-none-any.whl
 "
 
 pass=true
