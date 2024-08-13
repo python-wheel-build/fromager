@@ -15,13 +15,14 @@ import html5lib
 import requests
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.tags import sys_tags
+from packaging.tags import Tag, sys_tags
 from packaging.utils import (
     canonicalize_name,
     parse_sdist_filename,
     parse_wheel_filename,
 )
 from packaging.version import Version
+from resolvelib.resolvers import RequirementInformation
 
 from .candidate import Candidate
 from .constraints import Constraints
@@ -36,7 +37,7 @@ SUPPORTED_TAGS = set(sys_tags())
 
 def get_project_from_pypi(
     project: str,
-    extras: tuple[str],
+    extras: typing.Iterable[str],
     sdist_server_url: str,
 ) -> typing.Iterable[Candidate]:
     """Return candidates created from the project name and extras."""
@@ -76,7 +77,7 @@ def get_project_from_pypi(
             if filename.endswith(".tar.gz") or filename.endswith(".zip"):
                 is_sdist = True
                 name, version = parse_sdist_filename(filename)
-                tags = set()
+                tags: frozenset[Tag] = frozenset()
             else:
                 is_sdist = False
                 name, version, _, tags = parse_wheel_filename(filename)
@@ -117,8 +118,8 @@ def get_project_from_pypi(
         yield c
 
 
-RequirementsMap: typing.TypeAlias = dict[str, typing.Iterable[Requirement]]
-CandidatesMap: typing.TypeAlias = dict[str, typing.Iterable[Candidate]]
+RequirementsMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Requirement]]
+CandidatesMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Candidate]]
 VersionSource: typing.TypeAlias = typing.Callable[
     [str, RequirementsMap, CandidatesMap],
     typing.Iterable[str | Version],
@@ -145,14 +146,27 @@ class BaseProvider(ExtrasProvider):
     def get_extras_for(
         self,
         requirement_or_candidate: Requirement | Candidate,
-    ) -> tuple[str]:
+    ) -> typing.Iterable[str]:
         # Extras is a set, which is not hashable
-        return tuple(sorted(requirement_or_candidate.extras))
+        if requirement_or_candidate.extras:
+            return tuple(sorted(requirement_or_candidate.extras))
+        return tuple()
 
     def get_base_requirement(self, candidate: Candidate) -> Requirement:
         return Requirement(f"{candidate.name}=={candidate.version}")
 
-    def get_preference(self, identifier, resolutions, candidates, information, **kwds):
+    def get_preference(
+        self,
+        identifier: str,
+        resolutions: typing.Mapping[str, Candidate],
+        candidates: CandidatesMap,
+        information: typing.Mapping[
+            str, typing.Iterable[RequirementInformation[Requirement, Candidate]]
+        ],
+        backtrack_causes: typing.Sequence[
+            RequirementInformation[Requirement, Candidate]
+        ],
+    ) -> int:
         return sum(1 for _ in candidates[identifier])
 
     def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
@@ -163,7 +177,7 @@ class BaseProvider(ExtrasProvider):
             and self.constraints.is_satisfied_by(requirement.name, candidate.version)
         )
 
-    def get_dependencies(self, candidate: Candidate) -> list:
+    def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies
         return []
 
@@ -172,7 +186,7 @@ class BaseProvider(ExtrasProvider):
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[Version]:
+    ) -> typing.Iterable[Candidate]:
         raise NotImplementedError()
 
 
@@ -195,8 +209,8 @@ class PyPIProvider(BaseProvider):
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[Version]:
-        requirements = list(requirements[identifier])
+    ) -> typing.Iterable[Candidate]:
+        identifier_reqs = list(requirements[identifier])
         bad_versions = {c.version for c in incompatibilities[identifier]}
 
         # Need to pass the extras to the search, so they
@@ -214,10 +228,10 @@ class PyPIProvider(BaseProvider):
                     )
                 continue
             # Skip versions that do not match the requirement
-            if not all(candidate.version in r.specifier for r in requirements):
+            if not all(candidate.version in r.specifier for r in identifier_reqs):
                 if DEBUG_RESOLVER:
                     logger.debug(
-                        f"{identifier}: skipping {candidate.version} because it does not match {requirements}"
+                        f"{identifier}: skipping {candidate.version} because it does not match {identifier_reqs}"
                     )
                 continue
             # Skip versions that do not match the constraint
@@ -261,8 +275,8 @@ class GenericProvider(BaseProvider):
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[Version]:
-        requirements = list(requirements[identifier])
+    ) -> typing.Iterable[Candidate]:
+        identifier_reqs = list(requirements[identifier])
         bad_versions = {c.version for c in incompatibilities[identifier]}
 
         # Need to pass the extras to the search, so they
@@ -288,10 +302,10 @@ class GenericProvider(BaseProvider):
                     )
                 continue
             # Skip versions that do not match the requirement
-            if not all(version in r.specifier for r in requirements):
+            if not all(version in r.specifier for r in identifier_reqs):
                 if DEBUG_RESOLVER:
                     logger.debug(
-                        f"{identifier}: skipping {version} because it does not match {requirements}"
+                        f"{identifier}: skipping {version} because it does not match {identifier_reqs}"
                     )
                 continue
             # Skip versions that do not match the constraint
@@ -302,7 +316,7 @@ class GenericProvider(BaseProvider):
                         f"{identifier}: skipping {version} due to constraint {c}"
                     )
                 continue
-            candidates.append(Candidate(identifier, version, url=item))
+            candidates.append(Candidate(identifier, version, url=str(item)))
         return sorted(candidates, key=attrgetter("version"), reverse=True)
 
 
