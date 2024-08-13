@@ -17,6 +17,7 @@ from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.tags import Tag, sys_tags
 from packaging.utils import (
+    BuildTag,
     canonicalize_name,
     parse_sdist_filename,
     parse_wheel_filename,
@@ -49,7 +50,7 @@ def get_project_from_pypi(
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
         path = urlparse(candidate_url).path
-        filename = path.rpartition("/")[-1]
+        filename = path.rsplit("/", 1)[-1]
         if DEBUG_RESOLVER:
             logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
         # Skip items that need a different Python version
@@ -78,9 +79,10 @@ def get_project_from_pypi(
                 is_sdist = True
                 name, version = parse_sdist_filename(filename)
                 tags: frozenset[Tag] = frozenset()
+                build_tag: BuildTag = ()
             else:
                 is_sdist = False
-                name, version, _, tags = parse_wheel_filename(filename)
+                name, version, build_tag, tags = parse_wheel_filename(filename)
             if tags:
                 # FIXME: This doesn't take into account precedence of
                 # the supported tags for best fit.
@@ -109,7 +111,12 @@ def get_project_from_pypi(
             continue
 
         c = Candidate(
-            name, version, url=candidate_url, extras=extras, is_sdist=is_sdist
+            name,
+            version,
+            url=candidate_url,
+            extras=extras,
+            is_sdist=is_sdist,
+            build_tag=build_tag,
         )
         if DEBUG_RESOLVER:
             logger.debug(
@@ -257,7 +264,7 @@ class PyPIProvider(BaseProvider):
                     )
                 continue
             candidates.append(candidate)
-        return sorted(candidates, key=attrgetter("version"), reverse=True)
+        return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
 
 class GenericProvider(BaseProvider):

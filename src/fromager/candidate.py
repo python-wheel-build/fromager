@@ -7,9 +7,7 @@ from zipfile import ZipFile
 
 import requests
 from packaging.requirements import Requirement
-from packaging.utils import (
-    canonicalize_name,
-)
+from packaging.utils import BuildTag, canonicalize_name
 from packaging.version import Version
 
 # fix for runtime errors caused by inheriting classes that are generic in stubs but not runtime
@@ -28,12 +26,14 @@ class Candidate:
         url: str,
         extras: typing.Iterable[str] | None = None,
         is_sdist: bool | None = None,
+        build_tag: BuildTag = (),
     ):
         self.name = canonicalize_name(name)
         self.version = version
         self.url = url
         self.extras = extras
         self.is_sdist = is_sdist
+        self.build_tag = build_tag
 
         self._metadata: Metadata | None = None
         self._dependencies: list[Requirement] | None = None
