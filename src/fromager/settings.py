@@ -180,7 +180,7 @@ def load(settings_file: pathlib.Path, settings_dir: pathlib.Path) -> Settings:
             )
             pkg_data = yaml.safe_load(f.read())
             if package_name in settings_data["packages"]:
-                logger.warn(
+                logger.warning(
                     "%s: discarding settings from %s",
                     package_name,
                     package_settings_from[package_name],
