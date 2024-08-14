@@ -73,6 +73,7 @@ jobs:
           - rust_vendor
           - download_sequence
           - optimize_build
+          - extra_metadata
 
     steps:
       - name: Get source

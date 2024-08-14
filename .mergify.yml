@@ -75,6 +75,9 @@ pull_request_rules:
           - check-success=e2e (3.11, 1.75, optimize_build)
           - check-success=e2e (3.12, 1.75, optimize_build)
 
+          - check-success=e2e (3.11, 1.75, extra_metadata)
+          - check-success=e2e (3.12, 1.75, extra_metadata)
+
           - "-draft"
 
           # At least 1 reviewer
