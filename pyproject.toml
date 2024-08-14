@@ -43,10 +43,6 @@ Documentation = "https://fromager.readthedocs.io/en/latest/"
 [project.scripts]
 fromager = "fromager.__main__:invoke_main"
 
-[project.entry-points."fromager.project_overrides"]
-# This test plugin should stay in the package.
-fromager_test = "fromager.example_override"
-
 [project.entry-points."fromager.override_methods"]
 # override methods and their default implementations
 get_build_system_dependencies = "fromager.dependencies:default_get_build_system_dependencies"
