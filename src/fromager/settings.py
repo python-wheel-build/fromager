@@ -23,10 +23,7 @@ class Settings:
         return set(overrides.pkgname_to_override_module(n) for n in names)
 
     def packages(self) -> dict[str, dict[str, str]]:
-        p = self._return_value_or_default(self._data.get("packages"), {})
-        return {
-            overrides.pkgname_to_override_module(key): value for key, value in p.items()
-        }
+        return self._return_value_or_default(self._data.get("packages"), {})
 
     def download_source_url(
         self,
@@ -148,16 +145,47 @@ def _resolve_template(
         raise
 
 
-def _parse(content: str) -> Settings:
-    data = yaml.safe_load(content)
-    return Settings(data)
+def load(settings_file: pathlib.Path, settings_dir: pathlib.Path) -> Settings:
+    settings_data = {}
 
-
-def load(filename: pathlib.Path) -> Settings:
-    filepath = pathlib.Path(filename)
+    filepath = pathlib.Path(settings_file)
     if not filepath.exists():
         logger.debug("settings file %s does not exist, ignoring", filepath.absolute())
-        return Settings({})
-    with open(filepath, "r") as f:
-        logger.info("loading settings from %s", filepath.absolute())
-        return _parse(f.read())
+    else:
+        with open(filepath, "r") as f:
+            logger.info("loading settings from %s", filepath.absolute())
+            settings_data = yaml.safe_load(f.read())
+
+    # Per-package files are inserted in the `packages` key using the name that
+    # will be used to look the value up. Transform any existing keys to that
+    # format so we can warn if there are overriding values.
+    package_settings_from = {}
+    if "packages" not in settings_data:
+        settings_data["packages"] = {}
+    else:
+        new_packages = {}
+        for name, value in settings_data["packages"].items():
+            package_name = overrides.pkgname_to_override_module(name)
+            new_packages[package_name] = value
+            package_settings_from[package_name] = settings_file
+        settings_data["packages"] = new_packages
+
+    for package_file in sorted(settings_dir.glob("*.yaml")):
+        package_name = overrides.pkgname_to_override_module(package_file.stem)
+        with open(package_file, "r") as f:
+            logger.info(
+                "%s: loading settings from %s",
+                package_name,
+                package_file.absolute(),
+            )
+            pkg_data = yaml.safe_load(f.read())
+            if package_name in settings_data["packages"]:
+                logger.warn(
+                    "%s: discarding settings from %s",
+                    package_name,
+                    package_settings_from[package_name],
+                )
+            settings_data["packages"][package_name] = pkg_data
+            package_settings_from[package_name] = package_file
+
+    return Settings(settings_data)
