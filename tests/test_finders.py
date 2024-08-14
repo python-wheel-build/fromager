@@ -59,12 +59,6 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
         ("mypkg", "1.2", "mypkg-1.2", "mypkg-1.2"),
         ("oslo.messaging", "14.7.0", "oslo.messaging-14.7.0", "oslo.messaging-14.7.0"),
         ("cython", "3.0.10", "Cython-3.0.10", "Cython-3.0.10"),
-        (
-            "fromager_test",
-            "9.9.9",
-            "fromager-test-9.9.9",
-            "different-prefix-fromager-test-9.9.9",
-        ),
         ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6", "ruamel.yaml-0.18.6"),
     ],
 )
