@@ -28,10 +28,18 @@ from . import (
 
 logger = logging.getLogger(__name__)
 
-# Pip has no API, so parse its output looking for what it couldn't
-# install.
+# Pip has no API, so parse its output looking for what it couldn't install.
+# Verbose regular expressions ignore blank spaces, so we have to escape those to
+# have them recognized as being part of the pattern.
 _pip_missing_dependency_pattern = re.compile(
-    r"Could not find a version that satisfies the requirement (\w+)",
+    r"""(
+    Could\ not\ find\ a\ version\ that\ satisfies\ the\ requirement\ (\w+)
+    |
+    No\ matching\ distribution\ found\ for\ (\w+)
+    |
+    ResolutionImpossible  # usually when constraints prevent a match
+    )""",
+    flags=re.VERBOSE,
 )
 
 
@@ -40,7 +48,7 @@ class MissingDependency(Exception):  # noqa: N818
         self,
         ctx: context.WorkContext,
         req_type: str,
-        req: Requirement,
+        req: Requirement | None,
         all_reqs: typing.Iterable[Requirement],
     ):
         self.missing_req = req
@@ -54,10 +62,16 @@ class MissingDependency(Exception):  # noqa: N818
             else:
                 resolutions.append(f"{r} -> {version}")
         formatted_reqs = "\n".join(resolutions)
-        msg = (
-            f"Failed to install {req_type} dependency {req}. "
-            f"Check all {req_type} dependencies:\n{formatted_reqs}"
-        )
+        if req:
+            msg = (
+                f"Failed to install {req_type} dependency {req}. "
+                f"Check all {req_type} dependencies:\n{formatted_reqs}"
+            )
+        else:
+            msg = (
+                f"Failed to install {req_type} dependency. "
+                f"Check all {req_type} dependencies:\n{formatted_reqs}"
+            )
         super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
 
 
@@ -521,13 +535,13 @@ def prepare_build_environment(
         # couldn't install. If we don't find something, just re-raise
         # the exception we already have.
         logger.error(f"{req.name}: failed to create build environment for {dep}: {err}")
+        logger.info(f"looking for pattern in {err.output!r}")
         match = _pip_missing_dependency_pattern.search(err.output)
         if match:
             raise MissingDependency(
-                ctx,
-                "build",
-                match.groups()[0],
-                build_system_dependencies | build_backend_dependencies,
+                ctx=ctx,
+                req_type="build",
+                all_reqs=build_system_dependencies | build_backend_dependencies,
             ) from err
         raise
     return build_env.path
