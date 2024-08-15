@@ -1,4 +1,5 @@
 import pathlib
+import textwrap
 import zipfile
 from unittest.mock import Mock, patch
 
@@ -59,3 +60,16 @@ def test_invalid_wheel_file_exception(mock_download_url, tmp_path: pathlib.Path)
     text_file.write_text("This is a test file")
     with pytest.raises(zipfile.BadZipFile):
         sdist._download_wheel_check(fake_dir, fake_url)
+
+
+def test_missing_dependency_pattern():
+    msg = textwrap.dedent("""
+        Looking in indexes: http://192.168.0.201:9999/simple
+        Looking in links: /Users/dhellmann/.pip/wheelhouse
+        Processing /Users/dhellmann/.pip/wheelhouse/pbr-6.0.0-py2.py3-none-any.whl (from -r /Users/dhellmann/Devel/fromager/fromager/e2e-output/work-dir/stevedore-5.2.0/build-3.12.0/requirements.txt (line 1))
+        ERROR: Could not find a version that satisfies the requirement setuptools>=40.8.0 (from versions: 11.3.1, 14.0)
+        ERROR: No matching distribution found for setuptools>=40.8.0
+        """)
+    print(repr(sdist._pip_missing_dependency_pattern.pattern))
+    match = sdist._pip_missing_dependency_pattern.search(msg)
+    assert match is not None
