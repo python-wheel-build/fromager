@@ -1,13 +1,13 @@
 import pytest
 
-from fromager import constraints, context, settings
+from fromager import context, settings
 
 
 @pytest.fixture
 def tmp_context(tmp_path):
     ctx = context.WorkContext(
         active_settings=settings.Settings({}),
-        pkg_constraints=constraints.Constraints({}),
+        constraints_file=None,
         patches_dir="overrides/patches",
         envs_dir="overrides/envs",
         sdists_repo=tmp_path / "sdists-repo",
