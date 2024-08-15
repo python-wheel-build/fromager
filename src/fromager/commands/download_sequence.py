@@ -18,12 +18,18 @@ logger = logging.getLogger(__name__)
     default=False,
     is_flag=True,
 )
+@click.option(
+    "--ignore-missing-sdists",
+    default=False,
+    is_flag=True,
+)
 @click.pass_obj
 def download_sequence(
     wkctx: context.WorkContext,
     build_order_file: str,
     sdist_server_url: str,
-    include_wheels: str,
+    include_wheels: bool,
+    ignore_missing_sdists: bool,
 ) -> None:
     """Download a sequence of source distributions in order.
 
@@ -49,7 +55,12 @@ def download_sequence(
             req = Requirement(f"{entry['dist']}=={entry['version']}")
 
             if entry["source_url_type"] == "sdist":
-                sources.download_source(wkctx, req, [sdist_server_url])
+                try:
+                    sources.download_source(wkctx, req, [sdist_server_url])
+                except Exception as err:
+                    logger.error(f"failed to download sdist for {req}: {err}")
+                    if not ignore_missing_sdists:
+                        raise
             else:
                 logger.info(
                     f"{entry['dist']}: uses a {entry['source_url_type']} downloader, skipping"
