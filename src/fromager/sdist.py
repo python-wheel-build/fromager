@@ -596,6 +596,7 @@ def safe_install(
             ":all:",
         ]
         + ctx.pip_wheel_server_args
+        + ctx.pip_constraint_args
         + [
             f"{req}",
         ],
