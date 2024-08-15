@@ -539,9 +539,12 @@ def prepare_build_environment(
         match = _pip_missing_dependency_pattern.search(err.output)
         if match:
             raise MissingDependency(
-                ctx=ctx,
-                req_type="build",
-                all_reqs=build_system_dependencies | build_backend_dependencies,
+                ctx,
+                "build",
+                match.groups()[0],
+                build_system_dependencies
+                | build_backend_dependencies
+                | build_sdist_dependencies,
             ) from err
         raise
     return build_env.path
