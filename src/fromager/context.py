@@ -1,6 +1,7 @@
 import collections
 import json
 import logging
+import os
 import pathlib
 import typing
 from urllib.parse import urlparse
@@ -22,7 +23,7 @@ class WorkContext:
     def __init__(
         self,
         active_settings: settings.Settings,
-        pkg_constraints: constraints.Constraints,
+        constraints_file: pathlib.Path | None,
         patches_dir: pathlib.Path,
         envs_dir: pathlib.Path,
         sdists_repo: pathlib.Path,
@@ -35,7 +36,11 @@ class WorkContext:
         network_isolation: bool = False,
     ):
         self.settings = active_settings
-        self.constraints = pkg_constraints
+        self.input_constraints_file = constraints_file
+        if constraints_file:
+            self.constraints = constraints.load(constraints_file)
+        else:
+            self.constraints = constraints.Constraints({})
         self.patches_dir = pathlib.Path(patches_dir).absolute()
         self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
@@ -79,6 +84,12 @@ class WorkContext:
         if parsed.scheme != "https" and parsed.hostname:
             args = args + ["--trusted-host", parsed.hostname]
         return args
+
+    @property
+    def pip_constraint_args(self) -> list[str]:
+        if not self.input_constraints_file:
+            return []
+        return ["--constraint", os.fspath(self.input_constraints_file)]
 
     def _resolved_key(
         self, req: Requirement, version: Version

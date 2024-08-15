@@ -14,9 +14,16 @@ VERSION="5.2.0"
 # Install hook for test
 pip install e2e/post_build_hook
 
+OS=$(uname)
+if [ "$OS" = "Darwin" ]; then
+    NETWORK_ISOLATION=""
+else
+    NETWORK_ISOLATION="--network-isolation"
+fi
+
 # Bootstrap the test project
 fromager \
-    --network-isolation \
+    $NETWORK_ISOLATION \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \

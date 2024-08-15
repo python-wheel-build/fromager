@@ -54,8 +54,9 @@ fromager \
   step prepare-source "$DIST" "$VERSION"
 
 # Prepare the build environment
+build_log="$OUTDIR/build-logs/prepare-build.log"
 fromager \
-  --log-file "$OUTDIR/build-logs/prepare-build.log" \
+  --log-file "$build_log" \
   --work-dir "$OUTDIR/work-dir" \
   --sdists-repo "$OUTDIR/sdists-repo" \
   --wheels-repo "$OUTDIR/wheels-repo" \
@@ -63,10 +64,11 @@ fromager \
   step prepare-build "$DIST" "$VERSION" \
   || echo "Got expected build error"
 
-if grep -q "MissingDependency" "$OUTDIR/build-logs/prepare-build.log"; then
+if grep -q "MissingDependency" "$build_log"; then
   echo "PASS: Found expected error"
 else
-  echo "FAIL: Did not find expected error in $OUTDIR/build-logs/prepare-build.log"
+  echo "FAIL: Did not find expected error in $build_log"
+  cat "$build_log"
   exit 1
 fi
 

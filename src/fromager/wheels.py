@@ -68,6 +68,7 @@ class BuildEnvironment:
                 ":all:",
             ]
             + self._ctx.pip_wheel_server_args
+            + self._ctx.pip_constraint_args
             + [
                 "-r",
                 str(req_filename.absolute()),

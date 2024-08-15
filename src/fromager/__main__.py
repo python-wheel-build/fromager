@@ -9,7 +9,6 @@ import click
 from . import (
     clickext,
     commands,
-    constraints,
     context,
     external_commands,
     overrides,
@@ -186,7 +185,7 @@ def main(
 
     wkctx = context.WorkContext(
         active_settings=settings.load(settings_file, settings_dir),
-        pkg_constraints=constraints.load(constraints_file),
+        constraints_file=constraints_file,
         patches_dir=patches_dir,
         envs_dir=envs_dir,
         sdists_repo=sdists_repo,

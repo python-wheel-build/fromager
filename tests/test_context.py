@@ -1,6 +1,9 @@
 import json
+import os
 
 from packaging.requirements import Requirement
+
+from fromager import context, settings
 
 
 def test_seen(tmp_context):
@@ -143,3 +146,33 @@ def test_build_order_name_canonicalization(tmp_context):
         },
     ]
     assert expected == contents
+
+
+def test_pip_constraints_args(tmp_path):
+    constraints_file = tmp_path / "constraints.txt"
+    constraints_file.write_text("\n")  # the file has to exist
+    ctx = context.WorkContext(
+        active_settings=settings.Settings({}),
+        constraints_file=constraints_file,
+        patches_dir="overrides/patches",
+        envs_dir="overrides/envs",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        wheel_server_url="",
+    )
+    ctx.setup()
+    assert ["--constraint", os.fspath(constraints_file)] == ctx.pip_constraint_args
+
+    ctx = context.WorkContext(
+        active_settings=settings.Settings({}),
+        constraints_file=None,
+        patches_dir="overrides/patches",
+        envs_dir="overrides/envs",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        wheel_server_url="",
+    )
+    ctx.setup()
+    assert [] == ctx.pip_constraint_args
