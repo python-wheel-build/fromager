@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 import platform
+import shutil
 import sys
 import tempfile
 import typing
@@ -10,6 +11,7 @@ import zipfile
 from datetime import datetime
 
 import elfdeps
+import tomlkit
 from packaging.requirements import Requirement
 from packaging.utils import parse_wheel_filename
 from packaging.version import Version
@@ -130,6 +132,73 @@ def analyze_wheel_elfdeps(
     return requires, provides
 
 
+def add_extra_metadata_to_wheels(
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    extra_environ: dict[str, str],
+    sdist_root_dir: pathlib.Path,
+    wheel_file: pathlib.Path,
+) -> None:
+    extra_data_plugin = overrides.find_override_method(
+        req.name, "add_extra_metadata_to_wheels"
+    )
+    data_to_add = {}
+    if extra_data_plugin:
+        data_to_add = overrides.invoke(
+            extra_data_plugin,
+            ctx=ctx,
+            req=req,
+            version=version,
+            extra_environ=extra_environ,
+            sdist_root_dir=sdist_root_dir,
+        )
+        if not isinstance(data_to_add, dict):
+            logger.warning(
+                f"{req.name}: unexpected return type from plugin add_extra_metadata_to_wheels. Expected dictionary. Will ignore"
+            )
+            data_to_add = {}
+
+    with tempfile.TemporaryDirectory() as dir_name:
+        cmd = ["wheel", "unpack", str(wheel_file), "-d", dir_name]
+        external_commands.run(
+            cmd,
+            cwd=dir_name,
+            network_isolation=ctx.network_isolation,
+        )
+
+        wheel_file_name_parts = wheel_file.name.split("-")
+        distribution_name = f"{wheel_file_name_parts[0]}-{wheel_file_name_parts[1]}"
+        dist_info_dir = (
+            pathlib.Path(dir_name)
+            / distribution_name
+            / f"{distribution_name}.dist-info"
+        )
+        if not dist_info_dir.exists():
+            logger.debug(
+                f"{req.name}: could not add additional metadata. {dist_info_dir} does not exist"
+            )
+            return
+
+        build_file = dist_info_dir / "fromager-build-settings"
+        settings = ctx.settings.get_package_settings(req.name)
+        if data_to_add:
+            settings["metadata-from-plugin"] = data_to_add
+
+        build_file.write_text(tomlkit.dumps(settings))
+
+        req_files = sdist_root_dir.parent.glob("*-requirements.txt")
+        for req_file in req_files:
+            shutil.copy(req_file, dist_info_dir / f"fromager-{req_file.name}")
+
+        cmd = ["wheel", "pack", str(dist_info_dir.parent), "-d", str(wheel_file.parent)]
+        external_commands.run(
+            cmd,
+            cwd=dir_name,
+            network_isolation=ctx.network_isolation,
+        )
+
+
 def build_wheel(
     ctx: context.WorkContext,
     req: Requirement,
@@ -173,6 +242,14 @@ def build_wheel(
         # TODO: raise error?
         return None
     wheel = wheels[0]
+    add_extra_metadata_to_wheels(
+        ctx=ctx,
+        req=req,
+        version=version,
+        extra_environ=extra_environ,
+        sdist_root_dir=sdist_root_dir,
+        wheel_file=wheel,
+    )
     logger.info(f"{req.name}: built wheel '{wheel}' in {end - start}")
     analyze_wheel_elfdeps(ctx, req, wheel)
     return wheel
