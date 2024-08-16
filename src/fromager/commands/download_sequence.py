@@ -1,5 +1,8 @@
 import json
 import logging
+import os
+import typing
+from concurrent import futures
 
 import click
 from packaging.requirements import Requirement
@@ -23,6 +26,11 @@ logger = logging.getLogger(__name__)
     default=False,
     is_flag=True,
 )
+@click.option(
+    "--num-threads",
+    default=os.cpu_count(),
+    type=int,
+)
 @click.pass_obj
 def download_sequence(
     wkctx: context.WorkContext,
@@ -30,6 +38,7 @@ def download_sequence(
     sdist_server_url: str,
     include_wheels: bool,
     ignore_missing_sdists: bool,
+    num_threads: int,
 ) -> None:
     """Download a sequence of source distributions in order.
 
@@ -47,32 +56,43 @@ def download_sequence(
         wheel_servers = [sdist_server_url]
 
     with open(build_order_file, "r") as f:
-        for entry in progress.progress(json.load(f)):
-            if entry["prebuilt"]:
-                logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
-                continue
+        build_order = json.load(f)
 
-            req = Requirement(f"{entry['dist']}=={entry['version']}")
+    def download_one(entry: dict[str, typing.Any]):
+        if entry["prebuilt"]:
+            logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
+            return
 
-            if entry["source_url_type"] == "sdist":
-                try:
-                    sources.download_source(wkctx, req, [sdist_server_url])
-                except Exception as err:
-                    logger.error(f"failed to download sdist for {req}: {err}")
-                    if not ignore_missing_sdists:
-                        raise
-            else:
-                logger.info(
-                    f"{entry['dist']}: uses a {entry['source_url_type']} downloader, skipping"
+        req = Requirement(f"{entry['dist']}=={entry['version']}")
+
+        if entry["source_url_type"] == "sdist":
+            try:
+                sources.download_source(wkctx, req, [sdist_server_url])
+            except Exception as err:
+                logger.error(f"failed to download sdist for {req}: {err}")
+                if not ignore_missing_sdists:
+                    raise
+        else:
+            logger.info(
+                f"{entry['dist']}: uses a {entry['source_url_type']} downloader, skipping"
+            )
+
+        if include_wheels:
+            try:
+                sdist.download_wheel(
+                    wkctx,
+                    req,
+                    wkctx.wheels_downloads,
+                    wheel_servers,
                 )
+            except Exception as err:
+                logger.error(f"failed to download wheel for {req}: {err}")
 
-            if include_wheels:
-                try:
-                    sdist.download_wheel(
-                        wkctx,
-                        req,
-                        wkctx.wheels_downloads,
-                        wheel_servers,
-                    )
-                except Exception as err:
-                    logger.error(f"failed to download wheel for {req}: {err}")
+    num_items = len(build_order)
+    logger.debug(
+        "starting up to %d concurrent downloads of %d items", num_threads, num_items
+    )
+    executor = futures.ThreadPoolExecutor(max_workers=num_threads)
+    with progress.progress_context(num_items) as progress_bar:
+        for _ in executor.map(download_one, build_order):
+            progress_bar.update()
