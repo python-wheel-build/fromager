@@ -104,4 +104,5 @@ jobs:
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
+          name: ${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: e2e-output
