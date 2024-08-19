@@ -99,3 +99,9 @@ jobs:
 
       - name: Run tests
         run: ./e2e/test_${{ matrix.test-script }}.sh
+      
+      - name: Upload logs for debugging
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          path: e2e-output
