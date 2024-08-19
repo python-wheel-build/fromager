@@ -167,15 +167,13 @@ def add_extra_metadata_to_wheels(
             network_isolation=ctx.network_isolation,
         )
 
-        wheel_file_name_parts = wheel_file.name.split("-")
-        distribution_name = f"{wheel_file_name_parts[0]}-{wheel_file_name_parts[1]}"
+        dist_name, dist_version, _, _ = parse_wheel_filename(wheel_file.name)
+        dist_qualname = f"{dist_name}-{dist_version}"
         dist_info_dir = (
-            pathlib.Path(dir_name)
-            / distribution_name
-            / f"{distribution_name}.dist-info"
+            pathlib.Path(dir_name) / dist_qualname / f"{dist_qualname}.dist-info"
         )
-        if not dist_info_dir.exists():
-            logger.debug(
+        if not dist_info_dir.is_dir():
+            logger.error(
                 f"{req.name}: could not add additional metadata. {dist_info_dir} does not exist"
             )
             return
