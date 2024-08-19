@@ -47,7 +47,7 @@ jobs:
 
   e2e:
     name: e2e
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
@@ -74,6 +74,9 @@ jobs:
           - download_sequence
           - optimize_build
           - extra_metadata
+        os:
+          - ubuntu-latest
+          - macos-latest
 
     steps:
       - name: Get source

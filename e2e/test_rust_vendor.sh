@@ -5,6 +5,7 @@
 # available.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# shellcheck disable=SC1091
 source "$SCRIPTDIR/common.sh"
 
 # What are we building?
@@ -14,8 +15,10 @@ VERSION="1.6.0"
 OS=$(uname)
 if [ "$OS" = "Darwin" ]; then
     NETWORK_ISOLATION=""
+    WHEEL_PLATFORM_TAG="macosx_10_9_universal2"
 else
     NETWORK_ISOLATION="--network-isolation"
+    WHEEL_PLATFORM_TAG="linux_x86_64"
 fi
 
 # Bootstrap the test project
@@ -29,7 +32,7 @@ fromager \
 PYVER=$(python3 -c 'import sys; print("%s%s" % sys.version_info[:2])')
 
 EXPECTED_FILES="
-wheels-repo/downloads/${DIST}-${VERSION}-cp${PYVER}-cp${PYVER}-linux_x86_64.whl
+wheels-repo/downloads/${DIST}-${VERSION}-cp${PYVER}-cp${PYVER}-${WHEEL_PLATFORM_TAG}.whl
 sdists-repo/downloads/${DIST}-${VERSION}.tar.gz
 "
 
