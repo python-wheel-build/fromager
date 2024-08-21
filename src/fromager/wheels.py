@@ -13,7 +13,7 @@ from datetime import datetime
 import elfdeps
 import tomlkit
 from packaging.requirements import Requirement
-from packaging.utils import parse_wheel_filename
+from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 from . import context, external_commands, overrides
@@ -140,6 +140,20 @@ def add_extra_metadata_to_wheels(
     sdist_root_dir: pathlib.Path,
     wheel_file: pathlib.Path,
 ) -> None:
+    # parse_wheel_filename normalizes the dist name, however the dist-info
+    # directory uses the verbatim distribution name from the wheel file.
+    # Packages with upper case names like "MarkupSafe" are affected.
+    dist_name_normalized, dist_version, _, wheel_tags = parse_wheel_filename(
+        wheel_file.name
+    )
+    dist_name = wheel_file.name.split("-", 1)[0]
+    if dist_name_normalized != canonicalize_name(dist_name):
+        # sanity check, should never fail
+        raise ValueError(
+            f"{req.name}: {dist_name_normalized} does not match {dist_name}"
+        )
+    dist_qualname = f"{dist_name}-{dist_version}"
+
     extra_data_plugin = overrides.find_override_method(
         req.name, "add_extra_metadata_to_wheels"
     )
@@ -167,16 +181,13 @@ def add_extra_metadata_to_wheels(
             network_isolation=ctx.network_isolation,
         )
 
-        dist_name, dist_version, _, _ = parse_wheel_filename(wheel_file.name)
-        dist_qualname = f"{dist_name}-{dist_version}"
         dist_info_dir = (
             pathlib.Path(dir_name) / dist_qualname / f"{dist_qualname}.dist-info"
         )
         if not dist_info_dir.is_dir():
-            logger.error(
-                f"{req.name}: could not add additional metadata. {dist_info_dir} does not exist"
+            raise ValueError(
+                f"{req.name}: {wheel_file} does not contain {dist_info_dir.name}"
             )
-            return
 
         build_file = dist_info_dir / "fromager-build-settings"
         settings = ctx.settings.get_package_settings(req.name)
