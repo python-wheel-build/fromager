@@ -158,20 +158,6 @@ def add_extra_metadata_to_wheels(
         req.name, "add_extra_metadata_to_wheels"
     )
     data_to_add = {}
-    if extra_data_plugin:
-        data_to_add = overrides.invoke(
-            extra_data_plugin,
-            ctx=ctx,
-            req=req,
-            version=version,
-            extra_environ=extra_environ,
-            sdist_root_dir=sdist_root_dir,
-        )
-        if not isinstance(data_to_add, dict):
-            logger.warning(
-                f"{req.name}: unexpected return type from plugin add_extra_metadata_to_wheels. Expected dictionary. Will ignore"
-            )
-            data_to_add = {}
 
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = ["wheel", "unpack", str(wheel_file), "-d", dir_name]
@@ -188,6 +174,22 @@ def add_extra_metadata_to_wheels(
             raise ValueError(
                 f"{req.name}: {wheel_file} does not contain {dist_info_dir.name}"
             )
+
+        if extra_data_plugin:
+            data_to_add = overrides.invoke(
+                extra_data_plugin,
+                ctx=ctx,
+                req=req,
+                version=version,
+                extra_environ=extra_environ,
+                sdist_root_dir=sdist_root_dir,
+                dist_info_dir=dist_info_dir,
+            )
+            if not isinstance(data_to_add, dict):
+                logger.warning(
+                    f"{req.name}: unexpected return type from plugin add_extra_metadata_to_wheels. Expected dictionary. Will ignore"
+                )
+                data_to_add = {}
 
         build_file = dist_info_dir / "fromager-build-settings"
         settings = ctx.settings.get_package_settings(req.name)
