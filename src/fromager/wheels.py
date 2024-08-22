@@ -139,20 +139,18 @@ def add_extra_metadata_to_wheels(
     extra_environ: dict[str, str],
     sdist_root_dir: pathlib.Path,
     wheel_file: pathlib.Path,
-) -> None:
+) -> pathlib.Path:
     # parse_wheel_filename normalizes the dist name, however the dist-info
     # directory uses the verbatim distribution name from the wheel file.
     # Packages with upper case names like "MarkupSafe" are affected.
-    dist_name_normalized, dist_version, _, wheel_tags = parse_wheel_filename(
-        wheel_file.name
-    )
+    dist_name_normalized, dist_version, _, _ = parse_wheel_filename(wheel_file.name)
     dist_name = wheel_file.name.split("-", 1)[0]
     if dist_name_normalized != canonicalize_name(dist_name):
         # sanity check, should never fail
         raise ValueError(
             f"{req.name}: {dist_name_normalized} does not match {dist_name}"
         )
-    dist_qualname = f"{dist_name}-{dist_version}"
+    dist_filename = f"{dist_name}-{dist_version}"
 
     extra_data_plugin = overrides.find_override_method(
         req.name, "add_extra_metadata_to_wheels"
@@ -174,7 +172,7 @@ def add_extra_metadata_to_wheels(
             data_to_add = {}
 
     with tempfile.TemporaryDirectory() as dir_name:
-        cmd = ["wheel", "unpack", str(wheel_file), "-d", dir_name]
+        cmd = ["wheel", "unpack", str(wheel_file), "--dest", dir_name]
         external_commands.run(
             cmd,
             cwd=dir_name,
@@ -182,7 +180,7 @@ def add_extra_metadata_to_wheels(
         )
 
         dist_info_dir = (
-            pathlib.Path(dir_name) / dist_qualname / f"{dist_qualname}.dist-info"
+            pathlib.Path(dir_name) / dist_filename / f"{dist_filename}.dist-info"
         )
         if not dist_info_dir.is_dir():
             raise ValueError(
@@ -200,12 +198,32 @@ def add_extra_metadata_to_wheels(
         for req_file in req_files:
             shutil.copy(req_file, dist_info_dir / f"fromager-{req_file.name}")
 
-        cmd = ["wheel", "pack", str(dist_info_dir.parent), "-d", str(wheel_file.parent)]
+        build_tag_from_settings = ctx.settings.build_tag(req.name, version)
+        build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
+
+        cmd = [
+            "wheel",
+            "pack",
+            str(dist_info_dir.parent),
+            "--dest-dir",
+            str(wheel_file.parent),
+            "--build-number",
+            f"{build_tag[0]}{build_tag[1]}",
+        ]
         external_commands.run(
             cmd,
             cwd=dir_name,
             network_isolation=ctx.network_isolation,
         )
+
+    wheel_file.unlink(missing_ok=True)
+    wheels = list(wheel_file.parent.glob(f"{dist_filename}-*.whl"))
+    if wheels:
+        logger.info(
+            f"{req.name}: added extra metadata and build tag {build_tag}, wheel renamed from {wheel_file.name} to {wheels[0].name}"
+        )
+        return wheels[0]
+    raise FileNotFoundError("Could not locate new wheels file")
 
 
 def build_wheel(
@@ -248,16 +266,15 @@ def build_wheel(
     end = datetime.now().replace(microsecond=0)
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if len(wheels) != 1:
-        # TODO: raise error?
-        return None
-    wheel = wheels[0]
-    add_extra_metadata_to_wheels(
+        raise FileNotFoundError("Could not locate built wheels")
+
+    wheel = add_extra_metadata_to_wheels(
         ctx=ctx,
         req=req,
         version=version,
         extra_environ=extra_environ,
         sdist_root_dir=sdist_root_dir,
-        wheel_file=wheel,
+        wheel_file=wheels[0],
     )
     logger.info(f"{req.name}: built wheel '{wheel}' in {end - start}")
     analyze_wheel_elfdeps(ctx, req, wheel)

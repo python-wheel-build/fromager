@@ -5,7 +5,7 @@ import typing
 
 import yaml
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+from packaging.utils import BuildTag, canonicalize_name
 from packaging.version import Version
 
 from . import overrides
@@ -93,10 +93,12 @@ class Settings:
             return sdist_root_dir / relative_build_dir
         return sdist_root_dir
 
-    def build_tag(self, pkg: str, version: Version | str) -> int:
+    def build_tag(self, pkg: str, version: Version | str) -> BuildTag:
         p = self.get_package_settings(pkg)
         changelog = p.get("changelog", {}).get(str(version), [])
-        return len(changelog)
+        if not changelog:
+            return ()
+        return (len(changelog), "")
 
     def get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
         p = self.packages()

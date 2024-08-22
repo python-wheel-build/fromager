@@ -18,7 +18,7 @@ fromager \
     bootstrap "${DIST}==${VERSION}"
 
 EXPECTED_FILES="
-wheels-repo/downloads/${DIST}-${VERSION}-py3-none-any.whl
+wheels-repo/downloads/${DIST}-${VERSION}-0-py3-none-any.whl
 sdists-repo/downloads/${DIST}-${VERSION}.tar.gz
 "
 

@@ -10,12 +10,14 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
+# passing settings to bootstrap but should have 0 effect on it
 fromager \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
+  --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
   bootstrap 'stevedore==5.2.0'
 
 find "$OUTDIR/wheels-repo/" -name '*.whl'

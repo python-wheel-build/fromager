@@ -49,7 +49,7 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
 
     req = Requirement(dist_name)
     ver = Version(version_string)
-    actual = finders.find_wheel(downloads, req, ver)
+    actual = finders.find_wheel(downloads, req, ver, 0)
     assert str(wheel) == str(actual)
 
 

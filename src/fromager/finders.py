@@ -5,7 +5,7 @@ import pathlib
 import re
 
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+from packaging.utils import BuildTag, canonicalize_name
 
 from . import context, overrides
 
@@ -93,26 +93,29 @@ def find_wheel(
     downloads_dir: pathlib.Path,
     req: Requirement,
     dist_version: str,
+    build_tag: BuildTag = (),
 ) -> pathlib.Path | None:
     filename_prefix = _dist_name_to_filename(req.name)
     canonical_name = canonicalize_name(req.name)
+    # if build tag is 0 then we can ignore to handle non tagged wheels for backward compatibility
+    candidate_bases_build_tag = f"{build_tag[0]}{build_tag[1]}-" if build_tag else ""
 
     candidate_bases = set(
         [
             # First check if the file is there using the canonically
             # transformed name.
-            f"{filename_prefix}-{dist_version}-",
+            f"{filename_prefix}-{dist_version}-{candidate_bases_build_tag}",
             # If that didn't work, try the canonical dist name. That's not
             # "correct" but we do see it. (charset-normalizer-3.3.2-
             # and setuptools-scm-8.0.4-) for example
-            f"{canonical_name}-{dist_version}-",
+            f"{canonical_name}-{dist_version}-{candidate_bases_build_tag}",
             # If *that* didn't work, try the dist name we've been
             # given as a dependency. That's not "correct", either but we do
             # see it. (oslo.messaging-14.7.0-) for example
-            f"{req.name}-{dist_version}-",
+            f"{req.name}-{dist_version}-{candidate_bases_build_tag}",
             # Sometimes the sdist uses '.' instead of '-' in the
             # package name portion.
-            f'{req.name.replace("-", ".")}-{dist_version}-',
+            f'{req.name.replace("-", ".")}-{dist_version}-{candidate_bases_build_tag}',
         ]
     )
     # Case-insensitive globbing was added to Python 3.12, but we

@@ -1,9 +1,11 @@
 import json
 import logging
 import pathlib
+from urllib.parse import urlparse
 
 import click
 from packaging.requirements import Requirement
+from packaging.utils import parse_wheel_filename
 from packaging.version import Version
 
 from fromager import clickext, context, hooks, progress, sdist, server, sources, wheels
@@ -170,8 +172,20 @@ def _is_wheel_built(
 
     try:
         logger.info(f"{req.name}: checking if {req} was already built")
-        sdist.resolve_prebuilt_wheel(wkctx, req, [wkctx.wheel_server_url])
-        return True
+        url, _ = sdist.resolve_prebuilt_wheel(wkctx, req, [wkctx.wheel_server_url])
+        build_tag_from_settings = wkctx.settings.build_tag(req.name, dist_version)
+        build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
+        wheel_filename = urlparse(url).path.rsplit("/", 1)[-1]
+        _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_filename)
+        existing_build_tag = build_tag_from_name if build_tag_from_name else (0, "")
+        if (
+            existing_build_tag[0] > build_tag[0]
+            and existing_build_tag[1] == build_tag[1]
+        ):
+            raise ValueError(
+                f"{dist_name}: changelog for version {dist_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
+            )
+        return existing_build_tag == build_tag
     except Exception:
         logger.info(f"{req.name}: could not locate prebuilt wheel. Will build {req}")
         return False

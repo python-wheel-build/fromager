@@ -159,10 +159,10 @@ def test_changelog():
             - "rebuild xyz"
     """)
     )
-    assert s.build_tag("foo", Version("2.1.0")) == 2
-    assert s.build_tag("foo", "2.1.0") == 2
-    assert s.build_tag("foo", "3.1.0") == 0
-    assert s.build_tag("bar", "2.1.0") == 0
+    assert s.build_tag("foo", Version("2.1.0")) == (2, "")
+    assert s.build_tag("foo", "2.1.0") == (2, "")
+    assert s.build_tag("foo", "3.1.0") == ()
+    assert s.build_tag("bar", "2.1.0") == ()
 
 
 def test_resolve_template_with_no_template():

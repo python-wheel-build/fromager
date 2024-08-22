@@ -227,7 +227,12 @@ def handle_requirement(
         # FIXME: This is a bit naive, but works for most wheels, including
         # our more expensive ones, and there's not a way to know the
         # actual name without doing most of the work to build the wheel.
-        wheel_filename = finders.find_wheel(ctx.wheels_downloads, req, resolved_version)
+        wheel_filename = finders.find_wheel(
+            ctx.wheels_downloads,
+            req,
+            resolved_version,
+            ctx.settings.build_tag(req.name, resolved_version),
+        )
         if wheel_filename:
             logger.info(
                 f"{req.name}: have wheel version {resolved_version}: {wheel_filename}"
