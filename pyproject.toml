@@ -52,6 +52,34 @@ download_source = "fromager.sources:default_download_source"
 build_sdist = "fromager.sources:default_build_sdist"
 build_wheel = "fromager.wheels:default_build_wheel"
 
+[tool.coverage.run]
+branch = true
+parallel = true
+relative_files = true
+source = [
+    "fromager",
+    "tests/",
+]
+
+[tool.coverage.paths]
+source = [
+   "src/fromager",
+   ".tox/**/site-packages/fromager",
+]
+tests =[
+   "tests/",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "@abc.abstractmethod",
+    "@typing.overload",
+    "if typing.TYPE_CHECKING",
+]
+
 [tool.setuptools_scm]
 version_file = "src/fromager/version.py"
 
