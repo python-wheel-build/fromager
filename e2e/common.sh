@@ -8,6 +8,9 @@ set -o pipefail
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
 
+# coverage reporting
+export COVERAGE_PROCESS_START="$( dirname "$SCRIPTDIR" )/pyproject.toml"
+
 # Recreate output directory
 rm -rf "$OUTDIR"
 mkdir "$OUTDIR"
@@ -19,7 +22,8 @@ OUTDIR=$(cd "$OUTDIR" && pwd)
 mkdir -p "$OUTDIR/build-logs"
 
 # Recreate the virtualenv with fromager installed
-tox -e e2e -n -r
+# command_pre hook creates cov.pth
+tox -e e2e -r
 source .tox/e2e/bin/activate
 
 # Set a variable to constrain packages used in the tests

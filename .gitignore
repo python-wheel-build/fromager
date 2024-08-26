@@ -9,6 +9,7 @@ __pycache__/
 **/*.egg-info/
 /src/fromager/version.py
 /.coverage
+.coverage.*
 /artifacts
 /build-logs/
 /.pypirc

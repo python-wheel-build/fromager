@@ -62,6 +62,8 @@ def _clean_build_artifacts(f):
             ):
                 shutil.rmtree(d)
 
+    return _with_cleanup
+
 
 @_clean_build_artifacts
 def test_get_build_system_dependencies(tmp_context: context.WorkContext):
