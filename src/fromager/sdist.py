@@ -231,7 +231,7 @@ def handle_requirement(
             ctx.wheels_downloads,
             req,
             resolved_version,
-            ctx.settings.build_tag(req.name, resolved_version),
+            ctx.settings.build_tag(req.name, resolved_version, ctx.variant),
         )
         if wheel_filename:
             logger.info(

@@ -200,7 +200,7 @@ def add_extra_metadata_to_wheels(
         for req_file in req_files:
             shutil.copy(req_file, dist_info_dir / f"fromager-{req_file.name}")
 
-        build_tag_from_settings = ctx.settings.build_tag(req.name, version)
+        build_tag_from_settings = ctx.settings.build_tag(req.name, version, ctx.variant)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
 
         cmd = [
