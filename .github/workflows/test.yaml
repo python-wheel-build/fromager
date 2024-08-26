@@ -7,7 +7,7 @@ on:
 jobs:
   unit:
     name: unit
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
@@ -18,6 +18,9 @@ jobs:
         rust-version:
           # RHEL 9.4 has rustc 1.75
           - "1.75"
+        os:
+          - ubuntu-latest
+          - macos-latest
 
     steps:
       - name: Get source
@@ -78,6 +81,11 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+        exclude:
+          # macOS tests are slower and congested
+          # only run macOS tests on latest stable Python version
+          - os: macos-latest
+            python-version: "3.11"
 
     steps:
       - name: Get source
