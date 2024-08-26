@@ -47,7 +47,7 @@ jobs:
 
   e2e:
     name: e2e
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
@@ -75,9 +75,7 @@ jobs:
           - download_sequence
           - optimize_build
           - extra_metadata
-        os:
-          - ubuntu-latest
-          - macos-latest
+
 
     steps:
       - name: Get source
@@ -100,10 +98,69 @@ jobs:
 
       - name: Run tests
         run: ./e2e/test_${{ matrix.test-script }}.sh
-      
+
       - name: Upload logs for debugging
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: e2e-output
+
+  e2e-macos:
+      name: e2e-macos
+      runs-on: macos-latest
+
+      strategy:
+        fail-fast: false
+        matrix:
+          python-version:
+            - "3.12"
+          rust-version:
+            # RHEL 9.4 has rustc 1.75
+            - "1.75"
+          test-script:
+            - bootstrap
+            - bootstrap_extras
+            - bootstrap_build_tags
+            - build
+            - build_order
+            - build_steps
+            - build_settings
+            - meson
+            - override
+            - pep517_build_sdist
+            - prebuilt_wheels_alt_server
+            - report_missing_dependency
+            - rust_vendor
+            - download_sequence
+            - optimize_build
+            - extra_metadata
+
+      steps:
+        - name: Get source
+          uses: actions/checkout@v4
+
+        - name: Set up Python ${{ matrix.python-version }}
+          uses: actions/setup-python@v5
+          with:
+            python-version: ${{ matrix.python-version }}
+
+        - name: Set up Rust ${{ matrix.rust-version }}
+          uses: actions-rs/toolchain@v1
+          with:
+            toolchain: ${{ matrix.rust-version }}
+            default: true
+            override: true
+
+        - name: Install dependencies
+          run: python -m pip install tox
+
+        - name: Run tests
+          run: ./e2e/test_${{ matrix.test-script }}.sh
+
+        - name: Upload logs for debugging
+          if: ${{ failure() }}
+          uses: actions/upload-artifact@v4
+          with:
+            name: ${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
+            path: e2e-output
