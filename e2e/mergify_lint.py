@@ -5,6 +5,7 @@ import pathlib
 import sys
 
 import yaml
+from packaging.version import Version
 
 # Parse the mergify settings to find the rules that are in place.
 mergify_settings_file = pathlib.Path(".mergify.yml")
@@ -29,11 +30,12 @@ print("existing jobs:\n  ", "\n  ".join(str(j) for j in sorted(existing_jobs)), 
 github_actions_file = pathlib.Path(".github/workflows/test.yaml")
 github_actions = yaml.safe_load(github_actions_file.read_text(encoding="utf8"))
 matrix = github_actions["jobs"]["e2e"]["strategy"]["matrix"]
-python_versions = list(sorted(matrix["python-version"]))
-rust_versions = list(sorted(matrix["rust-version"]))
+python_versions = list(sorted(matrix["python-version"], key=Version))
+rust_versions = list(sorted(matrix["rust-version"], key=Version))
 test_scripts = set(matrix["test-script"])
 print("found test scripts:\n  ", "\n  ".join(sorted(test_scripts)), sep="")
 os_versions = list(sorted(matrix["os"]))
+os_versions.remove("macos-latest")
 
 e2e_dir = pathlib.Path("e2e")
 e2e_jobs = set(
@@ -61,6 +63,16 @@ expected_jobs = set(
         os_versions,
     )
 )
+# for macOS, only expect latest Python version and latest Rust version
+expected_jobs.update(set(
+    str(combo).replace("'", "")
+    for combo in itertools.product(
+        python_versions[-1:],
+        rust_versions[-1:],
+        test_scripts,
+        ["macos-latest"],
+    )
+))
 if not expected_jobs.difference(existing_jobs):
     print("found rules for all expected jobs!")
 for job_name in sorted(expected_jobs.difference(existing_jobs)):
