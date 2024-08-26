@@ -159,10 +159,30 @@ def test_changelog():
             - "rebuild xyz"
     """)
     )
-    assert s.build_tag("foo", Version("2.1.0")) == (2, "")
-    assert s.build_tag("foo", "2.1.0") == (2, "")
-    assert s.build_tag("foo", "3.1.0") == ()
-    assert s.build_tag("bar", "2.1.0") == ()
+    assert s.build_tag("foo", Version("2.1.0"), "variant") == (2, "")
+    assert s.build_tag("foo", "2.1.0", "variant") == (2, "")
+    assert s.build_tag("foo", "3.1.0", "variant") == ()
+    assert s.build_tag("bar", "2.1.0", "variant") == ()
+
+
+def test_global_changelog():
+    s = _parse(
+        textwrap.dedent("""
+    changelog:
+        variant:
+            - "setuptools upgraded to 82.0.0"
+    packages:
+      foo:
+        changelog:
+          "2.1.0":
+            - "rebuild abc"
+            - "rebuild xyz"
+    """)
+    )
+    assert s.build_tag("foo", Version("2.1.0"), "variant") == (3, "")
+    assert s.build_tag("foo", Version("2.1.0"), "someother_variant") == (2, "")
+    assert s.build_tag("foo", "3.1.0", "variant") == (1, "")
+    assert s.build_tag("bar", "2.1.0", "variant") == (1, "")
 
 
 def test_resolve_template_with_no_template():

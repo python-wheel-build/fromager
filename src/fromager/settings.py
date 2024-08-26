@@ -93,12 +93,14 @@ class Settings:
             return sdist_root_dir / relative_build_dir
         return sdist_root_dir
 
-    def build_tag(self, pkg: str, version: Version | str) -> BuildTag:
+    def build_tag(self, pkg: str, version: Version | str, variant: str) -> BuildTag:
         p = self.get_package_settings(pkg)
         changelog = p.get("changelog", {}).get(str(version), [])
-        if not changelog:
+        global_changelog = self._data.get("changelog") or {}
+        global_changelog_variant = global_changelog.get(variant) or []
+        if not changelog and not global_changelog_variant:
             return ()
-        return (len(changelog), "")
+        return (len(changelog) + len(global_changelog_variant), "")
 
     def get_package_settings(self, pkg: str) -> dict[str, dict[str, str]]:
         p = self.packages()
