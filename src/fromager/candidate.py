@@ -27,6 +27,7 @@ class Candidate:
         extras: typing.Iterable[str] | None = None,
         is_sdist: bool | None = None,
         build_tag: BuildTag = (),
+        identifier: str | None = None,
     ):
         self.name = canonicalize_name(name)
         self.version = version
@@ -34,6 +35,7 @@ class Candidate:
         self.extras = extras
         self.is_sdist = is_sdist
         self.build_tag = build_tag
+        self.identifier = identifier or name
 
         self._metadata: Metadata | None = None
         self._dependencies: list[Requirement] | None = None

@@ -25,6 +25,7 @@ from . import (
     vendor_rust,
     wheels,
 )
+from .candidate import Candidate
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,10 @@ def resolve_dist(
         logger.debug(f"{req.name}: could not resolve {req} with {constraint}: {err}")
         raise
 
-    candidate: resolver.Candidate
+    candidate: Candidate
     for candidate in result.mapping.values():
+        if candidate not in ctx.resolver_cache[candidate.identifier]:
+            ctx.resolver_cache[candidate.identifier].append(candidate)
         return candidate.url, candidate.version
 
     raise ValueError(f"Unable to resolve {req}")
@@ -142,6 +145,7 @@ def default_resolver_provider(
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
         constraints=ctx.constraints,
+        cache=ctx.resolver_cache,
     )
 
 

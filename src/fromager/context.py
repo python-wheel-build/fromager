@@ -10,7 +10,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import constraints, settings
+from . import candidate, constraints, settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,9 @@ class WorkContext:
         self.variant = variant
         self.jobs = jobs
         self.network_isolation = network_isolation
+        self.resolver_cache: dict[str, list[candidate.Candidate]] = (
+            collections.defaultdict(list[candidate.Candidate])
+        )
 
         self._build_order_filename = self.work_dir / "build-order.json"
         self._constraints_filename = self.work_dir / "constraints.txt"
