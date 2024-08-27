@@ -7,7 +7,6 @@ import shutil
 import sys
 import tempfile
 import typing
-import zipfile
 from datetime import datetime
 
 import elfdeps
@@ -19,6 +18,10 @@ from packaging.version import Version
 from . import context, external_commands, overrides
 
 logger = logging.getLogger(__name__)
+
+FROMAGER_BUILD_SETTINGS = "fromager-build-settings"
+FROMAGER_ELF_PROVIDES = "fromager-elf-provides.txt"
+FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
 
 
 class BuildEnvironment:
@@ -81,31 +84,38 @@ class BuildEnvironment:
         logger.info("installed dependencies into build environment in %s", self.path)
 
 
-def analyze_wheel_elfdeps(
-    ctx: context.WorkContext, req: Requirement, wheel: pathlib.Path
-) -> tuple[set[elfdeps.SOInfo], set[elfdeps.SOInfo]] | tuple[None, None]:
-    """Analyze a wheel's ELF dependencies
+def _extra_metadata_elfdeps(
+    ctx: context.WorkContext,
+    req: Requirement,
+    wheel_root_dir: pathlib.Path,
+    dist_info_dir: pathlib.Path,
+) -> typing.Iterable[elfdeps.ELFInfo]:
+    """Analyze a wheel's ELF dependencies and add info files
 
-    Logs and returns library dependencies and library provides
+    Logs and returns library dependencies and library provides. Writes
+    requirements to dist-info.
     """
-    _, _, _, tags = parse_wheel_filename(wheel.name)
-    if all(tag.platform == "all" for tag in tags):
-        logger.debug("%s: %s is a purelib wheel", req.name, wheel)
-        return None, None
-
     # mapping of required libraries to list of versions
     requires: set[elfdeps.SOInfo] = set()
     provides: set[elfdeps.SOInfo] = set()
+    elfinfos: list[elfdeps.ELFInfo] = []
 
     settings = elfdeps.ELFAnalyzeSettings(filter_soname=True)
-    with zipfile.ZipFile(wheel) as zf:
-        for zipinfo in zf.infolist():
-            if zipinfo.filename.endswith(".so"):
-                info = elfdeps.analyze_zipmember(zf, zipinfo, settings=settings)
-                provides.update(info.provides)
-                requires.update(info.requires)
+    for info in elfdeps.analyze_dirtree(wheel_root_dir, settings=settings):
+        if info.filename is not None:
+            relname = str(info.filename.relative_to(wheel_root_dir))
+        else:
+            relname = "n/a"
+        logger.debug(
+            f"{req.name}: {relname} ({info.soname}) "
+            f"requires {sorted(info.requires)}, "
+            f"provides {sorted(info.provides)}"
+        )
+        provides.update(info.provides)
+        requires.update(info.requires)
+        elfinfos.append(info)
 
-    # Don't show provided names as required names
+    # Don't list provided names as requirements
     requires = requires.difference(provides)
 
     if requires:
@@ -125,11 +135,21 @@ def analyze_wheel_elfdeps(
                 ", ".join(v for v in versions if v),
             )
 
+        requires_file = dist_info_dir / FROMAGER_ELF_REQUIRES
+        with requires_file.open("w", encoding="utf-8") as f:
+            for soinfo in sorted(requires):
+                f.write(f"{soinfo}\n")
+
     if provides:
         names = sorted(p.soname for p in provides)
         logger.info("%s: Provides libraries: %s", req.name, ", ".join(names))
 
-    return requires, provides
+        provides_file = dist_info_dir / FROMAGER_ELF_REQUIRES
+        with provides_file.open("w", encoding="utf-8") as f:
+            for soinfo in sorted(provides):
+                f.write(f"{soinfo}\n")
+
+    return elfinfos
 
 
 def add_extra_metadata_to_wheels(
@@ -143,7 +163,9 @@ def add_extra_metadata_to_wheels(
     # parse_wheel_filename normalizes the dist name, however the dist-info
     # directory uses the verbatim distribution name from the wheel file.
     # Packages with upper case names like "MarkupSafe" are affected.
-    dist_name_normalized, dist_version, _, _ = parse_wheel_filename(wheel_file.name)
+    dist_name_normalized, dist_version, _, wheel_tags = parse_wheel_filename(
+        wheel_file.name
+    )
     dist_name = wheel_file.name.split("-", 1)[0]
     if dist_name_normalized != canonicalize_name(dist_name):
         # sanity check, should never fail
@@ -165,9 +187,8 @@ def add_extra_metadata_to_wheels(
             network_isolation=ctx.network_isolation,
         )
 
-        dist_info_dir = (
-            pathlib.Path(dir_name) / dist_filename / f"{dist_filename}.dist-info"
-        )
+        wheel_root_dir = pathlib.Path(dir_name) / dist_filename
+        dist_info_dir = wheel_root_dir / f"{dist_filename}.dist-info"
         if not dist_info_dir.is_dir():
             raise ValueError(
                 f"{req.name}: {wheel_file} does not contain {dist_info_dir.name}"
@@ -189,16 +210,33 @@ def add_extra_metadata_to_wheels(
                 )
                 data_to_add = {}
 
-        build_file = dist_info_dir / "fromager-build-settings"
         settings = ctx.settings.get_package_settings(req.name)
         if data_to_add:
             settings["metadata-from-plugin"] = data_to_add
-
+        build_file = dist_info_dir / FROMAGER_BUILD_SETTINGS
         build_file.write_text(tomlkit.dumps(settings))
 
         req_files = sdist_root_dir.parent.glob("*-requirements.txt")
         for req_file in req_files:
             shutil.copy(req_file, dist_info_dir / f"fromager-{req_file.name}")
+
+        if any(tag.platform != "all" for tag in wheel_tags):
+            # platlib wheel
+            if sys.platform == "linux":
+                _extra_metadata_elfdeps(
+                    ctx=ctx,
+                    req=req,
+                    wheel_root_dir=wheel_root_dir,
+                    dist_info_dir=dist_info_dir,
+                )
+            else:
+                logger.debug(
+                    "%s: shared library dependency analysis not implemented for %s",
+                    req.name,
+                    sys.platform,
+                )
+        else:
+            logger.debug("%s: is a purelib wheel", req.name)
 
         build_tag_from_settings = ctx.settings.build_tag(req.name, version, ctx.variant)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
@@ -206,12 +244,13 @@ def add_extra_metadata_to_wheels(
         cmd = [
             "wheel",
             "pack",
-            str(dist_info_dir.parent),
+            str(wheel_root_dir),
             "--dest-dir",
             str(wheel_file.parent),
             "--build-number",
             f"{build_tag[0]}{build_tag[1]}",
         ]
+
         external_commands.run(
             cmd,
             cwd=dir_name,
@@ -279,7 +318,6 @@ def build_wheel(
         wheel_file=wheels[0],
     )
     logger.info(f"{req.name}: built wheel '{wheel}' in {end - start}")
-    analyze_wheel_elfdeps(ctx, req, wheel)
     return wheel
 
 

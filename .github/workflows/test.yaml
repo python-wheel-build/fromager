@@ -86,6 +86,7 @@ jobs:
           - download_sequence
           - optimize_build
           - extra_metadata
+          - elfdeps
         os:
           - ubuntu-latest
           - macos-latest
