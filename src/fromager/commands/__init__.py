@@ -6,6 +6,7 @@ from . import (
     download_sequence,
     graph,
     list_overrides,
+    migrate_config,
     server,
     step,
 )
@@ -21,4 +22,5 @@ commands = [
     canonicalize.canonicalize,
     download_sequence.download_sequence,
     server.wheel_server,
+    migrate_config.migrate_config,
 ]

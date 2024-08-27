@@ -1,0 +1,30 @@
+build_dir: python
+changelog:
+    "1.0.1":
+        - fixed bug
+    "1.0.2":
+        - more bugs
+        - rebuild
+env:
+    EGG: spam
+    EGG_AGAIN: "$EGG"
+    SPAM: "alot $EXTRA"
+    QUOTES: "A\"BC'$$EGG"
+download_source:
+    url: https://egg.test/${canonicalized_name}/v${version}.tar.gz
+    destination_filename: ${canonicalized_name}-${version}.tar.gz
+resolver_dist:
+    sdist_server_url: https://sdist.test/egg
+    include_sdists: true
+    include_wheels: false
+variants:
+    cpu:
+        env:
+            EGG: "spam ${EGG}"
+            EGG_AGAIN: "$EGG"
+        wheel_server_url: https://wheel.test/simple
+    rocm:
+        env:
+            SPAM: ""
+        pre_built: True
+    cuda: {}

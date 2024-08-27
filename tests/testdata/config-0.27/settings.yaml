@@ -1,0 +1,13 @@
+pre_built:
+  gaudi:
+    - torch
+
+packages:
+  torch:
+    download_source:
+      url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
+      destination_filename: "torch-${version}.tar.gz"
+    resolver_dist:
+      sdist_server_url: "https://pypi.org/simple"
+      include_sdists: false
+      include_wheels: true
