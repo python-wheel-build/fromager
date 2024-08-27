@@ -1,7 +1,9 @@
+import itertools
 import json
 import logging
 import pathlib
 import sys
+import typing
 
 import click
 from packaging.requirements import Requirement
@@ -38,6 +40,79 @@ def to_constraints(wkctx, graph_file, output):
             bootstrap.write_constraints_file(graph, f)
     else:
         bootstrap.write_constraints_file(graph, sys.stdout)
+
+
+@graph.command()
+@click.option(
+    "-o",
+    "--output",
+    type=clickext.ClickPath(),
+)
+@click.argument(
+    "graph-file",
+    type=clickext.ClickPath(),
+)
+@click.pass_obj
+def to_dot(wkctx, graph_file, output):
+    "Convert a graph file to a DOT file suitable to pass to graphviz."
+    graph = read_graph(graph_file)
+    if output:
+        with open(output, "w") as f:
+            write_dot(graph, f)
+    else:
+        write_dot(graph, sys.stdout)
+
+
+def write_dot(graph: context.BuildRequirements, output: typing.TextIO) -> None:
+    install_constraints = set(
+        f"{name}=={version}"
+        for name, version, _ in bootstrap.installation_dependencies(
+            all_edges=graph,
+            name=context.ROOT_BUILD_REQUIREMENT,
+            version=None,
+        )
+    )
+
+    output.write("digraph {\n")
+    output.write("\n")
+
+    seen_nodes = {}
+    id_generator = itertools.count(1)
+
+    def get_node_id(node):
+        if node not in seen_nodes:
+            seen_nodes[node] = f"node{next(id_generator)}"
+        return seen_nodes[node]
+
+    def iter_nodes():
+        for parent, edge_list in graph.items():
+            yield parent
+            for _, dist_name, dist_version, _ in edge_list:
+                yield f"{dist_name}=={dist_version}"
+
+    for node in iter_nodes():
+        node_id = get_node_id(node)
+        properties = f'label="{node}"'
+        if not node:
+            properties = 'label="*"'
+        if node in install_constraints:
+            properties += " style=filled fillcolor=red color=red fontcolor=white"
+        else:
+            properties += " style=filled fillcolor=lightgrey color=lightgrey"
+        output.write(f"  {node_id} [{properties}]\n")
+
+    output.write("\n")
+
+    for parent, edge_list in graph.items():
+        parent_id = get_node_id(parent)
+        for req_type, dist_name, dist_version, req in edge_list:
+            child_id = get_node_id(f"{dist_name}=={dist_version}")
+            sreq = str(req).replace('"', "'")
+            properties = f'labeltooltip="{sreq}"'
+            if req_type != "install":
+                properties += " style=dotted"
+            output.write(f"  {parent_id} -> {child_id} [{properties}]\n")
+    output.write("}\n")
 
 
 def read_graph(filename: pathlib.Path) -> context.BuildRequirements:
