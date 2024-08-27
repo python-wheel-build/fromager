@@ -378,7 +378,22 @@ The return value is ignored.
 ```python
 def build_wheel(ctx, build_env, extra_environ, req, sdist_root_dir):
     ...
-```
+```  
+
+### add_extra_metadata_to_wheels  
+
+The `add_extra_metadata_to_wheels()` function is responsible to return any
+data the user would like to include in the wheels that fromager builds. This
+data will be added to the `fromager-build-settings` file under the `.dist-info`
+directory of the wheels. This file already contains the settings used to build
+that package.  
+
+The arguments available are `WorkContext`, `Requirement` being evaluated, the resolved
+`Version` of that requirement, a `dict` with extra environment variables, a `Path` to
+the root directory of the source distribution and a `Path` to the `.dist-info` directory
+of the wheel.  
+
+The return value must be a `dict`, otherwise it will be ignored.
 
 ## Canonical distribution names
 
@@ -476,4 +491,28 @@ resolver_dist:
     include_wheels: true
     include_sdists: false
 build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
+```
+
+## Speeding up build-sequence  
+
+The `build-sequence` command can be sped up by passing the `--skip-existing` option and the URL of the wheels index which hosts all the previosuly built wheels. When using `build-sequence` in skip existing mode, it will check the wheels index to see if the version the wheel it is trying to build already exists. If it does then it won't build that package.  
+
+However, there might be cases where we need to build a package again even if the version hasn't changed. This might be due to many factors such as change in plugin code, environment variables, additional patches to sdist etc. For such situations, whenever such a change occurs the user can define a changelog in the settings file for that particular version of the package:  
+
+```yaml
+# settings/torch.yaml
+changelog:
+    "2.3.1":
+        - Changed env variable MAX_JOBS to 10
+```
+
+Changelogs help fromager control the [build tag](https://packaging.python.org/en/latest/specifications/binary-distribution-format/#file-format) of a wheel. Even if the version matches but the build tag doesn't the package will be built with the new build tag even in skip existing mode. By default all packages are built with build tag 0 when no changelog is specified. Build tags are added to any wheel built by fromager using any command i.e. wheels built by `bootstrap` and `step` commands also have build tags in them. The order and content of the changelog itself is irrelevant to fromager and is only meant to help user keep track why a new build tag was needed. For fromager only the number of entries in the changelog is important. The user is responsible to maintain the correct number of entries in the changelog and any decrease in the number of entries might result in an error when using `build-sequence` in the skip existing mode.  
+
+Sometimes, it might be necessary to rebuild all the packages even in skip existing mode. This might be due to complete changes in the build environment for all wheels or a breaking change in a core build dependency such as `setuptools`. Instead of defining a changelog for all packages, the user can define a global changelog which will cause a bump to the build tag for all packages:  
+
+```yaml
+# global settings.yaml
+changelog:
+    variant:
+        - Changed env variable MAX_JOBS to 10
 ```
