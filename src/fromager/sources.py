@@ -40,11 +40,12 @@ def download_source(
     req: Requirement,
     sdist_server_urls: list[str],
 ) -> tuple[pathlib.Path, str, str, str]:
+    pbi = ctx.package_build_info(req)
     downloader = overrides.find_override_method(req.name, "download_source")
     source_type = "override"
     if not downloader:
         downloader = default_download_source
-        if not ctx.settings.download_source_url(req.name, resolve_template=False):
+        if not pbi.download_source_url(resolve_template=False):
             source_type = "sdist"
     for url in sdist_server_urls:
         try:
@@ -151,27 +152,19 @@ def default_download_source(
     sdist_server_url: str,
 ) -> tuple[pathlib.Path, str, str]:
     "Download the requirement and return the name of the output path."
-    pkg_settings = ctx.settings.get_package_settings(req.name)
-    if pkg_settings:
-        logger.info(f"{req.name}: resolving and downloading sdist with: {pkg_settings}")
+    pbi = ctx.package_build_info(req)
+    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
-    include_sdists = ctx.settings.resolver_include_sdists(req.name, True)
-    include_wheels = ctx.settings.resolver_include_wheels(req.name, False)
-    override_sdist_server_url = ctx.settings.resolver_sdist_server_url(
-        req.name, sdist_server_url
+    orig_url, version = resolve_dist(
+        ctx=ctx,
+        req=req,
+        sdist_server_url=override_sdist_server_url,
+        include_sdists=pbi.resolver_include_sdists,
+        include_wheels=pbi.resolver_include_wheels,
     )
 
-    org_url, version = resolve_dist(
-        ctx, req, override_sdist_server_url, include_sdists, include_wheels
-    )
-
-    destination_filename = ctx.settings.download_source_destination_filename(
-        req.name, req=req, version=version
-    )
-    url = ctx.settings.download_source_url(
-        req.name, default=org_url, req=req, version=version
-    )
-
+    destination_filename = pbi.download_source_destination_filename(version=version)
+    url = pbi.download_source_url(version=version, default=orig_url)
     source_filename = _download_source_check(
         ctx.sdists_downloads, url, destination_filename
     )
@@ -301,7 +294,7 @@ def patch_source(
     has_applied = False
     # apply any unversioned patch first
     for p in overrides.patches_for_source_dir(
-        ctx.patches_dir, overrides.pkgname_to_override_module(req.name)
+        ctx.settings.patches_dir, overrides.pkgname_to_override_module(req.name)
     ):
         _apply_patch(p, source_root_dir)
         has_applied = True
@@ -309,14 +302,14 @@ def patch_source(
     # make sure that we don't apply the generic unversioned patch again
     if source_root_dir.name != overrides.pkgname_to_override_module(req.name):
         for p in overrides.patches_for_source_dir(
-            ctx.patches_dir, source_root_dir.name
+            ctx.settings.patches_dir, source_root_dir.name
         ):
             _apply_patch(p, source_root_dir)
             has_applied = True
 
     # If no patch has been applied, call warn for old patch
     if not has_applied:
-        _warn_for_old_patch(source_root_dir, ctx.patches_dir)
+        _warn_for_old_patch(source_root_dir, ctx.settings.patches_dir)
 
 
 def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
@@ -416,10 +409,11 @@ def build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: wheels.BuildEnvironment,
 ) -> pathlib.Path:
-    logger.info(
-        f"{req.name}: building source distribution in {ctx.settings.build_dir(req.name, sdist_root_dir)}"
-    )
-    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    pbi = ctx.package_build_info(req)
+    build_dir = pbi.build_dir(sdist_root_dir)
+
+    logger.info(f"{req.name}: building source distribution in {build_dir}")
+    extra_environ = pbi.get_extra_environ()
     sdist_filename = overrides.find_and_invoke(
         req.name,
         "build_sdist",
@@ -429,7 +423,7 @@ def build_sdist(
         req=req,
         version=version,
         sdist_root_dir=sdist_root_dir,
-        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
+        build_dir=build_dir,
         build_env=build_env,
     )
     logger.info(f"{req.name}: built source distribution {sdist_filename}")

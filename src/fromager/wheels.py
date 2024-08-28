@@ -160,6 +160,7 @@ def add_extra_metadata_to_wheels(
     sdist_root_dir: pathlib.Path,
     wheel_file: pathlib.Path,
 ) -> pathlib.Path:
+    pbi = ctx.package_build_info(req)
     # parse_wheel_filename normalizes the dist name, however the dist-info
     # directory uses the verbatim distribution name from the wheel file.
     # Packages with upper case names like "MarkupSafe" are affected.
@@ -210,7 +211,10 @@ def add_extra_metadata_to_wheels(
                 )
                 data_to_add = {}
 
-        settings = ctx.settings.get_package_settings(req.name)
+        if pbi.has_config:
+            settings = pbi.serialize(mode="json", exclude_defaults=False)
+        else:
+            settings = {}
         if data_to_add:
             settings["metadata-from-plugin"] = data_to_add
         build_file = dist_info_dir / FROMAGER_BUILD_SETTINGS
@@ -238,7 +242,7 @@ def add_extra_metadata_to_wheels(
         else:
             logger.debug("%s: is a purelib wheel", req.name)
 
-        build_tag_from_settings = ctx.settings.build_tag(req.name, version, ctx.variant)
+        build_tag_from_settings = pbi.build_tag(version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
 
         cmd = [
@@ -274,10 +278,11 @@ def build_wheel(
     version: Version,
     build_env: BuildEnvironment,
 ) -> pathlib.Path | None:
+    pbi = ctx.package_build_info(req)
     logger.info(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
-    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    extra_environ = pbi.get_extra_environ()
     # TODO: refactor?
     # Build Rust without network access
     extra_environ["CARGO_NET_OFFLINE"] = "true"
@@ -300,7 +305,7 @@ def build_wheel(
         extra_environ=extra_environ,
         req=req,
         sdist_root_dir=sdist_root_dir,
-        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
+        build_dir=pbi.build_dir(sdist_root_dir),
         version=version,
     )
     # End the timer

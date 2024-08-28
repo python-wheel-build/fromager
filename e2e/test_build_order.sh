@@ -15,7 +15,7 @@ fromager \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \
-    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+    --settings-dir="$SCRIPTDIR/changelog_settings" \
     bootstrap "${DIST}==${VERSION}"
 
 # Save the build order file but remove everything else.
@@ -40,7 +40,7 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+    --settings-dir="$SCRIPTDIR/changelog_settings" \
     build-sequence "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
 
 find "$OUTDIR/wheels-repo/"
@@ -78,7 +78,7 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+    --settings-dir="$SCRIPTDIR/changelog_settings" \
     build-sequence --skip-existing "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
 
 find "$OUTDIR/wheels-repo/"
@@ -103,7 +103,7 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+    --settings-dir="$SCRIPTDIR/changelog_settings" \
     build-sequence "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
 
 find "$OUTDIR/wheels-repo/"
@@ -119,11 +119,7 @@ fi
 
 $pass
 
-# Add a new changelog value to force build stevedore
-SETTINGS_FILE_WITH_ADDED_CHANGELOG=$OUTDIR/changelog_settings_$RANDOM.yaml
-cp $SCRIPTDIR/changelog_settings.yaml $SETTINGS_FILE_WITH_ADDED_CHANGELOG
-echo -e "\n        - test2\n" >> $SETTINGS_FILE_WITH_ADDED_CHANGELOG
-
+# bootstrap stevedore with 2 changelog.
 log="$OUTDIR/build-logs/${DIST}-build-changelog.log"
 fromager \
     --wheel-server-url $WHEEL_SERVER_URL \
@@ -131,7 +127,7 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    --settings-file="$SETTINGS_FILE_WITH_ADDED_CHANGELOG" \
+    --settings-dir="$SCRIPTDIR/changelog_settings-2" \
     build-sequence --skip-existing "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
 
 find "$OUTDIR/wheels-repo/"

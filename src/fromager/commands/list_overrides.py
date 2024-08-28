@@ -1,6 +1,6 @@
 import click
 
-from fromager import context, overrides
+from fromager import context
 
 
 @click.command()
@@ -9,7 +9,5 @@ def list_overrides(
     wkctx: context.WorkContext,
 ) -> None:
     """List all of the packages with overrides in the current configuration."""
-    for name in overrides.list_all(
-        wkctx.patches_dir, wkctx.envs_dir, wkctx.settings.packages()
-    ):
+    for name in sorted(wkctx.settings.list_overrides()):
         print(name)

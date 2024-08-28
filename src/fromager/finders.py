@@ -26,12 +26,8 @@ def _check_archive_name_in_settings(
     req: Requirement,
     dist_version: str,
 ) -> str | None:
-    destination_filename_from_settings = (
-        ctx.settings.download_source_destination_filename(
-            req.name, req=req, version=dist_version
-        )
-    )
-    return destination_filename_from_settings
+    pbi = ctx.package_build_info(req)
+    return pbi.download_source_destination_filename(dist_version)
 
 
 def find_sdist(

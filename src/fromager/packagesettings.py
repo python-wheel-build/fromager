@@ -268,6 +268,7 @@ class PackageSettings(pydantic.BaseModel):
         The package name is taken from the stem of the file name.
         """
         filename = filename.absolute()
+        logger.debug("Loading package config from %s", filename)
         raw_yaml = filename.read_text(encoding="utf-8")
         return cls.from_string(filename.stem, raw_yaml, source=filename)
 
@@ -540,6 +541,7 @@ class SettingsFile(pydantic.BaseModel):
         The package name is taken from the stem of the file name.
         """
         filename = filename.absolute()
+        logger.info("loading settings from %s", filename)
         raw_yaml = filename.read_text(encoding="utf-8")
         return cls.from_string(raw_yaml, source=filename)
 
@@ -552,14 +554,14 @@ class Settings:
         *,
         settings: SettingsFile,
         package_settings: typing.Iterable[PackageSettings],
-        variant: Variant,
+        variant: Variant | str,
         patches_dir: pathlib.Path,
     ) -> None:
         self._settings = settings
         self._package_settings: dict[Package, PackageSettings] = {
             p.name: p for p in package_settings
         }
-        self._variant = variant
+        self._variant = typing.cast(Variant, variant)
         self._patches_dir = patches_dir
         self._pbi_cache: dict[Package, PackageBuildInfo] = {}
 
@@ -569,11 +571,17 @@ class Settings:
         *,
         settings_file: pathlib.Path,
         settings_dir: pathlib.Path,
-        variant: Variant,
+        variant: Variant | str,
         patches_dir: pathlib.Path,
     ) -> "Settings":
         """Create Settings from settings.yaml and directory"""
-        settings = SettingsFile.from_file(settings_file)
+        if settings_file.is_file():
+            settings = SettingsFile.from_file(settings_file)
+        else:
+            logger.debug(
+                "settings file %s does not exist, ignoring", settings_file.absolute()
+            )
+            settings = SettingsFile()
         package_settings = [
             PackageSettings.from_file(package_file)
             for package_file in sorted(settings_dir.glob("*.yaml"))
@@ -602,6 +610,12 @@ class Settings:
         """Get directory with patches"""
         return self._patches_dir
 
+    @patches_dir.setter
+    def patches_dir(self, path: pathlib.Path) -> None:
+        """Change patches_dr (for testing)"""
+        self._pbi_cache.clear()
+        self._patches_dir = path
+
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""
         return list(self._settings.changelog.get(self.variant, []))
@@ -626,6 +640,14 @@ class Settings:
             self._pbi_cache[package] = pbi
         return pbi
 
+    def list_pre_built(self) -> set[Package]:
+        """List packages marked as pre-built"""
+        return set(
+            name
+            for name in self._package_settings
+            if self.package_build_info(name).pre_built
+        )
+
     def list_overrides(self) -> set[Package]:
         """List packages with overrides
 
@@ -634,15 +656,18 @@ class Settings:
         - `patches/package-version/*.patch`
         """
         packages: set[Package] = set()
+
         # package settings with a config file
         packages.update(
             ps.name for ps in self._package_settings.values() if ps.has_config
         )
+
         # override plugins
         exts = overrides._get_extensions()
         packages.update(
             Package(canonicalize_name(name, validate=True)) for name in exts.names()
         )
+
         # patches
         for patchfile in self.patches_dir.glob("*/*.patch"):
             # parent directory has format "package-version"

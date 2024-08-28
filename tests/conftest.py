@@ -4,7 +4,7 @@ import typing
 import pytest
 from click.testing import CliRunner
 
-from fromager import context, settings
+from fromager import context, packagesettings
 
 TESTDATA_PATH = pathlib.Path(__file__).parent.absolute() / "testdata"
 
@@ -15,32 +15,39 @@ def testdata_path() -> typing.Generator[pathlib.Path, None, None]:
 
 
 @pytest.fixture
-def tmp_context(tmp_path) -> context.WorkContext:
+def tmp_context(tmp_path: pathlib.Path) -> context.WorkContext:
+    patches_dir = tmp_path / "overrides/patches"
+    variant = "cpu"
     ctx = context.WorkContext(
-        active_settings=settings.Settings({}),
+        active_settings=None,
         constraints_file=None,
-        patches_dir=tmp_path / "overrides/patches",
-        envs_dir=tmp_path / "overrides/envs",
+        patches_dir=patches_dir,
         sdists_repo=tmp_path / "sdists-repo",
         wheels_repo=tmp_path / "wheels-repo",
         work_dir=tmp_path / "work-dir",
         wheel_server_url="",
+        variant=variant,
     )
     ctx.setup()
     return ctx
 
 
 @pytest.fixture
-def testdata_context(testdata_path, tmp_path) -> context.WorkContext:
+def testdata_context(
+    testdata_path: pathlib.Path, tmp_path: pathlib.Path
+) -> context.WorkContext:
     overrides = testdata_path / "context" / "overrides"
+    patches_dir = overrides / "patches"
+    variant = "cpu"
     ctx = context.WorkContext(
-        active_settings=settings.load(
+        active_settings=packagesettings.Settings.from_files(
             settings_file=overrides / "settings.yaml",
             settings_dir=overrides / "settings",
+            patches_dir=patches_dir,
+            variant=variant,
         ),
         constraints_file=None,
         patches_dir=overrides / "patches",
-        envs_dir=overrides / "envs",
         sdists_repo=tmp_path / "sdists-repo",
         wheels_repo=tmp_path / "wheels-repo",
         work_dir=tmp_path / "work-dir",

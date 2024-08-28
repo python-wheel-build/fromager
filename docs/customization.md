@@ -4,6 +4,28 @@ Fromager support customizing most aspects of the build process,
 including acquiring the source, applying local patches, passing
 arguments to the build, and providing a custom build command.
 
+## Package name
+
+(canonical-distribution-names)=
+
+Fromager normalizes a package name into one of two forms. Settings files,
+patch directories, and override plugins use the *override name*. All other
+places use the normalized, *canonical name*.
+
+```python
+import re
+
+def canonicalize_name(name: str) -> NormalizedName:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+def override_name(name: str | NormalizedName) -> str:
+    return canonicalize_name(name).replace("-", "_")
+```
+
+See PyPA spec for package
+[names and normalization](https://packaging.python.org/en/latest/specifications/name-normalization/)
+for more information.
+
 ## Variants
 
 It is frequently necessary to build the same packages in different
@@ -21,60 +43,104 @@ Set the variant using the `--variant` command line option or the
 `FROMAGER_VARIANT` environment variable (for ease of use in
 containers).
 
-## Build environment variables
+## Customizations using using package-specific settings files (`$name.yaml`)
+
+Package settings are read from their own file in the directory specified with
+`--settings-dir`. Files should be named using the canonicalized form of the
+package name with the suffix `.yaml`, e.g. `torch.yaml` or
+`llama_cpp_python.yaml`. Files are read in lexicographical order.
+
+### Example config
+
+```shell
+$ fromager --settings-dir=overrides/settings ...
+```
+
+```yaml
+# overrides/settings/torch.yaml
+download_source:
+    url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
+    destination_filename: "${canonicalized_name}-${version}.tar.gz"
+resolver_dist:
+    sdist_server_url: "https://pypi.org/simple"
+    include_wheels: true
+    include_sdists: false
+build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
+env:
+    USE_FFMPEG: "0"
+    USE_LEVELDB: "0"
+    USE_LMDB: "1"
+variants:
+    cpu:
+        env:
+            OPENBLAS_NUM_THREADS: "1"
+    gaudi:
+        # use pre-built binary wheels for this variant
+        pre_built: true
+```
+
+### Download sources
+
+To use predefined urls to download sources from, instead of overriding
+the entire `download_source` function, a mapping of package to download
+source url can be provided directly in settings.yaml. Optionally the
+downloaded sdist can be renamed. Both the url and the destination filename
+support templating. The only supported template variable are:
+
+- `version` - it is replaced by the version returned by the resolver
+- `canonicalized_name` - it is replaced by the canonicalized name of the
+  package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`
+
+### Resolver dist
+
+The source distribution index server used by the package resolver can
+be overriden for a particular package. The resolver can also be told
+to whether include wheels or sdist sources while trying to resolve
+the package. Templating is not supported here.
+
+### Build directory
+
+A `build_dir` field can also be defined to indicate to fromager where the
+package should be build relative to the sdist root directory.
+
+### Variant pre-built flag
+
+If the `pre_built` flag is set for a variant, then Fromager pulls binary
+wheels from upstream package servers serves instead of rebuilding the
+package from source.
+
+### Build environment variables
 
 Most python packages with configurable builds use environment variables to pass
 build parameters. The environment variables set when `fromager` runs are passed
 to the build process for each wheel. Sometimes this does not provide sufficient
 opportunity for customization, so `fromager` also supports setting build
-variables for each package using environment files. The `--envs-dir` command
-line argument specifies a directory with environment files for passing variables
-to the builds. The default is `overrides/envs`.
-
-(canonical-distribution-names)=
-Environment files are named using the [canonical distribution
-name](#canonical-distribution-names) and the suffix `.env`.
-
-Settings common to all variants of a given package can be placed in an
-environment file at the root of the `--envs-dir`.
+variables for each package.
 
 The most common reason for passing different environment variables is to support
 different build variants, such as to enable different hardware accelerators.
-Therefore, the environment file directory is organized with a subdirectory per
-variant. Settings in the variant-specific file override and extend settings in
-the base directory.
+The env vars are defined in the `env` mapping of a variant. Values must be
+strings. Values like `1` must be quoted as `"1"`.
 
-```console
-$ tree overrides/envs/
-overrides/envs/
-├── flash_attn.env
-├── vllm.env
-├── cpu
-│   └── vllm.env
-├── cuda
-│   ├── flash_attn.env
-│   └── llama_cpp_python.env
-└── test
-    └── testenv.env
-```
-
-Environment files use shell-like syntax to set variables, with the
-variable name followed by `=` and then the variable value. Whitespace
-around the 3 parts will be ignored, but whitespace inside the value is
-preserved. It is not necessary to quote values, and quotes inside the
-value will be passed through.
+Settings common to all variants of a given package can be placed in the the
+top-level `env` mapping. Variant env vars override global env vars.
 
 Environment files support simple parameter expansions `$NAME` and
-`${NAME}`. Values are taken from previous lines, then process environment.
-Sub shell expression `$(cmd)` and extended parameter expansions like
-`${NAME:-default}` are not implemented.
+`${NAME}`. Values are taken from previous lines, then global env map, and
+finally process environment. Sub shell expression `$(cmd)` and extended
+parameter expansions like `${NAME:-default}` are not implemented. A literal
+`$` must be quoted as `$$`.
 
-```console
-$ cat overrides/envs/cuda/llama_cpp_python.env
-LLAMA_NATIVE=off
-CMAKE_ARGS=-DLLAMA_CUBLAS=on -DCMAKE_CUDA_ARCHITECTURES=all-major -DLLAMA_NATIVE=${LLAMA_NATIVE}
-CFLAGS=-mno-avx
-FORCE_CMAKE=1
+```yaml
+# example
+env:
+    # pre-pend '/global/bin' to PATH
+    PATH: "/global/bin:$PATH"
+variants:
+    cpu:
+        env:
+            # The cpu variant has 'PATH=/cpu/bin:/global/bin:$PATH`
+            PATH: "/cpu/bin:$PATH"
 ```
 
 ## Patching source
@@ -445,74 +511,4 @@ def post_build(
     logger.info(
         f"{req.name}: running post build hook for {sdist_filename} and {wheel_filename}"
     )
-```
-
-## Customizations using settings.yaml
-
-To use predefined urls to download sources from, instead of overriding the entire `download_source` function, a mapping of package to download source url can be provided directly in settings.yaml. Optionally the downloaded sdist can be renamed. Both the url and the destination filename support templating. The only supported template variable are:
-
-- `version` - it is replaced by the version returned by the resolver
-- `canonicalized_name` - it is replaced by the canonicalized name of the package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`
-
-The source distribution index server used by the package resolver can be overriden for a particular package. The resolver can also be told to whether include wheels or sdist sources while trying to resolve the package. Templating is not supported here.
-
-A `build_dir` field can also be defined to indicate to fromager where the package should be build relative to the sdist root directory
-
-```yaml
-packages:
-    torch:
-        download_source:
-            url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
-            destination_filename: "${canonicalized_name}-${version}.tar.gz"
-        resolver_dist:
-            sdist_server_url: "https://pypi.org/simple"
-            include_wheels: true
-            include_sdists: false
-        build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
-```
-
-### Customizations using package-specific settings files
-
-In addition to the unified settings file, package settings can be saved in their
-own file in the directory specified with `--settings-dir`. Files should be named
-using the canonicalized form of the package name with the suffix `.yaml`. The
-data from the file is treated as though it appears in the
-`packages.package_name` section of the main settings file.  Files are read in
-lexicographical order. Settings in package-specific files override all settings
-in the global file.
-
-```yaml
-# settings/torch.yaml
-download_source:
-    url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
-    destination_filename: "${canonicalized_name}-${version}.tar.gz"
-resolver_dist:
-    sdist_server_url: "https://pypi.org/simple"
-    include_wheels: true
-    include_sdists: false
-build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
-```
-
-## Speeding up build-sequence  
-
-The `build-sequence` command can be sped up by passing the `--skip-existing` option and the URL of the wheels index which hosts all the previosuly built wheels. When using `build-sequence` in skip existing mode, it will check the wheels index to see if the version the wheel it is trying to build already exists. If it does then it won't build that package.  
-
-However, there might be cases where we need to build a package again even if the version hasn't changed. This might be due to many factors such as change in plugin code, environment variables, additional patches to sdist etc. For such situations, whenever such a change occurs the user can define a changelog in the settings file for that particular version of the package:  
-
-```yaml
-# settings/torch.yaml
-changelog:
-    "2.3.1":
-        - Changed env variable MAX_JOBS to 10
-```
-
-Changelogs help fromager control the [build tag](https://packaging.python.org/en/latest/specifications/binary-distribution-format/#file-format) of a wheel. Even if the version matches but the build tag doesn't the package will be built with the new build tag even in skip existing mode. By default all packages are built with build tag 0 when no changelog is specified. Build tags are added to any wheel built by fromager using any command i.e. wheels built by `bootstrap` and `step` commands also have build tags in them. The order and content of the changelog itself is irrelevant to fromager and is only meant to help user keep track why a new build tag was needed. For fromager only the number of entries in the changelog is important. The user is responsible to maintain the correct number of entries in the changelog and any decrease in the number of entries might result in an error when using `build-sequence` in the skip existing mode.  
-
-Sometimes, it might be necessary to rebuild all the packages even in skip existing mode. This might be due to complete changes in the build environment for all wheels or a breaking change in a core build dependency such as `setuptools`. Instead of defining a changelog for all packages, the user can define a global changelog which will cause a bump to the build tag for all packages:  
-
-```yaml
-# global settings.yaml
-changelog:
-    variant:
-        - Changed env variable MAX_JOBS to 10
 ```

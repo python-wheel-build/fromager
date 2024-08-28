@@ -1,0 +1,7 @@
+download_source:
+  url: https://files.pythonhosted.org/packages/e7/c1/b210bf1071c96ecfcd24c2eeb4c828a2a24bf74b38af13896d02203b1eec/stevedore-${version}.tar.gz
+  destination_filename: stevedore-custom-${version}.tar.gz
+resolver_dist:
+  sdist_server_url: "https://pypi.org/simple"
+  include_sdists: false
+  include_wheels: true

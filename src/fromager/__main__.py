@@ -12,7 +12,7 @@ from . import (
     context,
     external_commands,
     overrides,
-    settings,
+    packagesettings,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,9 @@ else:
     "--envs-dir",
     default=pathlib.Path("overrides/envs"),
     type=clickext.ClickPath(),
-    help="location of environment override files",
+    help="deprecated: no longer used",
+    hidden=True,
+    expose_value=False,
 )
 @click.option(
     "--settings-file",
@@ -135,7 +137,6 @@ def main(
     wheels_repo: pathlib.Path,
     work_dir: pathlib.Path,
     patches_dir: pathlib.Path,
-    envs_dir: pathlib.Path,
     settings_file: pathlib.Path,
     settings_dir: pathlib.Path,
     constraints_file: pathlib.Path,
@@ -184,10 +185,14 @@ def main(
         ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
 
     wkctx = context.WorkContext(
-        active_settings=settings.load(settings_file, settings_dir),
+        active_settings=packagesettings.Settings.from_files(
+            settings_file=settings_file,
+            settings_dir=settings_dir,
+            patches_dir=patches_dir,
+            variant=variant,
+        ),
         constraints_file=constraints_file,
         patches_dir=patches_dir,
-        envs_dir=envs_dir,
         sdists_repo=sdists_repo,
         wheels_repo=wheels_repo,
         work_dir=work_dir,

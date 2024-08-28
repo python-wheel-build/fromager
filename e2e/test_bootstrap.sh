@@ -17,7 +17,7 @@ fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
-  --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+  --settings-dir="$SCRIPTDIR/changelog_settings" \
   bootstrap 'stevedore==5.2.0'
 
 find "$OUTDIR/wheels-repo/" -name '*.whl'

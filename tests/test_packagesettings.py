@@ -5,12 +5,12 @@ import pytest
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
+from fromager import context
 from fromager.packagesettings import (
     BuildDirectory,
     EnvVars,
     Package,
     PackageSettings,
-    Settings,
     SettingsFile,
     Variant,
 )
@@ -80,17 +80,6 @@ EMPTY_EXPECTED = {
 }
 
 
-@pytest.fixture
-def test_settings(testdata_path, tmp_path) -> Settings:
-    overrides = testdata_path / "context" / "overrides"
-    return Settings.from_files(
-        settings_file=overrides / "settings.yaml",
-        settings_dir=overrides / "settings",
-        variant=Variant("cpu"),
-        patches_dir=overrides / "patches",
-    )
-
-
 def test_parse_full(testdata_path: pathlib.Path) -> None:
     filename = testdata_path / "context/overrides/settings/test_pkg.yaml"
     p = PackageSettings.from_string(TEST_PKG, filename.read_text())
@@ -122,8 +111,8 @@ def test_default_settings() -> None:
     assert p.model_dump() == expected
 
 
-def test_pbi_test_pkg_extra_environ(test_settings: Settings) -> None:
-    pbi = test_settings.package_build_info(TEST_PKG)
+def test_pbi_test_pkg_extra_environ(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
     assert pbi.get_extra_environ(template_env={"EXTRA": "extra"}) == {
         "EGG": "spam spam",
         "EGG_AGAIN": "spam spam",
@@ -131,8 +120,8 @@ def test_pbi_test_pkg_extra_environ(test_settings: Settings) -> None:
         "SPAM": "alot extra",
     }
 
-    test_settings.variant = Variant("rocm")
-    pbi = test_settings.package_build_info(TEST_PKG)
+    testdata_context.settings.variant = Variant("rocm")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
     assert pbi.get_extra_environ(template_env={"EXTRA": "extra"}) == {
         "EGG": "spam",
         "EGG_AGAIN": "spam",
@@ -140,8 +129,8 @@ def test_pbi_test_pkg_extra_environ(test_settings: Settings) -> None:
         "SPAM": "",
     }
 
-    test_settings.variant = Variant("cuda")
-    pbi = test_settings.package_build_info(TEST_PKG)
+    testdata_context.settings.variant = Variant("cuda")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
     assert pbi.get_extra_environ(template_env={"EXTRA": "spam"}) == {
         "EGG": "spam",
         "EGG_AGAIN": "spam",
@@ -150,10 +139,10 @@ def test_pbi_test_pkg_extra_environ(test_settings: Settings) -> None:
     }
 
 
-def test_pbi_test_pkg(test_settings: Settings) -> None:
-    pbi = test_settings.package_build_info(TEST_PKG)
+def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
     assert pbi.package == NormalizedName(TEST_PKG)
-    assert pbi.variant == Variant(test_settings.variant)
+    assert pbi.variant == Variant(testdata_context.settings.variant)
     assert pbi.pre_built is False
     assert pbi.has_config is True
     assert pbi.wheel_server_url == "https://wheel.test/simple"
@@ -186,7 +175,9 @@ def test_pbi_test_pkg(test_settings: Settings) -> None:
     sdist_root_dir = pathlib.Path("/sdist-root")
     assert pbi.build_dir(sdist_root_dir) == sdist_root_dir / "python"
 
-    patchdir = test_settings.patches_dir / f"{TEST_PKG.replace('-', '_')}-1.0.2"
+    patchdir = (
+        testdata_context.settings.patches_dir / f"{TEST_PKG.replace('-', '_')}-1.0.2"
+    )
     assert pbi.get_patches() == {
         Version("1.0.2"): [
             patchdir / "001-somepatch.patch",
@@ -196,10 +187,10 @@ def test_pbi_test_pkg(test_settings: Settings) -> None:
     assert pbi.get_patches() is pbi.get_patches()
 
 
-def test_pbi_other(test_settings: Settings) -> None:
-    pbi = test_settings.package_build_info(TEST_OTHER_PKG)
+def test_pbi_other(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_OTHER_PKG)
     assert pbi.package == NormalizedName(TEST_OTHER_PKG)
-    assert pbi.variant == Variant(test_settings.variant)
+    assert pbi.variant == Variant(testdata_context.settings.variant)
     assert pbi.pre_built is False
     assert pbi.has_config is False
     assert pbi.wheel_server_url is None
@@ -217,7 +208,10 @@ def test_pbi_other(test_settings: Settings) -> None:
     sdist_root_dir = pathlib.Path("/sdist-root")
     assert pbi.build_dir(sdist_root_dir) == sdist_root_dir
 
-    patchdir = test_settings.patches_dir / f"{TEST_OTHER_PKG.replace('-', '_')}-1.0.0"
+    patchdir = (
+        testdata_context.settings.patches_dir
+        / f"{TEST_OTHER_PKG.replace('-', '_')}-1.0.0"
+    )
     assert pbi.get_patches() == {
         Version("1.0.0"): [
             patchdir / "001-mypatch.patch",
@@ -264,28 +258,47 @@ def test_global_settings(testdata_path: pathlib.Path):
     filename = testdata_path / "context/overrides/settings.yaml"
     gs = SettingsFile.from_file(filename)
     assert gs.changelog == {
-        "testglobal": [
+        "rocm": [
             "setuptools upgraded to 82.0.0",
         ],
     }
 
 
-def test_settings_overrides(test_settings: Settings) -> None:
-    assert test_settings.list_overrides() == {TEST_PKG, TEST_EMPTY_PKG, TEST_OTHER_PKG}
+def test_settings_overrides(testdata_context: context.WorkContext) -> None:
+    assert testdata_context.settings.list_overrides() == {
+        TEST_PKG,
+        TEST_EMPTY_PKG,
+        TEST_OTHER_PKG,
+    }
 
 
-def test_global_changelog(test_settings: Settings) -> None:
-    pbi = test_settings.package_build_info(TEST_PKG)
+def test_global_changelog(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
     assert pbi.variant == "cpu"
     assert pbi.build_tag(Version("0.99")) == ()
     assert pbi.build_tag(Version("1.0.1")) == (1, "")
     assert pbi.build_tag(Version("1.0.2")) == (2, "")
     assert pbi.build_tag(Version("2.0.0")) == ()
 
-    test_settings.variant = Variant("testglobal")
-    pbi = test_settings.package_build_info(TEST_PKG)
-    assert pbi.variant == "testglobal"
+    testdata_context.settings.variant = Variant("rocm")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.variant == "rocm"
     assert pbi.build_tag(Version("0.99")) == (1, "")
     assert pbi.build_tag(Version("1.0.1")) == (2, "")
     assert pbi.build_tag(Version("1.0.2")) == (3, "")
     assert pbi.build_tag(Version("2.0.0")) == (1, "")
+
+
+def test_settings_list(testdata_context: context.WorkContext) -> None:
+    assert testdata_context.settings.list_overrides() == {
+        TEST_EMPTY_PKG,
+        TEST_OTHER_PKG,
+        TEST_PKG,
+    }
+    assert testdata_context.settings.list_pre_built() == set()
+    assert testdata_context.settings.variant_changelog() == []
+    testdata_context.settings.variant = Variant("rocm")
+    assert testdata_context.settings.list_pre_built() == {TEST_PKG}
+    assert testdata_context.settings.variant_changelog() == [
+        "setuptools upgraded to 82.0.0"
+    ]

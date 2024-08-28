@@ -43,11 +43,11 @@ TESTDIR="$OUTDIR/test"
 mkdir -p "$TESTDIR"
 cd "$TESTDIR"
 
-mkdir overrides
-cat - >overrides/settings.yaml <<EOF
-pre_built:
+mkdir -p $TESTDIR/overrides/settings
+cat - > $TESTDIR/overrides/settings/flit_core.yaml <<EOF
+variants:
   cpu:
-    - flit_core
+    pre_built: True
 EOF
 
 # Bootstrap the package we modified, and another that we don't have on
@@ -55,6 +55,7 @@ EOF
 fromager \
   -v \
   --wheel-server-url "$WHEEL_SERVER_URL" \
+  --settings-dir="$TESTDIR/overrides/settings" \
   bootstrap "${DIST}==${VERSION}" "wheel==0.43.0"
 
 # Ensure we have both expected wheels
