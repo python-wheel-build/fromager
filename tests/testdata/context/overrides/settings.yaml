@@ -1,0 +1,9 @@
+pre_built:
+    cpu: []
+
+packages:
+    testlegacy: {}
+
+changelog:
+    testglobal:
+        - "setuptools upgraded to 82.0.0"
