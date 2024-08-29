@@ -1,11 +1,15 @@
 import itertools
+import json
 import logging
 import sys
 import typing
 
 import click
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
 
-from fromager import clickext, dependency_graph
+from fromager import clickext, dependency_graph, requirements_file
 from fromager.commands import bootstrap
 
 logger = logging.getLogger(__name__)
@@ -147,3 +151,44 @@ def explain_duplicates(wkctx, graph_file):
                 break
         else:
             print(f"  * No single version of {dep_name} meets all requirements")
+
+
+@graph.command()
+@click.option(
+    "-o",
+    "--output",
+    type=clickext.ClickPath(),
+)
+@click.argument(
+    "graph-file",
+    type=clickext.ClickPath(),
+)
+@click.pass_obj
+def migrate_graph(wkctx, graph_file, output):
+    "Convert a old graph file into the the new format"
+    graph = dependency_graph.DependencyGraph()
+    with open(graph_file, "r") as f:
+        old_graph = json.load(f)
+        stack = [dependency_graph.ROOT]
+        visited = set()
+        while stack:
+            curr_key = stack.pop()
+            if curr_key in visited:
+                continue
+            for req_type, req_name, req_version, req in old_graph.get(curr_key, []):
+                parent_name, _, parent_version = curr_key.partition("==")
+                graph.add_dependency(
+                    parent_name=canonicalize_name(parent_name) if parent_name else None,
+                    parent_version=Version(parent_version) if parent_version else None,
+                    req_type=requirements_file.RequirementType(req_type),
+                    req_version=Version(req_version),
+                    req=Requirement(req),
+                )
+                stack.append(f"{req_name}=={req_version}")
+            visited.add(curr_key)
+
+    if output:
+        with open(output, "w") as f:
+            graph.serialize(f)
+    else:
+        graph.serialize(sys.stdout)
