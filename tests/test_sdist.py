@@ -9,6 +9,7 @@ from packaging.version import Version
 
 from fromager import sdist
 from fromager.context import WorkContext
+from fromager.requirements_file import RequirementType
 
 
 @patch("fromager.sources.resolve_dist")
@@ -30,10 +31,10 @@ def test_missing_dependency_format(
         Requirement("flit_core"),
         req,
     ]
-    ex = sdist.MissingDependency(tmp_context, "test", req, other_reqs)
+    ex = sdist.MissingDependency(tmp_context, RequirementType.BUILD, req, other_reqs)
     s = str(ex)
     # Ensure we report the thing we're actually missing
-    assert "Failed to install test dependency setuptools>=40.8.0. " in s
+    assert "Failed to install build dependency setuptools>=40.8.0. " in s
     # Ensure we report what version we expected of that thing
     assert "setuptools>=40.8.0 -> 69.5.1" in s
     # Ensure we report what version we expect of all of the other dependencies
@@ -44,7 +45,7 @@ def test_ignore_based_on_marker(tmp_context: WorkContext):
     version = sdist.handle_requirement(
         ctx=tmp_context,
         req=Requirement('foo; python_version<"3.9"'),
-        req_type="toplevel",
+        req_type=RequirementType.TOP_LEVEL,
         why=[],
     )
     assert version == ""

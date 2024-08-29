@@ -1,11 +1,21 @@
 import logging
 import pathlib
 import typing
+from enum import StrEnum
 
 from packaging import markers
 from packaging.requirements import Requirement
 
 logger = logging.getLogger(__name__)
+
+
+class RequirementType(StrEnum):
+    INSTALL = "install"
+    TOP_LEVEL = "toplevel"
+    BUILD = "build"
+    BUILD_SYSTEM = "build-system"
+    BUILD_BACKEND = "build-backend"
+    BUILD_SDIST = "build-sdist"
 
 
 def parse_requirements_file(
