@@ -2,9 +2,7 @@ import io
 import pathlib
 import textwrap
 
-from packaging.requirements import Requirement
-from packaging.version import Version
-
+from fromager import dependency_graph
 from fromager.commands import bootstrap
 
 
@@ -31,29 +29,38 @@ def test_get_requirements_args_and_file(tmp_path: pathlib.Path):
     ] == requirements
 
 
-def test_reverse_dependency_graph():
-    graph = {
-        "a==1.0": [
-            ("install", "b", Version("2.0"), Requirement("b>=2.0")),
-            ("install", "c", Version("3.0"), Requirement("c<4.0")),
-        ],
-    }
-    reverse_graph = bootstrap.reverse_dependency_graph(graph)
-    assert {
-        "b==2.0": [("a==1.0", Requirement("b>=2.0"))],
-        "c==3.0": [("a==1.0", Requirement("c<4.0"))],
-    } == reverse_graph
-
-
 def test_write_constraints_file_simple():
     buffer = io.StringIO()
-    graph = {
-        "": [("install", "a", Version("1.0"), Requirement("a"))],
-        "a==1.0": [
-            ("install", "b", Version("2.0"), Requirement("b>=2.0")),
-            ("install", "c", Version("3.0"), Requirement("c<4.0")),
-        ],
+    raw_graph = {
+        "": {
+            "download_url": "",
+            "version": "0",
+            "canonicalized_name": "",
+            "edges": [{"key": "a==1.0", "req_type": "install", "req": "a"}],
+        },
+        "a==1.0": {
+            "download_url": "url for a",
+            "version": "1.0",
+            "canonicalized_name": "a",
+            "edges": [
+                {"key": "b==2.0", "req_type": "install", "req": "b>=2.0"},
+                {"key": "c==3.0", "req_type": "install", "req": "c<4.0"},
+            ],
+        },
+        "b==2.0": {
+            "download_url": "url for b",
+            "version": "2.0",
+            "canonicalized_name": "b",
+            "edges": [],
+        },
+        "c==3.0": {
+            "download_url": "url for c",
+            "version": "3.0",
+            "canonicalized_name": "c",
+            "edges": [],
+        },
     }
+    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
     bootstrap.write_constraints_file(graph, buffer)
     expected = textwrap.dedent("""
         a==1.0
@@ -65,14 +72,42 @@ def test_write_constraints_file_simple():
 
 def test_write_constraints_file_resolvable_duplicate():
     buffer = io.StringIO()
-    graph = {
-        "": [("install", "a", Version("1.0"), Requirement("a"))],
-        "a==1.0": [
-            ("install", "b", Version("2.0"), Requirement("b>=2.0")),
-            ("install", "c", Version("3.0"), Requirement("c<4.0")),
-        ],
-        "b==2.0": [("install", "c", Version("3.1"), Requirement("c>3.0"))],
+    raw_graph = {
+        "": {
+            "download_url": "",
+            "version": "0",
+            "canonicalized_name": "",
+            "edges": [{"key": "a==1.0", "req_type": "install", "req": "a"}],
+        },
+        "a==1.0": {
+            "download_url": "url for a",
+            "version": "1.0",
+            "canonicalized_name": "a",
+            "edges": [
+                {"key": "b==2.0", "req_type": "install", "req": "b>=2.0"},
+                {"key": "c==3.0", "req_type": "install", "req": "c<4.0"},
+            ],
+        },
+        "b==2.0": {
+            "download_url": "url for b",
+            "version": "2.0",
+            "canonicalized_name": "b",
+            "edges": [{"key": "c==3.1", "req_type": "install", "req": "c>3.0"}],
+        },
+        "c==3.0": {
+            "download_url": "url for c",
+            "version": "3.0",
+            "canonicalized_name": "c",
+            "edges": [],
+        },
+        "c==3.1": {
+            "download_url": "url for c",
+            "version": "3.1",
+            "canonicalized_name": "c",
+            "edges": [],
+        },
     }
+    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
     bootstrap.write_constraints_file(graph, buffer)
     expected = textwrap.dedent("""
         a==1.0
@@ -85,14 +120,42 @@ def test_write_constraints_file_resolvable_duplicate():
 
 def test_write_constraints_file_unresolvable_duplicate():
     buffer = io.StringIO()
-    graph = {
-        "": [("install", "a", Version("1.0"), Requirement("a"))],
-        "a==1.0": [
-            ("install", "b", Version("2.0"), Requirement("b>=2.0")),
-            ("install", "c", Version("3.0"), Requirement("c==3.0")),
-        ],
-        "b==2.0": [("install", "c", Version("3.1"), Requirement("c>3.0"))],
+    raw_graph = {
+        "": {
+            "download_url": "",
+            "version": "0",
+            "canonicalized_name": "",
+            "edges": [{"key": "a==1.0", "req_type": "install", "req": "a"}],
+        },
+        "a==1.0": {
+            "download_url": "url for a",
+            "version": "1.0",
+            "canonicalized_name": "a",
+            "edges": [
+                {"key": "b==2.0", "req_type": "install", "req": "b>=2.0"},
+                {"key": "c==3.0", "req_type": "install", "req": "c==3.0"},
+            ],
+        },
+        "b==2.0": {
+            "download_url": "url for b",
+            "version": "2.0",
+            "canonicalized_name": "b",
+            "edges": [{"key": "c==3.1", "req_type": "install", "req": "c>3.0"}],
+        },
+        "c==3.0": {
+            "download_url": "url for c",
+            "version": "3.0",
+            "canonicalized_name": "c",
+            "edges": [],
+        },
+        "c==3.1": {
+            "download_url": "url for c",
+            "version": "3.1",
+            "canonicalized_name": "c",
+            "edges": [],
+        },
     }
+    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
     bootstrap.write_constraints_file(graph, buffer)
     expected = textwrap.dedent("""
         a==1.0

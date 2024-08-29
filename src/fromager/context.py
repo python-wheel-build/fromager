@@ -10,7 +10,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import constraints, requirements_file, settings
+from . import constraints, dependency_graph, requirements_file, settings
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,7 @@ class WorkContext:
         self._build_stack: list[typing.Any] = []
         self._build_requirements: set[tuple[NormalizedName, str]] = set()
         self.all_edges: BuildRequirements = collections.defaultdict(list)
+        self.dependency_graph = dependency_graph.DependencyGraph()
 
         # Track requirements we've seen before so we don't resolve the
         # same dependencies over and over and so we can break cycles in
@@ -141,40 +142,9 @@ class WorkContext:
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
 
-    def update_dependency_graph(
-        self,
-        parent_req: Requirement | None,
-        parent_version: Version | None,
-        req_type: str,
-        req: Requirement,
-        req_version: Version,
-    ) -> None:
-        logger.debug(
-            "recording %s%s dependency %s -> %s %s",
-            req_type,
-            parent_req.name if parent_req else "(toplevel)",
-            parent_version if f"=={parent_version}" else "",
-            req.name,
-            req_version,
-        )
-        # If we have no parent requirement, we are processing an installation
-        # requirement even though it is called "toplevel" elsewhere. So, change
-        # the type. Also set the parent_key to an empty string as a unique value
-        # that can't be mistaken for a real package. Keys in json dicts have to
-        # be simple types, so format the requirement name & version pair in a
-        # way that will be easy to parse, if needed.
-        if parent_req is None:
-            parent_key = str(ROOT_BUILD_REQUIREMENT)
-            req_type = "install"
-        else:
-            parent_key = f"{canonicalize_name(parent_req.name)}=={parent_version}"
-        self.all_edges[parent_key].append(
-            (req_type, canonicalize_name(req.name), req_version, req)
-        )
-
-        graph_filename = self.work_dir / "graph.json"
-        with open(graph_filename, "w") as f:
-            json.dump(self.all_edges, f, indent=2, default=str)
+    def write_to_graph_to_file(self):
+        with open(self.work_dir / "graph.json", "w") as f:
+            self.dependency_graph.serialize(f)
 
     def setup(self) -> None:
         # The work dir must already exist, so don't try to create it.
