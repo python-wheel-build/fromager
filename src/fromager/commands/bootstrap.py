@@ -18,14 +18,11 @@ logger = logging.getLogger(__name__)
 def _get_requirements_from_args(
     toplevel: typing.Iterable[str],
     req_files: typing.Iterable[pathlib.Path],
-) -> typing.Sequence[tuple[str, str]]:
-    to_build: list[tuple[str, str]] = []
-    to_build.extend(("toplevel", t) for t in toplevel)
+) -> typing.Sequence[str]:
+    to_build: list[str] = []
+    to_build.extend(toplevel)
     for filename in req_files:
-        to_build.extend(
-            (str(filename), req)
-            for req in requirements_file.parse_requirements_file(filename)
-        )
+        to_build.extend(requirements_file.parse_requirements_file(filename))
     return to_build
 
 
@@ -65,9 +62,12 @@ def bootstrap(
     server.start_wheel_server(wkctx)
 
     with progress.progress_context(total=len(to_build)) as progressbar:
-        for origin, dep in to_build:
+        for dep in to_build:
             sdist.handle_requirement(
-                wkctx, Requirement(dep), req_type=origin, progressbar=progressbar
+                wkctx,
+                Requirement(dep),
+                req_type=requirements_file.RequirementType.TOP_LEVEL,
+                progressbar=progressbar,
             )
             progressbar.update()
 

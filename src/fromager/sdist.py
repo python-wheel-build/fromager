@@ -25,6 +25,7 @@ from . import (
     sources,
     wheels,
 )
+from .requirements_file import RequirementType
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class MissingDependency(Exception):  # noqa: N818
     def __init__(
         self,
         ctx: context.WorkContext,
-        req_type: str,
+        req_type: RequirementType,
         req: Requirement | None,
         all_reqs: typing.Iterable[Requirement],
     ):
@@ -78,7 +79,7 @@ class MissingDependency(Exception):  # noqa: N818
 def handle_requirement(
     ctx: context.WorkContext,
     req: Requirement,
-    req_type: str = "toplevel",
+    req_type: RequirementType = RequirementType.TOP_LEVEL,
     why: list | None = None,
     progressbar: progress.Progressbar | None = None,
 ) -> str:
@@ -183,7 +184,6 @@ def handle_requirement(
         )
         unpack_dir = sdist_root_dir.parent
 
-        next_req_type = "build_system"
         build_system_dependencies = _handle_build_system_requirements(
             ctx,
             req,
@@ -192,7 +192,6 @@ def handle_requirement(
             progressbar=progressbar,
         )
 
-        next_req_type = "build_backend"
         build_backend_dependencies = _handle_build_backend_requirements(
             ctx,
             req,
@@ -201,7 +200,6 @@ def handle_requirement(
             progressbar=progressbar,
         )
 
-        next_req_type = "build_sdist"
         build_sdist_dependencies = _handle_build_sdist_requirements(
             ctx,
             req,
@@ -284,7 +282,7 @@ def handle_requirement(
             )
 
     # Process installation dependencies for all wheels.
-    next_req_type = "install"
+    next_req_type = RequirementType.INSTALL
     install_dependencies = dependencies.get_install_dependencies_of_wheel(
         req, wheel_filename, unpack_dir
     )
@@ -388,7 +386,7 @@ def _handle_build_system_requirements(
     for dep in _sort_requirements(build_system_dependencies):
         try:
             resolved = handle_requirement(
-                ctx, dep, "build-system", why, progressbar=progressbar
+                ctx, dep, RequirementType.BUILD_SYSTEM, why, progressbar=progressbar
             )
         except Exception as err:
             raise ValueError(
@@ -397,7 +395,7 @@ def _handle_build_system_requirements(
         # We may need these dependencies installed in order to run build hooks
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
-        _maybe_install(ctx, dep, "build-system", resolved)
+        _maybe_install(ctx, dep, RequirementType.BUILD_SYSTEM, resolved)
         progressbar.update()
     return build_system_dependencies
 
@@ -417,7 +415,7 @@ def _handle_build_backend_requirements(
     for dep in _sort_requirements(build_backend_dependencies):
         try:
             resolved = handle_requirement(
-                ctx, dep, "build-backend", why, progressbar=progressbar
+                ctx, dep, RequirementType.BUILD_BACKEND, why, progressbar=progressbar
             )
         except Exception as err:
             raise ValueError(
@@ -426,7 +424,7 @@ def _handle_build_backend_requirements(
         # Build backends are often used to package themselves, so in
         # order to determine their dependencies they may need to be
         # installed.
-        _maybe_install(ctx, dep, "build-backend", resolved)
+        _maybe_install(ctx, dep, RequirementType.BUILD_BACKEND, resolved)
         progressbar.update()
     return build_backend_dependencies
 
@@ -446,13 +444,13 @@ def _handle_build_sdist_requirements(
     for dep in _sort_requirements(build_sdist_dependencies):
         try:
             resolved = handle_requirement(
-                ctx, dep, "build-sdist", why, progressbar=progressbar
+                ctx, dep, RequirementType.BUILD_SDIST, why, progressbar=progressbar
             )
         except Exception as err:
             raise ValueError(
                 f"could not handle build-sdist dependency {dep} for {why}"
             ) from err
-        _maybe_install(ctx, dep, "build-sdist", resolved)
+        _maybe_install(ctx, dep, RequirementType.BUILD_SDIST, resolved)
         progressbar.update()
     return build_sdist_dependencies
 
@@ -464,7 +462,7 @@ def prepare_build_environment(
 ) -> pathlib.Path:
     logger.info(f"{req.name}: preparing build environment")
 
-    next_req_type = "build_system"
+    next_req_type = RequirementType.BUILD_SYSTEM
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx, req, sdist_root_dir
     )
@@ -486,7 +484,7 @@ def prepare_build_environment(
                 build_system_dependencies,
             ) from err
 
-    next_req_type = "build_backend"
+    next_req_type = RequirementType.BUILD_BACKEND
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
         ctx, req, sdist_root_dir
     )
@@ -508,7 +506,7 @@ def prepare_build_environment(
                 build_backend_dependencies,
             ) from err
 
-    next_req_type = "build_sdist"
+    next_req_type = RequirementType.BUILD_SDIST
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
         ctx, req, sdist_root_dir
     )
@@ -545,7 +543,7 @@ def prepare_build_environment(
         if match:
             raise MissingDependency(
                 ctx,
-                "build",
+                RequirementType.BUILD,
                 match.groups()[0],
                 build_system_dependencies
                 | build_backend_dependencies
@@ -558,7 +556,7 @@ def prepare_build_environment(
 def _maybe_install(
     ctx: context.WorkContext,
     req: Requirement,
-    req_type: str,
+    req_type: RequirementType,
     resolved_version: str,
 ):
     "Install the package if it is not already installed."
@@ -585,7 +583,7 @@ def _maybe_install(
 def safe_install(
     ctx: context.WorkContext,
     req: Requirement,
-    req_type: str,
+    req_type: RequirementType,
 ):
     logger.debug("installing %s %s", req_type, req)
     external_commands.run(

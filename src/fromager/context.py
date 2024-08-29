@@ -10,7 +10,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import constraints, settings
+from . import constraints, requirements_file, settings
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class WorkContext:
 
     def add_to_build_order(
         self,
-        req_type: str,
+        req_type: requirements_file.RequirementType,
         req: Requirement,
         version: Version,
         source_url: str,
@@ -125,7 +125,7 @@ class WorkContext:
         logger.info(f"{req.name}: adding {key} to build order")
         self._build_requirements.add(key)
         info = {
-            "type": req_type,
+            "type": str(req_type),
             "req": str(req),
             "constraint": str(constraint) if constraint else "",
             "dist": canonicalize_name(req.name),
@@ -140,9 +140,6 @@ class WorkContext:
             # Requirement and Version instances that can't be
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
-        # constraints.write_from_build_order(
-        #     self._constraints_filename, self._build_stack
-        # )
 
     def update_dependency_graph(
         self,
