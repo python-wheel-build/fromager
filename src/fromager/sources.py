@@ -9,7 +9,6 @@ import typing
 import zipfile
 from urllib.parse import urlparse
 
-import requests
 import resolvelib
 from packaging.requirements import Requirement
 from packaging.version import InvalidVersion, Version
@@ -25,6 +24,7 @@ from . import (
     vendor_rust,
     wheels,
 )
+from .request_session import session
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,9 @@ def default_download_source(
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
 # It will throw exception if any other file is encountered. Eg: index.html
 def _download_source_check(
-    destination_dir: pathlib.Path, url: str, destination_filename: str | None = None
+    destination_dir: pathlib.Path,
+    url: str,
+    destination_filename: str | None = None,
 ) -> str:
     source_filename = download_url(destination_dir, url, destination_filename)
     if source_filename.suffix == ".zip":
@@ -198,7 +200,9 @@ def _download_source_check(
 
 
 def download_url(
-    destination_dir: pathlib.Path, url: str, destination_filename: str | None = None
+    destination_dir: pathlib.Path,
+    url: str,
+    destination_filename: str | None = None,
 ) -> pathlib.Path:
     basename = (
         destination_filename
@@ -214,7 +218,7 @@ def download_url(
         return outfile
     # Open the URL first in case that fails, so we don't end up with an empty file.
     logger.debug(f"reading from {url}")
-    with requests.get(url, stream=True) as r:
+    with session.get(url, stream=True) as r:
         r.raise_for_status()
         with open(outfile, "wb") as f:
             logger.debug(f"writing to {outfile}")

@@ -5,10 +5,11 @@ from io import BytesIO
 from typing import TYPE_CHECKING
 from zipfile import ZipFile
 
-import requests
 from packaging.requirements import Requirement
 from packaging.utils import BuildTag, canonicalize_name
 from packaging.version import Version
+
+from .request_session import session
 
 # fix for runtime errors caused by inheriting classes that are generic in stubs but not runtime
 # https://mypy.readthedocs.io/en/latest/runtime_troubles.html#using-classes-that-are-generic-in-stubs-but-not-at-runtime
@@ -74,7 +75,7 @@ class Candidate:
 
 
 def get_metadata_for_wheel(url: str) -> Metadata:
-    data = requests.get(url).content
+    data = session.get(url).content
     with ZipFile(BytesIO(data)) as z:
         for n in z.namelist():
             if n.endswith(".dist-info/METADATA"):

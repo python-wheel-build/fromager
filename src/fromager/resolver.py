@@ -12,7 +12,6 @@ from urllib.parse import urljoin, urlparse
 
 import github
 import html5lib
-import requests
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.tags import Tag, sys_tags
@@ -28,6 +27,7 @@ from resolvelib.resolvers import RequirementInformation
 from .candidate import Candidate
 from .constraints import Constraints
 from .extras_provider import ExtrasProvider
+from .request_session import session
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def get_project_from_pypi(
     """Return candidates created from the project name and extras."""
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
     logger.debug("%s: getting available versions from %s", project, simple_index_url)
-    data = requests.get(simple_index_url).content
+    data = session.get(simple_index_url).content
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
