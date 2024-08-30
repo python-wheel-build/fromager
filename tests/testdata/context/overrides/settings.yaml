@@ -5,5 +5,5 @@ packages:
     testlegacy: {}
 
 changelog:
-    testglobal:
+    rocm:
         - "setuptools upgraded to 82.0.0"

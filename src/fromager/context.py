@@ -10,7 +10,12 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import constraints, dependency_graph, requirements_file, settings
+from . import (
+    constraints,
+    dependency_graph,
+    packagesettings,
+    requirements_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +27,9 @@ ROOT_BUILD_REQUIREMENT = canonicalize_name("", validate=False)
 class WorkContext:
     def __init__(
         self,
-        active_settings: settings.Settings,
+        active_settings: packagesettings.Settings | None,
         constraints_file: pathlib.Path | None,
         patches_dir: pathlib.Path,
-        envs_dir: pathlib.Path,
         sdists_repo: pathlib.Path,
         wheels_repo: pathlib.Path,
         work_dir: pathlib.Path,
@@ -35,14 +39,19 @@ class WorkContext:
         jobs: int | None = None,
         network_isolation: bool = False,
     ):
+        if active_settings is None:
+            active_settings = packagesettings.Settings(
+                settings=packagesettings.SettingsFile(),
+                package_settings=[],
+                patches_dir=patches_dir,
+                variant=variant,
+            )
         self.settings = active_settings
         self.input_constraints_file = constraints_file
         if constraints_file:
             self.constraints = constraints.load(constraints_file)
         else:
             self.constraints = constraints.Constraints({})
-        self.patches_dir = pathlib.Path(patches_dir).absolute()
-        self.envs_dir = pathlib.Path(envs_dir).absolute()
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / "downloads"
         self.sdists_builds = self.sdists_repo / "builds"
@@ -145,6 +154,15 @@ class WorkContext:
     def write_to_graph_to_file(self):
         with open(self.work_dir / "graph.json", "w") as f:
             self.dependency_graph.serialize(f)
+
+    def package_build_info(
+        self, package: str | packagesettings.Package | Requirement
+    ) -> packagesettings.PackageBuildInfo:
+        if isinstance(package, Requirement):
+            name = package.name
+        else:
+            name = package
+        return self.settings.package_build_info(name)
 
     def setup(self) -> None:
         # The work dir must already exist, so don't try to create it.

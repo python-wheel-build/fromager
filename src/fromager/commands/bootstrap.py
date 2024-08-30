@@ -61,9 +61,9 @@ def bootstrap(
         )
     logger.info("bootstrapping %r variant of %s", wkctx.variant, to_build)
 
-    pre_built = wkctx.settings.pre_built(wkctx.variant)
+    pre_built = wkctx.settings.list_pre_built()
     if pre_built:
-        logger.info("treating %s as pre-built wheels", list(sorted(pre_built)))
+        logger.info("treating %s as pre-built wheels", sorted(pre_built))
 
     server.start_wheel_server(wkctx)
 

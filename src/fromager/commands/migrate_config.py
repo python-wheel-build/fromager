@@ -136,7 +136,7 @@ def migrate_config(
     settings_file: pathlib.Path,
     output_dir: pathlib.Path,
 ) -> None:
-    """Migrate Fromager 0.27    config to new format"""
+    """Migrate Fromager 0.27 config to new format"""
     _migrate_package_envfiles(
         envs_dir=envs_dir,
         settings_file=settings_file,

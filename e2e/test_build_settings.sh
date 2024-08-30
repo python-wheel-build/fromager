@@ -35,7 +35,7 @@ fromager \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \
-    --settings-file="$SCRIPTDIR/build_settings.yaml" \
+    --settings-dir="$SCRIPTDIR/build_settings" \
     build "${DIST}" "${VERSION}" "unreachable_url"
 
 EXPECTED_FILES="

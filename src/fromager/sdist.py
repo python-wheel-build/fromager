@@ -20,7 +20,6 @@ from . import (
     dependencies,
     external_commands,
     finders,
-    overrides,
     progress,
     requirements_file,
     server,
@@ -112,9 +111,8 @@ def handle_requirement(
             f"{req.name}: incoming requirement {req} matches constraint {constraint}. Will apply both."
         )
 
-    pre_built = overrides.pkgname_to_override_module(
-        req.name
-    ) in ctx.settings.pre_built(ctx.variant)
+    pbi = ctx.package_build_info(req)
+    pre_built = pbi.pre_built
 
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
@@ -229,10 +227,10 @@ def handle_requirement(
         # our more expensive ones, and there's not a way to know the
         # actual name without doing most of the work to build the wheel.
         wheel_filename = finders.find_wheel(
-            ctx.wheels_downloads,
-            req,
-            resolved_version,
-            ctx.settings.build_tag(req.name, resolved_version, ctx.variant),
+            downloads_dir=ctx.wheels_downloads,
+            req=req,
+            dist_version=resolved_version,
+            build_tag=pbi.build_tag(resolved_version),
         )
         if wheel_filename:
             logger.info(

@@ -173,9 +173,8 @@ def _is_wheel_built(
     try:
         logger.info(f"{req.name}: checking if {req} was already built")
         url, _ = sdist.resolve_prebuilt_wheel(wkctx, req, [wkctx.wheel_server_url])
-        build_tag_from_settings = wkctx.settings.build_tag(
-            req.name, dist_version, wkctx.variant
-        )
+        pbi = wkctx.package_build_info(req)
+        build_tag_from_settings = pbi.build_tag(dist_version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
         wheel_filename = urlparse(url).path.rsplit("/", 1)[-1]
         _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_filename)

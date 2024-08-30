@@ -13,7 +13,7 @@ fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
-  --settings-file="$SCRIPTDIR/changelog_settings.yaml" \
+  --settings-dir="$SCRIPTDIR/changelog_settings" \
   bootstrap 'stevedore==5.2.0'
 
 EXPECTED_FILES="
@@ -47,10 +47,6 @@ fi
 
 $pass
 
-SETTINGS_FILE_WITH_ADDED_CHANGELOG=$OUTDIR/changelog_settings_$RANDOM.yaml
-cp $SCRIPTDIR/changelog_settings.yaml $SETTINGS_FILE_WITH_ADDED_CHANGELOG
-echo -e "\n        - test2\n" >> $SETTINGS_FILE_WITH_ADDED_CHANGELOG
-
 # bootstrap stevedore with 2 changelog. should result in a build instead of being skipped
 fromager \
   --log-file="$OUTDIR/bootstrap_build_tags.log" \
@@ -58,7 +54,7 @@ fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
-  --settings-file="$SETTINGS_FILE_WITH_ADDED_CHANGELOG" \
+  --settings-dir="$SCRIPTDIR/changelog_settings-2" \
   bootstrap 'stevedore==5.2.0'
 
 EXPECTED_FILES="

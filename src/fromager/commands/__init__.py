@@ -18,6 +18,7 @@ commands = [
     build_order.build_order,
     graph.graph,
     list_overrides.list_overrides,
+    migrate_config.migrate_config,
     step.step,
     canonicalize.canonicalize,
     download_sequence.download_sequence,

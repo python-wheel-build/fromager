@@ -4,7 +4,7 @@ from unittest.mock import Mock, call, patch
 import pytest
 from packaging.requirements import Requirement
 
-from fromager import context, settings, sources
+from fromager import context, packagesettings, sources
 
 
 @patch("fromager.sources.download_url")
@@ -21,53 +21,58 @@ def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
 
 @patch("fromager.sources.resolve_dist")
 @patch("fromager.sources._download_source_check")
-@patch.object(settings.Settings, "_get_package_download_source_settings")
 def test_default_download_source_from_settings(
-    get_package_download_source_settings: Mock,
     download_source_check: Mock,
     resolve_dist: Mock,
-    tmp_context: context.WorkContext,
+    testdata_context: context.WorkContext,
 ):
-    resolve_dist.return_value = ("url", "1.0")
+    resolve_dist.return_value = ("url", "42.1.2")
     download_source_check.return_value = pathlib.Path("filename.zip")
-    get_package_download_source_settings.return_value = {
-        "url": "predefined_url-${version}",
-        "destination_filename": "${canonicalized_name}-${version}",
-    }
-    req = Requirement("foo==1.0")
-    sdist_server_url = sources.PYPI_SERVER_URL
+    req = Requirement("test_pkg==42.1.2")
+    sdist_server_url = "https://sdist.test/egg"
 
-    sources.default_download_source(tmp_context, req, sdist_server_url)
+    sources.default_download_source(testdata_context, req, sdist_server_url)
 
-    resolve_dist.assert_called_with(tmp_context, req, sdist_server_url, True, False)
+    resolve_dist.assert_called_with(
+        ctx=testdata_context,
+        req=req,
+        sdist_server_url=sdist_server_url,
+        include_sdists=True,
+        include_wheels=False,
+    )
     download_source_check.assert_called_with(
-        tmp_context.sdists_downloads, "predefined_url-1.0", "foo-1.0"
+        testdata_context.sdists_downloads,
+        "https://egg.test/test-pkg/v42.1.2.tar.gz",
+        "test-pkg-42.1.2.tar.gz",
     )
 
 
 @patch("fromager.sources.resolve_dist")
 @patch("fromager.sources._download_source_check")
-@patch.object(settings.Settings, "resolver_include_sdists")
-@patch.object(settings.Settings, "resolver_include_wheels")
-@patch.object(settings.Settings, "resolver_sdist_server_url")
+@patch.multiple(
+    packagesettings.PackageBuildInfo,
+    resolver_include_sdists=False,
+    resolver_include_wheels=True,
+    resolver_sdist_server_url=Mock(return_value="url"),
+)
 def test_default_download_source_with_predefined_resolve_dist(
-    resolver_sdist_server_url: Mock,
-    resolver_include_wheels: Mock,
-    resolver_include_sdists: Mock,
     download_source_check: Mock,
     resolve_dist: Mock,
     tmp_context: context.WorkContext,
 ):
     resolve_dist.return_value = ("url", "1.0")
     download_source_check.return_value = pathlib.Path("filename")
-    resolver_include_sdists.return_value = False
-    resolver_include_wheels.return_value = True
-    resolver_sdist_server_url.return_value = "url"
     req = Requirement("foo==1.0")
 
     sources.default_download_source(tmp_context, req, sources.PYPI_SERVER_URL)
 
-    resolve_dist.assert_called_with(tmp_context, req, "url", False, True)
+    resolve_dist.assert_called_with(
+        ctx=tmp_context,
+        req=req,
+        sdist_server_url="url",
+        include_sdists=False,
+        include_wheels=True,
+    )
 
 
 @patch("fromager.sources.default_download_source")
@@ -92,7 +97,7 @@ def test_patch_sources_apply_unversioned_and_versioned(
 ):
     patches_dir = tmp_path / "patches_dir"
     patches_dir.mkdir()
-    tmp_context.patches_dir = patches_dir
+    tmp_context.settings.patches_dir = patches_dir
 
     deepspeed_version_patch = patches_dir / "deepspeed-0.5.0"
     deepspeed_version_patch.mkdir()
@@ -125,7 +130,7 @@ def test_patch_sources_apply_only_unversioned(
 ):
     patches_dir = tmp_path / "patches_dir"
     patches_dir.mkdir()
-    tmp_context.patches_dir = patches_dir
+    tmp_context.settings.patches_dir = patches_dir
 
     deepspeed_version_patch = patches_dir / "deepspeed-0.5.0"
     deepspeed_version_patch.mkdir()

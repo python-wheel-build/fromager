@@ -22,6 +22,7 @@ def get_build_system_dependencies(
     logger.info(
         f"{req.name}: getting build system dependencies for {req} in {sdist_root_dir}"
     )
+    pbi = ctx.package_build_info(req)
 
     build_system_req_file = sdist_root_dir.parent / "build-system-requirements.txt"
     if build_system_req_file.exists():
@@ -37,7 +38,7 @@ def get_build_system_dependencies(
         ctx=ctx,
         req=req,
         sdist_root_dir=sdist_root_dir,
-        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
+        build_dir=pbi.build_dir(sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -81,6 +82,7 @@ def get_build_backend_dependencies(
     logger.info(
         f"{req.name}: getting build backend dependencies for {req} in {sdist_root_dir}"
     )
+    pbi = ctx.package_build_info(req)
 
     build_backend_req_file = sdist_root_dir.parent / "build-backend-requirements.txt"
     if build_backend_req_file.exists():
@@ -96,7 +98,7 @@ def get_build_backend_dependencies(
         ctx=ctx,
         req=req,
         sdist_root_dir=sdist_root_dir,
-        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
+        build_dir=pbi.build_dir(sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -113,8 +115,9 @@ def default_get_build_backend_dependencies(
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
+    pbi = ctx.package_build_info(req)
     pyproject_toml = get_pyproject_contents(build_dir)
-    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    extra_environ = pbi.get_extra_environ()
     hook_caller = get_build_backend_hook_caller(
         build_dir, pyproject_toml, override_environ=extra_environ
     )
@@ -129,6 +132,7 @@ def get_build_sdist_dependencies(
     logger.info(
         f"{req.name}: getting build sdist dependencies for {req} in {sdist_root_dir}"
     )
+    pbi = ctx.package_build_info(req)
 
     build_sdist_req_file = sdist_root_dir.parent / "build-sdist-requirements.txt"
     if build_sdist_req_file.exists():
@@ -144,7 +148,7 @@ def get_build_sdist_dependencies(
         ctx=ctx,
         req=req,
         sdist_root_dir=sdist_root_dir,
-        build_dir=ctx.settings.build_dir(req.name, sdist_root_dir),
+        build_dir=pbi.build_dir(sdist_root_dir),
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -161,8 +165,9 @@ def default_get_build_sdist_dependencies(
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
+    pbi = ctx.package_build_info(req)
     pyproject_toml = get_pyproject_contents(build_dir)
-    extra_environ = overrides.extra_environ_for_pkg(ctx.envs_dir, req.name, ctx.variant)
+    extra_environ = pbi.get_extra_environ()
     hook_caller = get_build_backend_hook_caller(
         build_dir, pyproject_toml, override_environ=extra_environ
     )
