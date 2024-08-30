@@ -4,10 +4,16 @@ import typing
 
 import click
 from packaging.requirements import Requirement
-from packaging.utils import NormalizedName
-from packaging.version import Version
 
-from .. import clickext, context, progress, requirements_file, sdist, server
+from .. import (
+    clickext,
+    context,
+    dependency_graph,
+    progress,
+    requirements_file,
+    sdist,
+    server,
+)
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
 ReverseRequirements = dict[str, list[tuple[str, Requirement]]]
@@ -85,35 +91,19 @@ def bootstrap(
     constraints_filename = wkctx.work_dir / "constraints.txt"
     logger.info(f"writing installation dependencies to {constraints_filename}")
     with open(wkctx.work_dir / "constraints.txt", "w") as f:
-        write_constraints_file(graph=wkctx.all_edges, output=f)
+        write_constraints_file(graph=wkctx.dependency_graph, output=f)
 
 
 def write_constraints_file(
-    graph: context.BuildRequirements,
+    graph: dependency_graph.DependencyGraph,
     output: typing.TextIO,
 ) -> None:
-    reverse_graph: ReverseRequirements = reverse_dependency_graph(graph)
-
-    # The installation dependencies are (name, version) pairs, and there may be
-    # duplicates because multiple packages depend on the same version of another
-    # package. Eliminate those duplicates using a set, so we can more easily
-    # find cases where we depend on two different versions of the same thing.
-    install_constraints = set(
-        (name, version)
-        for name, version, _ in installation_dependencies(
-            all_edges=graph,
-            name=context.ROOT_BUILD_REQUIREMENT,
-            version=None,
-        )
-    )
-
     # Look for potential conflicts by tracking how many different versions of
     # each package are needed.
-    conflicts: dict[NormalizedName, list[Version]] = {}
-    for dep_name, dep_version in install_constraints:
-        conflicts.setdefault(dep_name, []).append(dep_version)
+    conflicts = graph.get_install_dependency_versions()
 
-    for dep_name, versions in sorted(conflicts.items()):
+    for dep_name, nodes in sorted(conflicts.items()):
+        versions = [node.version for node in nodes]
         if len(versions) == 0:
             # This should never happen.
             raise ValueError(f"No versions of {dep_name} supported")
@@ -137,14 +127,13 @@ def write_constraints_file(
 
         # Which parent requirements can use which versions of the dependency we
         # are working on?
-        for dep_version in versions:
-            key = f"{dep_name}=={dep_version}"
-            parent_info = reverse_graph.get(key, [])
-            user_counter += len(parent_info)
-            for parent_version, req in parent_info:
-                for matching_version in req.specifier.filter(versions):
+        for node in nodes:
+            parent_edges = node.get_incoming_install_edges()
+            user_counter += len(parent_edges)
+            for parent_edge in parent_edges:
+                for matching_version in parent_edge.req.specifier.filter(versions):
                     usable_versions.setdefault(str(matching_version), []).append(
-                        parent_version
+                        str(parent_edge.destination_node.version)
                     )
 
         # Look for one version that can be used by all the parent dependencies
@@ -174,45 +163,3 @@ def write_constraints_file(
             logging.error("%s: no single version meets all requirements", dep_name)
             for dv in sorted(versions):
                 output.write(f"{dep_name}=={dv}\n")
-
-
-def reverse_dependency_graph(
-    graph: context.BuildRequirements,
-) -> ReverseRequirements:
-    # The graph shows parent->child edges. We need to look up the parent from
-    # the child, so build a reverse lookup table.
-    reverse_graph: ReverseRequirements = {}
-    for parent, children in graph.items():
-        parent_name, _, parent_version = parent.partition("==")
-        for (
-            req_type,
-            req_name,
-            req_version,
-            req,
-        ) in children:
-            if req_type != "install":
-                continue
-            key = f"{req_name}=={req_version}"
-            reverse_graph.setdefault(key, []).append((parent, req))
-    return reverse_graph
-
-
-def installation_dependencies(
-    all_edges: context.BuildRequirements,
-    name: NormalizedName,
-    version: Version | None,
-) -> typing.Iterable[tuple[NormalizedName, Version, Requirement]]:
-    # If there is a version, the keys of all_edges will be a str of package_name==package_version. If there is no version, the key is only the name.
-    if not version:
-        lookup_key = str(name)
-    else:
-        lookup_key = f"{name}=={version}"
-    for req_type, dep_name, dep_version, dep_req in all_edges.get(lookup_key, []):
-        if req_type != "install":
-            continue
-        yield (dep_name, dep_version, dep_req)
-        yield from installation_dependencies(
-            all_edges=all_edges,
-            name=dep_name,
-            version=dep_version,
-        )

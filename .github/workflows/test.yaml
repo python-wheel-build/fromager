@@ -78,6 +78,7 @@ jobs:
           - build_steps
           - build_settings
           - meson
+          - migrate_graph
           - override
           - pep517_build_sdist
           - prebuilt_wheels_alt_server

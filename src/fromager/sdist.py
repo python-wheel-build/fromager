@@ -12,6 +12,8 @@ import zipfile
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 from . import (
     context,
@@ -149,13 +151,14 @@ def handle_requirement(
     # Update the dependency graph after we determine that this requirement is
     # useful but before we determine if it is redundant so that we capture all
     # edges to use for building a valid constraints file.
-    ctx.update_dependency_graph(
-        parent_req=why[-1][1] if why else None,
+    ctx.dependency_graph.add_dependency(
+        parent_name=canonicalize_name(why[-1][1].name) if why else None,
         parent_version=why[-1][2] if why else None,
         req_type=req_type,
         req=req,
-        req_version=resolved_version,
+        req_version=Version(str(resolved_version)),
     )
+    ctx.write_to_graph_to_file()
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
