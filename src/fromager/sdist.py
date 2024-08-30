@@ -123,9 +123,13 @@ def handle_requirement(
 
     else:
         logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
-        servers = [sources.PYPI_SERVER_URL]
-        if ctx.wheel_server_url:
-            servers.insert(0, ctx.wheel_server_url)
+        if pbi.wheel_server_url:
+            # use only the wheel server from settings if it is defined. Do not fallback to other URLs
+            servers = [pbi.wheel_server_url]
+        else:
+            servers = [sources.PYPI_SERVER_URL]
+            if ctx.wheel_server_url:
+                servers.insert(0, ctx.wheel_server_url)
         wheel_filename, resolved_version, wheel_url = download_wheel(
             ctx, req, ctx.wheels_prebuilt, servers
         )
