@@ -7,7 +7,7 @@ from concurrent import futures
 import click
 from packaging.requirements import Requirement
 
-from .. import context, progress, sdist, sources
+from .. import context, progress, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def download_sequence(
 
         if include_wheels:
             try:
-                sdist.download_wheel(
+                wheels.download_wheel(
                     wkctx,
                     req,
                     wkctx.wheels_downloads,

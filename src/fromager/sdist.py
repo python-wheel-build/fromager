@@ -1,15 +1,12 @@
 import importlib.metadata
 import logging
 import operator
-import os.path
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
 import typing
-import zipfile
-from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
@@ -130,7 +127,7 @@ def handle_requirement(
             servers = [sources.PYPI_SERVER_URL]
             if ctx.wheel_server_url:
                 servers.insert(0, ctx.wheel_server_url)
-        wheel_filename, resolved_version, wheel_url = download_wheel(
+        wheel_filename, resolved_version, wheel_url = wheels.download_wheel(
             ctx, req, ctx.wheels_prebuilt, servers
         )
         # Remember that this is a prebuilt wheel, and where we got it.
@@ -321,59 +318,6 @@ def _sort_requirements(
     requirements: typing.Iterable[Requirement],
 ) -> typing.Iterable[Requirement]:
     return sorted(requirements, key=operator.attrgetter("name"))
-
-
-def download_wheel(
-    ctx: context.WorkContext,
-    req: Requirement,
-    output_directory: pathlib.Path,
-    wheel_server_urls: list[str],
-) -> tuple[pathlib.Path, str, str]:
-    wheel_url, resolved_version = resolve_prebuilt_wheel(ctx, req, wheel_server_urls)
-    wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
-    if not wheel_filename.exists():
-        logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
-        wheel_filename = _download_wheel_check(output_directory, wheel_url)
-        logger.info(f"{req.name}: saved wheel to {wheel_filename}")
-    else:
-        logger.info(f"{req.name}: have existing wheel {wheel_filename}")
-
-    return wheel_filename, resolved_version, wheel_url
-
-
-# Helper method to check whether the .whl file is a zip file and has contents in it.
-# It will throw BadZipFile exception if any other file is encountered. Eg: index.html
-def _download_wheel_check(destination_dir, wheel_url):
-    wheel_filename = sources.download_url(destination_dir, wheel_url)
-    wheel_directory_contents = zipfile.ZipFile(wheel_filename).namelist()
-    if not wheel_directory_contents:
-        raise zipfile.BadZipFile(f"Empty zip file encountered: {wheel_filename}")
-
-    return wheel_filename
-
-
-def resolve_prebuilt_wheel(
-    ctx: context.WorkContext,
-    req: Requirement,
-    wheel_server_urls: list[str],
-) -> tuple[str, str]:
-    "Return URL to wheel and its version."
-    for url in wheel_server_urls:
-        try:
-            wheel_url, resolved_version = sources.resolve_dist(
-                ctx,
-                req,
-                url,
-                include_sdists=False,
-                include_wheels=True,
-            )
-        except Exception:
-            continue
-        if wheel_url and resolved_version:
-            return (wheel_url, resolved_version)
-    raise ValueError(
-        f'Could not find a prebuilt wheel for {req} on {" or ".join(wheel_server_urls)}'
-    )
 
 
 def _handle_build_system_requirements(
