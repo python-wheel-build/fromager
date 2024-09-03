@@ -179,10 +179,10 @@ class BaseProvider(ExtrasProvider):
     def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
         if canonicalize_name(requirement.name) != candidate.name:
             return False
-        return (
-            candidate.version in requirement.specifier
-            and self.constraints.is_satisfied_by(requirement.name, candidate.version)
-        )
+        allow_prerelease = self.constraints.allow_prerelease(requirement.name)
+        return requirement.specifier.contains(
+            candidate.version, prereleases=allow_prerelease
+        ) and self.constraints.is_satisfied_by(requirement.name, candidate.version)
 
     def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies
@@ -227,6 +227,7 @@ class PyPIProvider(BaseProvider):
         for candidate in get_project_from_pypi(
             identifier, set(), self.sdist_server_url
         ):
+            allow_prerelease = self.constraints.allow_prerelease(identifier)
             # Skip versions that are known bad
             if candidate.version in bad_versions:
                 if DEBUG_RESOLVER:
@@ -234,8 +235,11 @@ class PyPIProvider(BaseProvider):
                         f"{identifier}: skipping bad version {candidate.version} from {bad_versions}"
                     )
                 continue
-            # Skip versions that do not match the requirement
-            if not all(candidate.version in r.specifier for r in identifier_reqs):
+            # Skip versions that do not match the requirement. Allow prereleases only if constraints allow prereleases
+            if not all(
+                r.specifier.contains(candidate.version, prereleases=allow_prerelease)
+                for r in identifier_reqs
+            ):
                 if DEBUG_RESOLVER:
                     logger.debug(
                         f"{identifier}: skipping {candidate.version} because it does not match {identifier_reqs}"
@@ -301,6 +305,8 @@ class GenericProvider(BaseProvider):
                         f"{identifier}: could not parse version from {item}: {err}"
                     )
                     continue
+            allow_prerelease = self.constraints.allow_prerelease(identifier)
+
             # Skip versions that are known bad
             if version in bad_versions:
                 if DEBUG_RESOLVER:
@@ -309,7 +315,10 @@ class GenericProvider(BaseProvider):
                     )
                 continue
             # Skip versions that do not match the requirement
-            if not all(version in r.specifier for r in identifier_reqs):
+            if not all(
+                r.specifier.contains(version, prereleases=allow_prerelease)
+                for r in identifier_reqs
+            ):
                 if DEBUG_RESOLVER:
                     logger.debug(
                         f"{identifier}: skipping {version} because it does not match {identifier_reqs}"
