@@ -384,12 +384,10 @@ def default_build_wheel(
 
 
 def download_wheel(
-    ctx: context.WorkContext,
     req: Requirement,
+    wheel_url: str,
     output_directory: pathlib.Path,
-    wheel_server_urls: list[str],
-) -> tuple[pathlib.Path, Version, str]:
-    wheel_url, resolved_version = resolve_prebuilt_wheel(ctx, req, wheel_server_urls)
+) -> pathlib.Path:
     wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
     if not wheel_filename.exists():
         logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
@@ -398,7 +396,7 @@ def download_wheel(
     else:
         logger.info(f"{req.name}: have existing wheel {wheel_filename}")
 
-    return wheel_filename, resolved_version, wheel_url
+    return wheel_filename
 
 
 # Helper method to check whether the .whl file is a zip file and has contents in it.
