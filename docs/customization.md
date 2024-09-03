@@ -19,7 +19,21 @@ in filesystem paths it is often easier to avoid including whitespace.
 
 Set the variant using the `--variant` command line option or the
 `FROMAGER_VARIANT` environment variable (for ease of use in
-containers).
+containers).  
+
+## Variant prebuilts  
+
+If the `pre_built` field is set for a variant, then fromager pulls and resolves binary
+wheels specified in the field from local wheels server spun up by fromager
+followed by upstream package servers instead of rebuilding the package from source.  
+
+When downloading a prebuilt wheel by hand, make sure that the wheel is
+placed in the `<path to wheels-repo directory>/prebuilt` directory so that it is
+picked up by fromager and it doesn't try to download it again. Note that this won't
+result in fromager resolving the package using this downloaded wheel. If you want to
+make fromager consider this downloaded wheel during resolution as well then place the
+prebuilt wheel in the `<path to wheels-repo directory>/downloads` directory. This will
+ensure that the local index spun up by fromager picks up the downloaded wheel.  
 
 ## Build environment variables
 

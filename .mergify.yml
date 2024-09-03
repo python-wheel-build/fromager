@@ -42,6 +42,10 @@ pull_request_rules:
           - check-success=e2e (3.11, 1.75, bootstrap_extras)
           - check-success=e2e (3.12, 1.75, bootstrap_extras)
 
+          - check-success=e2e (3.10, 1.75, bootstrap_prerelease)
+          - check-success=e2e (3.11, 1.75, bootstrap_prerelease)
+          - check-success=e2e (3.12, 1.75, bootstrap_prerelease)
+
           - check-success=e2e (3.10, 1.75, build)
           - check-success=e2e (3.11, 1.75, build)
           - check-success=e2e (3.12, 1.75, build)

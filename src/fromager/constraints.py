@@ -18,10 +18,16 @@ class Constraints:
     def get_constraint(self, name: str) -> Requirement | None:
         return self._data.get(canonicalize_name(name))
 
+    def allow_prerelease(self, pkg_name: str) -> bool:
+        constraint = self.get_constraint(pkg_name)
+        if constraint:
+            return bool(constraint.specifier.prereleases)
+        return False
+
     def is_satisfied_by(self, pkg_name: str, version: Version) -> bool:
         constraint = self.get_constraint(pkg_name)
         if constraint:
-            return version in constraint.specifier
+            return constraint.specifier.contains(version, prereleases=True)
         return True
 
 
