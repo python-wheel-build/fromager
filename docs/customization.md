@@ -105,9 +105,19 @@ package should be build relative to the sdist root directory.
 
 ### Variant pre-built flag
 
-If the `pre_built` flag is set for a variant, then Fromager pulls binary
-wheels from upstream package servers serves instead of rebuilding the
-package from source.
+If the `pre_built` field is set for a variant, then fromager pulls and resolves binary
+wheels specified in the field from local wheels server spun up by fromager
+followed by upstream package servers instead of rebuilding the package from source.
+If an alternate package index is provided in the settings then that is the only
+index used.  
+
+When downloading a prebuilt wheel by hand, make sure that the wheel is
+placed in the `<path to wheels-repo directory>/prebuilt` directory so that it is
+picked up by fromager and it doesn't try to download it again. Note that this won't
+result in fromager resolving the package using this downloaded wheel. If you want to
+make fromager consider this downloaded wheel during resolution as well then place the
+prebuilt wheel in the `<path to wheels-repo directory>/downloads` directory. This will
+ensure that the local index spun up by fromager picks up the downloaded wheel.
 
 ### Build environment variables
 
