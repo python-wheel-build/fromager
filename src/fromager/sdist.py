@@ -127,9 +127,8 @@ def handle_requirement(
             servers = [sources.PYPI_SERVER_URL]
             if ctx.wheel_server_url:
                 servers.insert(0, ctx.wheel_server_url)
-        wheel_filename, resolved_version, wheel_url = wheels.download_wheel(
-            ctx, req, ctx.wheels_prebuilt, servers
-        )
+        wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(ctx, req, servers)
+        wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
         # Remember that this is a prebuilt wheel, and where we got it.
         source_url = wheel_url
         source_url_type = "prebuilt"

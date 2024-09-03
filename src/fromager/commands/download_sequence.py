@@ -79,12 +79,8 @@ def download_sequence(
 
         if include_wheels:
             try:
-                wheels.download_wheel(
-                    wkctx,
-                    req,
-                    wkctx.wheels_downloads,
-                    wheel_servers,
-                )
+                wheel_url, _ = wheels.resolve_prebuilt_wheel(wkctx, req, wheel_servers)
+                wheels.download_wheel(req, wheel_url, wkctx.wheels_downloads)
             except Exception as err:
                 logger.error(f"failed to download wheel for {req}: {err}")
 
