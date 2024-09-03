@@ -30,6 +30,7 @@ those special cases directly into fromager.
    customization.md
    cli.rst
    develop.md
+   files.md
 
 What's with the name?
 ---------------------
