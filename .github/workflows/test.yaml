@@ -53,6 +53,7 @@ jobs:
         with:
           name: coverage-unit-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: .coverage.*
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 1
 
@@ -131,6 +132,7 @@ jobs:
         with:
           name: coverage-e2e-${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: .coverage.*
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 1
 
