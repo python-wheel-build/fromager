@@ -11,8 +11,7 @@ from urllib.parse import urlparse
 
 import resolvelib
 from packaging.requirements import Requirement
-from packaging.version import InvalidVersion, Version
-from packaging.version import parse as validate_version
+from packaging.version import Version
 
 from . import (
     context,
@@ -28,94 +27,59 @@ from .request_session import session
 
 logger = logging.getLogger(__name__)
 
-PYPI_SERVER_URL = "https://pypi.org/simple"
-GITHUB_URL = "https://github.com"
-DEFAULT_SDIST_SERVER_URLS = [
-    PYPI_SERVER_URL,
-]
+
+def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
+    source_type = "sdist"
+    pbi = ctx.package_build_info(req)
+    if (
+        overrides.find_override_method(req.name, "download_source")
+        or overrides.find_override_method(req.name, "resolve_source")
+        or pbi.download_source_url(resolve_template=False)
+    ):
+        source_type = "override"
+    return source_type
 
 
 def download_source(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_server_urls: list[str],
-) -> tuple[pathlib.Path, str, str, str]:
-    pbi = ctx.package_build_info(req)
-    downloader = overrides.find_override_method(req.name, "download_source")
-    source_type = "override"
-    if not downloader:
-        downloader = default_download_source
-        if not pbi.download_source_url(resolve_template=False):
-            source_type = "sdist"
-    for url in sdist_server_urls:
-        try:
-            logger.debug(
-                f"{req.name}: trying to resolve and download {req} using {url}"
-            )
-            download_details = overrides.invoke(
-                downloader,
-                ctx=ctx,
-                req=req,
-                sdist_server_url=url,
-            )
-            if len(download_details) == 3:
-                source_filename, version, source_url = download_details
-            elif len(download_details) == 2:
-                source_filename, version = download_details
-                source_url = "override"
-            else:
-                raise ValueError(
-                    f"do not know how to unpack {download_details}, expected 2 or 3 members"
-                )
+    ctx: context.WorkContext, req: Requirement, version: Version, download_url: str
+) -> pathlib.Path:
+    source_path = overrides.find_and_invoke(
+        req.name,
+        "download_source",
+        default_download_source,
+        ctx=ctx,
+        req=req,
+        version=version,
+        download_url=download_url,
+    )
 
-            # Validate version string by passing it to parse
-            validate_version(str(version))
-
-        except (
-            resolvelib.InconsistentCandidate,
-            resolvelib.RequirementsConflicted,
-            resolvelib.ResolutionImpossible,
-            InvalidVersion,
-        ) as err:
-            logger.debug(f"{req.name}: failed to resolve {req} using {url}: {err}")
-            continue
-
-        return (source_filename, version, source_url, source_type)
-    servers = ", ".join(sdist_server_urls)
-    raise ValueError(f"failed to find source for {req} at {servers}")
+    if not isinstance(source_path, pathlib.Path):
+        raise ValueError(
+            f"expected a Path back to downloaded source. got {source_path}"
+        )
+    return source_path
 
 
-def resolve_dist(
+def resolve_source(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
-    include_sdists: bool = True,
-    include_wheels: bool = True,
-) -> tuple[str | None, Version]:
+) -> tuple[str, Version]:
     "Return URL to source and its version."
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
         f"{req.name}: resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
     )
 
-    # Create the (reusable) resolver. Limit to sdists.
-    provider = overrides.find_and_invoke(
-        req.name,
-        "get_resolver_provider",
-        default_resolver_provider,
-        ctx=ctx,
-        req=req,
-        include_sdists=include_sdists,
-        include_wheels=include_wheels,
-        sdist_server_url=sdist_server_url,
-    )
-
-    reporter = resolvelib.BaseReporter()
-    rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
-
-    # Kick off the resolution process, and get the final result.
     try:
-        result = rslvr.resolve([req])
+        resolver_results = overrides.find_and_invoke(
+            req.name,
+            "resolve_source",
+            default_resolve_source,
+            ctx=ctx,
+            req=req,
+            sdist_server_url=sdist_server_url,
+        )
     except (
         resolvelib.InconsistentCandidate,
         resolvelib.RequirementsConflicted,
@@ -124,47 +88,44 @@ def resolve_dist(
         logger.debug(f"{req.name}: could not resolve {req} with {constraint}: {err}")
         raise
 
-    candidate: resolver.Candidate
-    for candidate in result.mapping.values():
-        return candidate.url, candidate.version
+    if len(resolver_results) == 2:
+        url, version = resolver_results
+    else:
+        raise ValueError(
+            f"do not know how to unpack {resolver_results}, expected 2 members"
+        )
 
-    raise ValueError(f"Unable to resolve {req}")
+    if not isinstance(version, Version):
+        raise ValueError(f"expected 2nd member to be of type Version, got {version}")
 
-
-def default_resolver_provider(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_server_url: str,
-    include_sdists: bool,
-    include_wheels: bool,
-) -> resolver.PyPIProvider:
-    return resolver.PyPIProvider(
-        include_sdists=include_sdists,
-        include_wheels=include_wheels,
-        sdist_server_url=sdist_server_url,
-        constraints=ctx.constraints,
-    )
+    return str(url), version
 
 
-def default_download_source(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_server_url: str,
-) -> tuple[pathlib.Path, str, str]:
-    "Download the requirement and return the name of the output path."
+def default_resolve_source(
+    ctx: context.WorkContext, req: Requirement, sdist_server_url: str
+) -> tuple[str, Version]:
+    "Return URL to source and its version."
+
     pbi = ctx.package_build_info(req)
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
-    orig_url, version = resolve_dist(
+    url, version = resolver.resolve(
         ctx=ctx,
         req=req,
         sdist_server_url=override_sdist_server_url,
         include_sdists=pbi.resolver_include_sdists,
         include_wheels=pbi.resolver_include_wheels,
     )
+    return url, version
 
+
+def default_download_source(
+    ctx: context.WorkContext, req: Requirement, version: Version, download_url: str
+) -> pathlib.Path:
+    "Download the requirement and return the name of the output path."
+    pbi = ctx.package_build_info(req)
     destination_filename = pbi.download_source_destination_filename(version=version)
-    url = pbi.download_source_url(version=version, default=orig_url)
+    url = pbi.download_source_url(version=version, default=download_url)
     source_filename = _download_source_check(
         ctx.sdists_downloads, url, destination_filename
     )
@@ -172,7 +133,7 @@ def default_download_source(
     logger.debug(
         f"{req.name}: have source for {req} version {version} in {source_filename}"
     )
-    return (source_filename, version, url)
+    return source_filename
 
 
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.

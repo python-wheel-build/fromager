@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 
 import github
 import html5lib
+import resolvelib
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.tags import Tag, sys_tags
@@ -24,6 +25,7 @@ from packaging.utils import (
 from packaging.version import Version
 from resolvelib.resolvers import RequirementInformation
 
+from . import context, overrides
 from .candidate import Candidate
 from .constraints import Constraints
 from .extras_provider import ExtrasProvider
@@ -34,6 +36,54 @@ logger = logging.getLogger(__name__)
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
 SUPPORTED_TAGS = set(sys_tags())
+PYPI_SERVER_URL = "https://pypi.org/simple"
+GITHUB_URL = "https://github.com"
+
+
+def resolve(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    include_sdists: bool = True,
+    include_wheels: bool = True,
+) -> tuple[str, Version]:
+    # Create the (reusable) resolver.
+    provider = overrides.find_and_invoke(
+        req.name,
+        "get_resolver_provider",
+        default_resolver_provider,
+        ctx=ctx,
+        req=req,
+        include_sdists=include_sdists,
+        include_wheels=include_wheels,
+        sdist_server_url=sdist_server_url,
+    )
+
+    reporter = resolvelib.BaseReporter()
+    rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
+
+    # Kick off the resolution process, and get the final result.
+    result = rslvr.resolve([req])
+    candidate: Candidate
+    for candidate in result.mapping.values():
+        return candidate.url, candidate.version
+
+    raise ValueError(f"Unable to resolve {req}")
+
+
+def default_resolver_provider(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    include_sdists: bool,
+    include_wheels: bool,
+) -> "PyPIProvider":
+    return PyPIProvider(
+        include_sdists=include_sdists,
+        include_wheels=include_wheels,
+        sdist_server_url=sdist_server_url,
+        constraints=ctx.constraints,
+    )
 
 
 def get_project_from_pypi(

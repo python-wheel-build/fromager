@@ -217,25 +217,38 @@ package.
 
 ### download_source
 
-The `download_source()` function is responsible for resolving a
-requirement and acquiring the source for that version of a
-package. The default is to use pypi.org to resolve the requirement and
-then download the sdist file for the package.
+The `download_source()` function is responsible for downloading the
+source from a URL.
 
 The arguments are the `WorkContext`, the `Requirement` being
-evaluated, and the URL to the server where sdists may be found.
+evaluated, version of the package being downloaded and the URL
+from which the source can be downloaded as returned by `resolve_source`.
 
-The return value should be a tuple containing the location where the
-source archive file was written and the version that was resolved.
-
-The function may be invoked more than once if multiple sdist servers
-are being used. Returning a valid response prevents multiple
-invocations.
+The return value should be a `pathlib.Path` file path to the downloaded source.
 
 ```python
-def download_source(ctx, req, sdist_server_url):
+def download_source(ctx, req, version, download_url):
     ...
-    return source_filename, version
+    return path_to_source
+```  
+
+### resolve_source
+
+The `resolve_source()` function is responsible for resolving a
+requirement and acquiring the source for that version of a
+package. The default is to use pypi.org to resolve the requirement.  
+
+The arguments are the `WorkContext`, the `Requirement` being
+evaluated, and the URL to the sdist index.
+
+The return value is `Tuple[str, Version]` where the first member is
+the url from which the source can be downloaded and the second member
+is the version of the resolved package.
+
+```python
+def resolve_source(ctx, req, sdist_server_url):
+    ...
+    return (url, version)
 ```
 
 ### get_resolver_provider
@@ -259,10 +272,8 @@ included, and the URL for the sdist server.
 The return value must be an instance of a class that implements the
 `resolvelib.providers.AbstractProvider` API.
 
-The expectation is that a `download_source()` override will call
-`sources.resolve_dist()`, which will call `get_resolver_provider()`,
-and then the return value of the resolution will be passed back to
-`download_source()` as a tuple of URL and version. The provider can
+The expectation is that it acts an engine for any sort of package resolution
+whether it is for wheels or sources. The provider can
 therefore use any value as the "URL" that will help it decide what to
 download. For example, the `GitHubTagProvider` returns the actual tag
 name in case that is different from the version number encoded within

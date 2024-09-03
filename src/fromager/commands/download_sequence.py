@@ -67,7 +67,15 @@ def download_sequence(
 
         if entry["source_url_type"] == "sdist":
             try:
-                sources.download_source(wkctx, req, [sdist_server_url])
+                source_url, version = sources.resolve_source(
+                    ctx=wkctx, req=req, sdist_server_url=sdist_server_url
+                )
+                sources.download_source(
+                    ctx=wkctx,
+                    req=req,
+                    version=version,
+                    download_url=source_url,
+                )
             except Exception as err:
                 logger.error(f"failed to download sdist for {req}: {err}")
                 if not ignore_missing_sdists:
