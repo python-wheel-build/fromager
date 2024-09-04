@@ -51,6 +51,7 @@ def download_source(
         req=req,
         version=version,
         download_url=download_url,
+        sdists_downloads_dir=ctx.sdists_downloads,
     )
 
     if not isinstance(source_path, pathlib.Path):
@@ -107,27 +108,31 @@ def default_resolve_source(
     "Return URL to source and its version."
 
     pbi = ctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+    override_sdist_server_url = pbi.resolve_source_sdist_server_url(sdist_server_url)
 
     url, version = resolver.resolve(
         ctx=ctx,
         req=req,
         sdist_server_url=override_sdist_server_url,
-        include_sdists=pbi.resolver_include_sdists,
-        include_wheels=pbi.resolver_include_wheels,
+        include_sdists=pbi.resolve_source_include_sdists,
+        include_wheels=pbi.resolve_source_include_wheels,
     )
     return url, version
 
 
 def default_download_source(
-    ctx: context.WorkContext, req: Requirement, version: Version, download_url: str
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    download_url: str,
+    sdists_downloads_dir: pathlib.Path,
 ) -> pathlib.Path:
     "Download the requirement and return the name of the output path."
     pbi = ctx.package_build_info(req)
     destination_filename = pbi.download_source_destination_filename(version=version)
     url = pbi.download_source_url(version=version, default=download_url)
     source_filename = _download_source_check(
-        ctx.sdists_downloads, url, destination_filename
+        sdists_downloads_dir, url, destination_filename
     )
 
     logger.debug(

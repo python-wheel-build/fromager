@@ -61,7 +61,7 @@ $ fromager --settings-dir=overrides/settings ...
 download_source:
     url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
     destination_filename: "${canonicalized_name}-${version}.tar.gz"
-resolver_dist:
+resolve_source:
     sdist_server_url: "https://pypi.org/simple"
     include_wheels: true
     include_sdists: false
@@ -79,7 +79,7 @@ variants:
         pre_built: true
 ```
 
-### Download sources
+### Download source
 
 To use predefined urls to download sources from, instead of overriding
 the entire `download_source` function, a mapping of package to download
@@ -87,11 +87,11 @@ source url can be provided directly in settings.yaml. Optionally the
 downloaded sdist can be renamed. Both the url and the destination filename
 support templating. The only supported template variable are:
 
-- `version` - it is replaced by the version returned by the resolver
+- `version` - it is replaced by the version returned by the `resolve_source`
 - `canonicalized_name` - it is replaced by the canonicalized name of the
   package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`
 
-### Resolver dist
+### Resolve source
 
 The source distribution index server used by the package resolver can
 be overriden for a particular package. The resolver can also be told
@@ -221,8 +221,9 @@ The `download_source()` function is responsible for downloading the
 source from a URL.
 
 The arguments are the `WorkContext`, the `Requirement` being
-evaluated, version of the package being downloaded and the URL
-from which the source can be downloaded as returned by `resolve_source`.
+evaluated, version of the package being downloaded, the URL
+from which the source can be downloaded as returned by `resolve_source`,
+and the output directory in which the source should be downloaded.  
 
 The return value should be a `pathlib.Path` file path to the downloaded source.
 
@@ -272,7 +273,7 @@ included, and the URL for the sdist server.
 The return value must be an instance of a class that implements the
 `resolvelib.providers.AbstractProvider` API.
 
-The expectation is that it acts an engine for any sort of package resolution
+The expectation is that it acts as an engine for any sort of package resolution
 whether it is for wheels or sources. The provider can
 therefore use any value as the "URL" that will help it decide what to
 download. For example, the `GitHubTagProvider` returns the actual tag
