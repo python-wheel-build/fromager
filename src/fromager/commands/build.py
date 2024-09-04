@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import click
 from packaging.requirements import Requirement
-from packaging.utils import parse_wheel_filename
+from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 from fromager import clickext, context, hooks, progress, sdist, server, sources, wheels
@@ -46,13 +46,16 @@ def build(
 
     """
     server.start_wheel_server(wkctx)
-    wheel_filename = _build(wkctx, dist_name, dist_version, sdist_server_url)
+    req = Requirement(f"{dist_name}=={dist_version}")
+    source_url, version = sources.resolve_source(
+        ctx=wkctx, req=req, sdist_server_url=sdist_server_url
+    )
+    wheel_filename = _build(wkctx, version, req, source_url)
     print(wheel_filename)
 
 
 @click.command()
 @click.argument("build_order_file")
-@click.argument("sdist_server_url")
 @click.option(
     "--skip-existing",
     default=False,
@@ -62,7 +65,6 @@ def build(
 def build_sequence(
     wkctx: context.WorkContext,
     build_order_file: str,
-    sdist_server_url: str,
     skip_existing: bool,
 ) -> None:
     """Build a sequence of wheels in order
@@ -85,19 +87,36 @@ def build_sequence(
     with open(build_order_file, "r") as f:
         for entry in progress.progress(json.load(f)):
             dist_name = entry["dist"]
-            dist_version = Version(entry["version"])
+            resolved_version = Version(entry["version"])
+            source_download_url = entry["source_url"]
+            req = Requirement(f"{dist_name}=={resolved_version}")
 
-            if skip_existing and _is_wheel_built(wkctx, dist_name, dist_version):
+            if skip_existing and _is_wheel_built(wkctx, dist_name, resolved_version):
                 logger.info(
                     "%s: skipping building wheels for %s==%s since it already exists",
                     dist_name,
                     dist_name,
-                    dist_version,
+                    resolved_version,
                 )
                 continue
 
-            logger.info("%s: building %s==%s", dist_name, dist_name, dist_version)
-            wheel_filename = _build(wkctx, dist_name, dist_version, sdist_server_url)
+            if entry["prebuilt"]:
+                logger.info(
+                    "%s: downloading prebuilt wheel %s==%s",
+                    dist_name,
+                    dist_name,
+                    resolved_version,
+                )
+                wheel_filename = wheels.download_wheel(
+                    req, source_download_url, wkctx.wheels_build
+                )
+            else:
+                logger.info(
+                    "%s: building %s==%s", dist_name, dist_name, resolved_version
+                )
+                wheel_filename = _build(
+                    wkctx, resolved_version, req, source_download_url
+                )
 
             server.update_wheel_mirror(wkctx)
             # After we update the wheel mirror, the built file has
@@ -108,32 +127,28 @@ def build_sequence(
 
 def _build(
     wkctx: context.WorkContext,
-    dist_name: str,
-    dist_version: Version,
-    sdist_server_url: str,
+    resolved_version: Version,
+    req: Requirement,
+    source_download_url: str,
 ) -> pathlib.Path:
-    req = Requirement(f"{dist_name}=={dist_version}")
-
-    # Download
-    source_url, version = sources.resolve_source(
-        ctx=wkctx, req=req, sdist_server_url=sdist_server_url
-    )
     source_filename = sources.download_source(
         ctx=wkctx,
         req=req,
-        version=version,
-        download_url=source_url,
+        version=resolved_version,
+        download_url=source_download_url,
     )
     logger.debug(
         "%s: saved sdist of version %s from %s to %s",
         req.name,
-        dist_version,
-        source_url,
+        resolved_version,
+        source_download_url,
         source_filename,
     )
 
     # Prepare source
-    source_root_dir = sources.prepare_source(wkctx, req, source_filename, dist_version)
+    source_root_dir = sources.prepare_source(
+        wkctx, req, source_filename, resolved_version
+    )
 
     # Build environment
     sdist.prepare_build_environment(wkctx, req, source_root_dir)
@@ -143,7 +158,7 @@ def _build(
     sdist_filename = sources.build_sdist(
         ctx=wkctx,
         req=req,
-        version=dist_version,
+        version=resolved_version,
         sdist_root_dir=source_root_dir,
         build_env=build_env,
     )
@@ -153,15 +168,15 @@ def _build(
         ctx=wkctx,
         req=req,
         sdist_root_dir=source_root_dir,
-        version=dist_version,
+        version=resolved_version,
         build_env=build_env,
     )
 
     hooks.run_post_build_hooks(
         ctx=wkctx,
         req=req,
-        dist_name=dist_name,
-        dist_version=str(dist_version),
+        dist_name=canonicalize_name(req.name),
+        dist_version=str(resolved_version),
         sdist_filename=sdist_filename,
         wheel_filename=wheel_filename,
     )
@@ -170,15 +185,15 @@ def _build(
 
 
 def _is_wheel_built(
-    wkctx: context.WorkContext, dist_name: str, dist_version: Version
+    wkctx: context.WorkContext, dist_name: str, resolved_version: Version
 ) -> bool:
-    req = Requirement(f"{dist_name}=={dist_version}")
+    req = Requirement(f"{dist_name}=={resolved_version}")
 
     try:
         logger.info(f"{req.name}: checking if {req} was already built")
         url, _ = wheels.resolve_prebuilt_wheel(wkctx, req, [wkctx.wheel_server_url])
         pbi = wkctx.package_build_info(req)
-        build_tag_from_settings = pbi.build_tag(dist_version)
+        build_tag_from_settings = pbi.build_tag(resolved_version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
         wheel_filename = urlparse(url).path.rsplit("/", 1)[-1]
         _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_filename)
@@ -188,7 +203,7 @@ def _is_wheel_built(
             and existing_build_tag[1] == build_tag[1]
         ):
             raise ValueError(
-                f"{dist_name}: changelog for version {dist_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
+                f"{dist_name}: changelog for version {resolved_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
             )
         return existing_build_tag == build_tag
     except Exception:

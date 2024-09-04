@@ -6,6 +6,7 @@ from concurrent import futures
 
 import click
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from .. import context, progress, sources, wheels
 
@@ -46,8 +47,8 @@ def download_sequence(
 
     SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
 
-    Performs the equivalent of the 'step download-source-archive' command for each item in
-    the build order file.
+    Performs the equivalent of the 'step download-source-archive' command only for items in
+    the build order file that have source_url_type as sdist.
 
     """
     if wkctx.wheel_server_url:
@@ -59,22 +60,22 @@ def download_sequence(
         build_order = json.load(f)
 
     def download_one(entry: dict[str, typing.Any]):
-        if entry["prebuilt"]:
-            logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
-            return
-
         req = Requirement(f"{entry['dist']}=={entry['version']}")
+
+        if entry["prebuilt"]:
+            if include_wheels:
+                wheels.download_wheel(req, entry["source_url"], wkctx.wheels_downloads)
+            else:
+                logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
+            return
 
         if entry["source_url_type"] == "sdist":
             try:
-                source_url, version = sources.resolve_source(
-                    ctx=wkctx, req=req, sdist_server_url=sdist_server_url
-                )
                 sources.download_source(
                     ctx=wkctx,
                     req=req,
-                    version=version,
-                    download_url=source_url,
+                    version=Version(entry["version"]),
+                    download_url=entry["source_url"],
                 )
             except Exception as err:
                 logger.error(f"failed to download sdist for {req}: {err}")
