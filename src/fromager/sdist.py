@@ -19,6 +19,7 @@ from . import (
     finders,
     progress,
     requirements_file,
+    resolver,
     server,
     sources,
     wheels,
@@ -55,7 +56,7 @@ class MissingDependency(Exception):  # noqa: N818
         resolutions = []
         for r in all_reqs:
             try:
-                url, version = sources.resolve_dist(ctx, r, sources.PYPI_SERVER_URL)
+                _, version = resolver.resolve(ctx, r, resolver.PYPI_SERVER_URL)
             except Exception as err:
                 resolutions.append(f"{r} -> {err}")
             else:
@@ -114,17 +115,23 @@ def handle_requirement(
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
     if not pre_built:
-        source_filename, resolved_version, source_url, source_url_type = (
-            sources.download_source(ctx, req, sources.DEFAULT_SDIST_SERVER_URLS)
+        source_url, resolved_version = sources.resolve_source(
+            ctx=ctx, req=req, sdist_server_url=resolver.PYPI_SERVER_URL
         )
-
+        source_filename = sources.download_source(
+            ctx=ctx,
+            req=req,
+            version=resolved_version,
+            download_url=source_url,
+        )
+        source_url_type = sources.get_source_type(ctx, req)
     else:
         logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
         if pbi.wheel_server_url:
             # use only the wheel server from settings if it is defined. Do not fallback to other URLs
             servers = [pbi.wheel_server_url]
         else:
-            servers = [sources.PYPI_SERVER_URL]
+            servers = [resolver.PYPI_SERVER_URL]
             if ctx.wheel_server_url:
                 servers.insert(0, ctx.wheel_server_url)
         wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(ctx, req, servers)

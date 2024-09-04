@@ -9,7 +9,7 @@ from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType
 
 
-@patch("fromager.sources.resolve_dist")
+@patch("fromager.resolver.resolve")
 def test_missing_dependency_format(
     resolve_dist: Mock,
     tmp_context: WorkContext,

@@ -17,7 +17,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
-from . import context, external_commands, overrides, sources
+from . import context, external_commands, overrides, resolver, sources
 
 logger = logging.getLogger(__name__)
 
@@ -418,7 +418,7 @@ def resolve_prebuilt_wheel(
     "Return URL to wheel and its version."
     for url in wheel_server_urls:
         try:
-            wheel_url, resolved_version = sources.resolve_dist(
+            wheel_url, resolved_version = resolver.resolve(
                 ctx,
                 req,
                 url,

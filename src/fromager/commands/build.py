@@ -115,10 +115,14 @@ def _build(
     req = Requirement(f"{dist_name}=={dist_version}")
 
     # Download
-    source_filename, version, source_url, _ = sources.download_source(
-        wkctx,
-        req,
-        [sdist_server_url],
+    source_url, version = sources.resolve_source(
+        ctx=wkctx, req=req, sdist_server_url=sdist_server_url
+    )
+    source_filename = sources.download_source(
+        ctx=wkctx,
+        req=req,
+        version=version,
+        download_url=source_url,
     )
     logger.debug(
         "%s: saved sdist of version %s from %s to %s",
