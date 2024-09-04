@@ -8,7 +8,16 @@ from packaging.requirements import Requirement
 from packaging.utils import parse_wheel_filename
 from packaging.version import Version
 
-from fromager import clickext, context, hooks, progress, sdist, server, sources, wheels
+from fromager import (
+    build_environment,
+    clickext,
+    context,
+    hooks,
+    progress,
+    server,
+    sources,
+    wheels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +145,8 @@ def _build(
     source_root_dir = sources.prepare_source(wkctx, req, source_filename, dist_version)
 
     # Build environment
-    sdist.prepare_build_environment(wkctx, req, source_root_dir)
-    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
+    build_environment.prepare_build_environment(wkctx, req, source_root_dir)
+    build_env = build_environment.BuildEnvironment(wkctx, source_root_dir.parent, None)
 
     # Make a new source distribution, in case we patched the code.
     sdist_filename = sources.build_sdist(
