@@ -105,7 +105,7 @@ MODEL_CONFIG = pydantic.ConfigDict(
 )
 
 
-class ResolverDist(pydantic.BaseModel):
+class ResolveSource(pydantic.BaseModel):
     """Packages resolver dist"""
 
     model_config = MODEL_CONFIG
@@ -173,7 +173,7 @@ class PackageSettings(pydantic.BaseModel):
         download_source:
             url: https://egg.test
             destination_filename: new_filename
-        resolver_dist:
+        resolve_source:
             sdist_server_url: https://sdist.test/egg
             include_sdists: true
             include_wheels: false
@@ -206,14 +206,14 @@ class PackageSettings(pydantic.BaseModel):
     download_source: DownloadSource = Field(default_factory=DownloadSource)
     """Alternative source download settings"""
 
-    resolver_dist: ResolverDist = Field(default_factory=ResolverDist)
+    resolve_source: ResolveSource = Field(default_factory=ResolveSource)
     """Resolve distribution version"""
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
     """Variant configuration"""
 
     @pydantic.field_validator(
-        "download_source", "resolver_dist", "variants", mode="before"
+        "download_source", "resolve_source", "variants", mode="before"
     )
     @classmethod
     def before_none_dict(
@@ -434,22 +434,22 @@ class PackageBuildInfo:
         else:
             return None
 
-    def resolver_sdist_server_url(self, default: str) -> str:
+    def resolve_source_sdist_server_url(self, default: str) -> str:
         """Package index server URL for resolving package versions"""
-        url = self._ps.resolver_dist.sdist_server_url
+        url = self._ps.resolve_source.sdist_server_url
         if url is None:
             url = default
         return url
 
     @property
-    def resolver_include_wheels(self) -> bool:
+    def resolve_source_include_wheels(self) -> bool:
         """Include wheels when resolving package versions?"""
-        return self._ps.resolver_dist.include_wheels
+        return self._ps.resolve_source.include_wheels
 
     @property
-    def resolver_include_sdists(self) -> bool:
+    def resolve_source_include_sdists(self) -> bool:
         """Include sdists when resolving package versions?"""
-        return self._ps.resolver_dist.include_sdists
+        return self._ps.resolve_source.include_sdists
 
     def build_dir(self, sdist_root_dir: pathlib.Path) -> pathlib.Path:
         """Build directory for package (e.g. subdirectory)"""
