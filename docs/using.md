@@ -56,8 +56,7 @@ source distributions. The server URL is usually a simple index URL for
 an internal package index. The outputs are one patched source
 distribution and one built wheel.
 
-The `build-sequence` command takes a build-order file, the variant,
-and the source distribution server URL. The outputs are patched source
+The `build-sequence` command takes a build-order file and the variant. The outputs are patched source
 distributions and built wheels for each item in the build-order file.
 
 ### Step-by-step commands

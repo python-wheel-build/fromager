@@ -41,7 +41,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
+    build-sequence "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
@@ -79,7 +79,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence --skip-existing "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
+    build-sequence --skip-existing "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
@@ -104,7 +104,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
+    build-sequence "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
@@ -128,7 +128,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings-2" \
-    build-sequence --skip-existing "$OUTDIR/build-order.json" $WHEEL_SERVER_URL
+    build-sequence --skip-existing "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
