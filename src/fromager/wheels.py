@@ -2,7 +2,6 @@ import collections
 import logging
 import os
 import pathlib
-import platform
 import shutil
 import sys
 import tempfile
@@ -17,73 +16,20 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
-from . import context, external_commands, overrides, resolver, sources
+from . import (
+    build_environment,
+    context,
+    external_commands,
+    overrides,
+    resolver,
+    sources,
+)
 
 logger = logging.getLogger(__name__)
 
 FROMAGER_BUILD_SETTINGS = "fromager-build-settings"
 FROMAGER_ELF_PROVIDES = "fromager-elf-provides.txt"
 FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
-
-
-class BuildEnvironment:
-    "Wrapper for a virtualenv used for build isolation."
-
-    def __init__(
-        self,
-        ctx: context.WorkContext,
-        parent_dir: pathlib.Path,
-        build_requirements: typing.Iterable[Requirement] | None,
-    ):
-        self._ctx = ctx
-        self.path = parent_dir / f"build-{platform.python_version()}"
-        self._build_requirements = build_requirements
-        self._createenv()
-
-    @property
-    def python(self) -> pathlib.Path:
-        return (self.path / "bin/python3").absolute()
-
-    def _createenv(self) -> None:
-        if self.path.exists():
-            logger.info("reusing build environment in %s", self.path)
-            return
-
-        logger.debug("creating build environment in %s", self.path)
-        external_commands.run(
-            [sys.executable, "-m", "virtualenv", str(self.path)],
-            network_isolation=False,
-        )
-        logger.info("created build environment in %s", self.path)
-
-        req_filename = self.path / "requirements.txt"
-        # FIXME: Ensure each requirement is pinned to a specific version.
-        with open(req_filename, "w") as f:
-            if self._build_requirements:
-                for r in self._build_requirements:
-                    f.write(f"{r}\n")
-        if not self._build_requirements:
-            return
-        external_commands.run(
-            [
-                str(self.python),
-                "-m",
-                "pip",
-                "install",
-                "--disable-pip-version-check",
-                "--only-binary",
-                ":all:",
-            ]
-            + self._ctx.pip_wheel_server_args
-            + self._ctx.pip_constraint_args
-            + [
-                "-r",
-                str(req_filename.absolute()),
-            ],
-            cwd=str(self.path.parent),
-            network_isolation=False,
-        )
-        logger.info("installed dependencies into build environment in %s", self.path)
 
 
 def _extra_metadata_elfdeps(
@@ -278,7 +224,7 @@ def build_wheel(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
-    build_env: BuildEnvironment,
+    build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path | None:
     pbi = ctx.package_build_info(req)
     logger.info(
@@ -330,7 +276,7 @@ def build_wheel(
 
 def default_build_wheel(
     ctx: context.WorkContext,
-    build_env: BuildEnvironment,
+    build_env: build_environment.BuildEnvironment,
     extra_environ: dict[str, typing.Any],
     req: Requirement,
     sdist_root_dir: pathlib.Path,

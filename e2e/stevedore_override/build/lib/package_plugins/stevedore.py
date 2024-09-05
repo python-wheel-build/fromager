@@ -4,7 +4,7 @@ import pathlib
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import context, sources, wheels
+from fromager import context, sources, build_environment
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def build_sdist(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
-    build_env: wheels.BuildEnvironment,
+    build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
     return sources.pep517_build_sdist(
         ctx=ctx,

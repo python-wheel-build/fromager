@@ -5,7 +5,15 @@ import click
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from .. import clickext, context, finders, sdist, server, sources, wheels
+from .. import (
+    build_environment,
+    clickext,
+    context,
+    finders,
+    server,
+    sources,
+    wheels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +111,7 @@ def build_sdist(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
-    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
+    build_env = build_environment.BuildEnvironment(wkctx, source_root_dir.parent, None)
     sdist_filename = sources.build_sdist(
         ctx=wkctx,
         req=req,
@@ -148,7 +156,7 @@ def prepare_build(
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
-    sdist.prepare_build_environment(wkctx, req, source_root_dir)
+    build_environment.prepare_build_environment(wkctx, req, source_root_dir)
 
 
 @step.command()
@@ -169,7 +177,7 @@ def build_wheel(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
-    build_env = wheels.BuildEnvironment(wkctx, source_root_dir.parent, None)
+    build_env = build_environment.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(
         ctx=wkctx,
         req=req,

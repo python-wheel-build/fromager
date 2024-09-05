@@ -14,6 +14,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from . import (
+    build_environment,
     context,
     dependencies,
     external_commands,
@@ -21,7 +22,6 @@ from . import (
     resolver,
     tarballs,
     vendor_rust,
-    wheels,
 )
 from .request_session import session
 
@@ -372,7 +372,7 @@ def build_sdist(
     req: Requirement,
     version: Version,
     sdist_root_dir: pathlib.Path,
-    build_env: wheels.BuildEnvironment,
+    build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(sdist_root_dir)
@@ -401,7 +401,7 @@ def default_build_sdist(
     req: Requirement,
     version: Version,
     sdist_root_dir: pathlib.Path,
-    build_env: wheels.BuildEnvironment,
+    build_env: build_environment.BuildEnvironment,
     build_dir: pathlib.Path,
 ) -> pathlib.Path:
     # It seems like the "correct" way to do this would be to run the
