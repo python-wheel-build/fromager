@@ -34,12 +34,14 @@ def test_write_constraints_file_simple():
     raw_graph = {
         "": {
             "download_url": "",
+            "pre_built": False,
             "version": "0",
             "canonicalized_name": "",
             "edges": [{"key": "a==1.0", "req_type": "install", "req": "a"}],
         },
         "a==1.0": {
             "download_url": "url for a",
+            "pre_built": False,
             "version": "1.0",
             "canonicalized_name": "a",
             "edges": [
@@ -49,12 +51,14 @@ def test_write_constraints_file_simple():
         },
         "b==2.0": {
             "download_url": "url for b",
+            "pre_built": False,
             "version": "2.0",
             "canonicalized_name": "b",
             "edges": [],
         },
         "c==3.0": {
             "download_url": "url for c",
+            "pre_built": False,
             "version": "3.0",
             "canonicalized_name": "c",
             "edges": [],
@@ -75,12 +79,14 @@ def test_write_constraints_file_resolvable_duplicate():
     raw_graph = {
         "": {
             "download_url": "",
+            "pre_built": False,
             "version": "0",
             "canonicalized_name": "",
             "edges": [{"key": "a==1.0", "req_type": "install", "req": "a"}],
         },
         "a==1.0": {
             "download_url": "url for a",
+            "pre_built": False,
             "version": "1.0",
             "canonicalized_name": "a",
             "edges": [
@@ -90,18 +96,21 @@ def test_write_constraints_file_resolvable_duplicate():
         },
         "b==2.0": {
             "download_url": "url for b",
+            "pre_built": False,
             "version": "2.0",
             "canonicalized_name": "b",
             "edges": [{"key": "c==3.1", "req_type": "install", "req": "c>3.0"}],
         },
         "c==3.0": {
             "download_url": "url for c",
+            "pre_built": False,
             "version": "3.0",
             "canonicalized_name": "c",
             "edges": [],
         },
         "c==3.1": {
             "download_url": "url for c",
+            "pre_built": False,
             "version": "3.1",
             "canonicalized_name": "c",
             "edges": [],
@@ -123,12 +132,14 @@ def test_write_constraints_file_unresolvable_duplicate():
     raw_graph = {
         "": {
             "download_url": "",
+            "pre_built": False,
             "version": "0",
             "canonicalized_name": "",
             "edges": [{"key": "a==1.0", "req_type": "install", "req": "a"}],
         },
         "a==1.0": {
             "download_url": "url for a",
+            "pre_built": False,
             "version": "1.0",
             "canonicalized_name": "a",
             "edges": [
@@ -138,18 +149,21 @@ def test_write_constraints_file_unresolvable_duplicate():
         },
         "b==2.0": {
             "download_url": "url for b",
+            "pre_built": False,
             "version": "2.0",
             "canonicalized_name": "b",
             "edges": [{"key": "c==3.1", "req_type": "install", "req": "c>3.0"}],
         },
         "c==3.0": {
             "download_url": "url for c",
+            "pre_built": False,
             "version": "3.0",
             "canonicalized_name": "c",
             "edges": [],
         },
         "c==3.1": {
             "download_url": "url for c",
+            "pre_built": False,
             "version": "3.1",
             "canonicalized_name": "c",
             "edges": [],

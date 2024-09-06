@@ -8,12 +8,14 @@ from fromager import dependency_graph, requirements_file
 raw_graph = {
     "": {
         "download_url": "",
+        "pre_built": False,
         "version": "0",
         "canonicalized_name": "",
         "edges": [{"key": "a==2.0", "req_type": "install", "req": "a==2.0"}],
     },
     "a==2.0": {
         "download_url": "url",
+        "pre_built": False,
         "version": "2.0",
         "canonicalized_name": "a",
         "edges": [
@@ -23,6 +25,7 @@ raw_graph = {
     },
     "b==3.0": {
         "download_url": "url for b",
+        "pre_built": False,
         "version": "3.0",
         "canonicalized_name": "b",
         "edges": [
@@ -31,6 +34,7 @@ raw_graph = {
     },
     "c==4.0": {
         "download_url": "url for c",
+        "pre_built": False,
         "version": "4.0",
         "canonicalized_name": "c",
         "edges": [],

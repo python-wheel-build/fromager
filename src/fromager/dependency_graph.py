@@ -25,6 +25,7 @@ class DependencyNodeDict(typing.TypedDict):
     download_url: str
     canonicalized_name: str
     version: str
+    pre_built: bool
     edges: list[DependencyEdgeDict]
 
 
@@ -34,6 +35,7 @@ class DependencyNode:
         req_name: NormalizedName,
         version: Version,
         download_url: str = "",
+        pre_built: bool = False,
     ) -> None:
         self.canonicalized_name = req_name
         self.version = version
@@ -41,6 +43,7 @@ class DependencyNode:
         self.children: list[DependencyEdge] = []
         self.key = f"{self.canonicalized_name}=={version}"
         self.download_url = download_url
+        self.pre_built = pre_built
 
     def add_child(
         self,
@@ -67,10 +70,21 @@ class DependencyNode:
     def to_dict(self) -> DependencyNodeDict:
         return {
             "download_url": self.download_url,
+            "pre_built": self.pre_built,
             "version": str(self.version),
             "canonicalized_name": str(self.canonicalized_name),
             "edges": [edge.to_dict() for edge in self.children],
         }
+
+    def get_outgoing_edges(
+        self, req_name: str, req_type: RequirementType
+    ) -> list["DependencyEdge"]:
+        return [
+            edge
+            for edge in self.children
+            if canonicalize_name(edge.req.name) == canonicalize_name(req_name)
+            and edge.req_type == req_type
+        ]
 
     @classmethod
     def construct_root_node(cls) -> "DependencyNode":
@@ -145,6 +159,7 @@ class DependencyGraph:
                     req=Requirement(edge_dict["req"]),
                     req_version=Version(destination_node_dict["version"]),
                     download_url=destination_node_dict["download_url"],
+                    pre_built=destination_node_dict["pre_built"],
                 )
                 stack.append(edge_dict["key"])
             visited.add(curr_key)
@@ -167,11 +182,18 @@ class DependencyGraph:
         raw_graph = self._to_dict()
         json.dump(raw_graph, file_handle, indent=2, default=str)
 
-    def _add_node(self, req_name: NormalizedName, version: Version, download_url: str):
+    def _add_node(
+        self,
+        req_name: NormalizedName,
+        version: Version,
+        download_url: str,
+        pre_built: bool,
+    ):
         new_node = DependencyNode(
             req_name=req_name,
             version=version,
             download_url=download_url,
+            pre_built=pre_built,
         )
         # check if a node with that key already exists. if it does then use that
         node = self.nodes.get(new_node.key, new_node)
@@ -187,9 +209,10 @@ class DependencyGraph:
         req: Requirement,
         req_version: Version,
         download_url: str = "",
+        pre_built: bool = False,
     ) -> None:
         logger.debug(
-            "recording %s%s dependency %s -> %s %s",
+            "recording %s %s dependency %s -> %s %s",
             req_type,
             parent_name if parent_name else f"({RequirementType.TOP_LEVEL})",
             f"=={parent_version}" if parent_version else "",
@@ -201,6 +224,7 @@ class DependencyGraph:
             req_name=canonicalize_name(req.name),
             version=req_version,
             download_url=download_url,
+            pre_built=pre_built,
         )
 
         parent_key = ROOT if parent_name is None else f"{parent_name}=={parent_version}"
@@ -220,6 +244,18 @@ class DependencyGraph:
             if edge.destination_node.key not in visited:
                 yield edge.destination_node
                 visited.add(edge.destination_node.key)
+
+    def get_nodes_by_name(self, req_name: str | None) -> list[DependencyNode]:
+        if not req_name:
+            return [self.nodes[ROOT]]
+        return [
+            node
+            for node in self.get_all_nodes()
+            if node.canonicalized_name == canonicalize_name(req_name)
+        ]
+
+    def get_root_node(self) -> DependencyNode:
+        return self.nodes[ROOT]
 
     def get_all_nodes(self) -> typing.Iterable[DependencyNode]:
         return self.nodes.values()
