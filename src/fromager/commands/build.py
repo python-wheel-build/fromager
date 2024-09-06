@@ -89,8 +89,19 @@ def build_sequence(
                 )
                 continue
 
-            logger.info("%s: building %s==%s", dist_name, dist_name, dist_version)
-            wheel_filename = _build(wkctx, dist_name, dist_version, sdist_server_url)
+            if entry["prebuilt"]:
+                logger.info(
+                    "%s: skipping %s==%s since it is a prebuilt",
+                    dist_name,
+                    dist_name,
+                    dist_version,
+                )
+                continue
+            else:
+                logger.info("%s: building %s==%s", dist_name, dist_name, dist_version)
+                wheel_filename = _build(
+                    wkctx, dist_name, dist_version, sdist_server_url
+                )
 
             server.update_wheel_mirror(wkctx)
             # After we update the wheel mirror, the built file has
