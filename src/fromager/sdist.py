@@ -112,6 +112,8 @@ def handle_requirement(
         req_type=req_type,
         req=req,
         req_version=Version(str(resolved_version)),
+        download_url=source_url,
+        pre_built=pre_built,
     )
     ctx.write_to_graph_to_file()
 
