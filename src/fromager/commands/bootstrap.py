@@ -24,11 +24,27 @@ logger = logging.getLogger(__name__)
 def _get_requirements_from_args(
     toplevel: typing.Iterable[str],
     req_files: typing.Iterable[pathlib.Path],
-) -> typing.Sequence[str]:
-    to_build: list[str] = []
-    to_build.extend(toplevel)
+) -> list[Requirement]:
+    parsed_req: list[str] = []
+    parsed_req.extend(toplevel)
     for filename in req_files:
-        to_build.extend(requirements_file.parse_requirements_file(filename))
+        parsed_req.extend(requirements_file.parse_requirements_file(filename))
+    to_build: list[Requirement] = []
+    for dep in parsed_req:
+        req = Requirement(dep)
+        # If we're given a requirements file as input, we might be iterating over a
+        # list of requirements with marker expressions that limit their use to
+        # specific platforms or python versions. Evaluate the markers to filter out
+        # anything we shouldn't build. Only apply the filter to toplevel
+        # requirements (items without a why list leading up to them) because other
+        # dependencies are already filtered based on their markers in the context of
+        # their parent, so they include values like the parent's extras settings.
+        if not requirements_file.evaluate_marker(req, req):
+            logger.info(
+                f"{req.name}: ignoring {requirements_file.RequirementType.TOP_LEVEL} dependency {req} because of its marker expression"
+            )
+        else:
+            to_build.append(req)
     return to_build
 
 
@@ -68,10 +84,10 @@ def bootstrap(
     server.start_wheel_server(wkctx)
 
     with progress.progress_context(total=len(to_build)) as progressbar:
-        for dep in to_build:
+        for req in to_build:
             sdist.handle_requirement(
                 wkctx,
-                Requirement(dep),
+                req,
                 req_type=requirements_file.RequirementType.TOP_LEVEL,
                 progressbar=progressbar,
             )
