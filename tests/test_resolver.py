@@ -416,7 +416,10 @@ def test_resolve_github():
         candidate = result.mapping["fromager"]
         assert str(candidate.version) == "0.9.0"
         # check the "URL" in case tag syntax does not match version syntax
-        assert str(candidate.url) == "0.9.0"
+        assert (
+            str(candidate.url)
+            == "https://api.github.com/repos/python-wheel-build/fromager/tarball/refs/tags/0.9.0"
+        )
 
 
 def test_github_constraint_mismatch():
@@ -465,12 +468,15 @@ def test_github_constraint_match():
         candidate = result.mapping["fromager"]
         assert str(candidate.version) == "0.8.1"
         # check the "URL" in case tag syntax does not match version syntax
-        assert str(candidate.url) == "0.8.1"
+        assert (
+            str(candidate.url)
+            == "https://api.github.com/repos/python-wheel-build/fromager/tarball/refs/tags/0.8.1"
+        )
 
 
 def test_resolve_generic():
     def _versions(*args, **kwds):
-        return ["1.2", "1.3", "1.4.1"]
+        return [("url", "1.2"), ("url", "1.3"), ("url", "1.4.1")]
 
     provider = resolver.GenericProvider(_versions, None)
     reporter = resolvelib.BaseReporter()

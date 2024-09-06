@@ -58,17 +58,7 @@ def resolve(
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
     )
-
-    reporter = resolvelib.BaseReporter()
-    rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
-
-    # Kick off the resolution process, and get the final result.
-    result = rslvr.resolve([req])
-    candidate: Candidate
-    for candidate in result.mapping.values():
-        return candidate.url, candidate.version
-
-    raise ValueError(f"Unable to resolve {req}")
+    return resolve_from_provider(provider, req)
 
 
 def default_resolver_provider(
@@ -84,6 +74,20 @@ def default_resolver_provider(
         sdist_server_url=sdist_server_url,
         constraints=ctx.constraints,
     )
+
+
+def resolve_from_provider(
+    provider: "BaseProvider", req: Requirement
+) -> tuple[str, Version]:
+    reporter = resolvelib.BaseReporter()
+    rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
+    result = rslvr.resolve([req])
+    # resolvelib actually just returns one candidate per requirement.
+    # result.mapping is map from an identifier to its resolved candidate
+    candidate: Candidate
+    for candidate in result.mapping.values():
+        return candidate.url, candidate.version
+    raise ValueError(f"Unable to resolve {req}")
 
 
 def get_project_from_pypi(
@@ -179,7 +183,7 @@ RequirementsMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Requirem
 CandidatesMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Candidate]]
 VersionSource: typing.TypeAlias = typing.Callable[
     [str, RequirementsMap, CandidatesMap],
-    typing.Iterable[str | Version],
+    typing.Iterable[tuple[str, str | Version]],
 ]
 
 
@@ -344,7 +348,9 @@ class GenericProvider(BaseProvider):
         # are added to the candidate at creation - we
         # treat candidates as immutable once created.
         candidates = []
-        for item in self._version_source(identifier, requirements, incompatibilities):
+        for url, item in self._version_source(
+            identifier, requirements, incompatibilities
+        ):
             if isinstance(item, Version):
                 version = item
             else:
@@ -382,7 +388,7 @@ class GenericProvider(BaseProvider):
                         f"{identifier}: skipping {version} due to constraint {c}"
                     )
                 continue
-            candidates.append(Candidate(identifier, version, url=str(item)))
+            candidates.append(Candidate(identifier, version, url=url))
         return sorted(candidates, key=attrgetter("version"), reverse=True)
 
 
@@ -403,7 +409,7 @@ class GitHubTagProvider(GenericProvider):
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[Version]:
+    ) -> typing.Iterable[tuple[str, Version]]:
         repo = self.client.get_repo(f"{self.organization}/{self.repo}")
 
         for tag in repo.get_tags():
@@ -414,4 +420,4 @@ class GitHubTagProvider(GenericProvider):
                     f"{identifier}: could not parse version from git tag {tag.name} on {repo.full_name}: {err}"
                 )
                 continue
-            yield version
+            yield (tag.tarball_url, version)
