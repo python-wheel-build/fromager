@@ -11,8 +11,11 @@ from .. import (
     dependency_graph,
     progress,
     requirements_file,
+    resolver,
     sdist,
     server,
+    sources,
+    wheels,
 )
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
@@ -57,11 +60,19 @@ def _get_requirements_from_args(
     type=clickext.ClickPath(),
     help="pip requirements file",
 )
+@click.option(
+    "-p",
+    "--previous-bootstrap",
+    "prev_graph_file",
+    type=clickext.ClickPath(),
+    help="graph file produced from a previous bootstrap",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
     wkctx: context.WorkContext,
     requirements_files: list[pathlib.Path],
+    prev_graph_file: pathlib.Path | None,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -77,11 +88,39 @@ def bootstrap(
         )
     logger.info("bootstrapping %r variant of %s", wkctx.variant, to_build)
 
+    if prev_graph_file:
+        prev_graph = dependency_graph.DependencyGraph.from_file(prev_graph_file)
+    else:
+        prev_graph = None
+
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
         logger.info("treating %s as pre-built wheels", sorted(pre_built))
 
     server.start_wheel_server(wkctx)
+
+    # we need to resolve all the top level dependencies before we start bootstrapping.
+    # this is to ensure that if we are using an older bootstrap to resolve packages
+    # we are able to upgrade a package anywhere in the dependency tree if it is mentioned
+    # in the toplevel without having to fall back to history
+    for req in to_build:
+        pbi = wkctx.package_build_info(req)
+        if pbi.pre_built:
+            servers = wheels.get_wheel_server_urls(wkctx, req)
+            source_url, version = wheels.resolve_prebuilt_wheel(wkctx, req, servers)
+        else:
+            source_url, version = sources.resolve_source(
+                wkctx, req, resolver.PYPI_SERVER_URL
+            )
+        wkctx.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=requirements_file.RequirementType.TOP_LEVEL,
+            req=req,
+            req_version=version,
+            download_url=source_url,
+            pre_built=pbi.pre_built,
+        )
 
     with progress.progress_context(total=len(to_build)) as progressbar:
         for req in to_build:
@@ -90,6 +129,7 @@ def bootstrap(
                 req,
                 req_type=requirements_file.RequirementType.TOP_LEVEL,
                 progressbar=progressbar,
+                prev_graph=prev_graph,
             )
             progressbar.update()
 

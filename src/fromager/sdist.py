@@ -19,6 +19,7 @@ from . import (
     sources,
     wheels,
 )
+from .dependency_graph import DependencyGraph
 from .requirements_file import RequirementType
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,9 @@ def handle_requirement(
     ctx: context.WorkContext,
     req: Requirement,
     req_type: RequirementType = RequirementType.TOP_LEVEL,
-    why: list | None = None,
+    why: list[tuple[RequirementType, Requirement, Version]] | None = None,
     progressbar: progress.Progressbar | None = None,
+    prev_graph: DependencyGraph | None = None,
 ) -> str:
     if why is None:
         why = []
@@ -48,13 +50,19 @@ def handle_requirement(
 
     pbi = ctx.package_build_info(req)
     pre_built = pbi.pre_built
+    _, parent_req, parent_version = why[-1] if why else (None, None, None)
 
     # Resolve the dependency and get either the pre-built wheel our
     # the source code.
     if not pre_built:
-        source_url, resolved_version = sources.resolve_source(
-            ctx=ctx, req=req, sdist_server_url=resolver.PYPI_SERVER_URL
+        source_url, resolved_version = _resolve_source_with_history(
+            ctx,
+            prev_graph=prev_graph,
+            req=req,
+            req_type=req_type,
+            parent_req=parent_req,
         )
+
         source_filename = sources.download_source(
             ctx=ctx,
             req=req,
@@ -64,14 +72,14 @@ def handle_requirement(
         source_url_type = sources.get_source_type(ctx, req)
     else:
         logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
-        if pbi.wheel_server_url:
-            # use only the wheel server from settings if it is defined. Do not fallback to other URLs
-            servers = [pbi.wheel_server_url]
-        else:
-            servers = [resolver.PYPI_SERVER_URL]
-            if ctx.wheel_server_url:
-                servers.insert(0, ctx.wheel_server_url)
-        wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(ctx, req, servers)
+        wheel_url, resolved_version = _resolve_prebuilt_with_history(
+            ctx,
+            prev_graph=prev_graph,
+            req=req,
+            req_type=req_type,
+            parent_req=parent_req,
+        )
+
         wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
         # Remember that this is a prebuilt wheel, and where we got it.
         source_url = wheel_url
@@ -90,19 +98,21 @@ def handle_requirement(
         if not unpack_dir.exists():
             unpack_dir.mkdir()
 
-    # Update the dependency graph after we determine that this requirement is
-    # useful but before we determine if it is redundant so that we capture all
-    # edges to use for building a valid constraints file.
-    ctx.dependency_graph.add_dependency(
-        parent_name=canonicalize_name(why[-1][1].name) if why else None,
-        parent_version=why[-1][2] if why else None,
-        req_type=req_type,
-        req=req,
-        req_version=Version(str(resolved_version)),
-        download_url=source_url,
-        pre_built=pre_built,
-    )
-    ctx.write_to_graph_to_file()
+    # we resolve top level requirements outside this function, so they already exist in the graph
+    if req_type != RequirementType.TOP_LEVEL:
+        # Update the dependency graph after we determine that this requirement is
+        # useful but before we determine if it is redundant so that we capture all
+        # edges to use for building a valid constraints file.
+        ctx.dependency_graph.add_dependency(
+            parent_name=canonicalize_name(parent_req.name) if parent_req else None,
+            parent_version=parent_version,
+            req_type=req_type,
+            req=req,
+            req_version=resolved_version,
+            download_url=source_url,
+            pre_built=pre_built,
+        )
+        ctx.write_to_graph_to_file()
 
     # Avoid cyclic dependencies and redundant processing.
     if ctx.has_been_seen(req, resolved_version):
@@ -137,6 +147,7 @@ def handle_requirement(
             why,
             sdist_root_dir,
             progressbar=progressbar,
+            prev_graph=prev_graph,
         )
 
         build_backend_dependencies = _handle_build_backend_requirements(
@@ -145,6 +156,7 @@ def handle_requirement(
             why,
             sdist_root_dir,
             progressbar=progressbar,
+            prev_graph=prev_graph,
         )
 
         build_sdist_dependencies = _handle_build_sdist_requirements(
@@ -153,6 +165,7 @@ def handle_requirement(
             why,
             sdist_root_dir,
             progressbar=progressbar,
+            prev_graph=prev_graph,
         )
 
     # Add the new package to the build order list before trying to
@@ -237,7 +250,14 @@ def handle_requirement(
 
     for dep in _sort_requirements(install_dependencies):
         try:
-            handle_requirement(ctx, dep, next_req_type, why, progressbar=progressbar)
+            handle_requirement(
+                ctx,
+                req=dep,
+                req_type=next_req_type,
+                why=why,
+                progressbar=progressbar,
+                prev_graph=prev_graph,
+            )
         except Exception as err:
             raise ValueError(
                 f"could not handle {next_req_type} dependency {dep} for {why}"
@@ -259,6 +279,155 @@ def handle_requirement(
     return resolved_version
 
 
+def _resolve_from_graph(
+    ctx: context.WorkContext,
+    prev_graph: DependencyGraph | None,
+    parent_req: Requirement | None,
+    req: Requirement,
+    req_type: RequirementType,
+    pre_built: bool,
+) -> tuple[str, Version] | None:
+    # we have already resolved top level reqs before bootstrapping
+    # so they should already be in the root node
+    if req_type == RequirementType.TOP_LEVEL:
+        for edge in ctx.dependency_graph.get_root_node().get_outgoing_edges(
+            req.name, RequirementType.TOP_LEVEL
+        ):
+            if edge.req == req:
+                return (
+                    edge.destination_node.download_url,
+                    edge.destination_node.version,
+                )
+        # this should never happen since we already resolved top level reqs and their
+        # resolution should be in the root nodes
+        raise ValueError(
+            f"{req.name}: {req} appears as a toplevel requirement but it's resolution does not exist in the root node of the graph"
+        )
+
+    if not prev_graph:
+        return None
+
+    seen_version: set[str] = set()
+
+    # first perform resolution using the top level reqs before looking at history
+    possible_versions_in_top_level: list[tuple[str, Version]] = []
+    for top_level_edge in ctx.dependency_graph.get_root_node().get_outgoing_edges(
+        req.name, RequirementType.TOP_LEVEL
+    ):
+        possible_versions_in_top_level.append(
+            (
+                top_level_edge.destination_node.download_url,
+                top_level_edge.destination_node.version,
+            )
+        )
+        seen_version.add(str(top_level_edge.destination_node.version))
+
+    resolver_result = _resolve_from_version_source(
+        ctx, possible_versions_in_top_level, req
+    )
+    if resolver_result:
+        return resolver_result
+
+    # only if there is nothing in top level reqs, resolve using history
+    possible_versions_from_graph: list[tuple[str, Version]] = []
+    # check all nodes which have the same parent name irrespective of the parent's version
+    for parent_node in prev_graph.get_nodes_by_name(
+        parent_req.name if parent_req else None
+    ):
+        # if the edge matches the current req and type then it is a possible candidate
+        # filtering on type might not be necessary, but we are being safe here. This will
+        # for sure ensure that bootstrap takes the same route as it did in the previous one.
+        # If we don't filter by type then it might pick up a different version from a different
+        # type that should have appeared much later in the resolution process.
+        for edge in parent_node.get_outgoing_edges(req.name, req_type):
+            if (
+                edge.destination_node.pre_built == pre_built
+                and str(edge.destination_node.version) not in seen_version
+            ):
+                possible_versions_from_graph.append(
+                    (
+                        edge.destination_node.download_url,
+                        edge.destination_node.version,
+                    )
+                )
+                seen_version.add(str(edge.destination_node.version))
+
+    return _resolve_from_version_source(ctx, possible_versions_from_graph, req)
+
+
+def _resolve_from_version_source(
+    ctx: context.WorkContext,
+    version_source: list[tuple[str, Version]],
+    req: Requirement,
+) -> tuple[str, Version] | None:
+    if not version_source:
+        return None
+    try:
+        provider = resolver.GenericProvider(
+            version_source=lambda x, y, z: version_source, constraints=ctx.constraints
+        )
+        return resolver.resolve_from_provider(provider, req)
+    except Exception as err:
+        logger.debug(
+            f"{req.name}: could not resolve {req} from {version_source}: {err}"
+        )
+        return None
+
+
+def _resolve_source_with_history(
+    ctx: context.WorkContext,
+    prev_graph: DependencyGraph | None,
+    req: Requirement,
+    req_type: RequirementType,
+    parent_req: Requirement | None,
+) -> tuple[str, Version]:
+    cached_resolution = _resolve_from_graph(
+        ctx,
+        prev_graph,
+        parent_req=parent_req,
+        req=req,
+        req_type=req_type,
+        pre_built=False,
+    )
+    if cached_resolution:
+        source_url, resolved_version = cached_resolution
+        logger.debug(
+            f"{req.name}: resolved from previous bootstrap to {resolved_version}"
+        )
+    else:
+        source_url, resolved_version = sources.resolve_source(
+            ctx=ctx, req=req, sdist_server_url=resolver.PYPI_SERVER_URL
+        )
+    return (source_url, resolved_version)
+
+
+def _resolve_prebuilt_with_history(
+    ctx: context.WorkContext,
+    prev_graph: DependencyGraph | None,
+    req: Requirement,
+    req_type: RequirementType,
+    parent_req: Requirement | None,
+) -> tuple[str, Version]:
+    cached_resolution = _resolve_from_graph(
+        ctx,
+        prev_graph,
+        parent_req=parent_req,
+        req=req,
+        req_type=req_type,
+        pre_built=True,
+    )
+
+    if cached_resolution:
+        wheel_url, resolved_version = cached_resolution
+        logger.debug(
+            f"{req.name}: resolved from previous bootstrap to {resolved_version}"
+        )
+    else:
+        servers = wheels.get_wheel_server_urls(ctx, req)
+        wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(ctx, req, servers)
+    return (wheel_url, resolved_version)
+
+
 def _sort_requirements(
     requirements: typing.Iterable[Requirement],
 ) -> typing.Iterable[Requirement]:
@@ -271,6 +440,7 @@ def _handle_build_system_requirements(
     why: list | None,
     sdist_root_dir: pathlib.Path,
     progressbar: progress.Progressbar,
+    prev_graph: DependencyGraph | None,
 ) -> set[Requirement]:
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx, req, sdist_root_dir
@@ -280,7 +450,12 @@ def _handle_build_system_requirements(
     for dep in _sort_requirements(build_system_dependencies):
         try:
             resolved = handle_requirement(
-                ctx, dep, RequirementType.BUILD_SYSTEM, why, progressbar=progressbar
+                ctx,
+                req=dep,
+                req_type=RequirementType.BUILD_SYSTEM,
+                why=why,
+                progressbar=progressbar,
+                prev_graph=prev_graph,
             )
         except Exception as err:
             raise ValueError(
@@ -302,6 +477,7 @@ def _handle_build_backend_requirements(
     why: list,
     sdist_root_dir: pathlib.Path,
     progressbar: progress.Progressbar,
+    prev_graph: DependencyGraph | None,
 ) -> set[Requirement]:
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
         ctx, req, sdist_root_dir
@@ -311,7 +487,12 @@ def _handle_build_backend_requirements(
     for dep in _sort_requirements(build_backend_dependencies):
         try:
             resolved = handle_requirement(
-                ctx, dep, RequirementType.BUILD_BACKEND, why, progressbar=progressbar
+                ctx,
+                req=dep,
+                req_type=RequirementType.BUILD_BACKEND,
+                why=why,
+                progressbar=progressbar,
+                prev_graph=prev_graph,
             )
         except Exception as err:
             raise ValueError(
@@ -333,6 +514,7 @@ def _handle_build_sdist_requirements(
     why: list | None,
     sdist_root_dir: pathlib.Path,
     progressbar: progress.Progressbar,
+    prev_graph: DependencyGraph | None,
 ) -> set[Requirement]:
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
         ctx, req, sdist_root_dir
@@ -342,7 +524,12 @@ def _handle_build_sdist_requirements(
     for dep in _sort_requirements(build_sdist_dependencies):
         try:
             resolved = handle_requirement(
-                ctx, dep, RequirementType.BUILD_SDIST, why, progressbar=progressbar
+                ctx,
+                req=dep,
+                req_type=RequirementType.BUILD_SDIST,
+                why=why,
+                progressbar=progressbar,
+                prev_graph=prev_graph,
             )
         except Exception as err:
             raise ValueError(

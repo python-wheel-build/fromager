@@ -356,6 +356,18 @@ def _download_wheel_check(destination_dir, wheel_url):
     return wheel_filename
 
 
+def get_wheel_server_urls(ctx: context.WorkContext, req: Requirement) -> list[str]:
+    pbi = ctx.package_build_info(req)
+    if pbi.wheel_server_url:
+        # use only the wheel server from settings if it is defined. Do not fallback to other URLs
+        servers = [pbi.wheel_server_url]
+    else:
+        servers = [resolver.PYPI_SERVER_URL]
+        if ctx.wheel_server_url:
+            servers.insert(0, ctx.wheel_server_url)
+    return servers
+
+
 def resolve_prebuilt_wheel(
     ctx: context.WorkContext,
     req: Requirement,
