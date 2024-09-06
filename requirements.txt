@@ -3,6 +3,7 @@ elfdeps>=0.2.0
 html5lib
 packaging
 pkginfo
+psutil
 pydantic
 PyGithub
 pyproject_hooks>=1.0.0,!=1.1.0
