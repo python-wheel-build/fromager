@@ -14,7 +14,6 @@ from . import (
     dependencies,
     finders,
     progress,
-    requirements_file,
     resolver,
     server,
     sources,
@@ -37,18 +36,6 @@ def handle_requirement(
     if progressbar is None:
         progressbar = progress.Progressbar(None)
 
-    # If we're given a requirements file as input, we might be iterating over a
-    # list of requirements with marker expressions that limit their use to
-    # specific platforms or python versions. Evaluate the markers to filter out
-    # anything we shouldn't build. Only apply the filter to toplevel
-    # requirements (items without a why list leading up to them) because other
-    # dependencies are already filtered based on their markers in the context of
-    # their parent, so they include values like the parent's extras settings.
-    if (not why) and (not requirements_file.evaluate_marker(req, req)):
-        logger.info(
-            f"{req.name}: ignoring {req_type} dependency {req} because of its marker expression"
-        )
-        return ""
     logger.info(
         f'{req.name}: {"*" * (len(why) + 1)} handling {req_type} requirement {req} {why}'
     )

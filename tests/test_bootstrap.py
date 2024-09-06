@@ -2,18 +2,20 @@ import io
 import pathlib
 import textwrap
 
+from packaging.requirements import Requirement
+
 from fromager import dependency_graph
 from fromager.commands import bootstrap
 
 
 def test_get_requirements_single_arg():
     requirements = bootstrap._get_requirements_from_args(["a"], [])
-    assert ["a"] == requirements
+    assert [Requirement("a")] == requirements
 
 
 def test_get_requirements_multiple_args():
     requirements = bootstrap._get_requirements_from_args(["a", "b"], [])
-    assert ["a", "b"] == requirements
+    assert [Requirement("a"), Requirement("b")] == requirements
 
 
 def test_get_requirements_args_and_file(tmp_path: pathlib.Path):
@@ -23,10 +25,17 @@ def test_get_requirements_args_and_file(tmp_path: pathlib.Path):
         ["a", "b"], [requirements_file]
     )
     assert [
-        "a",
-        "b",
-        "c",
+        Requirement("a"),
+        Requirement("b"),
+        Requirement("c"),
     ] == requirements
+
+
+def test_ignore_based_on_marker():
+    requirements = bootstrap._get_requirements_from_args(
+        ['foo; python_version<"3.9"'], []
+    )
+    assert [] == requirements
 
 
 def test_write_constraints_file_simple():
