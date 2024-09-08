@@ -86,6 +86,11 @@ def _migrate_package_envfiles(
     for name in sorted(pkg_names):
         values: dict[str, typing.Any] = {"variants": {}}
         if name in settings_pkgs:
+            if "resolver_dist" in settings_pkgs[name]:
+                settings_pkgs[name]["resolve_source"] = settings_pkgs[name][
+                    "resolver_dist"
+                ]
+                del settings_pkgs[name]["resolver_dist"]
             values.update(settings_pkgs[name])
         if name in default_env:
             values["env"] = default_env[name]
