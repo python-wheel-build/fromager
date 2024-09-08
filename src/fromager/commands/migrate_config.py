@@ -64,11 +64,16 @@ def _migrate_package_envfiles(
     """
     with settings_file.open(encoding="utf-8") as f:
         settings_data: dict[str, typing.Any] = yaml.safe_load(f)
-    settings_pkgs: dict[str, typing.Any] = settings_data.get("packages", {})
+    raw_settings_pkgs: dict[str, typing.Any] = settings_data.get("packages", {})
+    settings_pkgs = {}
+    for pkg_name in raw_settings_pkgs:
+        settings_pkgs[canonicalize_name(pkg_name)] = raw_settings_pkgs[pkg_name]
 
     pre_built: PrebuiltMap = {}
     for variantname, entries in settings_data.get("pre_built", {}).items():
         variant = packagesettings.Variant(variantname)
+        if not entries:
+            continue
         for pkgname in entries:
             name = NormalizedName(pkgname)
             pre_built.setdefault(name, set()).add(variant)
@@ -86,6 +91,11 @@ def _migrate_package_envfiles(
     for name in sorted(pkg_names):
         values: dict[str, typing.Any] = {"variants": {}}
         if name in settings_pkgs:
+            if "resolver_dist" in settings_pkgs[name]:
+                settings_pkgs[name]["resolve_source"] = settings_pkgs[name][
+                    "resolver_dist"
+                ]
+                del settings_pkgs[name]["resolver_dist"]
             values.update(settings_pkgs[name])
         if name in default_env:
             values["env"] = default_env[name]
