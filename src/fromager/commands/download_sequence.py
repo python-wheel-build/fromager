@@ -64,7 +64,7 @@ def download_sequence(
 
         if entry["prebuilt"]:
             if include_wheels:
-                wheels.download_wheel(req, entry["source_url"], wkctx.wheels_downloads)
+                wheels.download_wheel(req, entry["source_url"], wkctx.wheels_prebuilt)
             else:
                 logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
             return
