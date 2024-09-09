@@ -48,10 +48,12 @@ class WorkContext:
                 max_jobs=max_jobs,
             )
         self.settings = active_settings
-        self.input_constraints_file = constraints_file
-        if constraints_file:
+        self.input_constraints_file: pathlib.Path | None
+        if constraints_file is not None:
+            self.input_constraints_file = constraints_file.absolute()
             self.constraints = constraints.load(constraints_file)
         else:
+            self.input_constraints_file = None
             self.constraints = constraints.Constraints({})
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / "downloads"
