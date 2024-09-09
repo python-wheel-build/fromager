@@ -18,11 +18,11 @@ fromager \
   bootstrap "${DIST}==${VERSION}"
 
 # Extract the build dependencies from the bootstrap info.
-jq -r '.[] | select( .type | contains("build-") ) | .req'  \
-   "$OUTDIR/work-dir/build-order.json" > "$OUTDIR/expected_build_requirements.txt"
+jq -r '.[] | .edges | .[] | select( .req_type | contains("build-") ) | .req'  \
+   "$OUTDIR/work-dir/graph.json" > "$OUTDIR/expected_build_requirements.txt"
 
 # Remove all of the build dependencies from the wheels-repo.
-jq -r '.[] | select( .type | contains("build-") ) | .dist'  "$OUTDIR/work-dir/build-order.json" \
+jq -r '.[] | .edges | .[] | select( .req_type | contains("build-") ) | .key | split("==")[0]'  "$OUTDIR/work-dir/graph.json" \
   | while read -r to_remove; do
   echo "Removing build dependency ${to_remove}"
   rm -f "$OUTDIR/wheels-repo/downloads/${to_remove}"*

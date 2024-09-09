@@ -159,7 +159,6 @@ def handle_requirement(
     # build it so we have a record of the dependency even if the build
     # fails.
     ctx.add_to_build_order(
-        req_type=req_type,
         req=req,
         version=resolved_version,
         source_url=source_url,
