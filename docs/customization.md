@@ -61,7 +61,7 @@ $ fromager --settings-dir=overrides/settings ...
 download_source:
     url: "https://github.com/pytorch/pytorch/releases/download/v${version}/pytorch-v${version}.tar.gz"
     destination_filename: "${canonicalized_name}-${version}.tar.gz"
-resolve_source:
+resolver_dist:
     sdist_server_url: "https://pypi.org/simple"
     include_wheels: true
     include_sdists: false
@@ -75,8 +75,9 @@ variants:
         env:
             OPENBLAS_NUM_THREADS: "1"
     gaudi:
-        # use pre-built binary wheels for this variant
+        # use pre-built binary wheels from a custom index for this variant
         pre_built: true
+        wheel_server_url: https://internal.pypi.example/simple
 ```
 
 ### Download source
@@ -91,7 +92,7 @@ support templating. The only supported template variable are:
 - `canonicalized_name` - it is replaced by the canonicalized name of the
   package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`
 
-### Resolve source
+### Resolver dist
 
 The source distribution index server used by the package resolver can
 be overriden for a particular package. The resolver can also be told

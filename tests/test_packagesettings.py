@@ -43,7 +43,7 @@ FULL_EXPECTED = {
     },
     "name": "test-pkg",
     "has_config": True,
-    "resolve_source": {
+    "resolver_dist": {
         "include_sdists": True,
         "include_wheels": False,
         "sdist_server_url": "https://sdist.test/egg",
@@ -82,7 +82,7 @@ EMPTY_EXPECTED = {
         "destination_filename": None,
     },
     "has_config": True,
-    "resolve_source": {
+    "resolver_dist": {
         "sdist_server_url": None,
         "include_sdists": True,
         "include_wheels": False,
@@ -176,10 +176,10 @@ def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
         pbi.download_source_destination_filename(Version("1.0.2"))
         == "test-pkg-1.0.2.tar.gz"
     )
-    assert pbi.resolve_source_include_sdists is True
-    assert pbi.resolve_source_include_wheels is False
+    assert pbi.resolver_include_sdists is True
+    assert pbi.resolver_include_wheels is False
     assert (
-        pbi.resolve_source_sdist_server_url("https://pypi.org/simple")
+        pbi.resolver_sdist_server_url("https://pypi.org/simple")
         == "https://sdist.test/egg"
     )
     assert pbi.build_tag(Version("1.0.2")) == (2, "")
@@ -209,10 +209,10 @@ def test_pbi_other(testdata_context: context.WorkContext) -> None:
     assert pbi.download_source_url(Version("1.0.0")) is None
     assert pbi.download_source_destination_filename(Version("1.0.0")) is None
     assert pbi.download_source_destination_filename(Version("1.0.0")) is None
-    assert pbi.resolve_source_include_sdists is True
-    assert pbi.resolve_source_include_wheels is False
+    assert pbi.resolver_include_sdists is True
+    assert pbi.resolver_include_wheels is False
     assert (
-        pbi.resolve_source_sdist_server_url("https://pypi.org/simple")
+        pbi.resolver_sdist_server_url("https://pypi.org/simple")
         == "https://pypi.org/simple"
     )
     assert pbi.build_tag(Version("1.0.0")) == ()

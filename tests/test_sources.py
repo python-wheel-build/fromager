@@ -61,9 +61,9 @@ def test_default_download_source_from_settings(
 @patch("fromager.sources._download_source_check")
 @patch.multiple(
     packagesettings.PackageBuildInfo,
-    resolve_source_include_sdists=False,
-    resolve_source_include_wheels=True,
-    resolve_source_sdist_server_url=Mock(return_value="url"),
+    resolver_include_sdists=False,
+    resolver_include_wheels=True,
+    resolver_sdist_server_url=Mock(return_value="url"),
 )
 def test_default_download_source_with_predefined_resolve_dist(
     download_source_check: Mock,

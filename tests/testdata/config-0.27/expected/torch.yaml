@@ -4,7 +4,7 @@ download_source:
 env:
   USE_FFMPEG: '0'
   USE_OPENCV: '0'
-resolve_source:
+resolver_dist:
   include_sdists: false
   include_wheels: true
   sdist_server_url: https://pypi.org/simple
