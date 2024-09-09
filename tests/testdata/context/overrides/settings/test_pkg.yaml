@@ -1,5 +1,6 @@
 build_dir: python
 build_options:
+    build_ext_parallel: true
     cpu_cores_per_job: 4
     memory_per_job_gb: 4
 changelog:

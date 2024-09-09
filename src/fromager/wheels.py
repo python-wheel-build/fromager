@@ -5,6 +5,7 @@ import pathlib
 import shutil
 import sys
 import tempfile
+import textwrap
 import typing
 import zipfile
 from datetime import datetime
@@ -230,17 +231,36 @@ def build_wheel(
     logger.info(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
-    extra_environ = pbi.get_extra_environ()
+
+    extra_environ: dict[str, str] = {}
     # TODO: refactor?
     # Build Rust without network access
     extra_environ["CARGO_NET_OFFLINE"] = "true"
-
     # configure max jobs settings, settings depend on package, available
     # CPU cores, and available virtual memory.
     jobs = pbi.parallel_jobs()
     extra_environ["MAKEFLAGS"] = f"{extra_environ.get('MAKEFLAGS', '')} -j{jobs}"
     extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
     extra_environ["MAX_JOBS"] = str(jobs)
+
+    if pbi.build_ext_parallel:
+        # configure setuptools to use parallel builds
+        # https://setuptools.pypa.io/en/latest/deprecated/distutils/configfile.html
+        dist_extra_cfg = build_env.path / "dist-extra.cfg"
+        dist_extra_cfg.write_text(
+            textwrap.dedent(
+                f"""
+                [build_ext]
+                parallel = {jobs}
+                """
+            )
+        )
+        extra_environ["DIST_EXTRA_CONFIG"] = str(dist_extra_cfg)
+
+    # add package and variant env vars last
+    template_env = os.environ.copy()
+    template_env.update(extra_environ)
+    extra_environ.update(pbi.get_extra_environ(template_env=template_env))
 
     # Start the timer
     start = datetime.now().replace(microsecond=0)

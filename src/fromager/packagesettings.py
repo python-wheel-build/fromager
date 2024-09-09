@@ -148,6 +148,13 @@ class BuildOptions(pydantic.BaseModel):
 
     model_config = MODEL_CONFIG
 
+    build_ext_parallel: bool = False
+    """Configure build_ext[parallel] in DIST_EXTRA_CONFIG
+
+    This enables parallel builds of setuptools extensions. Incompatible
+    with some packages, e.g. numba 0.60.0.
+    """
+
     cpu_cores_per_job: int = Field(default=1, ge=1)
     """Scale parallel jobs by available CPU cores
 
@@ -564,6 +571,11 @@ class PackageBuildInfo:
         )
 
         return parallel_builds
+
+    @property
+    def build_ext_parallel(self) -> bool:
+        """Configure [build_ext]parallel for setuptools?"""
+        return self._ps.build_options.build_ext_parallel
 
     def serialize(self, **kwargs) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)

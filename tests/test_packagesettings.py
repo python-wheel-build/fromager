@@ -23,6 +23,7 @@ TEST_OTHER_PKG = "test-other-pkg"
 FULL_EXPECTED = {
     "build_dir": pathlib.Path("python"),
     "build_options": {
+        "build_ext_parallel": True,
         "cpu_cores_per_job": 4,
         "memory_per_job_gb": 4.0,
     },
@@ -70,6 +71,7 @@ EMPTY_EXPECTED = {
     "name": "test-empty-pkg",
     "build_dir": None,
     "build_options": {
+        "build_ext_parallel": False,
         "cpu_cores_per_job": 1,
         "memory_per_job_gb": 1.0,
     },
