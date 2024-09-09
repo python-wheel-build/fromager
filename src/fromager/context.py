@@ -14,7 +14,6 @@ from . import (
     constraints,
     dependency_graph,
     packagesettings,
-    requirements_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,7 +117,6 @@ class WorkContext:
 
     def add_to_build_order(
         self,
-        req_type: requirements_file.RequirementType,
         req: Requirement,
         version: Version,
         source_url: str,
@@ -137,7 +135,6 @@ class WorkContext:
         logger.info(f"{req.name}: adding {key} to build order")
         self._build_requirements.add(key)
         info = {
-            "type": str(req_type),
             "req": str(req),
             "constraint": str(constraint) if constraint else "",
             "dist": canonicalize_name(req.name),

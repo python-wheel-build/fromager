@@ -37,14 +37,12 @@ def test_seen_name_canonicalization(tmp_context):
 
 def test_build_order(tmp_context):
     tmp_context.add_to_build_order(
-        req_type="build_backend",
         req=Requirement("buildme>1.0"),
         version="6.0",
         source_url="url",
         source_url_type="sdist",
     )
     tmp_context.add_to_build_order(
-        req_type="dependency",
         req=Requirement("testdist>1.0"),
         version="1.2",
         source_url="url",
@@ -54,7 +52,6 @@ def test_build_order(tmp_context):
     contents = json.loads(contents_str)
     expected = [
         {
-            "type": "build_backend",
             "req": "buildme>1.0",
             "dist": "buildme",
             "version": "6.0",
@@ -64,7 +61,6 @@ def test_build_order(tmp_context):
             "constraint": "",
         },
         {
-            "type": "dependency",
             "req": "testdist>1.0",
             "dist": "testdist",
             "version": "1.2",
@@ -79,21 +75,18 @@ def test_build_order(tmp_context):
 
 def test_build_order_repeats(tmp_context):
     tmp_context.add_to_build_order(
-        "build_backend",
         Requirement("buildme>1.0"),
         "6.0",
         "url",
         "sdist",
     )
     tmp_context.add_to_build_order(
-        "build_backend",
         Requirement("buildme>1.0"),
         "6.0",
         "url",
         "sdist",
     )
     tmp_context.add_to_build_order(
-        "build_backend",
         Requirement("buildme[extra]>1.0"),
         "6.0",
         "url",
@@ -103,7 +96,6 @@ def test_build_order_repeats(tmp_context):
     contents = json.loads(contents_str)
     expected = [
         {
-            "type": "build_backend",
             "req": "buildme>1.0",
             "dist": "buildme",
             "version": "6.0",
@@ -118,14 +110,12 @@ def test_build_order_repeats(tmp_context):
 
 def test_build_order_name_canonicalization(tmp_context):
     tmp_context.add_to_build_order(
-        "build_backend",
         Requirement("flit-core>1.0"),
         "3.9.0",
         "url",
         "sdist",
     )
     tmp_context.add_to_build_order(
-        "build_backend",
         Requirement("flit_core>1.0"),
         "3.9.0",
         "url",
@@ -135,7 +125,6 @@ def test_build_order_name_canonicalization(tmp_context):
     contents = json.loads(contents_str)
     expected = [
         {
-            "type": "build_backend",
             "req": "flit-core>1.0",
             "dist": "flit-core",
             "version": "3.9.0",
