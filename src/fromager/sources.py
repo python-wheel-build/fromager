@@ -108,14 +108,14 @@ def default_resolve_source(
     "Return URL to source and its version."
 
     pbi = ctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolve_source_sdist_server_url(sdist_server_url)
+    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
     url, version = resolver.resolve(
         ctx=ctx,
         req=req,
         sdist_server_url=override_sdist_server_url,
-        include_sdists=pbi.resolve_source_include_sdists,
-        include_wheels=pbi.resolve_source_include_wheels,
+        include_sdists=pbi.resolver_include_sdists,
+        include_wheels=pbi.resolver_include_wheels,
     )
     return url, version
 

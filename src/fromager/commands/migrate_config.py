@@ -64,10 +64,16 @@ def _migrate_package_envfiles(
     """
     with settings_file.open(encoding="utf-8") as f:
         settings_data: dict[str, typing.Any] = yaml.safe_load(f)
-    settings_pkgs: dict[str, typing.Any] = settings_data.get("packages", {})
+
+    settings_pkgs: dict[NormalizedName, typing.Any] = {
+        canonicalize_name(name): value
+        for name, value in settings_data.get("packages", {}).items()
+    }
 
     pre_built: PrebuiltMap = {}
     for variantname, entries in settings_data.get("pre_built", {}).items():
+        if not entries:
+            continue
         variant = packagesettings.Variant(variantname)
         for pkgname in entries:
             name = NormalizedName(pkgname)

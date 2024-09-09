@@ -17,7 +17,7 @@ env:
 download_source:
     url: https://egg.test/${canonicalized_name}/v${version}.tar.gz
     destination_filename: ${canonicalized_name}-${version}.tar.gz
-resolve_source:
+resolver_dist:
     sdist_server_url: https://sdist.test/egg
     include_sdists: true
     include_wheels: false
