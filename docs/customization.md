@@ -191,6 +191,42 @@ in subdirectories, with the filenames prefixed with the source directory name is
 also supported. The newer format, using subdirectories, is preferred because it
 avoids name collisions between variant source trees.
 
+## `project_override` section
+
+The `project_override` configures the `pyproject.toml` auto-fixer. It can
+automatically create a missing `pyproject.toml` or modify an existing file.
+Packages are matched by canonical name.
+
+- `remove_build_requires` is a list of package names. Any build requirement
+  in the list is removed
+- `update_build_requires` a list of requirement specifiers. Existing specs
+  are replaced and missing specs are added. The option can be used to add,
+  remove, or change a version constraint.
+
+```yaml
+project_override:
+    remove_build_requires:
+        - cmake
+    update_build_requires:
+        - setuptools>=68.0.0
+        - torch
+        - triton
+```
+
+Incoming `pyproject.toml`:
+
+```yaml
+[build-system]
+requires = ["cmake", "setuptools>48.0", "torch>=2.3.0"]
+```
+
+Output:
+
+```yaml
+[build-system]
+requires = ["setuptools>=68.0.0", "torch", "triton"]
+```
+
 ## Override plugins
 
 For more complex customization requirements, create an override plugin.
