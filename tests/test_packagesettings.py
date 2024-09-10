@@ -1,4 +1,5 @@
 import pathlib
+import typing
 from unittest.mock import Mock, patch
 
 import pydantic
@@ -20,7 +21,7 @@ TEST_PKG = "test-pkg"
 TEST_EMPTY_PKG = "test-empty-pkg"
 TEST_OTHER_PKG = "test-other-pkg"
 
-FULL_EXPECTED = {
+FULL_EXPECTED: dict[str, typing.Any] = {
     "build_dir": pathlib.Path("python"),
     "build_options": {
         "build_ext_parallel": True,
@@ -43,6 +44,10 @@ FULL_EXPECTED = {
     },
     "name": "test-pkg",
     "has_config": True,
+    "project_override": {
+        "remove_build_requires": ["cmake"],
+        "update_build_requires": ["setuptools>=68.0.0", "torch"],
+    },
     "resolver_dist": {
         "include_sdists": True,
         "include_wheels": False,
@@ -67,7 +72,7 @@ FULL_EXPECTED = {
     },
 }
 
-EMPTY_EXPECTED = {
+EMPTY_EXPECTED: dict[str, typing.Any] = {
     "name": "test-empty-pkg",
     "build_dir": None,
     "build_options": {
@@ -82,6 +87,10 @@ EMPTY_EXPECTED = {
         "destination_filename": None,
     },
     "has_config": True,
+    "project_override": {
+        "remove_build_requires": [],
+        "update_build_requires": [],
+    },
     "resolver_dist": {
         "sdist_server_url": None,
         "include_sdists": True,

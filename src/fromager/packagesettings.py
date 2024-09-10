@@ -9,6 +9,7 @@ from collections.abc import Mapping
 import psutil
 import pydantic
 import yaml
+from packaging.requirements import Requirement
 from packaging.utils import BuildTag, NormalizedName, canonicalize_name
 from packaging.version import Version
 from pydantic import Field
@@ -171,6 +172,27 @@ class BuildOptions(pydantic.BaseModel):
     """
 
 
+class ProjectOverride(pydantic.BaseModel):
+    """Override pyproject.toml settings"""
+
+    model_config = MODEL_CONFIG
+
+    update_build_requires: list[str] = Field(default_factory=list)
+    """Add / update requirements to pyproject.toml `[build-system] requires`
+    """
+
+    remove_build_requires: list[Package] = Field(default_factory=list)
+    """Remove requirement from pyproject.toml `[build-system] requires`
+    """
+
+    @pydantic.field_validator("update_build_requires")
+    @classmethod
+    def validate_update_build_requires(cls, v: list[str]) -> list[str]:
+        for reqstr in v:
+            Requirement(reqstr)
+        return v
+
+
 class VariantInfo(pydantic.BaseModel):
     """Variant information for a package"""
 
@@ -240,6 +262,9 @@ class PackageSettings(pydantic.BaseModel):
 
     build_options: BuildOptions = Field(default_factory=BuildOptions)
     """Build system options"""
+
+    project_override: ProjectOverride = Field(default_factory=ProjectOverride)
+    """Patch project settings"""
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
     """Variant configuration"""
@@ -576,6 +601,10 @@ class PackageBuildInfo:
     def build_ext_parallel(self) -> bool:
         """Configure [build_ext]parallel for setuptools?"""
         return self._ps.build_options.build_ext_parallel
+
+    @property
+    def project_override(self) -> ProjectOverride:
+        return self._ps.project_override
 
     def serialize(self, **kwargs) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)

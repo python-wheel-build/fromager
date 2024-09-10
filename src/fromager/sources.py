@@ -19,6 +19,7 @@ from . import (
     dependencies,
     external_commands,
     overrides,
+    pyproject,
     resolver,
     tarballs,
     vendor_rust,
@@ -367,9 +368,32 @@ def default_prepare_source(
 ) -> tuple[pathlib.Path, bool]:
     source_root_dir, is_new = unpack_source(ctx, source_filename)
     if is_new:
-        patch_source(ctx, source_root_dir, req)
-        vendor_rust.vendor_rust(req, source_root_dir)
+        prepare_new_source(
+            ctx=ctx,
+            req=req,
+            source_root_dir=source_root_dir,
+            version=version,
+        )
     return source_root_dir, is_new
+
+
+def prepare_new_source(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_root_dir: pathlib.Path,
+    version: Version,
+) -> None:
+    """Default steps for new sources
+
+    `default_prepare_source` runs this function when the sources are new.
+    """
+    patch_source(ctx, source_root_dir, req)
+    pyproject.apply_project_override(
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=source_root_dir,
+    )
+    vendor_rust.vendor_rust(req, source_root_dir)
 
 
 def build_sdist(
