@@ -233,7 +233,9 @@ class BaseProvider(ExtrasProvider):
     def is_satisfied_by(self, requirement: Requirement, candidate: Candidate) -> bool:
         if canonicalize_name(requirement.name) != candidate.name:
             return False
-        allow_prerelease = self.constraints.allow_prerelease(requirement.name)
+        allow_prerelease = self.constraints.allow_prerelease(requirement.name) or bool(
+            requirement.specifier.prereleases
+        )
         return requirement.specifier.contains(
             candidate.version, prereleases=allow_prerelease
         ) and self.constraints.is_satisfied_by(requirement.name, candidate.version)
@@ -291,7 +293,10 @@ class PyPIProvider(BaseProvider):
                 continue
             # Skip versions that do not match the requirement. Allow prereleases only if constraints allow prereleases
             if not all(
-                r.specifier.contains(candidate.version, prereleases=allow_prerelease)
+                r.specifier.contains(
+                    candidate.version,
+                    prereleases=(allow_prerelease or bool(r.specifier.prereleases)),
+                )
                 for r in identifier_reqs
             ):
                 if DEBUG_RESOLVER:
@@ -372,7 +377,10 @@ class GenericProvider(BaseProvider):
                 continue
             # Skip versions that do not match the requirement
             if not all(
-                r.specifier.contains(version, prereleases=allow_prerelease)
+                r.specifier.contains(
+                    version,
+                    prereleases=(allow_prerelease or bool(r.specifier.prereleases)),
+                )
                 for r in identifier_reqs
             ):
                 if DEBUG_RESOLVER:
