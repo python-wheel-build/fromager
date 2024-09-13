@@ -108,7 +108,14 @@ MODEL_CONFIG = pydantic.ConfigDict(
 
 
 class ResolverDist(pydantic.BaseModel):
-    """Packages resolver dist"""
+    """Packages resolver dist
+
+    ::
+
+      sdist_server_url: https://pypi.org/simple/
+      include_sdists: True
+      include_wheels: False
+    """
 
     model_config = MODEL_CONFIG
 
@@ -126,6 +133,11 @@ class DownloadSource(pydantic.BaseModel):
     """Package download source
 
     Download package sources from an alternative source, e.g. GitHub release.
+
+    ::
+
+        url: https://example.com/package.tar.gz
+        destination_filename: ${dist_name}-${version}.tar.gz
     """
 
     model_config = MODEL_CONFIG
@@ -145,12 +157,19 @@ class DownloadSource(pydantic.BaseModel):
 
 
 class BuildOptions(pydantic.BaseModel):
-    """Build system options"""
+    """Build system options
+
+    ::
+
+        build_ext_parallel: False
+        cpu_cores_per_job: 1
+        memory_per_job_gb: 1.0
+    """
 
     model_config = MODEL_CONFIG
 
     build_ext_parallel: bool = False
-    """Configure build_ext[parallel] in DIST_EXTRA_CONFIG
+    """Configure `build_ext[parallel]` in `DIST_EXTRA_CONFIG`
 
     This enables parallel builds of setuptools extensions. Incompatible
     with some packages, e.g. numba 0.60.0.
@@ -160,7 +179,9 @@ class BuildOptions(pydantic.BaseModel):
     """Scale parallel jobs by available CPU cores
 
     Examples:
+
     1: as many parallel jobs as CPU logical cores
+
     2: allocate 2 cores per job
     """
 
@@ -168,12 +189,21 @@ class BuildOptions(pydantic.BaseModel):
     """Scale parallel jobs by available virtual memory (without swap)
 
     Examples:
+
     0.5: assume each parallel job requires 512 MB virtual memory
     """
 
 
 class ProjectOverride(pydantic.BaseModel):
-    """Override pyproject.toml settings"""
+    """Override pyproject.toml settings
+
+    ::
+
+      update_build_requires:
+        - setuptools
+      remove_build_requires:
+        - ninja
+    """
 
     model_config = MODEL_CONFIG
 
@@ -194,7 +224,16 @@ class ProjectOverride(pydantic.BaseModel):
 
 
 class VariantInfo(pydantic.BaseModel):
-    """Variant information for a package"""
+    """Variant information for a package
+
+    ::
+
+      env:
+        VAR1: "value 1"
+        VAR2: "2.0
+      wheel_server_url: https://pypi.org/simple/
+      pre_build: False
+    """
 
     model_config = MODEL_CONFIG
 
@@ -214,7 +253,8 @@ _DictStrAny = dict[str, typing.Any]
 class PackageSettings(pydantic.BaseModel):
     """Package settings
 
-    yaml::
+    ::
+
         build_dir: python
         changelog:
             "1.0.1":
@@ -611,7 +651,16 @@ class PackageBuildInfo:
 
 
 class SettingsFile(pydantic.BaseModel):
-    """Models global settings file `settings.yaml`"""
+    """Models global settings file `settings.yaml`
+
+    ::
+
+      changelog:
+        cuda:
+          - "2024-09-13: updated CUDA version"
+        rocm:
+          - "2024-09-01: updated ROCm version"
+    """
 
     model_config = MODEL_CONFIG
 
