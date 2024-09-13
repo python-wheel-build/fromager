@@ -14,7 +14,7 @@ VERSION="2.1.5"
 OS=$(uname)
 if [ "$OS" = "Darwin" ]; then
     NETWORK_ISOLATION=""
-    WHEEL_PLATFORM_TAG="macosx_10_9_universal2"
+    WHEEL_PLATFORM_TAG="macosx_10_13_universal2"
     HAS_ELFDEP="0"
 else
     NETWORK_ISOLATION="--network-isolation"
