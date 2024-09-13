@@ -33,6 +33,7 @@ requires-python = ">=3.11"
 optional-dependencies.build = { file = ["requirements-build.txt"] }
 optional-dependencies.mypy = { file = ["requirements-mypy.txt"] }
 optional-dependencies.test = { file = ["requirements-test.txt"] }
+optional-dependencies.docs = { file = ["docs/requirements.txt"] }
 dependencies = { file = ["requirements.txt"] }
 
 [project.urls]
@@ -57,19 +58,11 @@ build_wheel = "fromager.wheels:default_build_wheel"
 branch = true
 parallel = true
 relative_files = true
-source = [
-    "fromager",
-    "tests/",
-]
+source = ["fromager", "tests/"]
 
 [tool.coverage.paths]
-source = [
-   "src/fromager",
-   ".tox/**/site-packages/fromager",
-]
-tests =[
-   "tests/",
-]
+source = ["src/fromager", ".tox/**/site-packages/fromager"]
+tests = ["tests/"]
 
 [tool.coverage.report]
 show_missing = true
@@ -129,10 +122,10 @@ mypy_path = ["src"]
 # TODO: remove excludes and silent follow
 follow_imports = "silent"
 exclude = [
-  "^src/fromager/sources\\.py$",
-  "^src/fromager/sdist\\.py$",
-  "^src/fromager/commands/build\\.py$",
-  "^src/fromager/settings\\.py$",
+    "^src/fromager/sources\\.py$",
+    "^src/fromager/sdist\\.py$",
+    "^src/fromager/commands/build\\.py$",
+    "^src/fromager/settings\\.py$",
 ]
 
 [[tool.mypy.overrides]]
