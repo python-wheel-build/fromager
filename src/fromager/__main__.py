@@ -179,6 +179,14 @@ def main(
     if error_log_file:
         logger.info("logging errors to %s", error_log_file)
 
+    logger.info(f"primary settings file: {settings_file}")
+    logger.info(f"per-package settings dir: {settings_dir}")
+    logger.info(f"variant: {variant}")
+    logger.info(f"patches dir: {patches_dir}")
+    logger.info(f"maximum concurrent jobs: {jobs}")
+    logger.info(f"constraints file: {constraints_file}")
+    logger.info(f"wheel server url: {wheel_server_url}")
+    logger.info(f"network isolation: {network_isolation}")
     overrides.log_overrides()
 
     if network_isolation and not SUPPORTS_NETWORK_ISOLATION:

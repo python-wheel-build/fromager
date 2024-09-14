@@ -21,6 +21,7 @@ class RequirementType(StrEnum):
 def parse_requirements_file(
     req_file: pathlib.Path,
 ) -> typing.Iterable[str]:
+    logger.debug("reading requirements file %s", req_file)
     lines = []
     with open(req_file, "r") as f:
         for line in f:
