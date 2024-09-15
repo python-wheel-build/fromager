@@ -29,6 +29,22 @@ source .tox/e2e/bin/activate
 # Set a variable to constrain packages used in the tests
 export FROMAGER_CONSTRAINTS_FILE="${SCRIPTDIR}/constraints.txt"
 
+OS=$(uname)
+if [ "$OS" = "Darwin" ]; then
+    NETWORK_ISOLATION=""
+    # The tag comes back as something like "macosx-10.9-universal2" but the
+    # filename contains "macosx_10_9_universal2".
+    WHEEL_PLATFORM_TAG=$(python3 -c 'import sysconfig; print(sysconfig.get_platform().replace("-", "_").replace(".", "_"))')
+    HAS_ELFDEP="0"
+else
+    NETWORK_ISOLATION="--network-isolation"
+    WHEEL_PLATFORM_TAG="linux_x86_64"
+    HAS_ELFDEP="1"
+fi
+export NETWORK_ISOLATION
+export WHEEL_PLATFORM_TAG
+export HAS_ELFDEP
+
 # Local web server management
 HTTP_SERVER_PID=""
 on_exit() {
