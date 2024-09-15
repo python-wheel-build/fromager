@@ -12,15 +12,6 @@ source "$SCRIPTDIR/common.sh"
 DIST="maturin"
 VERSION="1.6.0"
 
-OS=$(uname)
-if [ "$OS" = "Darwin" ]; then
-    NETWORK_ISOLATION=""
-    WHEEL_PLATFORM_TAG="macosx_10_9_universal2"
-else
-    NETWORK_ISOLATION="--network-isolation"
-    WHEEL_PLATFORM_TAG="linux_x86_64"
-fi
-
 # Bootstrap the test project
 fromager \
     $NETWORK_ISOLATION \
