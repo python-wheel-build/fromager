@@ -202,6 +202,7 @@ def main(
         variant=variant,
         network_isolation=network_isolation,
         max_jobs=jobs,
+        settings_dir=settings_dir,
     )
     wkctx.setup()
     ctx.obj = wkctx

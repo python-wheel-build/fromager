@@ -37,6 +37,7 @@ class WorkContext:
         variant: str = "cpu",
         network_isolation: bool = False,
         max_jobs: int | None = None,
+        settings_dir: pathlib.Path | None = None,
     ):
         if active_settings is None:
             active_settings = packagesettings.Settings(
@@ -67,6 +68,7 @@ class WorkContext:
         self.cleanup = cleanup
         self.variant = variant
         self.network_isolation = network_isolation
+        self.settings_dir = settings_dir
 
         self._build_order_filename = self.work_dir / "build-order.json"
         self._constraints_filename = self.work_dir / "constraints.txt"
