@@ -177,6 +177,7 @@ class WorkContext:
             self.wheels_repo,
             self.wheels_downloads,
             self.wheels_prebuilt,
+            self.wheels_build,
         ]:
             if not p.exists():
                 logger.debug("creating %s", p)
