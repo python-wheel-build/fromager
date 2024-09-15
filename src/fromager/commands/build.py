@@ -93,6 +93,7 @@ def build_sequence(
             wkctx.wheel_server_url,
         )
 
+    logger.info("reading build order from %s", build_order_file)
     with open(build_order_file, "r") as f:
         for entry in progress.progress(json.load(f)):
             dist_name = entry["dist"]

@@ -23,6 +23,8 @@ _hydra_core_simple_response = """
 <a href="https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-1.3.2-1-py3-none-any.whl#sha256=fa0238a9e31df3373b35b0bfb672c34cc92718d21f81311d8996a16de1141d8b" data-dist-info-metadata="sha256=399046cbf9ae7ebab8dfd009e2b4f748212c710a0e75ca501a72bbb2d456e2e7" data-core-metadata="sha256=399046cbf9ae7ebab8dfd009e2b4f748212c710a0e75ca501a72bbb2d456e2e7">hydra_core-1.3.2-1-py3-none-any.whl</a>
 <br/>
 <a href="https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-1.3.2-2-py3-none-any.whl#sha256=fa0238a9e31df3373b35b0bfb672c34cc92718d21f81311d8996a16de1141d8b" data-dist-info-metadata="sha256=399046cbf9ae7ebab8dfd009e2b4f748212c710a0e75ca501a72bbb2d456e2e7" data-core-metadata="sha256=399046cbf9ae7ebab8dfd009e2b4f748212c710a0e75ca501a72bbb2d456e2e7">hydra_core-1.3.2-2-py3-none-any.whl</a>
+<br />
+<a href="https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-2.0.0a1-py3-none-any.whl" >hydra_core-2.0.0a1-py3-none-any.whl</a>
 </body>
 </html>
 <!--SERIAL 22812307-->
@@ -49,6 +51,28 @@ def test_provider_choose_wheel():
             == "https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-1.3.2-2-py3-none-any.whl#sha256=fa0238a9e31df3373b35b0bfb672c34cc92718d21f81311d8996a16de1141d8b"
         )
         assert str(candidate.version) == "1.3.2"
+
+
+def test_provider_choose_wheel_prereleases():
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_sdists=False)
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("hydra-core==2.0.0a1")])
+        assert "hydra-core" in result.mapping
+
+        candidate = result.mapping["hydra-core"]
+        assert (
+            candidate.url
+            == "https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-2.0.0a1-py3-none-any.whl"
+        )
+        assert str(candidate.version) == "2.0.0a1"
 
 
 def test_provider_choose_sdist():

@@ -365,7 +365,7 @@ class PackageSettings(pydantic.BaseModel):
         The package name is taken from the stem of the file name.
         """
         filename = filename.absolute()
-        logger.debug("Loading package config from %s", filename)
+        logger.debug("loading package config from %s", filename)
         raw_yaml = filename.read_text(encoding="utf-8")
         return cls.from_string(filename.stem, raw_yaml, source=filename)
 
@@ -412,7 +412,7 @@ def _resolve_template(
         return string.Template(template).substitute(template_env)
     except KeyError:
         logger.warning(
-            f"{pkg}: Couldn't resolve url or name for {template} using the template: {template_env}"
+            f"{pkg}: couldn't resolve url or name for {template} using the template: {template_env}"
         )
         raise
 

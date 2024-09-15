@@ -56,6 +56,7 @@ def download_sequence(
     else:
         wheel_servers = [sdist_server_url]
 
+    logger.info("reading build order from %s", build_order_file)
     with open(build_order_file, "r") as f:
         build_order = json.load(f)
 

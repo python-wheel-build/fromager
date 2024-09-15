@@ -89,8 +89,10 @@ def bootstrap(
     logger.info("bootstrapping %r variant of %s", wkctx.variant, to_build)
 
     if prev_graph_file:
+        logger.info("reading previous bootstrap data from %s", prev_graph_file)
         prev_graph = dependency_graph.DependencyGraph.from_file(prev_graph_file)
     else:
+        logger.info("no previous bootstrap data")
         prev_graph = None
 
     pre_built = wkctx.settings.list_pre_built()
@@ -103,6 +105,7 @@ def bootstrap(
     # this is to ensure that if we are using an older bootstrap to resolve packages
     # we are able to upgrade a package anywhere in the dependency tree if it is mentioned
     # in the toplevel without having to fall back to history
+    logger.info("resolving top-level dependencies before building")
     for req in to_build:
         pbi = wkctx.package_build_info(req)
         if pbi.pre_built:
@@ -112,6 +115,7 @@ def bootstrap(
             source_url, version = sources.resolve_source(
                 wkctx, req, resolver.PYPI_SERVER_URL
             )
+        logger.info("%s resolves to %s", req, version)
         wkctx.dependency_graph.add_dependency(
             parent_name=None,
             parent_version=None,
