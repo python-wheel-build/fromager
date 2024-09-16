@@ -261,14 +261,13 @@ def patch_source(
     source_root_dir: pathlib.Path,
     req: Requirement,
 ) -> None:
-    # Flag to check whether patch has been applied
-    has_applied = False
+    patch_count = 0
     # apply any unversioned patch first
     for p in overrides.patches_for_source_dir(
         ctx.settings.patches_dir, overrides.pkgname_to_override_module(req.name)
     ):
         _apply_patch(p, source_root_dir)
-        has_applied = True
+        patch_count += 1
 
     # make sure that we don't apply the generic unversioned patch again
     if source_root_dir.name != overrides.pkgname_to_override_module(req.name):
@@ -276,10 +275,11 @@ def patch_source(
             ctx.settings.patches_dir, source_root_dir.name
         ):
             _apply_patch(p, source_root_dir)
-            has_applied = True
+            patch_count += 1
 
+    logger.debug("%s: applied %d patches", req.name, patch_count)
     # If no patch has been applied, call warn for old patch
-    if not has_applied:
+    if not patch_count:
         _warn_for_old_patch(source_root_dir, ctx.settings.patches_dir)
 
 
