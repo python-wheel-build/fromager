@@ -1,11 +1,13 @@
 import inspect
+import itertools
 import logging
 import pathlib
-import re
 import typing
 from importlib import metadata
 
+from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 from stevedore import extension
 
 # An interface for reretrieving per-package information which influences
@@ -88,45 +90,39 @@ def log_overrides() -> None:
         )
 
 
-def patches_for_source_dir(
-    patches_dir: pathlib.Path, source_dir_name: str
+def patches_for_requirement(
+    patches_dir: pathlib.Path,
+    req: Requirement,
+    version: Version,
 ) -> typing.Iterable[pathlib.Path]:
-    """Iterator producing patches to apply to the source dir.
+    """Iterator producing patches to apply to the source for a given version of a requirement.
 
-    Input should be the base directory name, not a full path.
-
-    Yields pathlib.Path() references to patches in the order they
-    should be applied, which is controlled through lexical sorting of
-    the filenames.
+    Yields pathlib.Path() references to patches in the order they should be
+    applied, which is controlled through lexical sorting of the filenames.
 
     """
-    return sorted((patches_dir / source_dir_name).glob("*.patch"))
+    override_name = pkgname_to_override_module(req.name)
+    unversioned_patch_dir = patches_dir / override_name
+    versioned_patch_dir = patches_dir / f"{override_name}-{version}"
+    return itertools.chain(
+        # Apply all of the unversioned patches first, in order based on
+        # filename.
+        sorted(unversioned_patch_dir.glob("*.patch")),
+        # Then apply any for this specific version, in order based on filename.
+        sorted(versioned_patch_dir.glob("*.patch")),
+    )
 
 
-def get_patch_directories(
-    patches_dir: pathlib.Path, source_root_dir: pathlib.Path
-) -> list[pathlib.Path]:
+def get_versioned_patch_directories(
+    patches_dir: pathlib.Path,
+    req: Requirement,
+) -> typing.Generator[pathlib.Path, None, None]:
     """
-    This function will return directories that may contain patches for a specific requirement.
-    It takes in patches directory and a source root directory as input.
-    The output will be a list of all directories containing patches for that requirement
+    This function will return directories that may contain patches for any version of a specific requirement.
     """
     # Get the req name as per the source_root_dir naming conventions
-    req_name = source_root_dir.name.rsplit("-", 1)[0]
-    patches = sorted((patches_dir).glob(f"{req_name}*"))
-    filtered_patches = _filter_patches_based_on_req(patches, req_name)
-    return filtered_patches
-
-
-# Helper method to filter the unwanted patches using a regex
-def _filter_patches_based_on_req(
-    patches: list[pathlib.Path], req_name: str
-) -> list[pathlib.Path]:
-    # Set up regex to filter out unwanted patches.
-    pattern = re.compile(rf"^{req_name}-v?(\d+\.)+\d+")
-    filtered_patches = [s for s in patches if pattern.match(s.name)]
-    # filtered_patches won't contain patches for current version of req
-    return filtered_patches
+    override_name = pkgname_to_override_module(req.name)
+    return patches_dir.glob(f"{override_name}-*")
 
 
 def pkgname_to_override_module(pkgname: str) -> str:

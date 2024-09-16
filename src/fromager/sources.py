@@ -213,10 +213,19 @@ def _takes_arg(f: typing.Callable, arg_name: str) -> bool:
 
 def unpack_source(
     ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
     source_filename: pathlib.Path,
 ) -> tuple[pathlib.Path, bool]:
-    sdist_root_name = _sdist_root_name(source_filename)
-    unpack_dir = ctx.work_dir / sdist_root_name
+    # sdist names are less standardized and the names of the directories they
+    # contain are also not very standard. Force the names into a predictable
+    # form based on the override module name for the requirement.
+    req_name = overrides.pkgname_to_override_module(req.name)
+    expected_name = f"{req_name}-{version}"
+
+    # The unpack_dir is a parent dir where we put temporary outputs during the
+    # build process, including the unpacked source in a subdirectory.
+    unpack_dir = ctx.work_dir / expected_name
     if unpack_dir.exists():
         if ctx.cleanup:
             logger.debug("cleaning up %s", unpack_dir)
@@ -224,10 +233,8 @@ def unpack_source(
         else:
             logger.info("reusing %s", unpack_dir)
             return (unpack_dir / unpack_dir.name, False)
-    # We create a unique directory based on the sdist name, but that
-    # may not be the same name as the root directory of the content in
-    # the sdist (due to case, punctuation, etc.), so after we unpack
-    # it look for what was created.
+
+    # sdists might be tarballs or zip files.
     logger.debug("unpacking %s to %s", source_filename, unpack_dir)
     if str(source_filename).endswith(".tar.gz"):
         with tarfile.open(source_filename, "r") as t:
@@ -242,45 +249,51 @@ def unpack_source(
     else:
         raise ValueError(f"Do not know how to unpack source archive {source_filename}")
 
-    # if tarball named foo-2.3.1.tar.gz was downloaded, then ensure that after unpacking, the source directory's path is foo-2.3.1/foo-2.3.1
+    # We create a unique directory based on the requirement name, but that may
+    # not be the same name as the root directory of the content in the sdist
+    # (due to case, punctuation, etc.), so after we unpack it look for what was
+    # created and ensure the extracted directory matches the override module
+    # name and version of the requirement.
     unpacked_root_dir = next(iter(unpack_dir.glob("*")))
-    new_unpacked_root_dir = unpacked_root_dir.parent / sdist_root_name
-    if unpacked_root_dir.name != new_unpacked_root_dir.name:
+    if unpacked_root_dir.name != expected_name:
+        desired_name = unpacked_root_dir.parent / expected_name
         try:
-            shutil.move(str(unpacked_root_dir), str(new_unpacked_root_dir))
+            shutil.move(
+                str(unpacked_root_dir),
+                str(desired_name),
+            )
         except Exception as err:
             raise Exception(
-                f"Could not rename {unpacked_root_dir.name} to {new_unpacked_root_dir.name}: {err}"
+                f"Could not rename {unpacked_root_dir.name} to {desired_name}: {err}"
             ) from err
+        unpacked_root_dir = desired_name
 
-    return (new_unpacked_root_dir, True)
+    return (unpacked_root_dir, True)
 
 
 def patch_source(
     ctx: context.WorkContext,
     source_root_dir: pathlib.Path,
     req: Requirement,
+    version: Version,
 ) -> None:
-    # Flag to check whether patch has been applied
-    has_applied = False
-    # apply any unversioned patch first
-    for p in overrides.patches_for_source_dir(
-        ctx.settings.patches_dir, overrides.pkgname_to_override_module(req.name)
+    patch_count = 0
+    for p in overrides.patches_for_requirement(
+        patches_dir=ctx.settings.patches_dir,
+        req=req,
+        version=version,
     ):
         _apply_patch(p, source_root_dir)
-        has_applied = True
+        patch_count += 1
 
-    # make sure that we don't apply the generic unversioned patch again
-    if source_root_dir.name != overrides.pkgname_to_override_module(req.name):
-        for p in overrides.patches_for_source_dir(
-            ctx.settings.patches_dir, source_root_dir.name
-        ):
-            _apply_patch(p, source_root_dir)
-            has_applied = True
-
+    logger.debug("%s: applied %d patches", req.name, patch_count)
     # If no patch has been applied, call warn for old patch
-    if not has_applied:
-        _warn_for_old_patch(source_root_dir, ctx.settings.patches_dir)
+    if not patch_count:
+        _warn_for_old_patch(
+            req=req,
+            version=version,
+            patches_dir=ctx.settings.patches_dir,
+        )
 
 
 def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
@@ -290,18 +303,20 @@ def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
 
 
 def _warn_for_old_patch(
-    source_root_dir: pathlib.Path,
+    req: Requirement,
+    version: Version,
     patches_dir: pathlib.Path,
 ) -> None:
-    # Get the req name as per the source_root_dir naming conventions
-    req_name = source_root_dir.name.rsplit("-", 1)[0]
-
     # Filter the patch directories using regex
-    patch_directories = overrides.get_patch_directories(patches_dir, source_root_dir)
+    patch_directories = overrides.get_versioned_patch_directories(
+        patches_dir=patches_dir, req=req
+    )
 
     for dirs in patch_directories:
         for p in dirs.iterdir():
-            logger.warning(f"{req_name}: patch {p} exists but will not be applied")
+            logger.warning(
+                f"{req.name}: patch {p} exists but will not be applied for version {version}"
+            )
 
 
 def write_build_meta(
@@ -366,7 +381,12 @@ def default_prepare_source(
     source_filename: pathlib.Path,
     version: Version,
 ) -> tuple[pathlib.Path, bool]:
-    source_root_dir, is_new = unpack_source(ctx, source_filename)
+    source_root_dir, is_new = unpack_source(
+        ctx=ctx,
+        req=req,
+        version=version,
+        source_filename=source_filename,
+    )
     if is_new:
         prepare_new_source(
             ctx=ctx,
@@ -387,7 +407,7 @@ def prepare_new_source(
 
     `default_prepare_source` runs this function when the sources are new.
     """
-    patch_source(ctx, source_root_dir, req)
+    patch_source(ctx, source_root_dir, req, version)
     pyproject.apply_project_override(
         ctx=ctx,
         req=req,

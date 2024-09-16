@@ -121,7 +121,12 @@ def test_patch_sources_apply_unversioned_and_versioned(
     source_root_dir = tmp_path / "deepspeed-0.5.0"
     source_root_dir.mkdir()
 
-    sources.patch_source(tmp_context, source_root_dir, Requirement("deepspeed==0.5.0"))
+    sources.patch_source(
+        ctx=tmp_context,
+        source_root_dir=source_root_dir,
+        req=Requirement("deepspeed==0.5.0"),
+        version=Version("0.5.0"),
+    )
     assert apply_patch.call_count == 2
     apply_patch.assert_has_calls(
         [
@@ -151,10 +156,15 @@ def test_patch_sources_apply_only_unversioned(
     unversioned_patch_file = deepspeed_unversioned_patch / "deepspeed-update.patch"
     unversioned_patch_file.write_text("This is a test patch")
 
-    source_root_dir = tmp_path / "deepspeed"
+    source_root_dir = tmp_path / "deepspeed-0.5.0"
     source_root_dir.mkdir()
 
-    sources.patch_source(tmp_context, source_root_dir, Requirement("deepspeed==0.5.0"))
+    sources.patch_source(
+        ctx=tmp_context,
+        source_root_dir=source_root_dir,
+        req=Requirement("deepspeed"),
+        version=Version("0.6.0"),
+    )
     assert apply_patch.call_count == 1
     apply_patch.assert_has_calls(
         [
@@ -179,7 +189,11 @@ def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
     source_root_dir = tmp_path / "deepspeed-0.6.0"
     source_root_dir.mkdir()
 
-    sources._warn_for_old_patch(source_root_dir, patches_dir)
+    sources._warn_for_old_patch(
+        req=Requirement("deepspeed"),
+        version=Version("0.6.0"),
+        patches_dir=patches_dir,
+    )
     mock.assert_called()
 
 
@@ -199,5 +213,9 @@ def test_warning_for_older_patch_different_req(mock, tmp_path: pathlib.Path):
     source_root_dir = tmp_path / "deepspeed-0.5.0"
     source_root_dir.mkdir()
 
-    sources._warn_for_old_patch(source_root_dir, patches_dir)
+    sources._warn_for_old_patch(
+        req=Requirement("deepspeed"),
+        version=Version("0.5.0"),
+        patches_dir=patches_dir,
+    )
     mock.assert_not_called()
