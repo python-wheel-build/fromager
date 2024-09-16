@@ -11,7 +11,7 @@ python-pypi-mirror
 PyYAML
 requests
 resolvelib
-setuptools<72.0.0
+setuptools>=73.0.0 # https://github.com/pypa/setuptools/issues/4519
 stevedore
 tomlkit
 tqdm
