@@ -275,27 +275,25 @@ def patch_source(
     ctx: context.WorkContext,
     source_root_dir: pathlib.Path,
     req: Requirement,
+    version: Version,
 ) -> None:
     patch_count = 0
-    # apply any unversioned patch first
-    for p in overrides.patches_for_source_dir(
-        ctx.settings.patches_dir, overrides.pkgname_to_override_module(req.name)
+    for p in overrides.patches_for_requirement(
+        patches_dir=ctx.settings.patches_dir,
+        req=req,
+        version=version,
     ):
         _apply_patch(p, source_root_dir)
         patch_count += 1
 
-    # make sure that we don't apply the generic unversioned patch again
-    if source_root_dir.name != overrides.pkgname_to_override_module(req.name):
-        for p in overrides.patches_for_source_dir(
-            ctx.settings.patches_dir, source_root_dir.name
-        ):
-            _apply_patch(p, source_root_dir)
-            patch_count += 1
-
     logger.debug("%s: applied %d patches", req.name, patch_count)
     # If no patch has been applied, call warn for old patch
     if not patch_count:
-        _warn_for_old_patch(source_root_dir, ctx.settings.patches_dir)
+        _warn_for_old_patch(
+            req=req,
+            version=version,
+            patches_dir=ctx.settings.patches_dir,
+        )
 
 
 def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
@@ -305,18 +303,20 @@ def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
 
 
 def _warn_for_old_patch(
-    source_root_dir: pathlib.Path,
+    req: Requirement,
+    version: Version,
     patches_dir: pathlib.Path,
 ) -> None:
-    # Get the req name as per the source_root_dir naming conventions
-    req_name = source_root_dir.name.rsplit("-", 1)[0]
-
     # Filter the patch directories using regex
-    patch_directories = overrides.get_patch_directories(patches_dir, source_root_dir)
+    patch_directories = overrides.get_versioned_patch_directories(
+        patches_dir=patches_dir, req=req
+    )
 
     for dirs in patch_directories:
         for p in dirs.iterdir():
-            logger.warning(f"{req_name}: patch {p} exists but will not be applied")
+            logger.warning(
+                f"{req.name}: patch {p} exists but will not be applied for version {version}"
+            )
 
 
 def write_build_meta(
@@ -407,7 +407,7 @@ def prepare_new_source(
 
     `default_prepare_source` runs this function when the sources are new.
     """
-    patch_source(ctx, source_root_dir, req)
+    patch_source(ctx, source_root_dir, req, version)
     pyproject.apply_project_override(
         ctx=ctx,
         req=req,
