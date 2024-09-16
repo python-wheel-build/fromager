@@ -41,8 +41,8 @@ $OUTDIR/work-dir/setuptools-*/build.log
 
 $OUTDIR/wheels-repo/downloads/PySocks-*.whl
 $OUTDIR/sdists-repo/downloads/PySocks-*.tar.gz
-$OUTDIR/sdists-repo/builds/PySocks-*.tar.gz
-$OUTDIR/work-dir/PySocks-*/build.log
+$OUTDIR/sdists-repo/builds/pysocks-*.tar.gz
+$OUTDIR/work-dir/pysocks-*/build.log
 "
 
 for pattern in $EXPECTED_FILES; do
