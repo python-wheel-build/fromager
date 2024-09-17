@@ -29,10 +29,10 @@ those special cases directly into fromager.
    using.md
    customization.md
    hooks.rst
+   files.md
    config-reference.rst
    cli.rst
    develop.md
-   files.md
 
 What's with the name?
 ---------------------
