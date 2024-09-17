@@ -72,7 +72,7 @@ def default_get_build_system_dependencies(
 ) -> typing.Iterable[str]:
     """Get build system requirements
 
-    Defaults to ``pyproject.toml`` ``[build-system] requires``.
+    Defaults to ``[build-system] requires`` from ``pyproject.toml``.
     """
     pyproject_toml = get_pyproject_contents(build_dir)
     return typing.cast(list[str], get_build_backend(pyproject_toml)["requires"])
