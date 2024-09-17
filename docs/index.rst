@@ -28,6 +28,7 @@ those special cases directly into fromager.
 
    using.md
    customization.md
+   hooks.rst
    config-reference.rst
    cli.rst
    develop.md

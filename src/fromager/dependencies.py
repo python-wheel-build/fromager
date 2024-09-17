@@ -70,6 +70,10 @@ def default_get_build_system_dependencies(
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
+    """Get build system requirements
+
+    Defaults to ``pyproject.toml`` ``[build-system] requires``.
+    """
     pyproject_toml = get_pyproject_contents(build_dir)
     return typing.cast(list[str], get_build_backend(pyproject_toml)["requires"])
 
@@ -115,6 +119,11 @@ def default_get_build_backend_dependencies(
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
+    """Get build backend dependencies
+
+    Defaults to result of hook call
+    :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
+    """
     pbi = ctx.package_build_info(req)
     pyproject_toml = get_pyproject_contents(build_dir)
     extra_environ = pbi.get_extra_environ()
@@ -165,6 +174,11 @@ def default_get_build_sdist_dependencies(
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
+    """Get build sdist dependencies
+
+    Defaults to result of hook call
+    :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
+    """
     pbi = ctx.package_build_info(req)
     pyproject_toml = get_pyproject_contents(build_dir)
     extra_environ = pbi.get_extra_environ()

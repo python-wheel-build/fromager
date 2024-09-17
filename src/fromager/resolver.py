@@ -67,7 +67,8 @@ def default_resolver_provider(
     sdist_server_url: str,
     include_sdists: bool,
     include_wheels: bool,
-) -> "PyPIProvider":
+) -> "PyPIProvider | GenericProvider | GitHubTagProvider":
+    """Lookup resolver provider to resolve package versions"""
     return PyPIProvider(
         include_sdists=include_sdists,
         include_wheels=include_wheels,
@@ -254,6 +255,8 @@ class BaseProvider(ExtrasProvider):
 
 
 class PyPIProvider(BaseProvider):
+    """Lookup package and versions from a simple Python index (PyPI)"""
+
     def __init__(
         self,
         include_sdists: bool = True,
@@ -331,6 +334,8 @@ class PyPIProvider(BaseProvider):
 
 
 class GenericProvider(BaseProvider):
+    """Lookup package and version by using a callback"""
+
     def __init__(
         self,
         version_source: VersionSource,
@@ -401,6 +406,11 @@ class GenericProvider(BaseProvider):
 
 
 class GitHubTagProvider(GenericProvider):
+    """Lookup package and versions from a GitHub repository tags
+
+    Supports :envvar:`GITHUB_TOKEN` for authentication.
+    """
+
     def __init__(
         self, organization: str, repo: str, constraints: Constraints | None = None
     ):

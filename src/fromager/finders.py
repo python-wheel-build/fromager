@@ -21,7 +21,7 @@ def _dist_name_to_filename(dist_name: str) -> str:
     return re.sub(r"[^\w\d.]+", "_", canonical_name, flags=re.UNICODE)
 
 
-def _check_archive_name_in_settings(
+def default_expected_source_archive_name(
     ctx: context.WorkContext,
     req: Requirement,
     dist_version: str,
@@ -39,7 +39,7 @@ def find_sdist(
     sdist_file_name = overrides.find_and_invoke(
         req.name,
         "expected_source_archive_name",
-        _check_archive_name_in_settings,
+        default_expected_source_archive_name,
         req=req,
         dist_version=dist_version,
         ctx=ctx,
@@ -126,6 +126,10 @@ def find_wheel(
     return None
 
 
+def default_expected_source_directory_name(req: Requirement, dist_version: str) -> str:
+    raise NotImplementedError
+
+
 def find_source_dir(
     ctx: context.WorkContext,
     work_dir: pathlib.Path,
@@ -148,7 +152,7 @@ def find_source_dir(
     sdist_name = overrides.find_and_invoke(
         req.name,
         "expected_source_archive_name",
-        _check_archive_name_in_settings,
+        default_expected_source_archive_name,
         req=req,
         dist_version=dist_version,
         ctx=ctx,

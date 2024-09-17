@@ -101,6 +101,17 @@ def _extra_metadata_elfdeps(
     return elfinfos
 
 
+def default_add_extra_metadata_to_wheels(
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    extra_environ: dict[str, str],
+    sdist_root_dir: pathlib.Path,
+    dist_info_dir: pathlib.Path,
+) -> dict[str, typing.Any]:
+    raise NotImplementedError
+
+
 def add_extra_metadata_to_wheels(
     ctx: context.WorkContext,
     req: Requirement,
