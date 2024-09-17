@@ -62,8 +62,8 @@ def _get_requirements_from_args(
 )
 @click.option(
     "-p",
-    "--previous-bootstrap",
-    "prev_graph_file",
+    "--previous-bootstrap-file",
+    "previous_bootstrap_file",
     type=clickext.ClickPath(),
     help="graph file produced from a previous bootstrap",
 )
@@ -72,7 +72,7 @@ def _get_requirements_from_args(
 def bootstrap(
     wkctx: context.WorkContext,
     requirements_files: list[pathlib.Path],
-    prev_graph_file: pathlib.Path | None,
+    previous_bootstrap_file: pathlib.Path | None,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -88,9 +88,9 @@ def bootstrap(
         )
     logger.info("bootstrapping %r variant of %s", wkctx.variant, to_build)
 
-    if prev_graph_file:
-        logger.info("reading previous bootstrap data from %s", prev_graph_file)
-        prev_graph = dependency_graph.DependencyGraph.from_file(prev_graph_file)
+    if previous_bootstrap_file:
+        logger.info("reading previous bootstrap data from %s", previous_bootstrap_file)
+        prev_graph = dependency_graph.DependencyGraph.from_file(previous_bootstrap_file)
     else:
         logger.info("no previous bootstrap data")
         prev_graph = None
