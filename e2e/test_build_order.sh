@@ -50,6 +50,7 @@ if grep -q "skipping building wheels for stevedore" "$log"; then
   pass=false
 fi
 
+
 EXPECTED_FILES="
 $OUTDIR/wheels-repo/downloads/setuptools-*.whl
 $OUTDIR/wheels-repo/downloads/pbr-*.whl
@@ -58,6 +59,10 @@ $OUTDIR/wheels-repo/downloads/stevedore-*.whl
 $OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
 $OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
 $OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
+
+$OUTDIR/work-dir/logs/stevedore-*.log
+$OUTDIR/work-dir/logs/setuptools-*.log
+$OUTDIR/work-dir/logs/pbr-*.log
 "
 
 pass=true
