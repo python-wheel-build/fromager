@@ -1,1 +1,2 @@
-setuptools < 72.0.0  # https://github.com/pypa/setuptools/issues/4519
+# This file is here in case we need to quickly add a constraint to
+# fix CI jobs.
