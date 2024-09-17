@@ -381,6 +381,10 @@ def default_prepare_source(
     source_filename: pathlib.Path,
     version: Version,
 ) -> tuple[pathlib.Path, bool]:
+    """Unpack and modify sdist sources
+
+    Calls :func:`~fromager.sources.prepare_new_source` by default.
+    """
     source_root_dir, is_new = unpack_source(
         ctx=ctx,
         req=req,
@@ -405,7 +409,11 @@ def prepare_new_source(
 ) -> None:
     """Default steps for new sources
 
-    `default_prepare_source` runs this function when the sources are new.
+    - patch sources
+    - apply project overrides from settings
+    - vendor Rust dependencies
+
+    :func:`~default_prepare_source` runs this function when the sources are new.
     """
     patch_source(ctx, source_root_dir, req, version)
     pyproject.apply_project_override(
@@ -423,6 +431,7 @@ def build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
+    """Build source distribution"""
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(sdist_root_dir)
 
