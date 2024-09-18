@@ -1,10 +1,8 @@
 import importlib.metadata
 import logging
 import pathlib
-import platform
 import re
 import subprocess
-import sys
 import typing
 
 from packaging.requirements import Requirement
@@ -75,7 +73,7 @@ class BuildEnvironment:
         build_requirements: typing.Iterable[Requirement] | None,
     ):
         self._ctx = ctx
-        self.path = parent_dir / f"build-{platform.python_version()}"
+        self.path = parent_dir / f"build-{ctx.python_version()}"
         self._build_requirements = build_requirements
         self._createenv()
 
@@ -90,7 +88,7 @@ class BuildEnvironment:
 
         logger.debug("creating build environment in %s", self.path)
         external_commands.run(
-            [sys.executable, "-m", "virtualenv", str(self.path)],
+            [str(self._ctx.python_interpreter), "-m", "virtualenv", str(self.path)],
             network_isolation=False,
         )
         logger.info("created build environment in %s", self.path)
@@ -258,7 +256,7 @@ def _safe_install(
     logger.debug("installing %s %s", req_type, req)
     external_commands.run(
         [
-            sys.executable,
+            str(ctx.python_interpreter),
             "-m",
             "pip",
             "-vvv",

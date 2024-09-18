@@ -2,6 +2,7 @@
 
 import logging
 import pathlib
+import sys
 
 import click
 
@@ -127,6 +128,13 @@ else:
     help="Build sdist and wheen with network isolation (unshare -cn)",
     show_default=True,
 )
+@click.option(
+    "--python-interpreter",
+    type=clickext.ClickPath(),
+    default=pathlib.Path(sys.executable),
+    help="Python interpreter to build wheels for",
+    show_default=True,
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -145,6 +153,7 @@ def main(
     variant: str,
     jobs: int | None,
     network_isolation: bool,
+    python_interpreter: pathlib.Path,
 ) -> None:
     # Set the overall logger level to debug and allow the handlers to filter
     # messages at their own level.
@@ -211,6 +220,7 @@ def main(
         network_isolation=network_isolation,
         max_jobs=jobs,
         settings_dir=settings_dir,
+        python_interpreter=python_interpreter,
     )
     wkctx.setup()
     ctx.obj = wkctx
