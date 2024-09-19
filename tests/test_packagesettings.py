@@ -7,7 +7,7 @@ import pytest
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
-from fromager import context
+from fromager import build_environment, context
 from fromager.packagesettings import (
     BuildDirectory,
     EnvVars,
@@ -131,32 +131,72 @@ def test_default_settings() -> None:
     assert p.model_dump() == expected
 
 
-def test_pbi_test_pkg_extra_environ(testdata_context: context.WorkContext) -> None:
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
-    assert pbi.get_extra_environ(template_env={"EXTRA": "extra"}) == {
-        "EGG": "spam spam",
-        "EGG_AGAIN": "spam spam",
-        "QUOTES": "A\"BC'$EGG",  # $$EGG is transformed into $EGG
-        "SPAM": "alot extra",
+def test_pbi_test_pkg_extra_environ(
+    tmp_path: pathlib.Path, testdata_context: context.WorkContext
+) -> None:
+    testdata_context.settings.max_jobs = 1
+    parallel = {
+        "CMAKE_BUILD_PARALLEL_LEVEL": "1",
+        "MAKEFLAGS": " -j1",
+        "MAX_JOBS": "1",
     }
+
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert (
+        pbi.get_extra_environ(template_env={"EXTRA": "extra"})
+        == {
+            "EGG": "spam spam",
+            "EGG_AGAIN": "spam spam",
+            "QUOTES": "A\"BC'$EGG",  # $$EGG is transformed into $EGG
+            "SPAM": "alot extra",
+        }
+        | parallel
+    )
 
     testdata_context.settings.variant = Variant("rocm")
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
-    assert pbi.get_extra_environ(template_env={"EXTRA": "extra"}) == {
-        "EGG": "spam",
-        "EGG_AGAIN": "spam",
-        "QUOTES": "A\"BC'$EGG",
-        "SPAM": "",
-    }
+    assert (
+        pbi.get_extra_environ(template_env={"EXTRA": "extra"})
+        == {
+            "EGG": "spam",
+            "EGG_AGAIN": "spam",
+            "QUOTES": "A\"BC'$EGG",
+            "SPAM": "",
+        }
+        | parallel
+    )
 
     testdata_context.settings.variant = Variant("cuda")
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
-    assert pbi.get_extra_environ(template_env={"EXTRA": "spam"}) == {
-        "EGG": "spam",
-        "EGG_AGAIN": "spam",
-        "QUOTES": "A\"BC'$EGG",
-        "SPAM": "alot spam",
-    }
+    assert (
+        pbi.get_extra_environ(template_env={"EXTRA": "spam"})
+        == {
+            "EGG": "spam",
+            "EGG_AGAIN": "spam",
+            "QUOTES": "A\"BC'$EGG",
+            "SPAM": "alot spam",
+        }
+        | parallel
+    )
+
+    build_env = build_environment.BuildEnvironment(
+        testdata_context, parent_dir=tmp_path, build_requirements=None
+    )
+    result = pbi.get_extra_environ(
+        template_env={"EXTRA": "spam", "PATH": "/sbin:/bin"}, build_env=build_env
+    )
+    assert (
+        result
+        == {
+            "EGG": "spam",
+            "EGG_AGAIN": "spam",
+            "QUOTES": "A\"BC'$EGG",
+            "SPAM": "alot spam",
+            "PATH": f"{build_env.path / 'bin'}:/sbin:/bin",
+            "VIRTUAL_ENV": str(build_env.path),
+        }
+        | parallel
+    )
 
 
 def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:

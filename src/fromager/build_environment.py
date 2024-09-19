@@ -1,11 +1,13 @@
 import importlib.metadata
 import logging
+import os
 import pathlib
 import platform
 import re
 import subprocess
 import sys
 import typing
+from io import TextIOWrapper
 
 from packaging.requirements import Requirement
 
@@ -75,13 +77,78 @@ class BuildEnvironment:
         build_requirements: typing.Iterable[Requirement] | None,
     ):
         self._ctx = ctx
-        self.path = parent_dir / f"build-{platform.python_version()}"
+        self.path = parent_dir.absolute() / f"build-{platform.python_version()}"
         self._build_requirements = build_requirements
         self._createenv()
 
     @property
     def python(self) -> pathlib.Path:
-        return (self.path / "bin/python3").absolute()
+        """Path to Python interpreter in virtual env"""
+        return self.path / "bin" / "python3"
+
+    def get_venv_environ(
+        self, template_env: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Add virtual env to extra environ
+
+        The method activates the virtualenv
+
+        1. Put the build environment at the front of the :envvar:`PATH`
+           to ensure any build tools are picked up from there and not global
+           versions. If the caller has already set a path, start there.
+        2. Set :envvar:`VIRTUAL_ENV` so tools looking for that (for example,
+           maturin) find it.
+        """
+        venv_environ: dict[str, str] = {
+            "VIRTUAL_ENV": str(self.path),
+        }
+
+        # pre-pend virtualenv's bin
+        # 1) template_env PATH, 2) process' PATH, 3) default: "/usr/bin"
+        envpath: str | None = None
+        if template_env:
+            envpath = template_env.get("PATH")
+        if envpath is None:
+            envpath = os.environ.get("PATH", "/usr/bin")
+        envpath_list = envpath.split(os.pathsep)
+        venv_bin = str(self.path / "bin")
+        if envpath_list[0] != venv_bin:
+            envpath_list.insert(0, venv_bin)
+        venv_environ["PATH"] = os.pathsep.join(envpath_list)
+        return venv_environ
+
+    def run(
+        self,
+        cmd: typing.Sequence[str],
+        *,
+        cwd: str | None = None,
+        extra_environ: dict[str, str] | None = None,
+        network_isolation: bool | None = None,
+        log_filename: str | None = None,
+        stdin: TextIOWrapper | None = None,
+    ) -> str:
+        """Run command in a virtual environment
+
+        `network_isolation` defaults to context setting.
+        """
+        extra_environ = extra_environ.copy() if extra_environ else {}
+        extra_environ.update(self.get_venv_environ(template_env=extra_environ))
+
+        # default from context
+        if network_isolation is None:
+            network_isolation = self._ctx.network_isolation
+        if network_isolation:
+            # Build Rust dependencies without network access
+            extra_environ.setdefault("CARGO_NET_OFFLINE", "true")
+
+        return external_commands.run(
+            cmd,
+            cwd=cwd,
+            extra_environ=extra_environ,
+            network_isolation=network_isolation,
+            log_filename=log_filename,
+            stdin=stdin,
+        )
 
     def _createenv(self) -> None:
         if self.path.exists():
@@ -103,7 +170,7 @@ class BuildEnvironment:
                     f.write(f"{r}\n")
         if not self._build_requirements:
             return
-        external_commands.run(
+        self.run(
             [
                 str(self.python),
                 "-m",
