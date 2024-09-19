@@ -54,6 +54,9 @@ resolve_source = "fromager.sources:default_resolve_source"
 build_sdist = "fromager.sources:default_build_sdist"
 build_wheel = "fromager.wheels:default_build_wheel"
 
+[project.entry-points."virtualenv.seed"]
+fromager = "fromager.virtualenv.seeder:FromagerSeeder"
+
 [tool.coverage.run]
 branch = true
 parallel = true
@@ -130,5 +133,5 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["pyproject_hooks", "requests_mock", "resolver", "stevedore"]
+module = ["pyproject_hooks", "requests_mock", "resolver", "stevedore", "virtualenv.*"]
 ignore_missing_imports = true

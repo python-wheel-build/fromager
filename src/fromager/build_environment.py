@@ -88,10 +88,19 @@ class BuildEnvironment:
             logger.info("reusing build environment in %s", self.path)
             return
 
+        # use our seeder plugin to install `build` command
         logger.debug("creating build environment in %s", self.path)
         external_commands.run(
-            [sys.executable, "-m", "virtualenv", str(self.path)],
-            network_isolation=False,
+            [
+                sys.executable,
+                "-m",
+                "virtualenv",
+                "--never-download",
+                "--no-periodic-update",
+                "--seeder=fromager",
+                str(self.path),
+            ],
+            network_isolation=self._ctx.network_isolation,
         )
         logger.info("created build environment in %s", self.path)
 
