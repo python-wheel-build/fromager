@@ -8,7 +8,13 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import constraints, dependency_graph, packagesettings, request_session
+from . import (
+    build_environment,
+    constraints,
+    dependency_graph,
+    packagesettings,
+    request_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,7 @@ class WorkContext:
         self.settings_dir = settings_dir
 
         self._constraints_filename = self.work_dir / "constraints.txt"
+        self._build_env: build_environment.BuildEnvironment | None = None
 
         self.dependency_graph = dependency_graph.DependencyGraph()
 
@@ -73,6 +80,21 @@ class WorkContext:
             dict[str, float]
         )
         self.time_description_store: dict[str, str] = {}
+
+    def get_build_env(self) -> build_environment.BuildEnvironment:
+        """Get / create work virtual env
+
+        The virtual environment is used for build dependencies for pyproject
+        hooks.
+        """
+        if self._build_env is None:
+            self._build_env = build_environment.BuildEnvironment(
+                ctx=self,
+                parent_dir=self.work_dir,
+                build_requirements=(),
+                clear=True,  # start with a clean env
+            )
+        return self._build_env
 
     @property
     def pip_wheel_server_args(self) -> list[str]:

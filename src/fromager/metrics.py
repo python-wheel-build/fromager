@@ -7,7 +7,8 @@ from datetime import timedelta
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from . import context
+if typing.TYPE_CHECKING:
+    from . import context
 
 
 def timeit(description: str) -> typing.Callable:
@@ -15,7 +16,7 @@ def timeit(description: str) -> typing.Callable:
         @functools.wraps(func)
         def wrapper_timeit(
             *,
-            ctx: context.WorkContext,
+            ctx: "context.WorkContext",
             req: Requirement | None = None,
             **kwargs: typing.Any,
         ) -> typing.Any:
@@ -59,7 +60,7 @@ def timeit(description: str) -> typing.Callable:
     return timeit_decorator
 
 
-def summarize(ctx: context.WorkContext, prefix: str) -> None:
+def summarize(ctx: "context.WorkContext", prefix: str) -> None:
     logger = logging.getLogger(__name__)
     for req in sorted(ctx.time_store.keys()):
         total_time = sum(ctx.time_store[req].values())
