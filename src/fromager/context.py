@@ -11,6 +11,7 @@ from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import (
+    build_environment,
     constraints,
     dependency_graph,
     packagesettings,
@@ -73,6 +74,7 @@ class WorkContext:
 
         self._build_order_filename = self.work_dir / "build-order.json"
         self._constraints_filename = self.work_dir / "constraints.txt"
+        self._build_env: build_environment.BuildEnvironment | None = None
 
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -90,6 +92,21 @@ class WorkContext:
         self._seen_requirements: set[tuple[NormalizedName, tuple[str, ...], str]] = (
             set()
         )
+
+    def get_build_env(self) -> build_environment.BuildEnvironment:
+        """Get / create work virtual env
+
+        The virtual environment is used for build dependencies for pyproject
+        hooks.
+        """
+        if self._build_env is None:
+            self._build_env = build_environment.BuildEnvironment(
+                ctx=self,
+                parent_dir=self.work_dir,
+                build_requirements=(),
+                clear=True,  # start with a clean env
+            )
+        return self._build_env
 
     @property
     def pip_wheel_server_args(self) -> list[str]:
