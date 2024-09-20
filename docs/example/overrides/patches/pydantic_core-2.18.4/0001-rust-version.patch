@@ -1,0 +1,16 @@
+# Lower the required rust version for compiling. Version 1.75 works
+# fine.
+#
+# Upstreamed in https://github.com/pydantic/pydantic-core/pull/1316
+
+--- pydantic_core-2.18.4.orig/Cargo.toml	2024-06-05 09:36:48.515712519 -0400
++++ pydantic_core-2.18.4/Cargo.toml	2024-06-05 09:36:51.787684143 -0400
+@@ -24,7 +24,7 @@
+     "!tests/.pytest_cache",
+     "!*.so",
+ ]
+-rust-version = "1.76"
++rust-version = "1.75"
+ 
+ [dependencies]
+ pyo3 = { version = "0.21.2", features = ["generate-import-lib", "num-bigint"] }
