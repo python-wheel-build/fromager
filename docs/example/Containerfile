@@ -1,0 +1,51 @@
+# Simple image definition demonstrating building with system dependencies in a
+# repeatable way.
+
+ARG RHEL_MINOR_VERSION=9.4
+FROM registry.access.redhat.com/ubi9/ubi:${RHEL_MINOR_VERSION}
+
+USER 0
+
+# install patch for fromager
+# install rust for building pydantic-core
+RUN dnf install -y --nodocs \
+    patch rust cargo \
+    && dnf clean all
+
+# /opt/app-root structure (same as s2i-core and ubi9/python-311)
+ENV APP_ROOT=/opt/app-root \
+    HOME=/opt/app-root/src \
+    PATH=/opt/app-root/src/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Python, pip, and virtual env settings
+ARG PYTHON_VERSION=3.11
+ENV PYTHON_VERSION=${PYTHON_VERSION} \
+    PYTHON=python${PYTHON_VERSION} \
+    PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONIOENCODING=utf-8 \
+    PS1="(app-root) \w\$ "
+
+RUN dnf install -y --nodocs \
+    ${PYTHON} \
+    ${PYTHON}-devel \
+    && dnf clean all
+
+# Set up a virtualenv to hold fromager
+ENV VIRTUAL_ENV=${APP_ROOT}
+RUN ${PYTHON} -m venv --upgrade-deps ${VIRTUAL_ENV} \
+    && mkdir ${HOME}
+ENV PATH=${VIRTUAL_ENV}/bin:$PATH
+
+# Install the build tools
+RUN ${PYTHON} -m pip install fromager
+
+CMD /bin/bash
+
+# Tell fromager what variant to build with this image
+ENV FROMAGER_VARIANT=cpu-ubi9
+
+WORKDIR /work
+
+# Install the fromager settings to the work directory
+COPY ./overrides /work/overrides

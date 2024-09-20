@@ -26,3 +26,4 @@ __pycache__/
 /e2e/pyo3_test/vendor
 /overrides/
 /docs/_build/
+/docs/example/bootstrap-output
