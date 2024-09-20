@@ -92,7 +92,7 @@ def build_sequence(
             "skipping builds for versions of packages available at %s",
             wkctx.wheel_server_url,
         )
-
+    packages_built = []
     logger.info("reading build order from %s", build_order_file)
     with open(build_order_file, "r") as f:
         for entry in progress.progress(json.load(f)):
@@ -127,12 +127,23 @@ def build_sequence(
                 wheel_filename = _build(
                     wkctx, resolved_version, req, source_download_url
                 )
+            packages_built.append(entry)
 
             server.update_wheel_mirror(wkctx)
             # After we update the wheel mirror, the built file has
             # moved to a new directory.
             wheel_filename = wkctx.wheels_downloads / wheel_filename.name
             print(wheel_filename)
+
+    logger.info("\nTransaction summary:")
+    for pkg in packages_built:
+        dist_name = pkg["dist"]
+        resolved_version = pkg["version"]
+        source_download_url = pkg["source_url"]
+        if pkg["prebuilt"]:
+            logger.info(f"{dist_name}: prebuilt downloaded from {source_download_url}")
+        else:
+            logger.info(f"{dist_name}: built wheel {dist_name}=={resolved_version}")
 
 
 def _build(
