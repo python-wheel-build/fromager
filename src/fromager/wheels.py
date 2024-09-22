@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import logging
 import os
@@ -18,13 +20,14 @@ from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 from . import (
-    build_environment,
-    context,
     external_commands,
     overrides,
     resolver,
     sources,
 )
+
+if typing.TYPE_CHECKING:
+    from . import build_environment, context
 
 logger = logging.getLogger(__name__)
 

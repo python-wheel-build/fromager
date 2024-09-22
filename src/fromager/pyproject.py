@@ -1,5 +1,7 @@
 """Tooling for pyproject.toml"""
 
+from __future__ import annotations
+
 import logging
 import pathlib
 import typing
@@ -8,7 +10,8 @@ import tomlkit
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 
-from . import context
+if typing.TYPE_CHECKING:
+    from . import context
 
 logger = logging.getLogger(__name__)
 

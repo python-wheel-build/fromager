@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 import json
 import logging
@@ -14,8 +16,6 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from . import (
-    build_environment,
-    context,
     dependencies,
     external_commands,
     overrides,
@@ -25,6 +25,9 @@ from . import (
     vendor_rust,
 )
 from .request_session import session
+
+if typing.TYPE_CHECKING:
+    from . import build_environment, context
 
 logger = logging.getLogger(__name__)
 

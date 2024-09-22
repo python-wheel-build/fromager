@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import operator
 import pathlib
@@ -10,7 +12,6 @@ from packaging.version import Version
 
 from . import (
     build_environment,
-    context,
     dependencies,
     finders,
     progress,
@@ -21,6 +22,9 @@ from . import (
 )
 from .dependency_graph import DependencyGraph
 from .requirements_file import RequirementType
+
+if typing.TYPE_CHECKING:
+    from . import context
 
 logger = logging.getLogger(__name__)
 

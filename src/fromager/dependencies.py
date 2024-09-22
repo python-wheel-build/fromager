@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import logging
 import os
@@ -9,7 +11,10 @@ import pyproject_hooks
 import tomlkit
 from packaging.requirements import Requirement
 
-from . import context, external_commands, overrides, requirements_file
+from . import external_commands, overrides, requirements_file
+
+if typing.TYPE_CHECKING:
+    from . import context
 
 logger = logging.getLogger(__name__)
 
