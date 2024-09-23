@@ -242,8 +242,16 @@ Additional types
 ----------------
 
 .. autoclass:: fromager.build_environment.BuildEnvironment
+   :members: run
+
+   .. autoproperty:: python
+
 .. autoclass:: fromager.context.WorkContext
+
 .. autoclass:: fromager.resolver.PyPIProvider
+
 .. autoclass:: fromager.resolver.GenericProvider
+
 .. autoclass:: fromager.resolver.GitHubTagProvider
+
 .. autofunction:: fromager.sources.prepare_new_source

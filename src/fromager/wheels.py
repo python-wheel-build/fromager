@@ -246,18 +246,15 @@ def build_wheel(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
 
-    extra_environ: dict[str, str] = {}
-    # TODO: refactor?
-    # Build Rust without network access
-    extra_environ["CARGO_NET_OFFLINE"] = "true"
-    # configure max jobs settings, settings depend on package, available
-    # CPU cores, and available virtual memory.
-    jobs = pbi.parallel_jobs()
-    extra_environ["MAKEFLAGS"] = f"{extra_environ.get('MAKEFLAGS', '')} -j{jobs}"
-    extra_environ["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
-    extra_environ["MAX_JOBS"] = str(jobs)
+    # add package and variant env vars, package's parallel job vars, and
+    # build_env's virtual env vars.
+    extra_environ = pbi.get_extra_environ(build_env=build_env)
 
-    if pbi.build_ext_parallel:
+    if (
+        pbi.build_ext_parallel
+        and "DIST_EXTRA_CONFIG" not in extra_environ
+        and "MAX_JOBS" in extra_environ
+    ):
         # configure setuptools to use parallel builds
         # https://setuptools.pypa.io/en/latest/deprecated/distutils/configfile.html
         dist_extra_cfg = build_env.path / "dist-extra.cfg"
@@ -265,16 +262,11 @@ def build_wheel(
             textwrap.dedent(
                 f"""
                 [build_ext]
-                parallel = {jobs}
+                parallel = {extra_environ['MAX_JOBS']}
                 """
             )
         )
         extra_environ["DIST_EXTRA_CONFIG"] = str(dist_extra_cfg)
-
-    # add package and variant env vars last
-    template_env = os.environ.copy()
-    template_env.update(extra_environ)
-    extra_environ.update(pbi.get_extra_environ(template_env=template_env))
 
     # Start the timer
     start = datetime.now().replace(microsecond=0)
@@ -311,29 +303,13 @@ def build_wheel(
 def default_build_wheel(
     ctx: context.WorkContext,
     build_env: build_environment.BuildEnvironment,
-    extra_environ: dict[str, typing.Any],
+    extra_environ: dict[str, str],
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
     build_dir: pathlib.Path,
 ) -> None:
     logger.debug(f"{req.name}: building wheel in {build_dir} with {extra_environ}")
-
-    # Activate the virtualenv for the subprocess:
-    # 1. Put the build environment at the front of the PATH to ensure
-    #    any build tools are picked up from there and not global
-    #    versions. If the caller has already set a path, start there.
-    # 2. Set VIRTUAL_ENV so tools looking for that (for example,
-    #    maturin) find it.
-    existing_path = extra_environ.get("PATH") or os.environ.get("PATH") or ""
-    path_parts = [str(build_env.python.parent)]
-    if existing_path:
-        path_parts.append(existing_path)
-    updated_path = ":".join(path_parts)
-    override_env = dict(os.environ)
-    override_env.update(extra_environ)
-    override_env["PATH"] = updated_path
-    override_env["VIRTUAL_ENV"] = str(build_env.path)
 
     with tempfile.TemporaryDirectory() as dir_name:
         cmd = [
@@ -355,10 +331,10 @@ def default_build_wheel(
             os.fspath(build_dir.parent / "build.log"),
             os.fspath(build_dir),
         ]
-        external_commands.run(
+        build_env.run(
             cmd,
             cwd=dir_name,
-            extra_environ=override_env,
+            extra_environ=extra_environ,
             network_isolation=ctx.network_isolation,
         )
 

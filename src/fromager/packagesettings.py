@@ -17,6 +17,9 @@ from pydantic_core import CoreSchema, core_schema
 
 from . import overrides
 
+if typing.TYPE_CHECKING:
+    from . import build_environment
+
 logger = logging.getLogger(__name__)
 
 
@@ -583,9 +586,17 @@ class PackageBuildInfo:
         return release, suffix
 
     def get_extra_environ(
-        self, *, template_env: dict[str, str] | None = None
+        self,
+        *,
+        template_env: dict[str, str] | None = None,
+        build_env: "build_environment.BuildEnvironment | None" = None,
     ) -> dict[str, str]:
         """Get extra environment variables for a variant
+
+        1. parallel jobs: ``MAKEFLAGS``, ``MAX_JOBS``, ``CMAKE_BUILD_PARALLEL_LEVEL``
+        2. PATH and VIRTUAL_ENV from ``build_env`` (if given)
+        3. package's env settings
+        4. package variant's env settings
 
         `template_env` defaults to `os.environ`.
         """
@@ -593,13 +604,28 @@ class PackageBuildInfo:
             template_env = os.environ.copy()
         else:
             template_env = template_env.copy()
+
+        # configure max jobs settings, settings depend on package, available
+        # CPU cores, and available virtual memory.
+        jobs = self.parallel_jobs()
+        extra_environ: dict[str, str] = {
+            "MAKEFLAGS": f"{template_env.get('MAKEFLAGS', '')} -j{jobs}",
+            "CMAKE_BUILD_PARALLEL_LEVEL": str(jobs),
+            "MAX_JOBS": str(jobs),
+        }
+
+        # add VIRTUAL_ENV and update PATH, so templates can use the values
+        if build_env is not None:
+            venv_environ = build_env.get_venv_environ(template_env=template_env)
+            template_env.update(venv_environ)
+            extra_environ.update(venv_environ)
+
         # chain entries so variant entries can reference general entries
         entries = list(self._ps.env.items())
         vi = self._ps.variants.get(self.variant)
         if vi is not None:
             entries.extend(vi.env.items())
 
-        extra_environ: dict[str, str] = {}
         for key, value in entries:
             value = string.Template(value).substitute(template_env)
             extra_environ[key] = value

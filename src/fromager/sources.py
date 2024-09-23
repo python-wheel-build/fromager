@@ -439,7 +439,7 @@ def build_sdist(
     build_dir = pbi.build_dir(sdist_root_dir)
 
     logger.info(f"{req.name}: building source distribution in {build_dir}")
-    extra_environ = pbi.get_extra_environ()
+    extra_environ = pbi.get_extra_environ(build_env=build_env)
     sdist_filename = overrides.find_and_invoke(
         req.name,
         "build_sdist",
