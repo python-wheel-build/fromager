@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import pathlib
+import sys
 import typing
 from urllib.parse import urlparse
 
@@ -13,6 +14,7 @@ from packaging.version import Version
 from . import (
     constraints,
     dependency_graph,
+    external_commands,
     packagesettings,
 )
 
@@ -38,6 +40,7 @@ class WorkContext:
         network_isolation: bool = False,
         max_jobs: int | None = None,
         settings_dir: pathlib.Path | None = None,
+        python_interpreter: pathlib.Path = pathlib.Path(sys.executable),
     ):
         if active_settings is None:
             active_settings = packagesettings.Settings(
@@ -69,6 +72,8 @@ class WorkContext:
         self.variant = variant
         self.network_isolation = network_isolation
         self.settings_dir = settings_dir
+        self.python_interpreter = python_interpreter.absolute()
+        self._python_version: str | None = None
 
         self._build_order_filename = self.work_dir / "build-order.json"
         self._constraints_filename = self.work_dir / "constraints.txt"
@@ -164,6 +169,21 @@ class WorkContext:
         else:
             name = package
         return self.settings.package_build_info(name)
+
+    def python_version(self) -> str:
+        """Return Python version of `python_interpreter` (major.minor.patch)
+        """
+        if self._python_version is None:
+            out = external_commands.run(
+                [
+                    str(self.python_interpreter),
+                    "-c",
+                    "import platform; print(platform.python_version())",
+                ],
+                network_isolation=False,
+            )
+            self._python_version = out.split("\n", 1)[0].strip()
+        return self._python_version
 
     def setup(self) -> None:
         # The work dir must already exist, so don't try to create it.
