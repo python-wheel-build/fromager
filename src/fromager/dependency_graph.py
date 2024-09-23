@@ -235,15 +235,23 @@ class DependencyGraph:
 
         self.nodes[parent_key].add_child(node, req=req, req_type=req_type)
 
-    def get_install_dependencies(self) -> typing.Iterable[DependencyNode]:
+    def get_dependency_edges(
+        self, match_dep_types: list[RequirementType] | None = None
+    ) -> typing.Iterable[DependencyEdge]:
         visited = set()
         for edge in self._depth_first_traversal(
             self.nodes[ROOT].children,
-            match_dep_types=[RequirementType.INSTALL, RequirementType.TOP_LEVEL],
+            match_dep_types=match_dep_types,
         ):
             if edge.destination_node.key not in visited:
-                yield edge.destination_node
+                yield edge
                 visited.add(edge.destination_node.key)
+
+    def get_install_dependencies(self) -> typing.Iterable[DependencyNode]:
+        for edge in self.get_dependency_edges(
+            match_dep_types=[RequirementType.INSTALL, RequirementType.TOP_LEVEL]
+        ):
+            yield edge.destination_node
 
     def get_nodes_by_name(self, req_name: str | None) -> list[DependencyNode]:
         if not req_name:
