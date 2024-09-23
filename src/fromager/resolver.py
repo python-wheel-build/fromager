@@ -3,6 +3,8 @@
 # Modified to look at sdists instead of wheels and to avoid trying to
 # resolve any dependencies.
 #
+from __future__ import annotations
+
 import logging
 import os
 import typing
@@ -25,11 +27,14 @@ from packaging.utils import (
 from packaging.version import Version
 from resolvelib.resolvers import RequirementInformation
 
-from . import context, overrides
+from . import overrides
 from .candidate import Candidate
 from .constraints import Constraints
 from .extras_provider import ExtrasProvider
 from .request_session import session
+
+if typing.TYPE_CHECKING:
+    from . import context
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +72,7 @@ def default_resolver_provider(
     sdist_server_url: str,
     include_sdists: bool,
     include_wheels: bool,
-) -> "PyPIProvider | GenericProvider | GitHubTagProvider":
+) -> PyPIProvider | GenericProvider | GitHubTagProvider:
     """Lookup resolver provider to resolve package versions"""
     return PyPIProvider(
         include_sdists=include_sdists,
@@ -78,7 +83,7 @@ def default_resolver_provider(
 
 
 def resolve_from_provider(
-    provider: "BaseProvider", req: Requirement
+    provider: BaseProvider, req: Requirement
 ) -> tuple[str, Version]:
     reporter = resolvelib.BaseReporter()
     rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)

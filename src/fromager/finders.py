@@ -1,13 +1,17 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 
 import logging
 import pathlib
 import re
+import typing
 
 from packaging.requirements import Requirement
 from packaging.utils import BuildTag, canonicalize_name
 
-from . import context, overrides
+from . import overrides
+
+if typing.TYPE_CHECKING:
+    from . import context
 
 logger = logging.getLogger(__name__)
 

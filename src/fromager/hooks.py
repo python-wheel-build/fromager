@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import pathlib
 import typing
@@ -5,7 +7,8 @@ import typing
 from packaging.requirements import Requirement
 from stevedore import extension, hook
 
-from fromager import context
+if typing.TYPE_CHECKING:
+    from . import context
 
 _mgrs: dict[str, hook.HookManager] = {}
 logger = logging.getLogger(__name__)

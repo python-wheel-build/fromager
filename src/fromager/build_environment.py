@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib.metadata
 import logging
 import pathlib
@@ -10,12 +12,14 @@ import typing
 from packaging.requirements import Requirement
 
 from . import (
-    context,
     dependencies,
     external_commands,
     resolver,
 )
 from .requirements_file import RequirementType
+
+if typing.TYPE_CHECKING:
+    from . import context
 
 logger = logging.getLogger(__name__)
 
