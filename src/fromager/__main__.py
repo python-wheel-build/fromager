@@ -66,7 +66,7 @@ else:
     "--work-dir",
     default=pathlib.Path("work-dir"),
     type=clickext.ClickPath(),
-    help="location to manage working files, including builds",
+    help="location to manage working files, including builds and logs",
 )
 @click.option(
     "-p",

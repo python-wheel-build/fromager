@@ -65,6 +65,7 @@ class WorkContext:
         self.wheel_server_dir = self.wheels_repo / "simple"
         self.work_dir = pathlib.Path(work_dir).absolute()
         self.wheel_server_url = wheel_server_url
+        self.logs_dir = self.work_dir / "logs"
         self.cleanup = cleanup
         self.variant = variant
         self.network_isolation = network_isolation
@@ -178,6 +179,7 @@ class WorkContext:
             self.wheels_downloads,
             self.wheels_prebuilt,
             self.wheels_build,
+            self.logs_dir,
         ]:
             if not p.exists():
                 logger.debug("creating %s", p)

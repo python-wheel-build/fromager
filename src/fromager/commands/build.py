@@ -13,6 +13,7 @@ from fromager import (
     clickext,
     context,
     hooks,
+    overrides,
     progress,
     server,
     sources,
@@ -141,6 +142,16 @@ def _build(
     req: Requirement,
     source_download_url: str,
 ) -> pathlib.Path:
+    per_wheel_logger = logging.getLogger("")
+
+    module_name = overrides.pkgname_to_override_module(req.name)
+    log_filename = module_name + "_current.log"
+
+    wheel_log = wkctx.logs_dir / log_filename
+
+    file_handler = logging.FileHandler(str(wheel_log), mode="w")
+    per_wheel_logger.addHandler(file_handler)
+
     source_filename = sources.download_source(
         ctx=wkctx,
         req=req,
@@ -190,6 +201,12 @@ def _build(
         sdist_filename=sdist_filename,
         wheel_filename=wheel_filename,
     )
+
+    per_wheel_logger.removeHandler(file_handler)
+    file_handler.close()
+
+    new_filename = wheel_log.with_name(wheel_filename.stem + ".log")
+    wheel_log.rename(new_filename)
 
     return wheel_filename
 
