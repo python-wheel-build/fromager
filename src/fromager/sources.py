@@ -38,6 +38,7 @@ def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
     if (
         overrides.find_override_method(req.name, "download_source")
         or overrides.find_override_method(req.name, "resolve_source")
+        or overrides.find_override_method(req.name, "get_resolver_provider")
         or pbi.download_source_url(resolve_template=False)
     ):
         source_type = "override"
