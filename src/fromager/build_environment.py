@@ -13,11 +13,7 @@ from io import TextIOWrapper
 
 from packaging.requirements import Requirement
 
-from . import (
-    dependencies,
-    external_commands,
-    resolver,
-)
+from . import dependencies, external_commands, metrics, resolver
 from .requirements_file import RequirementType
 
 if typing.TYPE_CHECKING:
@@ -201,6 +197,7 @@ class BuildEnvironment:
         logger.info("installed dependencies into build environment in %s", self.path)
 
 
+@metrics.timeit(description="prepare build environment")
 def prepare_build_environment(
     *,
     ctx: context.WorkContext,

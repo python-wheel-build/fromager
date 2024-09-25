@@ -22,6 +22,7 @@ from fromager import (
     clickext,
     context,
     hooks,
+    metrics,
     overrides,
     progress,
     server,
@@ -202,6 +203,7 @@ def build_sequence(
                 )
             )
             print(wheel_filename)
+    metrics.summarize(wkctx, "Building")
 
     _summary(wkctx, entries)
 

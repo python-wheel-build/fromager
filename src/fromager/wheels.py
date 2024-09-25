@@ -10,7 +10,6 @@ import tempfile
 import textwrap
 import typing
 import zipfile
-from datetime import datetime
 from urllib.parse import urlparse
 
 import elfdeps
@@ -21,7 +20,14 @@ from packaging.tags import Tag
 from packaging.utils import BuildTag, canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
-from . import external_commands, overrides, requirements_file, resolver, sources
+from . import (
+    external_commands,
+    metrics,
+    overrides,
+    requirements_file,
+    resolver,
+    sources,
+)
 
 if typing.TYPE_CHECKING:
     from . import build_environment, context
@@ -131,6 +137,7 @@ def default_add_extra_metadata_to_wheels(
     raise NotImplementedError
 
 
+@metrics.timeit(description="add extra metadata to wheels")
 def add_extra_metadata_to_wheels(
     *,
     ctx: context.WorkContext,
@@ -246,6 +253,7 @@ def add_extra_metadata_to_wheels(
     raise FileNotFoundError("Could not locate new wheels file")
 
 
+@metrics.timeit(description="build wheels")
 def build_wheel(
     *,
     ctx: context.WorkContext,
@@ -281,8 +289,6 @@ def build_wheel(
         )
         extra_environ["DIST_EXTRA_CONFIG"] = str(dist_extra_cfg)
 
-    # Start the timer
-    start = datetime.now().replace(microsecond=0)
     overrides.find_and_invoke(
         req.name,
         "build_wheel",
@@ -296,7 +302,6 @@ def build_wheel(
         version=version,
     )
     # End the timer
-    end = datetime.now().replace(microsecond=0)
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if len(wheels) != 1:
         raise FileNotFoundError("Could not locate built wheels")
@@ -309,7 +314,6 @@ def build_wheel(
         sdist_root_dir=sdist_root_dir,
         wheel_file=wheels[0],
     )
-    logger.info(f"{req.name}: built wheel '{wheel}' in {end - start}")
     return wheel
 
 
@@ -387,6 +391,7 @@ def get_wheel_server_urls(ctx: context.WorkContext, req: Requirement) -> list[st
     return servers
 
 
+@metrics.timeit(description="resolve wheel")
 def resolve_prebuilt_wheel(
     *,
     ctx: context.WorkContext,
