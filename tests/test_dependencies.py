@@ -3,6 +3,7 @@ import itertools
 import pathlib
 import shutil
 import typing
+from unittest.mock import Mock, patch
 
 import pytest
 from packaging.requirements import Requirement
@@ -65,8 +66,9 @@ def _clean_build_artifacts(f):
     return _with_cleanup
 
 
+@patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
-def test_get_build_system_dependencies(tmp_context: context.WorkContext):
+def test_get_build_system_dependencies(_: Mock, tmp_context: context.WorkContext):
     results = dependencies.get_build_system_dependencies(
         tmp_context,
         Requirement("fromager"),
@@ -90,8 +92,9 @@ def test_get_build_system_dependencies_cached(
     assert results == set([Requirement("foo==1.0")])
 
 
+@patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
-def test_get_build_backend_dependencies(tmp_context: context.WorkContext):
+def test_get_build_backend_dependencies(_: Mock, tmp_context: context.WorkContext):
     results = dependencies.get_build_backend_dependencies(
         tmp_context,
         Requirement("fromager"),
@@ -115,8 +118,9 @@ def test_get_build_backend_dependencies_cached(
     assert results == set([Requirement("foo==1.0")])
 
 
+@patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
-def test_get_build_sdist_dependencies(tmp_context: context.WorkContext):
+def test_get_build_sdist_dependencies(_: Mock, tmp_context: context.WorkContext):
     results = dependencies.get_build_sdist_dependencies(
         tmp_context,
         Requirement("fromager"),
