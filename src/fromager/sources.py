@@ -20,6 +20,7 @@ from . import (
     external_commands,
     overrides,
     pyproject,
+    requirements_file,
     resolver,
     tarballs,
     vendor_rust,
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
-    source_type = "sdist"
+    source_type = requirements_file.SourceType.SDIST
     pbi = ctx.package_build_info(req)
     if (
         overrides.find_override_method(req.name, "download_source")
@@ -41,8 +42,8 @@ def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
         or overrides.find_override_method(req.name, "get_resolver_provider")
         or pbi.download_source_url(resolve_template=False)
     ):
-        source_type = "override"
-    return source_type
+        source_type = requirements_file.SourceType.OVERRIDE
+    return str(source_type)
 
 
 def download_source(

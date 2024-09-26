@@ -6,13 +6,13 @@ import click
 from packaging.requirements import Requirement
 
 from .. import (
+    bootstrapper,
     clickext,
     context,
     dependency_graph,
     progress,
     requirements_file,
     resolver,
-    sdist,
     server,
     sources,
     wheels,
@@ -133,14 +133,10 @@ def bootstrap(
         )
 
     with progress.progress_context(total=len(to_build)) as progressbar:
+        bt = bootstrapper.Bootstrapper(wkctx, progressbar, prev_graph)
+
         for req in to_build:
-            sdist.handle_requirement(
-                wkctx,
-                req,
-                req_type=requirements_file.RequirementType.TOP_LEVEL,
-                progressbar=progressbar,
-                prev_graph=prev_graph,
-            )
+            bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
             progressbar.update()
 
     # If we put pre-built wheels in the downloads directory, we should

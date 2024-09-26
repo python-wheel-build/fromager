@@ -18,6 +18,12 @@ class RequirementType(StrEnum):
     BUILD_SDIST = "build-sdist"
 
 
+class SourceType(StrEnum):
+    PREBUILT = "prebuilt"
+    SDIST = "sdist"
+    OVERRIDE = "override"
+
+
 def parse_requirements_file(
     req_file: pathlib.Path,
 ) -> typing.Iterable[str]:
