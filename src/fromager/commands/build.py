@@ -333,6 +333,12 @@ def _build(
         build_env=build_env,
     )
 
+    per_wheel_logger.removeHandler(file_handler)
+    file_handler.close()
+
+    new_filename = wheel_log.with_name(wheel_filename.stem + ".log")
+    wheel_log.rename(new_filename)
+
     hooks.run_post_build_hooks(
         ctx=wkctx,
         req=req,
@@ -341,12 +347,6 @@ def _build(
         sdist_filename=sdist_filename,
         wheel_filename=wheel_filename,
     )
-
-    per_wheel_logger.removeHandler(file_handler)
-    file_handler.close()
-
-    new_filename = wheel_log.with_name(wheel_filename.stem + ".log")
-    wheel_log.rename(new_filename)
 
     return wheel_filename
 
