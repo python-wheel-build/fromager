@@ -1,12 +1,21 @@
+import dataclasses
+import datetime
+import functools
 import json
 import logging
 import pathlib
+import sys
+import typing
 from urllib.parse import urlparse
 
 import click
+import rich
+import rich.box
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
+from rich.table import Table
+from rich.text import Text
 
 from fromager import (
     build_environment,
@@ -21,6 +30,23 @@ from fromager import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass()
+@functools.total_ordering
+class BuildSequenceEntry:
+    name: str
+    version: Version
+    prebuilt: bool
+    download_url: str
+    wheel_filename: pathlib.Path
+    skipped: bool = False
+
+    def __lt__(self, other):
+        if not isinstance(other, BuildSequenceEntry):
+            return NotImplemented
+        # sort by lower name and version
+        return (self.name.lower(), self.version) < (other.name.lower(), other.version)
 
 
 @click.command()
@@ -94,24 +120,42 @@ def build_sequence(
             wkctx.wheel_server_url,
         )
 
+    entries: list[BuildSequenceEntry] = []
+
     logger.info("reading build order from %s", build_order_file)
     with open(build_order_file, "r") as f:
         for entry in progress.progress(json.load(f)):
             dist_name = entry["dist"]
             resolved_version = Version(entry["version"])
+            prebuilt = entry["prebuilt"]
             source_download_url = entry["source_url"]
+
             req = Requirement(f"{dist_name}=={resolved_version}")
 
-            if skip_existing and _is_wheel_built(wkctx, dist_name, resolved_version):
-                logger.info(
-                    "%s: skipping building wheels for %s==%s since it already exists",
-                    dist_name,
-                    dist_name,
-                    resolved_version,
+            if skip_existing:
+                is_built, wheel_filename = _is_wheel_built(
+                    wkctx, dist_name, resolved_version
                 )
-                continue
+                if is_built:
+                    logger.info(
+                        "%s: skipping building wheels for %s==%s since it already exists",
+                        dist_name,
+                        dist_name,
+                        resolved_version,
+                    )
+                    entries.append(
+                        BuildSequenceEntry(
+                            dist_name,
+                            resolved_version,
+                            prebuilt,
+                            source_download_url,
+                            wheel_filename=wheel_filename,
+                            skipped=True,
+                        )
+                    )
+                    continue
 
-            if entry["prebuilt"]:
+            if prebuilt:
                 logger.info(
                     "%s: downloading prebuilt wheel %s==%s",
                     dist_name,
@@ -133,7 +177,103 @@ def build_sequence(
             # After we update the wheel mirror, the built file has
             # moved to a new directory.
             wheel_filename = wkctx.wheels_downloads / wheel_filename.name
+            entries.append(
+                BuildSequenceEntry(
+                    dist_name,
+                    resolved_version,
+                    prebuilt,
+                    source_download_url,
+                    wheel_filename=wheel_filename,
+                )
+            )
             print(wheel_filename)
+
+    _summary(wkctx, entries)
+
+
+def _summary(ctx: context.WorkContext, entries: list[BuildSequenceEntry]) -> None:
+    output: list[typing.Any] = []
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ")
+    output.append(Text(f"Build sequence summary {now}\n"))
+
+    built_entries = [e for e in entries if not e.skipped and not e.prebuilt]
+    if built_entries:
+        output.append(
+            _create_table(
+                built_entries,
+                title="New builds",
+                box=rich.box.MARKDOWN,
+                title_justify="left",
+            )
+        )
+    else:
+        output.append(Text("No new builds\n"))
+
+    prebuilt_entries = [e for e in entries if e.prebuilt]
+    if prebuilt_entries:
+        output.append(
+            _create_table(
+                prebuilt_entries,
+                title="Prebuilt wheels",
+                box=rich.box.MARKDOWN,
+                title_justify="left",
+            )
+        )
+    else:
+        output.append(Text("No pre-built wheels\n"))
+
+    skipped_entries = [e for e in entries if e.skipped and not e.prebuilt]
+    if skipped_entries:
+        output.append(
+            _create_table(
+                skipped_entries,
+                title="Skipped existing builds",
+                box=rich.box.MARKDOWN,
+                title_justify="left",
+            )
+        )
+    else:
+        output.append(Text("No skipped builds\n"))
+
+    console = rich.get_console()
+    console.print(*output, sep="\n\n")
+
+    with open(ctx.work_dir / "build-sequence-summary.md", "w", encoding="utf-8") as f:
+        console = rich.console.Console(file=f, width=sys.maxsize)
+        console.print(*output, sep="\n\n")
+
+
+def _create_table(entries: list[BuildSequenceEntry], **table_kwargs) -> Table:
+    table = Table(**table_kwargs)
+    table.add_column("Name", justify="right", no_wrap=True)
+    table.add_column("Version", no_wrap=True)
+    table.add_column("Wheel", no_wrap=True)
+    table.add_column("Source URL")
+
+    platlib_count = 0
+
+    for info in sorted(entries):
+        tags = parse_wheel_filename(info.wheel_filename.name)[3]
+        if any(t.platform != "any" or t.abi != "none" for t in tags):
+            platlib_count += 1
+        source_filename = urlparse(info.download_url).path.rsplit("/", 1)[-1]
+        table.add_row(
+            info.name,
+            str(info.version),
+            info.wheel_filename.name,
+            # escape Rich markup
+            rf"\[{source_filename}]({info.download_url})",
+        )
+
+    # summary
+    table.add_section()
+    table.add_row(
+        f"total: {len(entries)}",
+        None,
+        f"platlib: {platlib_count}",
+        None,
+    )
+    return table
 
 
 def _build(
@@ -213,7 +353,7 @@ def _build(
 
 def _is_wheel_built(
     wkctx: context.WorkContext, dist_name: str, resolved_version: Version
-) -> bool:
+) -> tuple[True, pathlib.Path] | tuple[False, None]:
     req = Requirement(f"{dist_name}=={resolved_version}")
 
     try:
@@ -232,7 +372,7 @@ def _is_wheel_built(
             raise ValueError(
                 f"{dist_name}: changelog for version {resolved_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
             )
-        return existing_build_tag == build_tag
+        return existing_build_tag == build_tag, pathlib.Path(wheel_filename)
     except Exception:
         logger.info(f"{req.name}: could not locate prebuilt wheel. Will build {req}")
-        return False
+        return False, None

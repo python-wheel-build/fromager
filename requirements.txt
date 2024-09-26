@@ -9,6 +9,7 @@ PyGithub
 pyproject_hooks>=1.0.0,!=1.1.0
 python-pypi-mirror
 PyYAML
+rich
 requests
 resolvelib
 setuptools>=73.0.0 # https://github.com/pypa/setuptools/issues/4519
