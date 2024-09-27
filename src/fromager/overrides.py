@@ -50,7 +50,10 @@ def find_and_invoke(
     fn = find_override_method(distname, method)
     if not fn:
         fn = default_fn
-    return invoke(fn, **kwargs)
+
+    result = invoke(fn, **kwargs)
+    logger.info(f"{distname}: override method {fn.__name__} returned {result}")
+    return result
 
 
 def invoke(fn: typing.Callable, **kwargs: typing.Any) -> typing.Any:
@@ -61,6 +64,7 @@ def invoke(fn: typing.Callable, **kwargs: typing.Any) -> typing.Any:
                 f"{fn.__module__}.{fn.__name__} override does not take argument {arg_name}"
             )
             kwargs.pop(arg_name)
+        logger.debug(f"{fn.__name__} takes argument: {arg_name}")
     return fn(**kwargs)
 
 
