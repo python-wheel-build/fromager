@@ -137,7 +137,7 @@ def test_pbi_test_pkg_extra_environ(
     testdata_context.settings.max_jobs = 1
     parallel = {
         "CMAKE_BUILD_PARALLEL_LEVEL": "1",
-        "MAKEFLAGS": " -j1",
+        "MAKEFLAGS": "-j1",
         "MAX_JOBS": "1",
     }
 

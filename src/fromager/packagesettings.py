@@ -609,7 +609,7 @@ class PackageBuildInfo:
         # CPU cores, and available virtual memory.
         jobs = self.parallel_jobs()
         extra_environ: dict[str, str] = {
-            "MAKEFLAGS": f"{template_env.get('MAKEFLAGS', '')} -j{jobs}",
+            "MAKEFLAGS": f"{template_env.get('MAKEFLAGS', '')} -j{jobs}".strip(),
             "CMAKE_BUILD_PARALLEL_LEVEL": str(jobs),
             "MAX_JOBS": str(jobs),
         }
