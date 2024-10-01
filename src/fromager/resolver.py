@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import typing
+from email.message import EmailMessage
+from email.parser import BytesParser
 from operator import attrgetter
 from platform import python_version
 from urllib.parse import urljoin, urlparse
@@ -106,9 +109,11 @@ def get_project_from_pypi(
     logger.debug("%s: getting available versions from %s", project, simple_index_url)
     data = session.get(simple_index_url).content
     doc = html5lib.parse(data, namespaceHTMLElements=False)
+    metadata_content = EmailMessage()
     for i in doc.findall(".//a"):
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
+        metadata = i.attrib.get("data-dist-info-metadata")
         path = urlparse(candidate_url).path
         filename = path.rsplit("/", 1)[-1]
         if DEBUG_RESOLVER:
@@ -131,6 +136,17 @@ def get_project_from_pypi(
                         f"{project}: skipping {filename} because of python version {py_req}"
                     )
                 continue
+
+        if metadata:
+            outfile: pathlib.Path
+            metadata_url = urljoin(metadata, i.attrib["href"])
+            with session.get(metadata_url, stream=True) as r:
+                r.raise_for_status()
+                with open(outfile, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                        f.write(chunk)
+            p = BytesParser()
+            metadata_content = p.parse(outfile, headersonly=True)
 
         # TODO: Handle compatibility tags?
 
@@ -178,6 +194,7 @@ def get_project_from_pypi(
             is_sdist=is_sdist,
             build_tag=build_tag,
         )
+        c._metadata = metadata_content
         if DEBUG_RESOLVER:
             logger.debug(
                 "%s: candidate %s (%s) %s", project, filename, c, candidate_url
