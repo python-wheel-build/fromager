@@ -11,6 +11,7 @@ import typing
 from operator import attrgetter
 from platform import python_version
 from urllib.parse import urljoin, urlparse
+import mousebender
 
 import github
 import html5lib
@@ -105,7 +106,19 @@ def get_project_from_pypi(
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
     logger.debug("%s: getting available versions from %s", project, simple_index_url)
     data = session.get(simple_index_url).content
+    metadata_response =  session.get(simple_index_url, headers={"accept": mousebender.simple.ACCEPT_SUPPORTED})
     doc = html5lib.parse(data, namespaceHTMLElements=False)
+    parsed_metadata_doc = mousebender.simple.parse_project_details(metadata_response.content, metadata_response.headers["content-type"], project)
+    files = parsed_metadata_doc["files"]
+    
+    for dct in files:
+        if dct.get("yanked", False):
+            continue
+        hash_val = dct.get("data-dist-info-metadata")
+        if hash_val:
+            _metadata_hash = hash_val
+            _metadata_url = dct.get("url") + ".metadata"
+
     for i in doc.findall(".//a"):
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
@@ -174,10 +187,12 @@ def get_project_from_pypi(
             name,
             version,
             url=candidate_url,
+            metadata_hash=_metadata_hash,
             extras=extras,
             is_sdist=is_sdist,
             build_tag=build_tag,
         )
+        c.metadata_url = _metadata_url
         if DEBUG_RESOLVER:
             logger.debug(
                 "%s: candidate %s (%s) %s", project, filename, c, candidate_url

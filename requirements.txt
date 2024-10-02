@@ -18,3 +18,4 @@ tomlkit
 tqdm
 virtualenv
 wheel
+mousebender

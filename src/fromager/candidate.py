@@ -25,6 +25,7 @@ class Candidate:
         name: str,
         version: Version,
         url: str,
+        metadata_hash: tuple[str, str] | None,
         extras: typing.Iterable[str] | None = None,
         is_sdist: bool | None = None,
         build_tag: BuildTag = (),
@@ -35,9 +36,11 @@ class Candidate:
         self.extras = extras
         self.is_sdist = is_sdist
         self.build_tag = build_tag
+        self.metadata_hash = metadata_hash
 
         self._metadata: Metadata | None = None
         self._dependencies: list[Requirement] | None = None
+        self.metadata_url: str | None = None
 
     def __repr__(self) -> str:
         if not self.extras:
