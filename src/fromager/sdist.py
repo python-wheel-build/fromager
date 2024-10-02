@@ -141,7 +141,10 @@ def handle_requirement(
 
     if not pre_built:
         sdist_root_dir = sources.prepare_source(
-            ctx, req, source_filename, resolved_version
+            ctx=ctx,
+            req=req,
+            source_filename=source_filename,
+            version=resolved_version,
         )
         unpack_dir = sdist_root_dir.parent
 
@@ -427,7 +430,9 @@ def _resolve_prebuilt_with_history(
         )
     else:
         servers = wheels.get_wheel_server_urls(ctx, req)
-        wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(ctx, req, servers)
+        wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
+            ctx=ctx, req=req, wheel_server_urls=servers
+        )
     return (wheel_url, resolved_version)
 
 
@@ -446,7 +451,7 @@ def _handle_build_system_requirements(
     prev_graph: DependencyGraph | None,
 ) -> set[Requirement]:
     build_system_dependencies = dependencies.get_build_system_dependencies(
-        ctx, req, sdist_root_dir
+        ctx=ctx, req=req, sdist_root_dir=sdist_root_dir
     )
     progressbar.update_total(len(build_system_dependencies))
 
@@ -483,7 +488,7 @@ def _handle_build_backend_requirements(
     prev_graph: DependencyGraph | None,
 ) -> set[Requirement]:
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
-        ctx, req, sdist_root_dir
+        ctx=ctx, req=req, sdist_root_dir=sdist_root_dir
     )
     progressbar.update_total(len(build_backend_dependencies))
 
@@ -520,7 +525,7 @@ def _handle_build_sdist_requirements(
     prev_graph: DependencyGraph | None,
 ) -> set[Requirement]:
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
-        ctx, req, sdist_root_dir
+        ctx=ctx, req=req, sdist_root_dir=sdist_root_dir
     )
     progressbar.update_total(len(build_sdist_dependencies))
 

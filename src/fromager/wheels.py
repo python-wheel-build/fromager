@@ -116,6 +116,7 @@ def default_add_extra_metadata_to_wheels(
 
 
 def add_extra_metadata_to_wheels(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     version: Version,
@@ -235,6 +236,7 @@ def add_extra_metadata_to_wheels(
 
 
 def build_wheel(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
@@ -379,6 +381,7 @@ def get_wheel_server_urls(ctx: context.WorkContext, req: Requirement) -> list[st
 
 
 def resolve_prebuilt_wheel(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     wheel_server_urls: list[str],
@@ -387,9 +390,9 @@ def resolve_prebuilt_wheel(
     for url in wheel_server_urls:
         try:
             wheel_url, resolved_version = resolver.resolve(
-                ctx,
-                req,
-                url,
+                ctx=ctx,
+                req=req,
+                sdist_server_url=url,
                 include_sdists=False,
                 include_wheels=True,
             )

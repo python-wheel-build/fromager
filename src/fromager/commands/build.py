@@ -84,7 +84,9 @@ def build(
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
     source_url, version = sources.resolve_source(
-        ctx=wkctx, req=req, sdist_server_url=sdist_server_url
+        ctx=wkctx,
+        req=req,
+        sdist_server_url=sdist_server_url,
     )
     wheel_filename = _build(wkctx, version, req, source_url)
     print(wheel_filename)
@@ -163,7 +165,9 @@ def build_sequence(
                     resolved_version,
                 )
                 wheel_filename = wheels.download_wheel(
-                    req, source_download_url, wkctx.wheels_build
+                    req=req,
+                    wheel_url=source_download_url,
+                    output_directory=wkctx.wheels_build,
                 )
             else:
                 logger.info(
@@ -308,11 +312,13 @@ def _build(
 
     # Prepare source
     source_root_dir = sources.prepare_source(
-        wkctx, req, source_filename, resolved_version
+        ctx=wkctx, req=req, source_filename=source_filename, version=resolved_version
     )
 
     # Build environment
-    build_environment.prepare_build_environment(wkctx, req, source_root_dir)
+    build_environment.prepare_build_environment(
+        ctx=wkctx, req=req, sdist_root_dir=source_root_dir
+    )
     build_env = build_environment.BuildEnvironment(wkctx, source_root_dir.parent, None)
 
     # Make a new source distribution, in case we patched the code.
@@ -358,7 +364,9 @@ def _is_wheel_built(
 
     try:
         logger.info(f"{req.name}: checking if {req} was already built")
-        url, _ = wheels.resolve_prebuilt_wheel(wkctx, req, [wkctx.wheel_server_url])
+        url, _ = wheels.resolve_prebuilt_wheel(
+            ctx=wkctx, req=req, wheel_server_urls=[wkctx.wheel_server_url]
+        )
         pbi = wkctx.package_build_info(req)
         build_tag_from_settings = pbi.build_tag(resolved_version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")

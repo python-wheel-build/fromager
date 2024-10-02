@@ -52,7 +52,9 @@ class MissingDependency(Exception):  # noqa: N818
         resolutions = []
         for r in all_reqs:
             try:
-                _, version = resolver.resolve(ctx, r, resolver.PYPI_SERVER_URL)
+                _, version = resolver.resolve(
+                    ctx=ctx, req=r, sdist_server_url=resolver.PYPI_SERVER_URL
+                )
             except Exception as err:
                 resolutions.append(f"{r} -> {err}")
             else:
@@ -197,6 +199,7 @@ class BuildEnvironment:
 
 
 def prepare_build_environment(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
@@ -205,7 +208,9 @@ def prepare_build_environment(
 
     next_req_type = RequirementType.BUILD_SYSTEM
     build_system_dependencies = dependencies.get_build_system_dependencies(
-        ctx, req, sdist_root_dir
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
     )
 
     for dep in build_system_dependencies:
@@ -227,7 +232,9 @@ def prepare_build_environment(
 
     next_req_type = RequirementType.BUILD_BACKEND
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
-        ctx, req, sdist_root_dir
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
     )
 
     for dep in build_backend_dependencies:
@@ -249,7 +256,9 @@ def prepare_build_environment(
 
     next_req_type = RequirementType.BUILD_SDIST
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
-        ctx, req, sdist_root_dir
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
     )
 
     for dep in build_sdist_dependencies:

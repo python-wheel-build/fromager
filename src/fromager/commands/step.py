@@ -85,8 +85,12 @@ def prepare_source(
         raise RuntimeError(
             f"Cannot find sdist for {req.name} version {dist_version} in {sdists_downloads} among {dir_contents}"
         )
-    # FIXME: Does the version need to be a Version instead of str?
-    source_root_dir = sources.prepare_source(wkctx, req, source_filename, dist_version)
+    source_root_dir = sources.prepare_source(
+        ctx=wkctx,
+        req=req,
+        source_filename=source_filename,
+        version=dist_version,
+    )
     print(source_root_dir)
 
 
@@ -156,7 +160,9 @@ def prepare_build(
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
-    build_environment.prepare_build_environment(wkctx, req, source_root_dir)
+    build_environment.prepare_build_environment(
+        ctx=wkctx, req=req, sdist_root_dir=source_root_dir
+    )
 
 
 @step.command()

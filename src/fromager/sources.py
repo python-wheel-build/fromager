@@ -46,7 +46,11 @@ def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
 
 
 def download_source(
-    ctx: context.WorkContext, req: Requirement, version: Version, download_url: str
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    download_url: str,
 ) -> pathlib.Path:
     source_path = overrides.find_and_invoke(
         req.name,
@@ -67,6 +71,7 @@ def download_source(
 
 
 def resolve_source(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
@@ -350,6 +355,7 @@ def read_build_meta(unpack_dir: pathlib.Path) -> dict:
 
 
 def prepare_source(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     source_filename: pathlib.Path,
@@ -429,6 +435,7 @@ def prepare_new_source(
 
 
 def build_sdist(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     version: Version,
