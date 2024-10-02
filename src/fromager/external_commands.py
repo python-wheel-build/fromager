@@ -72,7 +72,7 @@ def run(
 
     logger.debug(
         "running: %s %s in %s",
-        " ".join(f"{k}={v}" for k, v in extra_environ.items()),
+        " ".join(f"{k}={shlex.quote(v)}" for k, v in extra_environ.items()),
         " ".join(shlex.quote(str(s)) for s in cmd),
         cwd or ".",
     )
