@@ -110,10 +110,16 @@ def bootstrap(
         pbi = wkctx.package_build_info(req)
         if pbi.pre_built:
             servers = wheels.get_wheel_server_urls(wkctx, req)
-            source_url, version = wheels.resolve_prebuilt_wheel(wkctx, req, servers)
+            source_url, version = wheels.resolve_prebuilt_wheel(
+                ctx=wkctx,
+                req=req,
+                wheel_server_urls=servers,
+            )
         else:
             source_url, version = sources.resolve_source(
-                wkctx, req, resolver.PYPI_SERVER_URL
+                ctx=wkctx,
+                req=req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
             )
         logger.info("%s resolves to %s", req, version)
         wkctx.dependency_graph.add_dependency(

@@ -95,7 +95,11 @@ def test_invalid_version(mock_default_resolve_source, tmp_context: context.WorkC
     )
     mock_default_resolve_source.__name__ = "mock_default_resolve_source"
     with pytest.raises(ValueError):
-        sources.resolve_source(tmp_context, req, sdist_server_url)
+        sources.resolve_source(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=sdist_server_url,
+        )
 
 
 @patch("fromager.sources._apply_patch")

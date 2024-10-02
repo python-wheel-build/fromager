@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_build_system_dependencies(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
@@ -84,6 +85,7 @@ def default_get_build_system_dependencies(
 
 
 def get_build_backend_dependencies(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
@@ -139,6 +141,7 @@ def default_get_build_backend_dependencies(
 
 
 def get_build_sdist_dependencies(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,

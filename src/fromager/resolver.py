@@ -46,6 +46,7 @@ GITHUB_URL = "https://github.com"
 
 
 def resolve(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
