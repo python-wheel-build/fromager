@@ -150,18 +150,21 @@ def bootstrap(
 
     constraints_filename = wkctx.work_dir / "constraints.txt"
     logger.info(f"writing installation dependencies to {constraints_filename}")
-    with open(wkctx.work_dir / "constraints.txt", "w") as f:
-        write_constraints_file(graph=wkctx.dependency_graph, output=f)
+    with open(constraints_filename, "w") as f:
+        if not write_constraints_file(graph=wkctx.dependency_graph, output=f):
+            raise ValueError(
+                f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
+            )
 
 
 def write_constraints_file(
     graph: dependency_graph.DependencyGraph,
     output: typing.TextIO,
-) -> None:
+) -> bool:
     # Look for potential conflicts by tracking how many different versions of
     # each package are needed.
     conflicts = graph.get_install_dependency_versions()
-
+    ret = True
     for dep_name, nodes in sorted(conflicts.items()):
         versions = [node.version for node in nodes]
         if len(versions) == 0:
@@ -216,10 +219,12 @@ def write_constraints_file(
                 break
         else:
             # No single version could be used, so go ahead and print all the
-            # versions with a warning message.
+            # versions with a warning message
+            ret = False
             output.write(
                 f"# ERROR: no single version of {dep_name} met all requirements\n"
             )
             logging.error("%s: no single version meets all requirements", dep_name)
             for dv in sorted(versions):
                 output.write(f"{dep_name}=={dv}\n")
+    return ret
