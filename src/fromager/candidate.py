@@ -38,11 +38,17 @@ class Candidate:
 
         self._metadata: Metadata | None = None
         self._dependencies: list[Requirement] | None = None
+        self.metadata_source: str | None = None
 
     def __repr__(self) -> str:
         if not self.extras:
             return f"<{self.name}=={self.version}>"
         return f"<{self.name}[{','.join(self.extras)}]=={self.version}>"
+
+    def _pep_658_metadata(self):
+        # This function will download the metadata file from metadata_source url.
+        # Where do we save this? We will use seesions.get(self.metadata_source, stream=True)
+        pass
 
     @property
     def metadata(self) -> Metadata:

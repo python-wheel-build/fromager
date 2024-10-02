@@ -109,6 +109,9 @@ def get_project_from_pypi(
     for i in doc.findall(".//a"):
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
+        # As per PEP 658, the metadata file will be present separately in anchor tag "data-dist-info-metadata"
+        candidate_metadata_attr = i.attrib.get("data-dist-info-metadata")
+        candidate_metadata_url = urljoin(simple_index_url, candidate_metadata_attr)
         path = urlparse(candidate_url).path
         filename = path.rsplit("/", 1)[-1]
         if DEBUG_RESOLVER:
@@ -178,6 +181,7 @@ def get_project_from_pypi(
             is_sdist=is_sdist,
             build_tag=build_tag,
         )
+        c.metadata_source = candidate_metadata_url
         if DEBUG_RESOLVER:
             logger.debug(
                 "%s: candidate %s (%s) %s", project, filename, c, candidate_url
