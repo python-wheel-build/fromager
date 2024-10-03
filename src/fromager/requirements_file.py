@@ -17,6 +17,18 @@ class RequirementType(StrEnum):
     BUILD_BACKEND = "build-backend"
     BUILD_SDIST = "build-sdist"
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, RequirementType):
+            if self.value == "build" or other.value == "build":
+                allowed_values = [
+                    "build-backend",
+                    "build-system",
+                    "build-sdist",
+                    "build",
+                ]
+                return self.value in allowed_values and other.value in allowed_values
+        return super.__eq__(self, other)
+
 
 def parse_requirements_file(
     req_file: pathlib.Path,

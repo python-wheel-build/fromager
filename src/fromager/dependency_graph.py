@@ -1,4 +1,3 @@
-import io
 import json
 import logging
 import pathlib
@@ -178,7 +177,7 @@ class DependencyGraph:
             visited.add(node.key)
         return raw_graph
 
-    def serialize(self, file_handle: io.TextIOWrapper):
+    def serialize(self, file_handle: typing.TextIO):
         raw_graph = self._to_dict()
         json.dump(raw_graph, file_handle, indent=2, default=str)
 
