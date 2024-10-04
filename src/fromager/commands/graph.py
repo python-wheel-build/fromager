@@ -1,6 +1,7 @@
 import itertools
 import json
 import logging
+import pathlib
 import sys
 import typing
 
@@ -9,8 +10,14 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from fromager import clickext, dependency_graph, requirements_file
+from fromager import clickext, context
 from fromager.commands import bootstrap
+from fromager.dependency_graph import (
+    ROOT,
+    DependencyGraph,
+    DependencyNode,
+)
+from fromager.requirements_file import RequirementType
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +39,11 @@ def graph():
     type=clickext.ClickPath(),
 )
 @click.pass_obj
-def to_constraints(wkctx, graph_file, output):
+def to_constraints(
+    wkctx: context.WorkContext, graph_file: pathlib.Path, output: pathlib.Path
+):
     "Convert a graph file to a constraints file."
-    graph = dependency_graph.DependencyGraph.from_file(graph_file)
+    graph = DependencyGraph.from_file(graph_file)
     if output:
         with open(output, "w") as f:
             bootstrap.write_constraints_file(graph, f)
@@ -53,9 +62,9 @@ def to_constraints(wkctx, graph_file, output):
     type=clickext.ClickPath(),
 )
 @click.pass_obj
-def to_dot(wkctx, graph_file, output):
+def to_dot(wkctx, graph_file: pathlib.Path, output: pathlib.Path):
     "Convert a graph file to a DOT file suitable to pass to graphviz."
-    graph = dependency_graph.DependencyGraph.from_file(graph_file)
+    graph = DependencyGraph.from_file(graph_file)
     if output:
         with open(output, "w") as f:
             write_dot(graph, f)
@@ -63,7 +72,7 @@ def to_dot(wkctx, graph_file, output):
         write_dot(graph, sys.stdout)
 
 
-def write_dot(graph: dependency_graph.DependencyGraph, output: typing.TextIO) -> None:
+def write_dot(graph: DependencyGraph, output: typing.TextIO) -> None:
     install_constraints = set(node.key for node in graph.get_install_dependencies())
 
     output.write("digraph {\n")
@@ -110,7 +119,7 @@ def write_dot(graph: dependency_graph.DependencyGraph, output: typing.TextIO) ->
 @click.pass_obj
 def explain_duplicates(wkctx, graph_file):
     "Report on duplicate installation requirements, and where they come from."
-    graph = dependency_graph.DependencyGraph.from_file(graph_file)
+    graph = DependencyGraph.from_file(graph_file)
 
     # Look for potential conflicts by tracking how many different versions of
     # each package are needed.
@@ -155,6 +164,74 @@ def explain_duplicates(wkctx, graph_file):
 
 @graph.command()
 @click.option(
+    "--version",
+    type=clickext.PackageVersion(),
+    multiple=True,
+    help="filter by version for the given package",
+)
+@click.option(
+    "--depth",
+    type=int,
+    default=0,
+    help="recursively get why each package depends on each other. Set depth to -1 for full recursion till root",
+)
+@click.option(
+    "--requirement-type",
+    type=clickext.RequirementType(),
+    multiple=True,
+    help="filter by requirement type",
+)
+@click.argument(
+    "graph-file",
+    type=clickext.ClickPath(),
+)
+@click.argument("package-name", type=str)
+@click.pass_obj
+def why(
+    wkctx: context.WorkContext,
+    graph_file: pathlib.Path,
+    package_name: str,
+    version: list[Version],
+    depth: int,
+    requirement_type: list[RequirementType],
+):
+    "Explain why a dependency shows up in the graph"
+    graph = DependencyGraph.from_file(graph_file)
+    package_nodes = graph.get_nodes_by_name(package_name)
+    if version:
+        package_nodes = [node for node in package_nodes if node.version in version]
+    for node in package_nodes:
+        print(f"\n{node.key}")
+        find_why(graph, node, depth, 1, requirement_type)
+
+
+def find_why(
+    graph: DependencyGraph,
+    node: DependencyNode,
+    max_depth: int,
+    depth: int,
+    req_type: list[RequirementType],
+):
+    all_skipped = True
+    for parent in node.parents:
+        if parent.destination_node.key == ROOT:
+            continue
+        if req_type and parent.req_type not in req_type:
+            continue
+        all_skipped = False
+        print(
+            f"{'  ' * depth} * is an {parent.req_type} dependency of {parent.destination_node.key} with req {parent.req}"
+        )
+        if max_depth and (max_depth == -1 or depth <= max_depth):
+            find_why(graph, parent.destination_node, max_depth, depth + 1, [])
+    if all_skipped:
+        print(
+            f" * couldn't find any dependencies to {node.canonicalized_name} that matches {[str(r) for r in req_type]}"
+        )
+
+
+@graph.command()
+@click.option(
     "-o",
     "--output",
     type=clickext.ClickPath(),
@@ -164,12 +241,14 @@ def explain_duplicates(wkctx, graph_file):
     type=clickext.ClickPath(),
 )
 @click.pass_obj
-def migrate_graph(wkctx, graph_file, output):
+def migrate_graph(
+    wkctx: context.WorkContext, graph_file: pathlib.Path, output: pathlib.Path
+):
     "Convert a old graph file into the the new format"
-    graph = dependency_graph.DependencyGraph()
+    graph = DependencyGraph()
     with open(graph_file, "r") as f:
         old_graph = json.load(f)
-        stack = [dependency_graph.ROOT]
+        stack = [ROOT]
         visited = set()
         while stack:
             curr_key = stack.pop()
@@ -180,7 +259,7 @@ def migrate_graph(wkctx, graph_file, output):
                 graph.add_dependency(
                     parent_name=canonicalize_name(parent_name) if parent_name else None,
                     parent_version=Version(parent_version) if parent_version else None,
-                    req_type=requirements_file.RequirementType(req_type),
+                    req_type=RequirementType(req_type),
                     req_version=Version(req_version),
                     req=Requirement(req),
                 )
