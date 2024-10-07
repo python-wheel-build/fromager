@@ -7,3 +7,7 @@ packages:
 changelog:
     rocm:
         - "setuptools upgraded to 82.0.0"
+
+template_env:
+    CFLAGS: ''
+    CPPFLAGS: ''

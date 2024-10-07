@@ -137,10 +137,10 @@ Settings common to all variants of a given package can be placed in the the
 top-level `env` mapping. Variant env vars override global env vars.
 
 Environment files support simple parameter expansions `$NAME` and
-`${NAME}`. Values are taken from previous lines, then global env map, and
-finally process environment. Sub shell expression `$(cmd)` and extended
-parameter expansions like `${NAME:-default}` are not implemented. A literal
-`$` must be quoted as `$$`.
+`${NAME}`. Values are taken from previous lines, package variant and package
+envs, global template envs, and finally process environment. Sub shell
+expression `$(cmd)` and extended parameter expansions like `${NAME:-default}`
+are not implemented. A literal `$` must be quoted as `$$`.
 
 ```yaml
 # example
@@ -152,6 +152,45 @@ variants:
         env:
             # The cpu variant has 'PATH=/cpu/bin:/global/bin:$PATH`
             PATH: "/cpu/bin:$PATH"
+```
+
+#### template envs
+
+.. versionadded: 0.31
+
+Template variables for extra environment variables can be configured in the
+global `settings.yml` file. The template variables are not added to extra
+environment variables. Fromager includes additional template variables like
+packaging markers and paths to `site-packages` directories.
+
+Example configuration:
+
+```yaml
+template_env:
+    CFLAGS: ''
+    CXXFLAGS: ''
+```
+
+Template variables:
+
+```python
+{
+    "sysconfig_platlib": "/usr/local/lib64/python3.12/site-packages",
+    "sysconfig_purelib": "/usr/local/lib/python3.12/site-packages",
+    "implementation_name": "cpython",
+    "implementation_version": "3.12.5",
+    "os_name": "posix",
+    "platform_machine": "x86_64",
+    "platform_release": "6.3.12-100.fc37.x86_64",
+    "platform_system": "Linux",
+    "platform_version": "#1 SMP PREEMPT_DYNAMIC Wed Jul  5 20:09:58 UTC 2023",
+    "python_full_version": "3.12.5",
+    "platform_python_implementation": "CPython",
+    "python_version": "3.12",
+    "sys_platform": "linux",
+    "CFLAGS": "",
+    "CPPLAGS": "",
+}
 ```
 
 ## Patching source

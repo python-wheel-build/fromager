@@ -32,6 +32,7 @@ variants:
         env:
             EGG: "spam ${EGG}"
             EGG_AGAIN: "$EGG"
+            EGG_ARCH: "${EGG} ${platform_machine}"
         wheel_server_url: https://wheel.test/simple
     rocm:
         env:

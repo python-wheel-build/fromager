@@ -2,6 +2,7 @@ import logging
 import os
 import pathlib
 import string
+import sysconfig
 import types
 import typing
 from collections.abc import Mapping
@@ -9,6 +10,7 @@ from collections.abc import Mapping
 import psutil
 import pydantic
 import yaml
+from packaging import markers
 from packaging.requirements import Requirement
 from packaging.utils import BuildTag, NormalizedName, canonicalize_name
 from packaging.version import Version
@@ -440,9 +442,7 @@ class PackageBuildInfo:
     """
 
     def __init__(self, settings: "Settings", ps: PackageSettings) -> None:
-        self._variant = typing.cast(Variant, settings.variant)
-        self._patches_dir = settings.patches_dir
-        self._variant_changelog = settings.variant_changelog()
+        self._settings = settings
         self._max_jobs: int | None = settings.max_jobs
         self._ps = ps
         self._plugin_module: types.ModuleType | None | typing.Literal[False] = False
@@ -456,7 +456,7 @@ class PackageBuildInfo:
     @property
     def variant(self) -> Variant:
         """Variant name"""
-        return self._variant
+        return typing.cast(Variant, self._settings.variant)
 
     @property
     def plugin(self) -> types.ModuleType | None:
@@ -476,7 +476,7 @@ class PackageBuildInfo:
             patches: PatchMap = {}
             pattern = f"{self.override_module_name}-*"
             prefix_len = len(pattern) - 1
-            for patchdir in self._patches_dir.glob(pattern):
+            for patchdir in self._settings.patches_dir.glob(pattern):
                 version = Version(patchdir.name[prefix_len:])
                 patches[version] = sorted(patchdir.glob("*.patch"))
             self._patches = patches
@@ -578,7 +578,7 @@ class PackageBuildInfo:
         """Build tag for version's changelog and this variant"""
         pv = typing.cast(PackageVersion, version)
         release = len(self._ps.changelog.get(pv, []))
-        release += len(self._variant_changelog)
+        release += len(self._settings.variant_changelog())
         if release == 0:
             return ()
         # suffix = "." + self.variant.replace("-", "_")
@@ -598,12 +598,11 @@ class PackageBuildInfo:
         3. package's env settings
         4. package variant's env settings
 
-        `template_env` defaults to `os.environ`.
+        `template_env` defaults to `os.environ`. The template envs are
+        extended with `template_env` settings from global settings and
+        Python default env markers.
         """
-        if template_env is None:
-            template_env = os.environ.copy()
-        else:
-            template_env = template_env.copy()
+        template_env = self._settings.template_env(template_env)
 
         # configure max jobs settings, settings depend on package, available
         # CPU cores, and available virtual memory.
@@ -692,6 +691,12 @@ class SettingsFile(pydantic.BaseModel):
 
     changelog: GlobalChangelog = Field(default_factory=dict)
     """Changelog entries"""
+
+    template_env: EnvVars = Field(default_factory=dict)
+    """Template defaults for env vars
+
+    Template envs are not added to environment variables.
+    """
 
     @classmethod
     def from_string(
@@ -814,6 +819,26 @@ class Settings:
         """Change max jobs (for testing)"""
         self._pbi_cache.clear()
         self._max_jobs = jobs
+
+    def template_env(self, template_env: EnvVars | None = None) -> EnvVars:
+        if template_env is None:
+            template_env = os.environ.copy()
+        else:
+            template_env = template_env.copy()
+
+        # Python site-packages directories (pure and platform)
+        update_env = {
+            "sysconfig_platlib": sysconfig.get_path("platlib"),
+            "sysconfig_purelib": sysconfig.get_path("purelib"),
+        }
+        # default environment markers like `platform_machine`
+        update_env.update(typing.cast(EnvVars, markers.default_environment()))
+        update_env.update(self._settings.template_env)
+        # don't override existing keys
+        for key, value in update_env.items():
+            template_env.setdefault(key, value)
+
+        return template_env
 
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""
