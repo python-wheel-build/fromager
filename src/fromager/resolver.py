@@ -12,7 +12,6 @@ from operator import attrgetter
 from platform import python_version
 from urllib.parse import urljoin, urlparse
 
-import github
 import html5lib
 import resolvelib
 from packaging.requirements import Requirement
@@ -412,21 +411,20 @@ class GenericProvider(BaseProvider):
 
 
 class GitHubTagProvider(GenericProvider):
-    """Lookup package and versions from a GitHub repository tags
+    """Lookup tarball and version from GitHub git tags
 
-    Supports :envvar:`GITHUB_TOKEN` for authentication.
+    Assumes that upstream uses version tags `1.2.3` or `v1.2.3`.
     """
+
+    host = "github.com:443"
+    api_url = "https://api.{self.host}/repos/{self.organization}/{self.repo}/tags"
 
     def __init__(
         self, organization: str, repo: str, constraints: Constraints | None = None
     ):
+        super().__init__(version_source=self._find_tags, constraints=constraints)
         self.organization = organization
         self.repo = repo
-        token = os.getenv("GITHUB_TOKEN")
-        auth = github.Auth.Token(token) if token else None
-        self.client = github.Github(auth=auth)
-        self.constraints = constraints or Constraints({})
-        super().__init__(version_source=self._find_tags, constraints=constraints)
 
     def _find_tags(
         self,
@@ -434,14 +432,21 @@ class GitHubTagProvider(GenericProvider):
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
     ) -> typing.Iterable[tuple[str, Version]]:
-        repo = self.client.get_repo(f"{self.organization}/{self.repo}")
+        headers = {"accept": "application/vnd.github+json"}
+        nexturl = self.api_url.format(self=self)
+        while nexturl:
+            resp = session.get(nexturl, headers=headers)
+            resp.raise_for_status()
+            for entry in resp.json():
+                name = entry["name"]
+                try:
+                    version = Version(name)
+                except Exception as err:
+                    logger.debug(
+                        f"{identifier}: could not parse version from {name}: {err}"
+                    )
+                    continue
 
-        for tag in repo.get_tags():
-            try:
-                version = Version(tag.name)
-            except Exception as err:
-                logger.debug(
-                    f"{identifier}: could not parse version from git tag {tag.name} on {repo.full_name}: {err}"
-                )
-                continue
-            yield (tag.tarball_url, version)
+                yield entry["tarball_url"], version
+            # pagination links
+            nexturl = resp.links.get("next", {}).get("url")
