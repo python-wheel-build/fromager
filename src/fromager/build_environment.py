@@ -53,7 +53,10 @@ class MissingDependency(Exception):  # noqa: N818
         for r in all_reqs:
             try:
                 _, version = resolver.resolve(
-                    ctx=ctx, req=r, sdist_server_url=resolver.PYPI_SERVER_URL
+                    ctx=ctx,
+                    req=r,
+                    sdist_server_url=resolver.PYPI_SERVER_URL,
+                    req_type=req_type,
                 )
             except Exception as err:
                 resolutions.append(f"{r} -> {err}")

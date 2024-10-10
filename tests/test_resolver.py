@@ -1,9 +1,12 @@
+import collections
+
 import pytest
 import requests_mock
 import resolvelib
 from packaging.requirements import Requirement
 
 from fromager import constraints, resolver
+from fromager.requirements_file import RequirementType
 
 _hydra_core_simple_response = """
 <!DOCTYPE html>
@@ -31,6 +34,13 @@ _hydra_core_simple_response = """
 """
 
 
+@pytest.fixture(autouse=True)
+def reset_cache():
+    resolver.PyPIProvider.pypi_resolver_cache = collections.defaultdict(list)
+    resolver.GenericProvider.generic_resolver_cache = collections.defaultdict(list)
+    resolver.GitHubTagProvider.github_resolver_cache = collections.defaultdict(list)
+
+
 def test_provider_choose_wheel():
     with requests_mock.Mocker() as r:
         r.get(
@@ -50,6 +60,74 @@ def test_provider_choose_wheel():
             candidate.url
             == "https://files.pythonhosted.org/packages/c6/50/e0edd38dcd63fb26a8547f13d28f7a008bc4a3fd4eb4ff030673f22ad41a/hydra_core-1.3.2-2-py3-none-any.whl#sha256=fa0238a9e31df3373b35b0bfb672c34cc92718d21f81311d8996a16de1141d8b"
         )
+        assert str(candidate.version) == "1.3.2"
+
+
+def test_provider_cache():
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        # fill the cache
+        provider = resolver.PyPIProvider(include_sdists=False)
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+        result = rslvr.resolve([Requirement("hydra-core<1.3")])
+        candidate = result.mapping["hydra-core"]
+        assert str(candidate.version) == "1.2.2"
+        assert "hydra-core" in resolver.PyPIProvider.pypi_resolver_cache
+        assert len(resolver.PyPIProvider.pypi_resolver_cache["hydra-core"]) == 1
+
+        # store a copy of the cache
+        cache_copy = {
+            "hydra-core": resolver.PyPIProvider.pypi_resolver_cache["hydra-core"][:]
+        }
+
+        # resolve for build requirement should end up with the already seen older version
+        provider = resolver.PyPIProvider(
+            include_sdists=False, req_type=RequirementType.BUILD_SDIST
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
+        candidate = result.mapping["hydra-core"]
+        assert str(candidate.version) == "1.2.2"
+        assert "hydra-core" in resolver.PyPIProvider.pypi_resolver_cache
+        assert len(resolver.PyPIProvider.pypi_resolver_cache["hydra-core"]) == 1
+
+        # resolve for install requirement should ignore the already seen older version
+        provider = resolver.PyPIProvider(
+            include_sdists=False, req_type=RequirementType.INSTALL
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
+        candidate = result.mapping["hydra-core"]
+        assert str(candidate.version) == "1.3.2"
+
+        # have to restore the cache so that 1.3.2 doesn't get picked up from there
+        resolver.PyPIProvider.pypi_resolver_cache = cache_copy
+
+        # double check that the restoration worked
+        provider = resolver.PyPIProvider(
+            include_sdists=False, req_type=RequirementType.BUILD_SDIST
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
+        candidate = result.mapping["hydra-core"]
+        assert str(candidate.version) == "1.2.2"
+
+        # if resolving for build but with different conditions, don't use cache
+        provider = resolver.PyPIProvider(
+            include_wheels=False, req_type=RequirementType.BUILD_SDIST
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
+        candidate = result.mapping["hydra-core"]
         assert str(candidate.version) == "1.3.2"
 
 

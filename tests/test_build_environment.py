@@ -18,7 +18,7 @@ def test_missing_dependency_format(
         "flit_core": "3.9.0",
         "setuptools": "69.5.1",
     }
-    resolve_dist.side_effect = lambda ctx, req, sdist_server_url: (
+    resolve_dist.side_effect = lambda ctx, req, sdist_server_url, req_type: (
         "",
         Version(resolutions[req.name]),
     )

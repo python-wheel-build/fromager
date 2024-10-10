@@ -333,7 +333,10 @@ class Bootstrapper:
             )
         else:
             source_url, resolved_version = sources.resolve_source(
-                ctx=self.ctx, req=req, sdist_server_url=resolver.PYPI_SERVER_URL
+                ctx=self.ctx,
+                req=req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
+                req_type=req_type,
             )
         return (source_url, resolved_version)
 
@@ -356,7 +359,7 @@ class Bootstrapper:
         else:
             servers = wheels.get_wheel_server_urls(self.ctx, req)
             wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
-                ctx=self.ctx, req=req, wheel_server_urls=servers
+                ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
             )
         return (wheel_url, resolved_version)
 
@@ -445,6 +448,7 @@ class Bootstrapper:
         if not version_source:
             return None
         try:
+            # no need to pass req type to enable caching since we are already using the graph as our cache
             provider = resolver.GenericProvider(
                 version_source=lambda x, y, z: version_source,
                 constraints=self.ctx.constraints,
