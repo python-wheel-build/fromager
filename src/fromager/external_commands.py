@@ -9,9 +9,12 @@ from io import TextIOWrapper
 
 logger = logging.getLogger(__name__)
 
-NETWORK_ISOLATION: list[str] | None
+NETWORK_ISOLATION: list[list[str]] | None
 if sys.platform == "linux":
-    NETWORK_ISOLATION = ["unshare", "--net", "--map-current-user"]
+    NETWORK_ISOLATION = [
+        ["bwrap", "--unshare-network", "--dev-bind", "/", "/", "--"],
+        ["unshare", "--net", "--map-current-user"],
+    ]
 else:
     NETWORK_ISOLATION = None
 
@@ -22,11 +25,11 @@ def network_isolation_cmd() -> typing.Sequence[str]:
     Raises ValueError when network isolation is not supported
     Returns: command list to run a process with network isolation
     """
-    if sys.platform == "linux":
-        unshare = shutil.which("unshare")
-        if unshare is not None:
-            return [unshare, "--net", "--map-current-user"]
-        raise ValueError("Linux system without 'unshare' command")
+    if NETWORK_ISOLATION is not None:
+        for cmd in NETWORK_ISOLATION:
+            if shutil.which(cmd[0]):
+                return cmd
+        raise ValueError("Linux system without network isolation support")
     raise ValueError(f"unsupported platform {sys.platform}")
 
 

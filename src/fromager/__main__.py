@@ -124,7 +124,7 @@ else:
 @click.option(
     "--network-isolation/--no-network-isolation",
     default=SUPPORTS_NETWORK_ISOLATION,
-    help="Build sdist and wheen with network isolation (unshare -cn)",
+    help="Build sdist and wheen with network isolation (bwrap, unshare -nr)",
     show_default=True,
 )
 @click.pass_context
