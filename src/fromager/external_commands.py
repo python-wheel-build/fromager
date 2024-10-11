@@ -1,45 +1,32 @@
 import logging
 import os
 import shlex
-import shutil
 import subprocess
 import sys
 import typing
 from io import TextIOWrapper
 
-logger = logging.getLogger(__name__)
-
-NETWORK_ISOLATION: list[str] | None
+unshare_network: typing.Callable[[], None] | None
 if sys.platform == "linux":
-    NETWORK_ISOLATION = ["unshare", "--net", "--map-current-user"]
+    from ._unshare_linux import unshare_network
 else:
-    NETWORK_ISOLATION = None
+    unshare_network = None
 
-
-def network_isolation_cmd() -> typing.Sequence[str]:
-    """Detect network isolation wrapper
-
-    Raises ValueError when network isolation is not supported
-    Returns: command list to run a process with network isolation
-    """
-    if sys.platform == "linux":
-        unshare = shutil.which("unshare")
-        if unshare is not None:
-            return [unshare, "--net", "--map-current-user"]
-        raise ValueError("Linux system without 'unshare' command")
-    raise ValueError(f"unsupported platform {sys.platform}")
+logger = logging.getLogger(__name__)
 
 
 def detect_network_isolation() -> None:
     """Detect if network isolation is available and working
 
-    unshare needs 'unshare' and 'clone' syscall. Docker's seccomp policy
-    blocks these syscalls. Podman's policy allows them.
+    unshare syscall needs 'unshare' and 'clone' syscall. Docker's seccomp
+    policy blocks these syscalls. Podman's policy allows them.
     """
-    cmd = network_isolation_cmd()
-    if os.name == "posix":
-        check = [*cmd, "true"]
-        subprocess.check_call(check, stderr=subprocess.STDOUT)
+    if unshare_network is not None:
+        subprocess.check_call(
+            ["true"], stderr=subprocess.STDOUT, preexec_fn=unshare_network
+        )
+    else:
+        raise ValueError(f"unsupported platform {sys.platform}")
 
 
 class NetworkIsolationError(subprocess.CalledProcessError):
@@ -62,13 +49,15 @@ def run(
     env = os.environ.copy()
     env.update(extra_environ)
 
+    preexec_fn: typing.Callable[[], None] | None
     if network_isolation:
-        # prevent network access by creating a new network namespace that
-        # has no routing configured.
-        cmd = [
-            *network_isolation_cmd(),
-            *cmd,
-        ]
+        if unshare_network is None:
+            raise ValueError(
+                "network isolation requested but 'unshare_network' is not available"
+            )
+        preexec_fn = unshare_network
+    else:
+        preexec_fn = None
 
     logger.debug(
         "running: %s %s in %s",
@@ -85,6 +74,7 @@ def run(
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 stdin=stdin,
+                preexec_fn=preexec_fn,
             )
         with open(log_filename, "r", encoding="utf-8") as f:
             output = f.read()
@@ -96,6 +86,7 @@ def run(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             stdin=stdin,
+            preexec_fn=preexec_fn,
         )
         output = completed.stdout.decode("utf-8") if completed.stdout else ""
     if completed.returncode != 0:
@@ -108,6 +99,7 @@ def run(
             for substr in [
                 "network unreachable",
                 "Network is unreachable",
+                "connection refused",  # DNS server 127.0.0.53:53 unreachable
             ]:
                 if substr in output:
                     err_type = NetworkIsolationError

@@ -29,14 +29,20 @@ def test_external_commands_log_file(tmp_path):
     assert "test\n" == file_contents
 
 
+try:
+    external_commands.detect_network_isolation()
+except Exception:
+    SUPPORTS_NETWORK_ISOLATION: bool = False
+else:
+    SUPPORTS_NETWORK_ISOLATION = True
+
+
 @mock.patch("subprocess.run", return_value=mock.Mock(returncode=0))
-@mock.patch(
-    "fromager.external_commands.network_isolation_cmd",
-    return_value=["/bin/unshare", "--net", "--map-current-user"],
-)
 @mock.patch.dict(os.environ)
+@pytest.mark.skipif(
+    not SUPPORTS_NETWORK_ISOLATION, reason="network isolation is not supported"
+)
 def test_external_commands_network_isolation(
-    m_network_isolation_cmd: mock.Mock,
     m_run: mock.Mock,
 ):
     os.environ.clear()
@@ -45,12 +51,8 @@ def test_external_commands_network_isolation(
         extra_environ={},
         network_isolation=True,
     )
-    m_network_isolation_cmd.assert_called()
     m_run.assert_called_with(
         [
-            "/bin/unshare",
-            "--net",
-            "--map-current-user",
             "host",
             "github.com",
         ],
@@ -59,15 +61,8 @@ def test_external_commands_network_isolation(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         stdin=None,
+        preexec_fn=external_commands.unshare_network,
     )
-
-
-try:
-    external_commands.detect_network_isolation()
-except Exception:
-    SUPPORTS_NETWORK_ISOLATION: bool = False
-else:
-    SUPPORTS_NETWORK_ISOLATION = True
 
 
 @pytest.mark.skipif(
