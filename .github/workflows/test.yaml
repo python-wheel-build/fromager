@@ -75,6 +75,7 @@ jobs:
           - bootstrap_extras
           - bootstrap_build_tags
           - bootstrap_prerelease
+          - bootstrap_constraints
           - build
           - build_order
           - build_steps
