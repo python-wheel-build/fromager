@@ -25,6 +25,7 @@ from . import (
     vendor_rust,
 )
 from .request_session import session
+from .requirements_file import RequirementType
 
 if typing.TYPE_CHECKING:
     from . import build_environment, context
@@ -75,6 +76,7 @@ def resolve_source(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
+    req_type: RequirementType | None = None,
 ) -> tuple[str, Version]:
     "Return URL to source and its version."
     constraint = ctx.constraints.get_constraint(req.name)
@@ -90,6 +92,7 @@ def resolve_source(
             ctx=ctx,
             req=req,
             sdist_server_url=sdist_server_url,
+            req_type=req_type,
         )
     except (
         resolvelib.InconsistentCandidate,
@@ -113,7 +116,10 @@ def resolve_source(
 
 
 def default_resolve_source(
-    ctx: context.WorkContext, req: Requirement, sdist_server_url: str
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    req_type: RequirementType | None = None,
 ) -> tuple[str, Version]:
     "Return URL to source and its version."
 
@@ -126,6 +132,7 @@ def default_resolve_source(
         sdist_server_url=override_sdist_server_url,
         include_sdists=pbi.resolver_include_sdists,
         include_wheels=pbi.resolver_include_wheels,
+        req_type=req_type,
     )
     return url, version
 

@@ -369,6 +369,7 @@ def _resolve_from_version_source(
     if not version_source:
         return None
     try:
+        # no need to pass req type to enable caching since we are already using the graph as our cache
         provider = resolver.GenericProvider(
             version_source=lambda x, y, z: version_source, constraints=ctx.constraints
         )
@@ -402,7 +403,10 @@ def _resolve_source_with_history(
         )
     else:
         source_url, resolved_version = sources.resolve_source(
-            ctx=ctx, req=req, sdist_server_url=resolver.PYPI_SERVER_URL
+            ctx=ctx,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+            req_type=req_type,
         )
     return (source_url, resolved_version)
 
@@ -431,7 +435,7 @@ def _resolve_prebuilt_with_history(
     else:
         servers = wheels.get_wheel_server_urls(ctx, req)
         wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
-            ctx=ctx, req=req, wheel_server_urls=servers
+            ctx=ctx, req=req, wheel_server_urls=servers, req_type=req_type
         )
     return (wheel_url, resolved_version)
 

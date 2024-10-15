@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import typing
+from collections import defaultdict
 from operator import attrgetter
 from platform import python_version
 from urllib.parse import urljoin, urlparse
@@ -31,6 +32,7 @@ from .candidate import Candidate
 from .constraints import Constraints
 from .extras_provider import ExtrasProvider
 from .request_session import session
+from .requirements_file import RequirementType
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -51,6 +53,7 @@ def resolve(
     sdist_server_url: str,
     include_sdists: bool = True,
     include_wheels: bool = True,
+    req_type: RequirementType | None = None,
 ) -> tuple[str, Version]:
     # Create the (reusable) resolver.
     provider = overrides.find_and_invoke(
@@ -62,6 +65,7 @@ def resolve(
         include_sdists=include_sdists,
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
+        req_type=req_type,
     )
     return resolve_from_provider(provider, req)
 
@@ -72,6 +76,7 @@ def default_resolver_provider(
     sdist_server_url: str,
     include_sdists: bool,
     include_wheels: bool,
+    req_type: RequirementType | None = None,
 ) -> PyPIProvider | GenericProvider | GitHubTagProvider:
     """Lookup resolver provider to resolve package versions"""
     return PyPIProvider(
@@ -79,6 +84,7 @@ def default_resolver_provider(
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
         constraints=ctx.constraints,
+        req_type=req_type,
     )
 
 
@@ -200,12 +206,14 @@ class BaseProvider(ExtrasProvider):
         include_wheels: bool = True,
         sdist_server_url: str = "https://pypi.org/simple/",
         constraints: Constraints | None = None,
+        req_type: RequirementType | None = None,
     ):
         super().__init__()
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
         self.constraints = constraints or Constraints({})
+        self.req_type = req_type
 
     def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
@@ -221,6 +229,72 @@ class BaseProvider(ExtrasProvider):
 
     def get_base_requirement(self, candidate: Candidate) -> Requirement:
         return Requirement(f"{candidate.name}=={candidate.version}")
+
+    def validate_candidate(
+        self,
+        identifier: str,
+        requirements: RequirementsMap,
+        incompatibilities: CandidatesMap,
+        candidate: Candidate,
+    ) -> bool:
+        identifier_reqs = list(requirements[identifier])
+        bad_versions = {c.version for c in incompatibilities[identifier]}
+        allow_prerelease = self.constraints.allow_prerelease(identifier)
+
+        # Skip versions that are known bad
+        if candidate.version in bad_versions:
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    f"{identifier}: skipping bad version {candidate.version} from {bad_versions}"
+                )
+            return False
+        # Skip versions that do not match the requirement. Allow prereleases only if constraints allow prereleases
+        if not all(
+            r.specifier.contains(
+                candidate.version,
+                prereleases=(allow_prerelease or bool(r.specifier.prereleases)),
+            )
+            for r in identifier_reqs
+        ):
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    f"{identifier}: skipping {candidate.version} because it does not match {identifier_reqs}"
+                )
+            return False
+        # Skip versions that do not match the constraint
+        if not self.constraints.is_satisfied_by(identifier, candidate.version):
+            if DEBUG_RESOLVER:
+                c = self.constraints.get_constraint(identifier)
+                logger.debug(
+                    f"{identifier}: skipping {candidate.version} due to constraint {c}"
+                )
+            return False
+        return True
+
+    def get_cache(self) -> dict[str, list[Candidate]]:
+        raise NotImplementedError()
+
+    def get_from_cache(
+        self,
+        identifier: str,
+        requirements: RequirementsMap,
+        incompatibilities: CandidatesMap,
+    ) -> list[Candidate]:
+        cache = self.get_cache()
+        # we only want caching for build reqs because for install time reqs we always want to get the latest version
+        # we can't guarantee that the latest version is available in the cache so install time reqs cannot use the cache
+        if self.req_type != RequirementType.BUILD:
+            return []
+        return [
+            c
+            for c in cache[identifier]
+            if self.validate_candidate(identifier, requirements, incompatibilities, c)
+        ]
+
+    def add_to_cache(self, identifier: str, candidates: list[Candidate]) -> None:
+        # we can add candidates to cache even for install type reqs because build time reqs are
+        # allowed to use candidates seen when we were resolving the same req as an install type
+        self.get_cache()[identifier].extend(candidates)
 
     def get_preference(
         self,
@@ -262,18 +336,53 @@ class BaseProvider(ExtrasProvider):
 class PyPIProvider(BaseProvider):
     """Lookup package and versions from a simple Python index (PyPI)"""
 
+    pypi_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(list)
+
     def __init__(
         self,
         include_sdists: bool = True,
         include_wheels: bool = True,
         sdist_server_url: str = "https://pypi.org/simple/",
         constraints: Constraints | None = None,
+        req_type: RequirementType | None = None,
     ):
-        super().__init__()
-        self.include_sdists = include_sdists
-        self.include_wheels = include_wheels
-        self.sdist_server_url = sdist_server_url
-        self.constraints = constraints or Constraints({})
+        super().__init__(
+            include_sdists=include_sdists,
+            include_wheels=include_wheels,
+            sdist_server_url=sdist_server_url,
+            constraints=constraints,
+            req_type=req_type,
+        )
+
+    def get_cache(self) -> dict[str, list[Candidate]]:
+        return PyPIProvider.pypi_resolver_cache
+
+    def validate_candidate(
+        self,
+        identifier: str,
+        requirements: RequirementsMap,
+        incompatibilities: CandidatesMap,
+        candidate: Candidate,
+    ) -> bool:
+        if not super().validate_candidate(
+            identifier, requirements, incompatibilities, candidate
+        ):
+            return False
+        # Only include sdists if we're asked to
+        if candidate.is_sdist and not self.include_sdists:
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    f"{identifier}: skipping {candidate} because it is an sdist"
+                )
+            return False
+        # Only include wheels if we're asked to
+        if not candidate.is_sdist and not self.include_wheels:
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    f"{identifier}: skipping {candidate} because it is a wheel"
+                )
+            return False
+        return True
 
     def find_matches(
         self,
@@ -281,74 +390,40 @@ class PyPIProvider(BaseProvider):
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
     ) -> typing.Iterable[Candidate]:
-        identifier_reqs = list(requirements[identifier])
-        bad_versions = {c.version for c in incompatibilities[identifier]}
-
-        # Need to pass the extras to the search, so they
-        # are added to the candidate at creation - we
-        # treat candidates as immutable once created.
-        candidates = []
-        for candidate in get_project_from_pypi(
-            identifier, set(), self.sdist_server_url
-        ):
-            allow_prerelease = self.constraints.allow_prerelease(identifier)
-            # Skip versions that are known bad
-            if candidate.version in bad_versions:
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{identifier}: skipping bad version {candidate.version} from {bad_versions}"
-                    )
-                continue
-            # Skip versions that do not match the requirement. Allow prereleases only if constraints allow prereleases
-            if not all(
-                r.specifier.contains(
-                    candidate.version,
-                    prereleases=(allow_prerelease or bool(r.specifier.prereleases)),
-                )
-                for r in identifier_reqs
+        candidates = self.get_from_cache(identifier, requirements, incompatibilities)
+        if not candidates:
+            # Need to pass the extras to the search, so they
+            # are added to the candidate at creation - we
+            # treat candidates as immutable once created.
+            for candidate in get_project_from_pypi(
+                identifier, set(), self.sdist_server_url
             ):
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{identifier}: skipping {candidate.version} because it does not match {identifier_reqs}"
-                    )
-                continue
-            # Skip versions that do not match the constraint
-            if not self.constraints.is_satisfied_by(identifier, candidate.version):
-                if DEBUG_RESOLVER:
-                    c = self.constraints.get_constraint(identifier)
-                    logger.debug(
-                        f"{identifier}: skipping {candidate.version} due to constraint {c}"
-                    )
-                continue
-            # Only include sdists if we're asked to
-            if candidate.is_sdist and not self.include_sdists:
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{identifier}: skipping {candidate} because it is an sdist"
-                    )
-                continue
-            # Only include wheels if we're asked to
-            if not candidate.is_sdist and not self.include_wheels:
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{identifier}: skipping {candidate} because it is a wheel"
-                    )
-                continue
-            candidates.append(candidate)
+                if self.validate_candidate(
+                    identifier, requirements, incompatibilities, candidate
+                ):
+                    candidates.append(candidate)
+            self.add_to_cache(identifier, candidates)
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
 
 class GenericProvider(BaseProvider):
     """Lookup package and version by using a callback"""
 
+    generic_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(
+        list
+    )
+
     def __init__(
         self,
         version_source: VersionSource,
         constraints: Constraints | None = None,
+        req_type: RequirementType | None = None,
     ):
-        super().__init__()
+        super().__init__(constraints=constraints, req_type=req_type)
         self._version_source = version_source
-        self.constraints = constraints or Constraints({})
+
+    def get_cache(self) -> dict[str, list[Candidate]]:
+        return GenericProvider.generic_resolver_cache
 
     def find_matches(
         self,
@@ -356,57 +431,32 @@ class GenericProvider(BaseProvider):
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
     ) -> typing.Iterable[Candidate]:
-        identifier_reqs = list(requirements[identifier])
-        bad_versions = {c.version for c in incompatibilities[identifier]}
+        candidates = self.get_from_cache(identifier, requirements, incompatibilities)
 
-        # Need to pass the extras to the search, so they
-        # are added to the candidate at creation - we
-        # treat candidates as immutable once created.
-        candidates = []
-        for url, item in self._version_source(
-            identifier, requirements, incompatibilities
-        ):
-            if isinstance(item, Version):
-                version = item
-            else:
-                try:
-                    version = Version(item)
-                except Exception as err:
-                    logger.debug(
-                        f"{identifier}: could not parse version from {item}: {err}"
-                    )
-                    continue
-            allow_prerelease = self.constraints.allow_prerelease(identifier)
-
-            # Skip versions that are known bad
-            if version in bad_versions:
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{identifier}: skipping bad version {version} from {bad_versions}"
-                    )
-                continue
-            # Skip versions that do not match the requirement
-            if not all(
-                r.specifier.contains(
-                    version,
-                    prereleases=(allow_prerelease or bool(r.specifier.prereleases)),
-                )
-                for r in identifier_reqs
+        if not candidates:
+            # Need to pass the extras to the search, so they
+            # are added to the candidate at creation - we
+            # treat candidates as immutable once created.
+            for url, item in self._version_source(
+                identifier, requirements, incompatibilities
             ):
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{identifier}: skipping {version} because it does not match {identifier_reqs}"
-                    )
-                continue
-            # Skip versions that do not match the constraint
-            if not self.constraints.is_satisfied_by(identifier, version):
-                if DEBUG_RESOLVER:
-                    c = self.constraints.get_constraint(identifier)
-                    logger.debug(
-                        f"{identifier}: skipping {version} due to constraint {c}"
-                    )
-                continue
-            candidates.append(Candidate(identifier, version, url=url))
+                if isinstance(item, Version):
+                    version = item
+                else:
+                    try:
+                        version = Version(item)
+                    except Exception as err:
+                        logger.debug(
+                            f"{identifier}: could not parse version from {item}: {err}"
+                        )
+                        continue
+                candidate = Candidate(identifier, version, url=url)
+                if self.validate_candidate(
+                    identifier, requirements, incompatibilities, candidate
+                ):
+                    candidates.append(candidate)
+                self.add_to_cache(identifier, candidates)
+
         return sorted(candidates, key=attrgetter("version"), reverse=True)
 
 
@@ -418,6 +468,9 @@ class GitHubTagProvider(GenericProvider):
 
     host = "github.com:443"
     api_url = "https://api.{self.host}/repos/{self.organization}/{self.repo}/tags"
+    github_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(
+        list
+    )
 
     def __init__(
         self, organization: str, repo: str, constraints: Constraints | None = None
@@ -425,6 +478,9 @@ class GitHubTagProvider(GenericProvider):
         super().__init__(version_source=self._find_tags, constraints=constraints)
         self.organization = organization
         self.repo = repo
+
+    def get_cache(self) -> dict[str, list[Candidate]]:
+        return GitHubTagProvider.github_resolver_cache
 
     def _find_tags(
         self,

@@ -19,12 +19,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
-from . import (
-    external_commands,
-    overrides,
-    resolver,
-    sources,
-)
+from . import external_commands, overrides, requirements_file, resolver, sources
 
 if typing.TYPE_CHECKING:
     from . import build_environment, context
@@ -385,6 +380,7 @@ def resolve_prebuilt_wheel(
     ctx: context.WorkContext,
     req: Requirement,
     wheel_server_urls: list[str],
+    req_type: requirements_file.RequirementType | None = None,
 ) -> tuple[str, Version]:
     "Return URL to wheel and its version."
     for url in wheel_server_urls:
@@ -395,6 +391,7 @@ def resolve_prebuilt_wheel(
                 sdist_server_url=url,
                 include_sdists=False,
                 include_wheels=True,
+                req_type=req_type,
             )
         except Exception:
             continue
