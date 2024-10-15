@@ -9,6 +9,7 @@ from .. import (
     clickext,
     context,
     dependency_graph,
+    metrics,
     progress,
     requirements_file,
     resolver,
@@ -161,6 +162,8 @@ def bootstrap(
             raise ValueError(
                 f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
             )
+
+    metrics.summarize(wkctx, "Bootstrapping")
 
 
 def write_constraints_file(
