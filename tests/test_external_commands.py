@@ -62,16 +62,19 @@ def test_external_commands_network_isolation(
     )
 
 
+NETWORK_ISOLATION_ERROR: Exception | None = None
 try:
     external_commands.detect_network_isolation()
-except Exception:
+except Exception as err:
+    NETWORK_ISOLATION_ERROR = err
     SUPPORTS_NETWORK_ISOLATION: bool = False
 else:
     SUPPORTS_NETWORK_ISOLATION = True
 
 
 @pytest.mark.skipif(
-    not SUPPORTS_NETWORK_ISOLATION, reason="network isolation is not supported"
+    not SUPPORTS_NETWORK_ISOLATION,
+    reason=f"network isolation is not supported: {NETWORK_ISOLATION_ERROR}",
 )
 def test_external_commands_network_isolation_real():
     with pytest.raises(external_commands.NetworkIsolationError) as e:

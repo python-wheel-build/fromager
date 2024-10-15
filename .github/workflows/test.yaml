@@ -38,6 +38,14 @@ jobs:
           default: true
           override: true
 
+      - name: Disable AppArmor restriction for unprivileged user namespaces
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Check unshare is working
+        if: matrix.os == 'ubuntu-latest'
+        run: unshare -rn echo "unshare works"
+
       - name: Install dependencies
         run: python -m pip install tox
 
@@ -115,6 +123,14 @@ jobs:
           toolchain: ${{ matrix.rust-version }}
           default: true
           override: true
+
+      - name: Disable AppArmor restriction for unprivileged user namespaces
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Check unshare is working
+        if: matrix.os == 'ubuntu-latest'
+        run: unshare -rn echo "unshare works"
 
       - name: Install dependencies
         run: python -m pip install tox

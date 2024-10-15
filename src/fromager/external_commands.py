@@ -1,7 +1,7 @@
 import logging
 import os
+import pathlib
 import shlex
-import shutil
 import subprocess
 import sys
 import typing
@@ -9,9 +9,12 @@ from io import TextIOWrapper
 
 logger = logging.getLogger(__name__)
 
+HERE = pathlib.Path(__file__).absolute().parent
+
 NETWORK_ISOLATION: list[str] | None
 if sys.platform == "linux":
-    NETWORK_ISOLATION = ["unshare", "--net", "--map-current-user"]
+    # runner script with `unshare -rn` + `ip link set lo up`
+    NETWORK_ISOLATION = [str(HERE / "run_network_isolation.sh")]
 else:
     NETWORK_ISOLATION = None
 
@@ -22,11 +25,8 @@ def network_isolation_cmd() -> typing.Sequence[str]:
     Raises ValueError when network isolation is not supported
     Returns: command list to run a process with network isolation
     """
-    if sys.platform == "linux":
-        unshare = shutil.which("unshare")
-        if unshare is not None:
-            return [unshare, "--net", "--map-current-user"]
-        raise ValueError("Linux system without 'unshare' command")
+    if NETWORK_ISOLATION:
+        return NETWORK_ISOLATION
     raise ValueError(f"unsupported platform {sys.platform}")
 
 
@@ -106,6 +106,7 @@ def run(
             # isolation problem and change the exception type to make it easier
             # for the caller to recognize that case.
             for substr in [
+                "connection refused",
                 "network unreachable",
                 "Network is unreachable",
             ]:
