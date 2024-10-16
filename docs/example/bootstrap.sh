@@ -23,7 +23,7 @@ VARIANT="cpu-ubi9"
 # Create the output directory so we can mount it when we run the
 # container.
 OUTDIR=bootstrap-output
-CCACHE_DIR=bootstrap-ccache
+CCACHE_DIR=.bootstrap-ccache
 mkdir -p "$OUTDIR" "$CCACHE_DIR"
 
 # Build the builder image
