@@ -1,4 +1,6 @@
 import pathlib
+import platform
+import sys
 import typing
 from unittest.mock import Mock, patch
 
@@ -55,7 +57,11 @@ FULL_EXPECTED: dict[str, typing.Any] = {
     },
     "variants": {
         "cpu": {
-            "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
+            "env": {
+                "EGG": "spam ${EGG}",
+                "EGG_AGAIN": "$EGG",
+                "EGG_ARCH": "${EGG} ${platform_machine}",
+            },
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
         },
@@ -149,6 +155,7 @@ def test_pbi_test_pkg_extra_environ(
             "EGG_AGAIN": "spam spam",
             "QUOTES": "A\"BC'$EGG",  # $$EGG is transformed into $EGG
             "SPAM": "alot extra",
+            "EGG_ARCH": f"spam spam {platform.machine()}",
         }
         | parallel
     )
@@ -314,7 +321,7 @@ def test_type_builddirectory():
         ta.validate_python("/absolute/path")
 
 
-def test_global_settings(testdata_path: pathlib.Path):
+def test_global_settings(testdata_path: pathlib.Path) -> None:
     filename = testdata_path / "context/overrides/settings.yaml"
     gs = SettingsFile.from_file(filename)
     assert gs.changelog == {
@@ -322,6 +329,15 @@ def test_global_settings(testdata_path: pathlib.Path):
             "setuptools upgraded to 82.0.0",
         ],
     }
+    assert gs.template_env == {"CFLAGS": "", "CPPFLAGS": ""}
+
+
+def test_global_settings_template_env(testdata_context: context.WorkContext) -> None:
+    template_env = testdata_context.settings.template_env({"CFLAGS": "-g"})
+    assert template_env["CFLAGS"] == "-g"
+    assert template_env["CPPFLAGS"] == ""
+    assert template_env["platform_machine"] == platform.machine()
+    assert template_env["sys_platform"] == sys.platform
 
 
 def test_settings_overrides(testdata_context: context.WorkContext) -> None:
