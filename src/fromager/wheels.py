@@ -242,7 +242,7 @@ def build_wheel(
     sdist_root_dir: pathlib.Path,
     version: Version,
     build_env: build_environment.BuildEnvironment,
-) -> pathlib.Path | None:
+) -> pathlib.Path:
     pbi = ctx.package_build_info(req)
     logger.info(
         f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"

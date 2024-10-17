@@ -30,6 +30,12 @@ class RequirementType(StrEnum):
         return super.__eq__(self, other)
 
 
+class SourceType(StrEnum):
+    PREBUILT = "prebuilt"
+    SDIST = "sdist"
+    OVERRIDE = "override"
+
+
 def parse_requirements_file(
     req_file: pathlib.Path,
 ) -> typing.Iterable[str]:
