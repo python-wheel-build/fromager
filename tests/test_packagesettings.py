@@ -15,6 +15,7 @@ from fromager.packagesettings import (
     PackageSettings,
     SettingsFile,
     Variant,
+    substitute_template,
 )
 
 TEST_PKG = "test-pkg"
@@ -41,6 +42,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "EGG_AGAIN": "$EGG",
         "SPAM": "alot $EXTRA",
         "QUOTES": "A\"BC'$$EGG",
+        "DEF": "${DEF:-default}",
     },
     "name": "test-pkg",
     "has_config": True,
@@ -149,6 +151,18 @@ def test_pbi_test_pkg_extra_environ(
             "EGG_AGAIN": "spam spam",
             "QUOTES": "A\"BC'$EGG",  # $$EGG is transformed into $EGG
             "SPAM": "alot extra",
+            "DEF": "default",
+        }
+        | parallel
+    )
+    assert (
+        pbi.get_extra_environ(template_env={"EXTRA": "extra", "DEF": "nondefault"})
+        == {
+            "EGG": "spam spam",
+            "EGG_AGAIN": "spam spam",
+            "QUOTES": "A\"BC'$EGG",  # $$EGG is transformed into $EGG
+            "SPAM": "alot extra",
+            "DEF": "nondefault",
         }
         | parallel
     )
@@ -162,6 +176,7 @@ def test_pbi_test_pkg_extra_environ(
             "EGG_AGAIN": "spam",
             "QUOTES": "A\"BC'$EGG",
             "SPAM": "",
+            "DEF": "default",
         }
         | parallel
     )
@@ -175,6 +190,7 @@ def test_pbi_test_pkg_extra_environ(
             "EGG_AGAIN": "spam",
             "QUOTES": "A\"BC'$EGG",
             "SPAM": "alot spam",
+            "DEF": "default",
         }
         | parallel
     )
@@ -192,6 +208,7 @@ def test_pbi_test_pkg_extra_environ(
             "EGG_AGAIN": "spam",
             "QUOTES": "A\"BC'$EGG",
             "SPAM": "alot spam",
+            "DEF": "default",
             "PATH": f"{build_env.path / 'bin'}:/sbin:/bin",
             "VIRTUAL_ENV": str(build_env.path),
         }
@@ -404,3 +421,19 @@ def test_parallel_jobs(
     testdata_context.settings.max_jobs = 4
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
     assert pbi.parallel_jobs() == 4
+
+
+@pytest.mark.parametrize(
+    "value,template_env,expected",
+    [
+        ("", {}, ""),
+        ("${var}", {"var": "value"}, "value"),
+        ("$${var}", {"var": "value"}, "${var}"),
+        ("${var:-}", {}, ""),
+        ("${var:-default}", {}, "default"),
+        ("${var:-default}", {"var": "value"}, "value"),
+        ("$${var:-default}", {}, "${var:-default}"),
+    ],
+)
+def test_substitute_template(value: str, template_env: dict[str, str], expected: str):
+    assert substitute_template(value, template_env) == expected

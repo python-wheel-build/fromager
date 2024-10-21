@@ -137,16 +137,24 @@ Settings common to all variants of a given package can be placed in the the
 top-level `env` mapping. Variant env vars override global env vars.
 
 Environment files support simple parameter expansions `$NAME` and
-`${NAME}`. Values are taken from previous lines, then global env map, and
-finally process environment. Sub shell expression `$(cmd)` and extended
-parameter expansions like `${NAME:-default}` are not implemented. A literal
-`$` must be quoted as `$$`.
+`${NAME}` as well as default values `${NAME:-}` (empty string) and
+`${NAME:-somedefault}`. Values are taken from previous lines, then global env
+map, and finally process environment. Sub shell expression `$(cmd)` and
+extended parameter expansions like `${NAME:+alternative}` are not
+implemented. A literal `$` must be quoted as `$$`.
+
+```{versionchanged} 0.32.0
+
+Added support for default value syntax `${NAME:-}`.
+```
 
 ```yaml
 # example
 env:
     # pre-pend '/global/bin' to PATH
     PATH: "/global/bin:$PATH"
+    # default CFLAGS to empty string and append " -g"
+    CFLAGS: "${CFLAGS:-} -g"
 variants:
     cpu:
         env:
