@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+import re
 import string
 import types
 import typing
@@ -420,6 +421,28 @@ def _resolve_template(
         raise
 
 
+_DEFAULT_PATTERN_RE = re.compile(
+    r"(?<!\$)"  # not preceeded by a second '$'
+    r"\$\{(?P<name>[a-z0-9_]+)"  # '${name'
+    r"(:-(?P<default>[^\}:]*))?"  # optional ':-default', capture value
+    r"\}",  # closing '}'
+    flags=re.ASCII | re.IGNORECASE,
+)
+
+
+def substitute_template(value: str, template_env: dict[str, str]) -> str:
+    """Substitute ${var} and ${var:-default} in value string"""
+    localdefault = template_env.copy()
+    for mo in _DEFAULT_PATTERN_RE.finditer(value):
+        modict = mo.groupdict()
+        name = modict["name"]
+        # add to local default, keep existing default
+        localdefault.setdefault(name, modict["default"])
+        # remove ":-default"
+        value = value.replace(mo.group(0), f"${{{name}}}")
+    return string.Template(value).substitute(localdefault)
+
+
 def get_cpu_count() -> int:
     """CPU count from scheduler affinity"""
     if hasattr(os, "sched_getaffinity"):
@@ -627,7 +650,7 @@ class PackageBuildInfo:
             entries.extend(vi.env.items())
 
         for key, value in entries:
-            value = string.Template(value).substitute(template_env)
+            value = substitute_template(value, template_env)
             extra_environ[key] = value
             # subsequent key-value pairs can depend on previously vars.
             template_env[key] = value

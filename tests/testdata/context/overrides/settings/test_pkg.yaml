@@ -14,6 +14,7 @@ env:
     EGG_AGAIN: "$EGG"
     SPAM: "alot $EXTRA"
     QUOTES: "A\"BC'$$EGG"
+    DEF: "${DEF:-default}"
 download_source:
     url: https://egg.test/${canonicalized_name}/v${version}.tar.gz
     destination_filename: ${canonicalized_name}-${version}.tar.gz
