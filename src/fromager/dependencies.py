@@ -102,6 +102,7 @@ def get_build_backend_dependencies(
         )
         return _read_requirements_file(build_backend_req_file)
 
+    extra_environ = pbi.get_extra_environ()
     orig_deps = overrides.find_and_invoke(
         req.name,
         "get_build_backend_dependencies",
@@ -110,6 +111,7 @@ def get_build_backend_dependencies(
         req=req,
         sdist_root_dir=sdist_root_dir,
         build_dir=pbi.build_dir(sdist_root_dir),
+        extra_environ=extra_environ,
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -125,15 +127,14 @@ def default_get_build_backend_dependencies(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
+    extra_environ: dict[str, str],
 ) -> typing.Iterable[str]:
     """Get build backend dependencies
 
     Defaults to result of hook call
     :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
     """
-    pbi = ctx.package_build_info(req)
     pyproject_toml = get_pyproject_contents(build_dir)
-    extra_environ = pbi.get_extra_environ()
     hook_caller = get_build_backend_hook_caller(
         build_dir, pyproject_toml, override_environ=extra_environ
     )
@@ -158,6 +159,7 @@ def get_build_sdist_dependencies(
         )
         return _read_requirements_file(build_sdist_req_file)
 
+    extra_environ = pbi.get_extra_environ()
     orig_deps = overrides.find_and_invoke(
         req.name,
         "get_build_sdist_dependencies",
@@ -166,6 +168,7 @@ def get_build_sdist_dependencies(
         req=req,
         sdist_root_dir=sdist_root_dir,
         build_dir=pbi.build_dir(sdist_root_dir),
+        extra_environ=extra_environ,
     )
     deps = _filter_requirements(req, orig_deps)
 
@@ -181,15 +184,14 @@ def default_get_build_sdist_dependencies(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
+    extra_environ: dict[str, str],
 ) -> typing.Iterable[str]:
     """Get build sdist dependencies
 
     Defaults to result of hook call
     :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
     """
-    pbi = ctx.package_build_info(req)
     pyproject_toml = get_pyproject_contents(build_dir)
-    extra_environ = pbi.get_extra_environ()
     hook_caller = get_build_backend_hook_caller(
         build_dir, pyproject_toml, override_environ=extra_environ
     )
