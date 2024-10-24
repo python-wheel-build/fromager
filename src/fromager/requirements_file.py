@@ -29,6 +29,9 @@ class RequirementType(StrEnum):
                 return self.value in allowed_values and other.value in allowed_values
         return super.__eq__(self, other)
 
+    def __ne__(self, value: object) -> bool:
+        return not self == value
+
 
 class SourceType(StrEnum):
     PREBUILT = "prebuilt"
