@@ -30,7 +30,7 @@ def lint(
                 )
         else:
             expected_package_name = overrides.pkgname_to_override_module(entry.name)
-            if actual_package_name != expected_package_name:
+            if entry.name != expected_package_name:
                 errors += 1
                 logger.error(
                     f"ERROR: Patch directory {entry.name} should be {expected_package_name}"
