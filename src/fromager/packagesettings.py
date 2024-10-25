@@ -501,7 +501,11 @@ class PackageBuildInfo:
             prefix_len = len(pattern) - 1
             for patchdir in self._patches_dir.glob(pattern):
                 version = Version(patchdir.name[prefix_len:])
-                patches[version] = sorted(patchdir.glob("*.patch"))
+                versioned_patches = list(patchdir.glob("*.patch"))
+                variant_patchdir = patchdir / self._variant
+                if variant_patchdir.exists():
+                    versioned_patches.extend(list(variant_patchdir.glob("*.patch")))
+                patches[version] = sorted(versioned_patches, key=lambda f: f.name)
             self._patches = patches
         return self._patches
 

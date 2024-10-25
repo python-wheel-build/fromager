@@ -16,24 +16,45 @@ def test_patches_for_requirement(tmp_path: pathlib.Path):
     project_patch_dir = patches_dir / "project-1.2.3"
     project_patch_dir.mkdir()
 
-    p1 = project_patch_dir / "001.patch"
-    p2 = project_patch_dir / "002.patch"
+    variant_1_patch_dir = project_patch_dir / "brie"
+    variant_1_patch_dir.mkdir()
+
+    variant_2_patch_dir = project_patch_dir / "feta"
+    variant_2_patch_dir.mkdir()
+
+    gp1 = project_patch_dir / "001.patch"
+    gp2 = project_patch_dir / "002.patch"
+    sp1 = variant_1_patch_dir / "001.patch"
+    sp2 = variant_2_patch_dir / "001.patch"
     np1 = project_patch_dir / "not-a-patch.txt"
 
     # Create all of the test files
-    for p in [p1, p2]:
-        p.write_text("this is a patch file")
+    for gp in [gp1, gp2]:
+        gp.write_text("this is a global patch file")
+    for sp in [sp1, sp2]:
+        sp.write_text("this is a specific patch file")
     for f in [np1]:
         f.write_text("this is not a patch file")
 
-    results = list(
+    results_without_variant = list(
         overrides.patches_for_requirement(
             patches_dir=patches_dir,
             req=Requirement("project"),
             version=Version("1.2.3"),
         )
     )
-    assert results == [p1, p2]
+
+    results_with_variant = list(
+        overrides.patches_for_requirement(
+            patches_dir=patches_dir,
+            req=Requirement("project"),
+            version=Version("1.2.3"),
+            variant="brie",
+        )
+    )
+
+    assert results_without_variant == [gp1, gp2]
+    assert results_with_variant == [gp1, sp1, gp2]
 
 
 def test_invoke_override_with_exact_args():

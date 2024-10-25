@@ -179,6 +179,93 @@ def test_patch_sources_apply_only_unversioned(
     )
 
 
+@patch("fromager.sources._apply_patch")
+def test_patch_sources_apply_global_and_variant_specific_unversioned_and_versioned(
+    apply_patch: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+):
+    patches_dir = tmp_path / "patches_dir"
+    patches_dir.mkdir()
+    tmp_context.settings.patches_dir = patches_dir
+
+    tmp_context.variant = "brie"
+
+    deepspeed_versioned_patch_dir = patches_dir / "deepspeed-0.5.0"
+    deepspeed_versioned_patch_dir.mkdir()
+
+    deepspeed_versioned_brie_patch_dir = deepspeed_versioned_patch_dir / "brie"
+    deepspeed_versioned_brie_patch_dir.mkdir()
+
+    deepspeed_versioned_feta_patch_dir = deepspeed_versioned_patch_dir / "feta"
+    deepspeed_versioned_feta_patch_dir.mkdir()
+
+    global_versioned_patch_file_1 = deepspeed_versioned_patch_dir / "01-deepspeed.patch"
+    global_versioned_patch_file_1.write_text("This is a test patch")
+    global_versioned_patch_file_2 = deepspeed_versioned_patch_dir / "02-deepspeed.patch"
+    global_versioned_patch_file_2.write_text("This is a test patch")
+
+    specific_versioned_brie_patch_file_1 = (
+        deepspeed_versioned_brie_patch_dir / "01-deepspeed.patch"
+    )
+    specific_versioned_brie_patch_file_1.write_text("This is a test patch for brie")
+
+    specific_versioned_feta_patch_file_1 = (
+        deepspeed_versioned_feta_patch_dir / "01-deepspeed.patch"
+    )
+    specific_versioned_feta_patch_file_1.write_text("This is a test patch for feta")
+
+    deepspeed_unversioned_patch_dir = patches_dir / "deepspeed"
+    deepspeed_unversioned_patch_dir.mkdir()
+
+    deepspeed_unversioned_brie_patch_dir = deepspeed_unversioned_patch_dir / "brie"
+    deepspeed_unversioned_brie_patch_dir.mkdir()
+
+    deepspeed_unversioned_feta_patch_dir = deepspeed_unversioned_patch_dir / "feta"
+    deepspeed_unversioned_feta_patch_dir.mkdir()
+
+    global_unversioned_patch_file_1 = (
+        deepspeed_unversioned_patch_dir / "01-deepspeed.patch"
+    )
+    global_unversioned_patch_file_1.write_text("This is a test patch")
+
+    global_unversioned_patch_file_2 = (
+        deepspeed_unversioned_patch_dir / "02-deepspeed.patch"
+    )
+    global_unversioned_patch_file_2.write_text("This is a test patch")
+
+    specific_unversioned_brie_patch_file_1 = (
+        deepspeed_unversioned_brie_patch_dir / "02-deepspeed.patch"
+    )
+    specific_unversioned_brie_patch_file_1.write_text("This is a test patch for brie")
+
+    specific_unversioned_feta_patch_file_1 = (
+        deepspeed_unversioned_feta_patch_dir / "01-deepspeed.patch"
+    )
+    specific_unversioned_feta_patch_file_1.write_text("This is a test patch for feta")
+
+    source_root_dir = tmp_path / "deepspeed-0.5.0"
+    source_root_dir.mkdir()
+
+    sources.patch_source(
+        ctx=tmp_context,
+        source_root_dir=source_root_dir,
+        req=Requirement("deepspeed"),
+        version=Version("0.5.0"),
+    )
+    assert apply_patch.call_count == 6
+    apply_patch.asset_has_calls(
+        [
+            call(global_unversioned_patch_file_1, source_root_dir),
+            call(global_unversioned_patch_file_2, source_root_dir),
+            call(specific_unversioned_brie_patch_file_1, source_root_dir),
+            call(global_versioned_patch_file_1, source_root_dir),
+            call(specific_versioned_brie_patch_file_1, source_root_dir),
+            call(global_versioned_patch_file_2, source_root_dir),
+        ]
+    )
+
+
 @patch("logging.Logger.warning")
 def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
     # create patches dir

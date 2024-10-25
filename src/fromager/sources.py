@@ -299,6 +299,7 @@ def patch_source(
         patches_dir=ctx.settings.patches_dir,
         req=req,
         version=version,
+        variant=ctx.variant,
     ):
         _apply_patch(p, source_root_dir)
         patch_count += 1

@@ -258,6 +258,7 @@ def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
     assert pbi.get_patches() == {
         Version("1.0.2"): [
             patchdir / "001-somepatch.patch",
+            patchdir / pbi.variant / "002-myvariantpatch.patch",
             patchdir / "002-otherpatch.patch",
         ],
     }
@@ -292,6 +293,8 @@ def test_pbi_other(testdata_context: context.WorkContext) -> None:
     assert pbi.get_patches() == {
         Version("1.0.0"): [
             patchdir / "001-mypatch.patch",
+            patchdir / pbi.variant / "001-myvariantpatch.patch",
+            patchdir / "002-myotherpatch.patch",
         ],
     }
     assert pbi.get_patches() is pbi.get_patches()

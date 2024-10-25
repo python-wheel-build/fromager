@@ -98,6 +98,7 @@ def patches_for_requirement(
     patches_dir: pathlib.Path,
     req: Requirement,
     version: Version,
+    variant: str = "",
 ) -> typing.Iterable[pathlib.Path]:
     """Iterator producing patches to apply to the source for a given version of a requirement.
 
@@ -108,12 +109,29 @@ def patches_for_requirement(
     override_name = pkgname_to_override_module(req.name)
     unversioned_patch_dir = patches_dir / override_name
     versioned_patch_dir = patches_dir / f"{override_name}-{version}"
+
+    unversioned_patch_files = list(unversioned_patch_dir.glob("*.patch"))
+    versioned_patch_files = list(versioned_patch_dir.glob("*.patch"))
+
+    # The list of files must exist to be joined to the global patch files
+    if variant:
+        unversioned_variant_patch_dir = unversioned_patch_dir / variant
+        if unversioned_variant_patch_dir.exists():
+            unversioned_patch_files.extend(
+                list(unversioned_variant_patch_dir.glob("*.patch"))
+            )
+        versioned_variant_patch_dir = versioned_patch_dir / variant
+        if versioned_variant_patch_dir.exists():
+            versioned_patch_files.extend(
+                list(versioned_variant_patch_dir.glob("*.patch"))
+            )
+
     return itertools.chain(
         # Apply all of the unversioned patches first, in order based on
         # filename.
-        sorted(unversioned_patch_dir.glob("*.patch")),
+        sorted(unversioned_patch_files, key=lambda f: f.name),
         # Then apply any for this specific version, in order based on filename.
-        sorted(versioned_patch_dir.glob("*.patch")),
+        sorted(versioned_patch_files, key=lambda f: f.name),
     )
 
 

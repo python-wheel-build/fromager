@@ -174,6 +174,10 @@ name and use the suffix `.patch`. The filenames are sorted lexicographically, so
 any text between the prefix and suffix can be used to ensure the patches are
 applied in a specific order.
 
+Patch files can also be placed in a variant specific subdirectory, in order
+to allow variant specific patches, e.g. when the code base is a variant specific
+fork of the package and the global patches don't apply.
+
 Patches are applied by running `patch -p1 filename` while inside the root of the
 source tree.
 
@@ -189,6 +193,7 @@ pytorch-v2.2.1/003-fbgemm-no-maybe-uninitialized.patch
 pytorch-v2.2.1/004-fix-release-version.patch
 pytorch-v2.2.2/001-remove-cmake-build-requirement.patch
 pytorch-v2.2.2/002-dist-info-no-run-build-deps.patch
+pytorch-v2.2.2/cuda/002-enforce-cudnn.patch
 pytorch-v2.2.2/003-fbgemm-no-maybe-uninitialized.patch
 pytorch-v2.2.2/004-fix-release-version.patch
 xformers-0.0.26.post1/pyproject.toml.patch
