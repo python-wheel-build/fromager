@@ -88,7 +88,7 @@ Package = typing.Annotated[
 ]
 
 # patch mapping
-PatchMap = dict[Version, typing.Iterable[pathlib.Path]]
+PatchMap = dict[Version | None, list[pathlib.Path]]
 
 # URL or filename with templating
 Template = typing.NewType("Template", str)
@@ -493,17 +493,37 @@ class PackageBuildInfo:
                 self._plugin_module = None
         return self._plugin_module
 
-    def get_patches(self) -> PatchMap:
+    def get_all_patches(self) -> PatchMap:
         """Get a mapping of version to list of patches"""
         if self._patches is None:
             patches: PatchMap = {}
-            pattern = f"{self.override_module_name}-*"
-            prefix_len = len(pattern) - 1
+            version: Version | None
+            pattern = f"{self.override_module_name}*"
+            prefix_len = len(self.override_module_name) + 1
             for patchdir in self._patches_dir.glob(pattern):
-                version = Version(patchdir.name[prefix_len:])
-                patches[version] = sorted(patchdir.glob("*.patch"))
+                if patchdir.name == self.override_module_name:
+                    version = None
+                else:
+                    version = Version(patchdir.name[prefix_len:])
+                patches[version] = list(patchdir.glob("*.patch"))
+                # variant-specific patches
+                patches[version].extend(patchdir.joinpath(self.variant).glob("*.patch"))
+                patches[version].sort(key=lambda p: p.name)
+
             self._patches = patches
         return self._patches
+
+    def get_patches(self, version: Version) -> list[pathlib.Path]:
+        """Get patches for a version (and unversioned patches)"""
+        patchfiles: list[pathlib.Path] = []
+        patchmap = self.get_all_patches()
+        # unversioned patches
+        patchfiles.extend(patchmap.get(None, []))
+        # version-specific patches
+        patchfiles.extend(patchmap.get(version, []))
+        # sort by basename
+        patchfiles.sort(key=lambda p: p.name)
+        return patchfiles
 
     @property
     def has_config(self) -> bool:
