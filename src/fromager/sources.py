@@ -294,46 +294,27 @@ def patch_source(
     req: Requirement,
     version: Version,
 ) -> None:
+    pbi = ctx.package_build_info(req)
     patch_count = 0
-    for p in overrides.patches_for_requirement(
-        patches_dir=ctx.settings.patches_dir,
-        req=req,
-        version=version,
-    ):
+
+    for p in pbi.get_patches(version):
         _apply_patch(p, source_root_dir)
         patch_count += 1
 
     logger.debug("%s: applied %d patches", req.name, patch_count)
     # If no patch has been applied, call warn for old patch
-    if not patch_count:
-        _warn_for_old_patch(
-            req=req,
-            version=version,
-            patches_dir=ctx.settings.patches_dir,
-        )
+    patchmap = pbi.get_all_patches()
+    if not patch_count and patchmap:
+        for patchversion in sorted(patchmap):
+            logger.warning(
+                f"{req.name}: patch {patchversion} exists but will not be applied for version {version}"
+            )
 
 
 def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
     logger.info("applying patch file %s to %s", patch, source_root_dir)
     with open(patch, "r") as f:
         external_commands.run(["patch", "-p1"], stdin=f, cwd=source_root_dir)
-
-
-def _warn_for_old_patch(
-    req: Requirement,
-    version: Version,
-    patches_dir: pathlib.Path,
-) -> None:
-    # Filter the patch directories using regex
-    patch_directories = overrides.get_versioned_patch_directories(
-        patches_dir=patches_dir, req=req
-    )
-
-    for dirs in patch_directories:
-        for p in dirs.iterdir():
-            logger.warning(
-                f"{req.name}: patch {p} exists but will not be applied for version {version}"
-            )
 
 
 def write_build_meta(

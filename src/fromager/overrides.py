@@ -1,5 +1,4 @@
 import inspect
-import itertools
 import logging
 import pathlib
 import typing
@@ -7,7 +6,6 @@ from importlib import metadata
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
-from packaging.version import Version
 from stevedore import extension
 
 # An interface for reretrieving per-package information which influences
@@ -92,29 +90,6 @@ def log_overrides() -> None:
             dist_name,
             dist_version,
         )
-
-
-def patches_for_requirement(
-    patches_dir: pathlib.Path,
-    req: Requirement,
-    version: Version,
-) -> typing.Iterable[pathlib.Path]:
-    """Iterator producing patches to apply to the source for a given version of a requirement.
-
-    Yields pathlib.Path() references to patches in the order they should be
-    applied, which is controlled through lexical sorting of the filenames.
-
-    """
-    override_name = pkgname_to_override_module(req.name)
-    unversioned_patch_dir = patches_dir / override_name
-    versioned_patch_dir = patches_dir / f"{override_name}-{version}"
-    return itertools.chain(
-        # Apply all of the unversioned patches first, in order based on
-        # filename.
-        sorted(unversioned_patch_dir.glob("*.patch")),
-        # Then apply any for this specific version, in order based on filename.
-        sorted(versioned_patch_dir.glob("*.patch")),
-    )
 
 
 def get_versioned_patch_directories(

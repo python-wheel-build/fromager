@@ -252,16 +252,37 @@ def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
     sdist_root_dir = pathlib.Path("/sdist-root")
     assert pbi.build_dir(sdist_root_dir) == sdist_root_dir / "python"
 
-    patchdir = (
-        testdata_context.settings.patches_dir / f"{TEST_PKG.replace('-', '_')}-1.0.2"
+
+def test_pbi_test_pkg_patches(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    norm_test_pkg = TEST_PKG.replace("-", "_")
+    unversioned_patchdir = testdata_context.settings.patches_dir / norm_test_pkg
+    versioned_patchdir = (
+        testdata_context.settings.patches_dir / f"{norm_test_pkg}-1.0.2"
     )
-    assert pbi.get_patches() == {
-        Version("1.0.2"): [
-            patchdir / "001-somepatch.patch",
-            patchdir / "002-otherpatch.patch",
-        ],
+    patch001 = versioned_patchdir / "001-somepatch.patch"
+    patch002 = versioned_patchdir / "002-otherpatch.patch"
+    patch004 = unversioned_patchdir / "cpu" / "004-cpu.patch"
+    patch005 = versioned_patchdir / "cpu" / "005-cpuver.patch"
+    patch010 = unversioned_patchdir / "010-unversioned.patch"
+
+    assert pbi.get_all_patches() == {
+        None: [patch004, patch010],
+        Version("1.0.2"): [patch001, patch002, patch005],
     }
-    assert pbi.get_patches() is pbi.get_patches()
+    assert pbi.get_all_patches() is pbi.get_all_patches()
+
+    assert pbi.get_patches(Version("1.0.2")) == [
+        patch001,
+        patch002,
+        patch004,
+        patch005,
+        patch010,
+    ]
+    assert pbi.get_patches(Version("1.0.1")) == [
+        patch004,
+        patch010,
+    ]
 
 
 def test_pbi_other(testdata_context: context.WorkContext) -> None:
@@ -289,12 +310,12 @@ def test_pbi_other(testdata_context: context.WorkContext) -> None:
         testdata_context.settings.patches_dir
         / f"{TEST_OTHER_PKG.replace('-', '_')}-1.0.0"
     )
-    assert pbi.get_patches() == {
+    assert pbi.get_all_patches() == {
         Version("1.0.0"): [
             patchdir / "001-mypatch.patch",
         ],
     }
-    assert pbi.get_patches() is pbi.get_patches()
+    assert pbi.get_all_patches() is pbi.get_all_patches()
 
 
 def test_type_envvars():

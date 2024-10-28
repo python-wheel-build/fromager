@@ -104,42 +104,51 @@ def test_invalid_version(mock_default_resolve_source, tmp_context: context.WorkC
         )
 
 
+@patch("logging.Logger.warning")
 @patch("fromager.sources._apply_patch")
 def test_patch_sources_apply_unversioned_and_versioned(
     apply_patch: Mock,
+    warning: Mock,
     tmp_path: pathlib.Path,
-    tmp_context: context.WorkContext,
+    testdata_context: context.WorkContext,
 ):
-    patches_dir = tmp_path / "patches_dir"
-    patches_dir.mkdir()
-    tmp_context.settings.patches_dir = patches_dir
-
-    deepspeed_version_patch = patches_dir / "deepspeed-0.5.0"
-    deepspeed_version_patch.mkdir()
-    version_patch_file = deepspeed_version_patch / "deepspeed-0.5.0.patch"
-    version_patch_file.write_text("This is a test patch")
-
-    deepspeed_unversioned_patch = patches_dir / "deepspeed"
-    deepspeed_unversioned_patch.mkdir()
-    unversioned_patch_file = deepspeed_unversioned_patch / "deepspeed-update.patch"
-    unversioned_patch_file.write_text("This is a test patch")
-
-    source_root_dir = tmp_path / "deepspeed-0.5.0"
+    source_root_dir = tmp_path / "test_pkg-1.0.2"
     source_root_dir.mkdir()
 
     sources.patch_source(
-        ctx=tmp_context,
+        ctx=testdata_context,
         source_root_dir=source_root_dir,
-        req=Requirement("deepspeed==0.5.0"),
-        version=Version("0.5.0"),
+        req=Requirement("test-pkg==1.0.2"),
+        version=Version("1.0.2"),
+    )
+    assert apply_patch.call_count == 5
+    warning.assert_not_called()
+
+    apply_patch.reset_mock()
+    source_root_dir = tmp_path / "test_pkg-1.0.1"
+    source_root_dir.mkdir()
+
+    sources.patch_source(
+        ctx=testdata_context,
+        source_root_dir=source_root_dir,
+        req=Requirement("test-pkg==1.0.1"),
+        version=Version("1.0.1"),
     )
     assert apply_patch.call_count == 2
-    apply_patch.assert_has_calls(
-        [
-            call(unversioned_patch_file, source_root_dir),
-            call(version_patch_file, source_root_dir),
-        ]
+    warning.assert_not_called()
+
+    apply_patch.reset_mock()
+    source_root_dir = tmp_path / "test_other_pkg-1.0.1"
+    source_root_dir.mkdir()
+
+    sources.patch_source(
+        ctx=testdata_context,
+        source_root_dir=source_root_dir,
+        req=Requirement("test-other-pkg==1.0.1"),
+        version=Version("1.0.1"),
     )
+    assert apply_patch.call_count == 0
+    warning.assert_called_once()
 
 
 @patch("fromager.sources._apply_patch")
@@ -177,51 +186,3 @@ def test_patch_sources_apply_only_unversioned(
             call(unversioned_patch_file, source_root_dir),
         ]
     )
-
-
-@patch("logging.Logger.warning")
-def test_warning_for_older_patch(mock, tmp_path: pathlib.Path):
-    # create patches dir
-    patches_dir = tmp_path / "patches_dir"
-    patches_dir.mkdir()
-
-    # create patches dir for old version of deepspeed
-    deepspeed_old_patch = patches_dir / "deepspeed-0.5.0"
-    deepspeed_old_patch.mkdir()
-    patch_file = deepspeed_old_patch / "deepspeed-0.5.0.patch"
-    patch_file.write_text("This is a test patch")
-
-    # set current source to be a new version of deepspeed
-    source_root_dir = tmp_path / "deepspeed-0.6.0"
-    source_root_dir.mkdir()
-
-    sources._warn_for_old_patch(
-        req=Requirement("deepspeed"),
-        version=Version("0.6.0"),
-        patches_dir=patches_dir,
-    )
-    mock.assert_called()
-
-
-@patch("logging.Logger.warning")
-def test_warning_for_older_patch_different_req(mock, tmp_path: pathlib.Path):
-    # create patches dir
-    patches_dir = tmp_path / "patches_dir"
-    patches_dir.mkdir()
-
-    # create patches dir for old version of deepspeed
-    deepspeed_old_patch = patches_dir / "foo-0.5.0"
-    deepspeed_old_patch.mkdir()
-    patch_file = deepspeed_old_patch / "foo-0.5.0.patch"
-    patch_file.write_text("This is a test patch")
-
-    # set current source to be a new version of deepspeed
-    source_root_dir = tmp_path / "deepspeed-0.5.0"
-    source_root_dir.mkdir()
-
-    sources._warn_for_old_patch(
-        req=Requirement("deepspeed"),
-        version=Version("0.5.0"),
-        patches_dir=patches_dir,
-    )
-    mock.assert_not_called()
