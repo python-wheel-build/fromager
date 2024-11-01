@@ -230,3 +230,6 @@ def write_constraints_file(
             for dv in sorted(versions):
                 output.write(f"{dep_name}=={dv}\n")
     return ret
+
+
+bootstrap._fromager_show_build_settings = True  # type: ignore
