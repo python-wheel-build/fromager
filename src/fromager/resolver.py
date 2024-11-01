@@ -93,7 +93,10 @@ def resolve_from_provider(
 ) -> tuple[str, Version]:
     reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
-    result = rslvr.resolve([req])
+    try:
+        result = rslvr.resolve([req])
+    except resolvelib.resolvers.exceptions.ResolutionImpossible as err:
+        raise ValueError(f"Unable to resolve {req}") from err
     # resolvelib actually just returns one candidate per requirement.
     # result.mapping is map from an identifier to its resolved candidate
     candidate: Candidate
