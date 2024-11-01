@@ -91,7 +91,7 @@ def default_resolver_provider(
 def resolve_from_provider(
     provider: BaseProvider, req: Requirement
 ) -> tuple[str, Version]:
-    reporter = resolvelib.BaseReporter()
+    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
     result = rslvr.resolve([req])
     # resolvelib actually just returns one candidate per requirement.
