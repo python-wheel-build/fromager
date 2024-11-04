@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 TERSE_LOG_FMT = "%(message)s"
 VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
+_DEBUG = False
 
 try:
     external_commands.detect_network_isolation()
@@ -36,6 +37,12 @@ else:
     default=False,
     is_flag=True,
     help="report more detail to the console",
+)
+@click.option(
+    "--debug",
+    default=False,
+    is_flag=True,
+    help="report full tracebacks to the console",
 )
 @click.option(
     "--log-file",
@@ -131,6 +138,7 @@ else:
 def main(
     ctx: click.Context,
     verbose: bool,
+    debug: bool,
     log_file: pathlib.Path,
     error_log_file: pathlib.Path,
     sdists_repo: pathlib.Path,
@@ -146,6 +154,10 @@ def main(
     jobs: int | None,
     network_isolation: bool,
 ) -> None:
+    # Save the debug flag so invoke_main() can use it.
+    global _DEBUG
+    _DEBUG = debug
+
     # Set the overall logger level to debug and allow the handlers to filter
     # messages at their own level.
     logging.getLogger().setLevel(logging.DEBUG)
@@ -226,8 +238,13 @@ def invoke_main() -> None:
     try:
         main(auto_envvar_prefix="FROMAGER")
     except Exception as err:
-        logger.exception(err)
-        raise
+        logger.debug(
+            err,
+            exc_info=True,
+        )  # log the full traceback details to the debug log file, if any
+        logger.error(f"ERROR: {err}")
+        if _DEBUG:
+            raise
 
 
 if __name__ == "__main__":
