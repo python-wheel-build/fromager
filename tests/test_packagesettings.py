@@ -21,6 +21,7 @@ from fromager.packagesettings import (
 TEST_PKG = "test-pkg"
 TEST_EMPTY_PKG = "test-empty-pkg"
 TEST_OTHER_PKG = "test-other-pkg"
+TEST_RELATED_PKG = "test-pkg-library"
 
 FULL_EXPECTED: dict[str, typing.Any] = {
     "build_dir": pathlib.Path("python"),
@@ -260,6 +261,7 @@ def test_pbi_test_pkg_patches(testdata_context: context.WorkContext) -> None:
     versioned_patchdir = (
         testdata_context.settings.patches_dir / f"{norm_test_pkg}-1.0.2"
     )
+
     patch001 = versioned_patchdir / "001-somepatch.patch"
     patch002 = versioned_patchdir / "002-otherpatch.patch"
     patch004 = unversioned_patchdir / "cpu" / "004-cpu.patch"
@@ -367,6 +369,7 @@ def test_settings_overrides(testdata_context: context.WorkContext) -> None:
         TEST_PKG,
         TEST_EMPTY_PKG,
         TEST_OTHER_PKG,
+        TEST_RELATED_PKG,
     }
 
 
@@ -392,6 +395,7 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
         TEST_EMPTY_PKG,
         TEST_OTHER_PKG,
         TEST_PKG,
+        TEST_RELATED_PKG,
     }
     assert testdata_context.settings.list_pre_built() == set()
     assert testdata_context.settings.variant_changelog() == []

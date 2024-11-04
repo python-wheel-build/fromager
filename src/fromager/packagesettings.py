@@ -495,12 +495,22 @@ class PackageBuildInfo:
 
     def get_all_patches(self) -> PatchMap:
         """Get a mapping of version to list of patches"""
+
         if self._patches is None:
             patches: PatchMap = {}
             version: Version | None
-            pattern = f"{self.override_module_name}*"
+
+            # Find unversioned and versioned directories (name + '-' + version)
+            # with patches for the package.
+            dirs_to_scan = []
+            unversioned_dir = self._patches_dir / self.override_module_name
+            if unversioned_dir.exists():
+                dirs_to_scan.append(unversioned_dir)
+            versioned_pattern = f"{self.override_module_name}-*"
+            dirs_to_scan.extend(self._patches_dir.glob(versioned_pattern))
+
             prefix_len = len(self.override_module_name) + 1
-            for patchdir in self._patches_dir.glob(pattern):
+            for patchdir in dirs_to_scan:
                 if patchdir.name == self.override_module_name:
                     version = None
                 else:
