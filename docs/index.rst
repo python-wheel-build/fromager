@@ -29,6 +29,7 @@ those special cases directly into fromager.
    using.md
    getting-started.rst
    customization.md
+   how-to.md
    hooks.rst
    files.md
    config-reference.rst
