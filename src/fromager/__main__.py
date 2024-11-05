@@ -191,15 +191,20 @@ def main(
     if error_log_file:
         logger.info("logging errors to %s", error_log_file)
 
-    logger.info(f"primary settings file: {settings_file}")
-    logger.info(f"per-package settings dir: {settings_dir}")
-    logger.info(f"variant: {variant}")
-    logger.info(f"patches dir: {patches_dir}")
-    logger.info(f"maximum concurrent jobs: {jobs}")
-    logger.info(f"constraints file: {constraints_file}")
-    logger.info(f"wheel server url: {wheel_server_url}")
-    logger.info(f"network isolation: {network_isolation}")
-    overrides.log_overrides()
+    # if ctx.invoked_subcommand is None
+    if ctx.invoked_subcommand is not None:
+        cmd = main.commands[str(ctx.invoked_subcommand)]
+        do_show = getattr(cmd, "_fromager_show_build_settings", False)
+        if do_show:
+            logger.info(f"primary settings file: {settings_file}")
+            logger.info(f"per-package settings dir: {settings_dir}")
+            logger.info(f"variant: {variant}")
+            logger.info(f"patches dir: {patches_dir}")
+            logger.info(f"maximum concurrent jobs: {jobs}")
+            logger.info(f"constraints file: {constraints_file}")
+            logger.info(f"wheel server url: {wheel_server_url}")
+            logger.info(f"network isolation: {network_isolation}")
+            overrides.log_overrides()
 
     if network_isolation and not SUPPORTS_NETWORK_ISOLATION:
         ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")

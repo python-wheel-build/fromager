@@ -92,6 +92,9 @@ def build(
     print(wheel_filename)
 
 
+build._fromager_show_build_settings = True  # type: ignore
+
+
 @click.command()
 @click.argument("build_order_file")
 @click.option(
@@ -193,6 +196,9 @@ def build_sequence(
             print(wheel_filename)
 
     _summary(wkctx, entries)
+
+
+build_sequence._fromager_show_build_settings = True  # type: ignore
 
 
 def _summary(ctx: context.WorkContext, entries: list[BuildSequenceEntry]) -> None:
