@@ -83,7 +83,7 @@ class Bootstrapper:
         # Avoid cyclic dependencies and redundant processing.
         if self._has_been_seen(req, resolved_version):
             logger.debug(
-                f"{req.name}: redundant {req_type} requirement {self.why} -> {req} resolves to {resolved_version}"
+                f"{req.name}: redundant {req_type} dependency {req} ({resolved_version}) for {self._explain}"
             )
             return resolved_version
         self._mark_as_seen(req, resolved_version)
@@ -133,15 +133,21 @@ class Bootstrapper:
             try:
                 self.bootstrap(dep, RequirementType.INSTALL)
             except Exception as err:
-                raise ValueError(
-                    f"could not handle {RequirementType.INSTALL} dependency {dep} for {self.why}"
-                ) from err
+                raise ValueError(f"could not handle {self._explain}") from err
             self.progressbar.update()
 
         # we are done processing this req, so lets remove it from the why chain
         self.why.pop()
         self._cleanup(req, sdist_root_dir, build_env)
         return resolved_version
+
+    @property
+    def _explain(self) -> str:
+        """Return message formatting current version of why stack."""
+        return " for ".join(
+            f"{req_type} dependency {req} ({resolved_version})"
+            for req_type, req, resolved_version in reversed(self.why)
+        )
 
     def _is_wheel_built(
         self, req: Requirement, resolved_version: Version
@@ -194,6 +200,7 @@ class Bootstrapper:
         except Exception as err:
             logger.warning(f"{req.name}: failed to build source distribution: {err}")
 
+        logger.info(f"{req.name}: starting build of {self._explain}")
         built_filename = wheels.build_wheel(
             ctx=self.ctx,
             req=req,
@@ -262,9 +269,7 @@ class Bootstrapper:
             try:
                 resolved = self.bootstrap(req=dep, req_type=build_type)
             except Exception as err:
-                raise ValueError(
-                    f"could not handle {build_type} dependency {dep} for {self.why}"
-                ) from err
+                raise ValueError(f"could not handle {self._explain}") from err
             # We may need these dependencies installed in order to run build hooks
             # Example: frozenlist build-system.requires includes expandvars because
             # it is used by the packaging/pep517_backend/ build backend
