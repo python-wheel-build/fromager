@@ -2,6 +2,7 @@
 
 import logging
 import pathlib
+import sys
 
 import click
 
@@ -250,6 +251,7 @@ def invoke_main() -> None:
         logger.error(f"ERROR: {err}")
         if _DEBUG:
             raise
+        sys.exit(1)
 
 
 if __name__ == "__main__":
