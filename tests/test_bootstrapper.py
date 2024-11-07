@@ -361,3 +361,21 @@ def test_build_order_name_canonicalization(tmp_context):
         },
     ]
     assert expected == contents
+
+
+def test_explain(tmp_context: WorkContext):
+    bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
+    assert bt._explain == f"{RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
+
+    bt.why = []
+    assert bt._explain == ""
+
+    bt.why = [
+        (RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0")),
+        (RequirementType.BUILD, Requirement("bar==4.0.0"), Version("4.0.0")),
+    ]
+    assert (
+        bt._explain
+        == f"{RequirementType.BUILD} dependency bar==4.0.0 (4.0.0) for {RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
+    )
