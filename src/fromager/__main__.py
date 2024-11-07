@@ -238,6 +238,13 @@ for cmd in commands.commands:
     main.add_command(cmd)
 
 
+def _format_exception(exc):
+    if exc.__cause__:
+        cause = _format_exception(exc.__cause__)
+        return f"{exc} because {cause}"
+    return str(exc)
+
+
 def invoke_main() -> None:
     # Wrapper for the click main command that ensures any exceptions
     # are logged so that build pipeline outputs include the traceback.
@@ -248,7 +255,7 @@ def invoke_main() -> None:
             err,
             exc_info=True,
         )  # log the full traceback details to the debug log file, if any
-        logger.error(f"ERROR: {err}")
+        logger.error(f"ERROR: {_format_exception(err)}")
         if _DEBUG:
             raise
         sys.exit(1)
