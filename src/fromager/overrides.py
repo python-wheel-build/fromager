@@ -50,7 +50,12 @@ def find_and_invoke(
         fn = default_fn
 
     result = invoke(fn, **kwargs)
-    logger.info(f"{distname}: override method {fn.__name__} returned {result}")
+    if fn is default_fn:
+        log_method = logger.debug
+    else:
+        log_method = logger.info
+    log_method(f"{distname}: override method {fn.__name__} returned {result}")
+
     return result
 
 
