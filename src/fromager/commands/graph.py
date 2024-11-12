@@ -36,12 +36,10 @@ def graph():
 )
 @click.argument(
     "graph-file",
-    type=clickext.ClickPath(),
+    type=str,
 )
 @click.pass_obj
-def to_constraints(
-    wkctx: context.WorkContext, graph_file: pathlib.Path, output: pathlib.Path
-):
+def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.Path):
     "Convert a graph file to a constraints file."
     graph = DependencyGraph.from_file(graph_file)
     if output:
@@ -59,10 +57,10 @@ def to_constraints(
 )
 @click.argument(
     "graph-file",
-    type=clickext.ClickPath(),
+    type=str,
 )
 @click.pass_obj
-def to_dot(wkctx, graph_file: pathlib.Path, output: pathlib.Path):
+def to_dot(wkctx: context.WorkContext, graph_file: str, output: pathlib.Path):
     "Convert a graph file to a DOT file suitable to pass to graphviz."
     graph = DependencyGraph.from_file(graph_file)
     if output:
@@ -114,7 +112,7 @@ def write_dot(graph: DependencyGraph, output: typing.TextIO) -> None:
 @graph.command()
 @click.argument(
     "graph-file",
-    type=clickext.ClickPath(),
+    type=str,
 )
 @click.pass_obj
 def explain_duplicates(wkctx, graph_file):
@@ -183,13 +181,13 @@ def explain_duplicates(wkctx, graph_file):
 )
 @click.argument(
     "graph-file",
-    type=clickext.ClickPath(),
+    type=str,
 )
 @click.argument("package-name", type=str)
 @click.pass_obj
 def why(
     wkctx: context.WorkContext,
-    graph_file: pathlib.Path,
+    graph_file: str,
     package_name: str,
     version: list[Version],
     depth: int,

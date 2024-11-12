@@ -107,7 +107,7 @@ else:
 @click.option(
     "-c",
     "--constraints-file",
-    type=clickext.ClickPath(),
+    type=str,
     help="location of the constraints file",
 )
 @click.option(
@@ -142,7 +142,7 @@ def main(
     patches_dir: pathlib.Path,
     settings_file: pathlib.Path,
     settings_dir: pathlib.Path,
-    constraints_file: pathlib.Path,
+    constraints_file: str,
     cleanup: bool,
     variant: str,
     jobs: int | None,

@@ -22,7 +22,7 @@ def test_get_requirements_args_and_file(tmp_path: pathlib.Path):
     requirements_file = tmp_path / "requirements.txt"
     requirements_file.write_text("c\n")
     requirements = bootstrap._get_requirements_from_args(
-        ["a", "b"], [requirements_file]
+        ["a", "b"], [str(requirements_file)]
     )
     assert [
         Requirement("a"),

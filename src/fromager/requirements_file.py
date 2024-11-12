@@ -6,6 +6,8 @@ from enum import StrEnum
 from packaging import markers
 from packaging.requirements import Requirement
 
+from .read import open_file_or_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,11 +42,11 @@ class SourceType(StrEnum):
 
 
 def parse_requirements_file(
-    req_file: pathlib.Path,
+    req_file: str | pathlib.Path,
 ) -> typing.Iterable[str]:
     logger.debug("reading requirements file %s", req_file)
     lines = []
-    with open(req_file, "r") as f:
+    with open_file_or_url(req_file) as f:
         for line in f:
             useful, _, _ = line.partition("#")
             useful = useful.strip()

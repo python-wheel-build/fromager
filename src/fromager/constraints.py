@@ -40,14 +40,9 @@ def _parse(content: typing.Iterable[str]) -> Constraints:
     return Constraints(constraints)
 
 
-def load(filename: pathlib.Path | None) -> Constraints:
-    if not filename:
+def load(constraints_file: str | pathlib.Path | None) -> Constraints:
+    if not constraints_file:
         return Constraints({})
-    filepath = pathlib.Path(filename)
-    if not filepath.exists():
-        raise FileNotFoundError(
-            f"constraints file {filepath.absolute()} does not exist, ignoring"
-        )
-    logger.info("loading constraints from %s", filepath.absolute())
-    parsed_req_file = requirements_file.parse_requirements_file(filename)
+    logger.info("loading constraints from %s", constraints_file)
+    parsed_req_file = requirements_file.parse_requirements_file(constraints_file)
     return _parse(parsed_req_file)

@@ -1,5 +1,4 @@
 import logging
-import pathlib
 import typing
 
 import click
@@ -7,7 +6,6 @@ from packaging.requirements import Requirement
 
 from .. import (
     bootstrapper,
-    clickext,
     context,
     dependency_graph,
     progress,
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def _get_requirements_from_args(
     toplevel: typing.Iterable[str],
-    req_files: typing.Iterable[pathlib.Path],
+    req_files: typing.Iterable[str],
 ) -> list[Requirement]:
     parsed_req: list[str] = []
     parsed_req.extend(toplevel)
@@ -58,14 +56,14 @@ def _get_requirements_from_args(
     "--requirements-file",
     "requirements_files",
     multiple=True,
-    type=clickext.ClickPath(),
+    type=str,
     help="pip requirements file",
 )
 @click.option(
     "-p",
     "--previous-bootstrap-file",
     "previous_bootstrap_file",
-    type=clickext.ClickPath(),
+    type=str,
     help="graph file produced from a previous bootstrap",
 )
 @click.option(
@@ -78,8 +76,8 @@ def _get_requirements_from_args(
 @click.pass_obj
 def bootstrap(
     wkctx: context.WorkContext,
-    requirements_files: list[pathlib.Path],
-    previous_bootstrap_file: pathlib.Path | None,
+    requirements_files: list[str],
+    previous_bootstrap_file: str | None,
     cache_wheel_server_url: str | None,
     toplevel: list[str],
 ) -> None:

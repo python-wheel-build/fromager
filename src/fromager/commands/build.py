@@ -24,6 +24,7 @@ from fromager import (
     hooks,
     overrides,
     progress,
+    read,
     server,
     sources,
     wheels,
@@ -136,7 +137,7 @@ def build_sequence(
     entries: list[BuildSequenceEntry] = []
 
     logger.info("reading build order from %s", build_order_file)
-    with open(build_order_file, "r") as f:
+    with read.open_file_or_url(build_order_file) as f:
         for entry in progress.progress(json.load(f)):
             dist_name = entry["dist"]
             resolved_version = Version(entry["version"])
