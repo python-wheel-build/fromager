@@ -213,8 +213,11 @@ def find_why(
     req_type: list[RequirementType],
 ):
     all_skipped = True
+    is_toplevel = False
     for parent in node.parents:
         if parent.destination_node.key == ROOT:
+            is_toplevel = True
+            print(f" * {node.key} is a toplevel dependency")
             continue
         if req_type and parent.req_type not in req_type:
             continue
@@ -224,7 +227,8 @@ def find_why(
         )
         if max_depth and (max_depth == -1 or depth <= max_depth):
             find_why(graph, parent.destination_node, max_depth, depth + 1, [])
-    if all_skipped:
+
+    if all_skipped and not is_toplevel:
         print(
             f" * couldn't find any dependencies to {node.canonicalized_name} that matches {[str(r) for r in req_type]}"
         )
