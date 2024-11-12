@@ -18,6 +18,10 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+BUILD_SYSTEM_REQ_FILE_NAME = "build-system-requirements.txt"
+BUILD_BACKEND_REQ_FILE_NAME = "build-backend-requirements.txt"
+BUILD_SDIST_REQ_FILE_NAME = "build-sdist-requirements.txt"
+
 
 def get_build_system_dependencies(
     *,
@@ -30,7 +34,7 @@ def get_build_system_dependencies(
     )
     pbi = ctx.package_build_info(req)
 
-    build_system_req_file = sdist_root_dir.parent / "build-system-requirements.txt"
+    build_system_req_file = sdist_root_dir.parent / BUILD_SYSTEM_REQ_FILE_NAME
     if build_system_req_file.exists():
         logger.info(
             f"{req.name}: loading build system dependencies from {build_system_req_file.name}"
@@ -95,7 +99,7 @@ def get_build_backend_dependencies(
     )
     pbi = ctx.package_build_info(req)
 
-    build_backend_req_file = sdist_root_dir.parent / "build-backend-requirements.txt"
+    build_backend_req_file = sdist_root_dir.parent / BUILD_BACKEND_REQ_FILE_NAME
     if build_backend_req_file.exists():
         logger.info(
             f"{req.name}: loading build backend dependencies from {build_backend_req_file.name}"
@@ -152,7 +156,7 @@ def get_build_sdist_dependencies(
     )
     pbi = ctx.package_build_info(req)
 
-    build_sdist_req_file = sdist_root_dir.parent / "build-sdist-requirements.txt"
+    build_sdist_req_file = sdist_root_dir.parent / BUILD_SDIST_REQ_FILE_NAME
     if build_sdist_req_file.exists():
         logger.info(
             f"{req.name}: loading build sdist dependencies from {build_sdist_req_file.name}"

@@ -6,6 +6,7 @@ import operator
 import pathlib
 import shutil
 import typing
+from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
@@ -14,6 +15,7 @@ from packaging.version import Version
 from . import (
     build_environment,
     dependencies,
+    external_commands,
     finders,
     progress,
     resolver,
@@ -36,10 +38,12 @@ class Bootstrapper:
         ctx: context.WorkContext,
         progressbar: progress.Progressbar | None = None,
         prev_graph: DependencyGraph | None = None,
+        cache_wheel_server_url: str | None = None,
     ) -> None:
         self.ctx = ctx
         self.progressbar = progressbar or progress.Progressbar(None)
         self.prev_graph = prev_graph
+        self.cache_wheel_server_url = cache_wheel_server_url
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -68,14 +72,14 @@ class Bootstrapper:
         pbi = self.ctx.package_build_info(req)
         if pbi.pre_built:
             resolved_version, wheel_url, wheel_filename, unpack_dir = (
-                self._handle_prebuilt_sources(req, req_type)
+                self._resolve_and_download_prebuilt(req, req_type)
             )
             # Remember that this is a prebuilt wheel, and where we got it.
             source_url = wheel_url
             source_url_type = str(SourceType.PREBUILT)
         else:
             resolved_version, source_url, source_filename, source_url_type = (
-                self._handle_sources(req, req_type)
+                self._resolve_and_download_source(req, req_type)
             )
 
         self._add_to_graph(req, req_type, resolved_version, source_url)
@@ -101,19 +105,32 @@ class Bootstrapper:
         build_env = None
         sdist_root_dir = None
         if not pbi.pre_built:
-            (
-                sdist_root_dir,
-                unpack_dir,
-                build_dependencies,
-            ) = self._prepare_source(req, source_filename, resolved_version)
+            unpacked_cached_wheel, cached_wheel_filename = (
+                self._download_wheel_from_cache(req, resolved_version)
+            )
+            if not unpacked_cached_wheel:
+                sdist_root_dir = sources.prepare_source(
+                    ctx=self.ctx,
+                    req=req,
+                    source_filename=source_filename,
+                    version=resolved_version,
+                )
+                unpack_dir = sdist_root_dir.parent
+            else:
+                sdist_root_dir = unpacked_cached_wheel
+                unpack_dir = unpacked_cached_wheel.parent
 
-            found_wheel_filename = self._is_wheel_built(req, resolved_version)
-            if not found_wheel_filename:
+            # need to call this function irrespective of whether we had the wheel cached
+            # so that the build dependencies can be bootstrapped
+            build_dependencies = self._prepare_build_dependencies(req, sdist_root_dir)
+
+            # skip building even if it is a non-fromager built wheel
+            if not cached_wheel_filename:
                 wheel_filename, build_env = self._build(
                     req, resolved_version, sdist_root_dir, build_dependencies
                 )
             else:
-                wheel_filename = found_wheel_filename
+                wheel_filename = cached_wheel_filename
 
         self._add_to_build_order(
             req=req,
@@ -148,26 +165,6 @@ class Bootstrapper:
             f"{req_type} dependency {req} ({resolved_version})"
             for req_type, req, resolved_version in reversed(self.why)
         )
-
-    def _is_wheel_built(
-        self, req: Requirement, resolved_version: Version
-    ) -> pathlib.Path | None:
-        pbi = self.ctx.package_build_info(req)
-
-        # FIXME: This is a bit naive, but works for most wheels, including
-        # our more expensive ones, and there's not a way to know the
-        # actual name without doing most of the work to build the wheel.
-        wheel_filename = finders.find_wheel(
-            downloads_dir=self.ctx.wheels_downloads,
-            req=req,
-            dist_version=str(resolved_version),
-            build_tag=pbi.build_tag(resolved_version),
-        )
-        if wheel_filename:
-            logger.info(
-                f"{req.name}: have wheel version {resolved_version}: {wheel_filename}"
-            )
-        return wheel_filename
 
     def _build(
         self,
@@ -217,17 +214,9 @@ class Bootstrapper:
         )
         return wheel_filename, build_env
 
-    def _prepare_source(
-        self, req: Requirement, source_filename: pathlib.Path, resolved_version: Version
-    ) -> tuple[pathlib.Path, pathlib.Path, set[Requirement]]:
-        sdist_root_dir = sources.prepare_source(
-            ctx=self.ctx,
-            req=req,
-            source_filename=source_filename,
-            version=resolved_version,
-        )
-        unpack_dir = sdist_root_dir.parent
-
+    def _prepare_build_dependencies(
+        self, req: Requirement, sdist_root_dir: pathlib.Path
+    ) -> set[Requirement]:
         build_system_dependencies = dependencies.get_build_system_dependencies(
             ctx=self.ctx, req=req, sdist_root_dir=sdist_root_dir
         )
@@ -253,11 +242,9 @@ class Bootstrapper:
         )
 
         return (
-            sdist_root_dir,
-            unpack_dir,
             build_system_dependencies
             | build_backend_dependencies
-            | build_sdist_dependencies,
+            | build_sdist_dependencies
         )
 
     def _handle_build_requirements(
@@ -276,7 +263,7 @@ class Bootstrapper:
             build_environment.maybe_install(self.ctx, dep, build_type, str(resolved))
             self.progressbar.update()
 
-    def _handle_sources(
+    def _resolve_and_download_source(
         self, req: Requirement, req_type: RequirementType
     ) -> tuple[Version, str, pathlib.Path, str]:
         source_url, resolved_version = self._resolve_source_with_history(
@@ -294,7 +281,7 @@ class Bootstrapper:
 
         return (resolved_version, source_url, source_filename, source_url_type)
 
-    def _handle_prebuilt_sources(
+    def _resolve_and_download_prebuilt(
         self, req: Requirement, req_type: RequirementType
     ) -> tuple[Version, str, pathlib.Path, pathlib.Path]:
         logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
@@ -316,10 +303,83 @@ class Bootstrapper:
             logger.info(f"{req.name}: updating temporary mirror with pre-built wheel")
             shutil.copy(wheel_filename, dest_name)
             server.update_wheel_mirror(self.ctx)
-        unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
-        if not unpack_dir.exists():
-            unpack_dir.mkdir()
+        unpack_dir = self._create_unpack_dir(req, resolved_version)
         return (resolved_version, wheel_url, wheel_filename, unpack_dir)
+
+    def _download_wheel_from_cache(
+        self, req: Requirement, resolved_version: Version
+    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+        if not self.cache_wheel_server_url:
+            return None, None
+        logger.info(
+            f"{req.name}: checking if wheel was already uploaded to {self.cache_wheel_server_url}"
+        )
+        try:
+            wheel_url, _ = resolver.resolve(
+                ctx=self.ctx,
+                req=Requirement(f"{req.name}=={resolved_version}"),
+                sdist_server_url=self.cache_wheel_server_url,
+                include_sdists=False,
+                include_wheels=True,
+            )
+            wheelfile_name = pathlib.Path(urlparse(wheel_url).path)
+            pbi = self.ctx.package_build_info(req)
+            expected_build_tag = pbi.build_tag(resolved_version)
+            dist_name, dist_version, build_tag, _ = wheels.extract_info_from_wheel_file(
+                req, wheelfile_name
+            )
+            if expected_build_tag and expected_build_tag != build_tag:
+                logger.info(
+                    f"{req.name}: found wheel for {resolved_version} in cache but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
+                )
+                return None, None
+
+            cached_wheel = wheels.download_wheel(
+                req=req, wheel_url=wheel_url, output_directory=self.ctx.wheels_downloads
+            )
+            server.update_wheel_mirror(self.ctx)
+            logger.info(f"{req.name}: found built wheel on cache server")
+            unpack_dir = self._create_unpack_dir(req, resolved_version)
+            # unpack the wheel
+            external_commands.run(
+                ["wheel", "unpack", str(cached_wheel), "--dest", unpack_dir],
+                cwd=unpack_dir,
+            )
+
+            dist_filename = f"{dist_name}-{dist_version}"
+            metadata_dir = unpack_dir / dist_filename / f"{dist_filename}.dist-info"
+
+            # prepare files cached by fromager by placing them in the parent directory of the return path
+            try:
+                shutil.copy(
+                    metadata_dir
+                    / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{dependencies.BUILD_SYSTEM_REQ_FILE_NAME}",
+                    unpack_dir / dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
+                )
+                shutil.copy(
+                    metadata_dir
+                    / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{dependencies.BUILD_BACKEND_REQ_FILE_NAME}",
+                    unpack_dir / dependencies.BUILD_BACKEND_REQ_FILE_NAME,
+                )
+                shutil.copy(
+                    metadata_dir
+                    / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{dependencies.BUILD_SDIST_REQ_FILE_NAME}",
+                    unpack_dir / dependencies.BUILD_SDIST_REQ_FILE_NAME,
+                )
+                logger.info(f"{req.name}: extracted build requirements from wheel")
+                return unpack_dir / dist_filename, cached_wheel
+            except Exception:
+                # implies that the wheel server hosted non-fromager built wheels
+                logger.info(
+                    f"{req.name}: could not extract build requirements from wheel"
+                )
+                shutil.rmtree(unpack_dir)
+                return None, cached_wheel
+        except Exception:
+            logger.info(
+                f"{req.name}: did not find wheel for {resolved_version} in {self.cache_wheel_server_url}"
+            )
+            return None, None
 
     def _resolve_source_with_history(
         self,
@@ -464,6 +524,12 @@ class Bootstrapper:
                 f"{req.name}: could not resolve {req} from {version_source}: {err}"
             )
             return None
+
+    def _create_unpack_dir(self, req: Requirement, resolved_version: Version):
+        unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
+        if not unpack_dir.exists():
+            unpack_dir.mkdir()
+        return unpack_dir
 
     def _cleanup(
         self,

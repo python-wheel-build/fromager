@@ -67,12 +67,19 @@ def _get_requirements_from_args(
     type=clickext.ClickPath(),
     help="graph file produced from a previous bootstrap",
 )
+@click.option(
+    "-c",
+    "--cache-wheel-server-url",
+    "cache_wheel_server_url",
+    help="url to a wheel server from where fromager can download the wheels that it has built before",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
     wkctx: context.WorkContext,
     requirements_files: list[pathlib.Path],
     previous_bootstrap_file: pathlib.Path | None,
+    cache_wheel_server_url: str | None,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -81,6 +88,7 @@ def bootstrap(
     and optional version constraints.
 
     """
+    logger.info(f"cache wheel server url: {cache_wheel_server_url}")
     to_build = _get_requirements_from_args(toplevel, requirements_files)
     if not to_build:
         raise RuntimeError(
@@ -133,7 +141,9 @@ def bootstrap(
         )
 
     with progress.progress_context(total=len(to_build)) as progressbar:
-        bt = bootstrapper.Bootstrapper(wkctx, progressbar, prev_graph)
+        bt = bootstrapper.Bootstrapper(
+            wkctx, progressbar, prev_graph, cache_wheel_server_url
+        )
 
         for req in to_build:
             bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)

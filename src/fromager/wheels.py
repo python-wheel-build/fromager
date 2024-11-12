@@ -16,7 +16,8 @@ from urllib.parse import urlparse
 import elfdeps
 import tomlkit
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name, parse_wheel_filename
+from packaging.tags import Tag
+from packaging.utils import BuildTag, canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 from . import external_commands, overrides, requirements_file, resolver, sources
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 FROMAGER_BUILD_SETTINGS = "fromager-build-settings"
 FROMAGER_ELF_PROVIDES = "fromager-elf-provides.txt"
 FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
+FROMAGER_BUILD_REQ_PREFIX = "fromager"
 
 
 def _extra_metadata_elfdeps(
@@ -99,6 +101,24 @@ def _extra_metadata_elfdeps(
     return elfinfos
 
 
+def extract_info_from_wheel_file(
+    req: Requirement, wheel_file: pathlib.Path
+) -> tuple[str, Version, BuildTag, frozenset[Tag]]:
+    # parse_wheel_filename normalizes the dist name, however the dist-info
+    # directory uses the verbatim distribution name from the wheel file.
+    # Packages with upper case names like "MarkupSafe" are affected.
+    dist_name_normalized, dist_version, build_tag, wheel_tags = parse_wheel_filename(
+        wheel_file.name
+    )
+    dist_name = wheel_file.name.split("-", 1)[0]
+    if dist_name_normalized != canonicalize_name(dist_name):
+        # sanity check, should never fail
+        raise ValueError(
+            f"{req.name}: {dist_name_normalized} does not match {dist_name}"
+        )
+    return (dist_name, dist_version, build_tag, wheel_tags)
+
+
 def default_add_extra_metadata_to_wheels(
     ctx: context.WorkContext,
     req: Requirement,
@@ -120,18 +140,9 @@ def add_extra_metadata_to_wheels(
     wheel_file: pathlib.Path,
 ) -> pathlib.Path:
     pbi = ctx.package_build_info(req)
-    # parse_wheel_filename normalizes the dist name, however the dist-info
-    # directory uses the verbatim distribution name from the wheel file.
-    # Packages with upper case names like "MarkupSafe" are affected.
-    dist_name_normalized, dist_version, _, wheel_tags = parse_wheel_filename(
-        wheel_file.name
+    dist_name, dist_version, _, wheel_tags = extract_info_from_wheel_file(
+        req, wheel_file
     )
-    dist_name = wheel_file.name.split("-", 1)[0]
-    if dist_name_normalized != canonicalize_name(dist_name):
-        # sanity check, should never fail
-        raise ValueError(
-            f"{req.name}: {dist_name_normalized} does not match {dist_name}"
-        )
     dist_filename = f"{dist_name}-{dist_version}"
 
     extra_data_plugin = overrides.find_override_method(
@@ -181,7 +192,9 @@ def add_extra_metadata_to_wheels(
 
         req_files = sdist_root_dir.parent.glob("*-requirements.txt")
         for req_file in req_files:
-            shutil.copy(req_file, dist_info_dir / f"fromager-{req_file.name}")
+            shutil.copy(
+                req_file, dist_info_dir / f"{FROMAGER_BUILD_REQ_PREFIX}-{req_file.name}"
+            )
 
         if any(tag.platform != "all" for tag in wheel_tags):
             # platlib wheel
