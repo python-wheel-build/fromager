@@ -17,6 +17,7 @@ from .. import (
     sources,
     wheels,
 )
+from .graph import find_why
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
 ReverseRequirements = dict[str, list[tuple[str, Requirement]]]
@@ -167,6 +168,7 @@ def write_constraints_file(
     # each package are needed.
     conflicts = graph.get_install_dependency_versions()
     ret = True
+    conflicting_deps = set()
     for dep_name, nodes in sorted(conflicts.items()):
         versions = [node.version for node in nodes]
         if len(versions) == 0:
@@ -211,7 +213,7 @@ def write_constraints_file(
                 output.write(
                     f"# NOTE: fromager selected {dep_name}=={v} from: {version_strs}\n"
                 )
-                logging.debug(
+                logger.debug(
                     "%s: selecting %s from multiple candidates %s",
                     dep_name,
                     v,
@@ -226,9 +228,14 @@ def write_constraints_file(
             output.write(
                 f"# ERROR: no single version of {dep_name} met all requirements\n"
             )
-            logging.error("%s: no single version meets all requirements", dep_name)
+            logger.error("%s: no single version meets all requirements", dep_name)
+            conflicting_deps.add(dep_name)
             for dv in sorted(versions):
                 output.write(f"{dep_name}=={dv}\n")
+    for dep_name in conflicting_deps:
+        logger.error("finding why %s was being used", dep_name)
+        for node in graph.get_nodes_by_name(dep_name):
+            find_why(graph, node, -1, 1, [])
     return ret
 
 
