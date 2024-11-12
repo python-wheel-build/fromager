@@ -20,6 +20,8 @@ EXPECTED_FILES="
 $OUTDIR/wheels-repo/downloads/stevedore-5.2.0-1*.whl
 "
 
+start_local_wheel_server
+
 pass=true
 for pattern in $EXPECTED_FILES; do
   if [ ! -f "${pattern}" ]; then
@@ -38,10 +40,10 @@ fromager \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
   --settings-file="$SCRIPTDIR/bootstrap_settings.yaml" \
-  bootstrap 'stevedore==5.2.0'
+  bootstrap --cache-wheel-server-url=$WHEEL_SERVER_URL 'stevedore==5.2.0'
 
-if ! grep -q "stevedore: have wheel version 5.2.0: $OUTDIR/wheels-repo/downloads/stevedore-5.2.0-1" "$OUTDIR/bootstrap.log"; then
-  echo "FAIL: Did not find log message have wheel version in $OUTDIR/bootstrap.log" 1>&2
+if ! grep -q "stevedore: found built wheel on cache server" "$OUTDIR/bootstrap.log"; then
+  echo "FAIL: Did not find log message found built wheel on cache server in $OUTDIR/bootstrap.log" 1>&2
   pass=false
 fi
 
@@ -55,7 +57,7 @@ fromager \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
   --settings-dir="$SCRIPTDIR/changelog_settings-2" \
-  bootstrap 'stevedore==5.2.0'
+  bootstrap --cache-wheel-server-url=$WHEEL_SERVER_URL 'stevedore==5.2.0'
 
 EXPECTED_FILES="
 $OUTDIR/wheels-repo/downloads/stevedore-5.2.0-1*.whl
