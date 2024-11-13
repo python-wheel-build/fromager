@@ -50,12 +50,19 @@ class BuildSequenceEntry:
 
 
 @click.command()
+@click.option(
+    "--wheel-server-url",
+    default="",
+    type=str,
+    help="URL for the wheel server for builds",
+)
 @click.argument("dist_name")
 @click.argument("dist_version", type=clickext.PackageVersion())
 @click.argument("sdist_server_url")
 @click.pass_obj
 def build(
     wkctx: context.WorkContext,
+    wheel_server_url: str,
     dist_name: str,
     dist_version: Version,
     sdist_server_url: str,
@@ -81,6 +88,7 @@ def build(
     separately.
 
     """
+    wkctx.wheel_server_url = wheel_server_url
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
     source_url, version = sources.resolve_source(

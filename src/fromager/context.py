@@ -29,7 +29,6 @@ class WorkContext:
         sdists_repo: pathlib.Path,
         wheels_repo: pathlib.Path,
         work_dir: pathlib.Path,
-        wheel_server_url: str,
         cleanup: bool = True,
         variant: str = "cpu",
         network_isolation: bool = False,
@@ -61,7 +60,7 @@ class WorkContext:
         self.wheels_prebuilt = self.wheels_repo / "prebuilt"
         self.wheel_server_dir = self.wheels_repo / "simple"
         self.work_dir = pathlib.Path(work_dir).absolute()
-        self.wheel_server_url = wheel_server_url
+        self.wheel_server_url = ""
         self.logs_dir = self.work_dir / "logs"
         self.cleanup = cleanup
         self.variant = variant

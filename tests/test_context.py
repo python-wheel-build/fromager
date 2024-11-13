@@ -13,7 +13,6 @@ def test_pip_constraints_args(tmp_path):
         sdists_repo=tmp_path / "sdists-repo",
         wheels_repo=tmp_path / "wheels-repo",
         work_dir=tmp_path / "work-dir",
-        wheel_server_url="",
     )
     ctx.setup()
     assert ["--constraint", os.fspath(constraints_file)] == ctx.pip_constraint_args
@@ -25,7 +24,6 @@ def test_pip_constraints_args(tmp_path):
         sdists_repo=tmp_path / "sdists-repo",
         wheels_repo=tmp_path / "wheels-repo",
         work_dir=tmp_path / "work-dir",
-        wheel_server_url="",
     )
     ctx.setup()
     assert [] == ctx.pip_constraint_args
