@@ -60,8 +60,7 @@ fromager \
   --work-dir "$OUTDIR/work-dir" \
   --sdists-repo "$OUTDIR/sdists-repo" \
   --wheels-repo "$OUTDIR/wheels-repo" \
-  --wheel-server-url "${WHEEL_SERVER_URL}" \
-  step prepare-build "$DIST" "$VERSION" \
+  step prepare-build --wheel-server-url "${WHEEL_SERVER_URL}" "$DIST" "$VERSION" \
   || echo "Got expected build error"
 
 if grep -q "MissingDependency" "$build_log"; then

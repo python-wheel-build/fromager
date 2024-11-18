@@ -21,18 +21,6 @@ fromager \
 # Save the build order file but remove everything else.
 cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
 
-start_local_wheel_server
-
-# copy sdists to wheel-repo/download so that it can be put on local pypi index server (even later when fromager calls update_wheel_mirror)
-rm -r "$OUTDIR/wheels-repo" "$OUTDIR/work-dir"
-mkdir -p "$OUTDIR/wheels-repo/downloads"
-
-# IMPORTANT: cp -r behaves differently on macos: adding a trailing / to the src directory will end up copying the contents of that directory
-cp -r "$OUTDIR/sdists-repo/downloads" "$OUTDIR/wheels-repo/"
-rm -r "$OUTDIR/sdists-repo"
-
-pypi-mirror create -c -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
-
 # Rebuild everything
 log="$OUTDIR/build-logs/${DIST}-build.log"
 fromager \
@@ -78,7 +66,6 @@ $pass
 # Rebuild everything with the skip flag and verify we reuse the existing wheels
 log="$OUTDIR/build-logs/${DIST}-build-skip.log"
 fromager \
-    --wheel-server-url $WHEEL_SERVER_URL \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -103,7 +90,6 @@ $pass
 export FROMAGER_BUILD_SEQUENCE_SKIP_EXISTING=true
 log="$OUTDIR/build-logs/${DIST}-build-skip-env.log"
 fromager \
-    --wheel-server-url $WHEEL_SERVER_URL \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -127,7 +113,6 @@ $pass
 # bootstrap stevedore with 2 changelog.
 log="$OUTDIR/build-logs/${DIST}-build-changelog.log"
 fromager \
-    --wheel-server-url $WHEEL_SERVER_URL \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \

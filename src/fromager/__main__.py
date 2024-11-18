@@ -111,12 +111,6 @@ else:
     help="location of the constraints file",
 )
 @click.option(
-    "--wheel-server-url",
-    default="",
-    type=str,
-    help="URL for the wheel server for builds",
-)
-@click.option(
     "--cleanup/--no-cleanup",
     default=True,
     help="control removal of working files when a build completes successfully",
@@ -149,7 +143,6 @@ def main(
     settings_file: pathlib.Path,
     settings_dir: pathlib.Path,
     constraints_file: pathlib.Path,
-    wheel_server_url: str,
     cleanup: bool,
     variant: str,
     jobs: int | None,
@@ -203,7 +196,6 @@ def main(
             logger.info(f"patches dir: {patches_dir}")
             logger.info(f"maximum concurrent jobs: {jobs}")
             logger.info(f"constraints file: {constraints_file}")
-            logger.info(f"wheel server url: {wheel_server_url}")
             logger.info(f"network isolation: {network_isolation}")
             overrides.log_overrides()
 
@@ -223,7 +215,6 @@ def main(
         sdists_repo=sdists_repo,
         wheels_repo=wheels_repo,
         work_dir=work_dir,
-        wheel_server_url=wheel_server_url,
         cleanup=cleanup,
         variant=variant,
         network_isolation=network_isolation,

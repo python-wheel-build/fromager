@@ -54,8 +54,7 @@ build_wheel() {
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
         --wheels-repo "$OUTDIR/wheels-repo" \
-        --wheel-server-url "${WHEEL_SERVER_URL}" \
-        step prepare-build "$dist" "$version"
+        step prepare-build --wheel-server-url "${WHEEL_SERVER_URL}" "$dist" "$version"
 
     # Build an updated sdist
     fromager \
@@ -71,8 +70,7 @@ build_wheel() {
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
         --wheels-repo "$OUTDIR/wheels-repo" \
-        --wheel-server-url "${WHEEL_SERVER_URL}" \
-        step build-wheel "$dist" "$version"
+        step build-wheel --wheel-server-url "${WHEEL_SERVER_URL}" "$dist" "$version"
 
     # Move the built wheel into place
     mv "$OUTDIR"/wheels-repo/build/*.whl "$OUTDIR/wheels-repo/downloads/"

@@ -142,11 +142,18 @@ def _find_source_root_dir(
 
 
 @step.command()
+@click.option(
+    "--wheel-server-url",
+    default="",
+    type=str,
+    help="URL for the wheel server for builds",
+)
 @click.argument("dist_name")
 @click.argument("dist_version", type=clickext.PackageVersion())
 @click.pass_obj
 def prepare_build(
     wkctx: context.WorkContext,
+    wheel_server_url: str,
     dist_name: str,
     dist_version: Version,
 ) -> None:
@@ -157,6 +164,7 @@ def prepare_build(
     DIST_VERSION is the version to process
 
     """
+    wkctx.wheel_server_url = wheel_server_url
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
@@ -166,11 +174,18 @@ def prepare_build(
 
 
 @step.command()
+@click.option(
+    "--wheel-server-url",
+    default="",
+    type=str,
+    help="URL for the wheel server for builds",
+)
 @click.argument("dist_name")
 @click.argument("dist_version", type=clickext.PackageVersion())
 @click.pass_obj
 def build_wheel(
     wkctx: context.WorkContext,
+    wheel_server_url: str,
     dist_name: str,
     dist_version: Version,
 ) -> None:
@@ -181,8 +196,10 @@ def build_wheel(
     DIST_VERSION is the version to process
 
     """
+    wkctx.wheel_server_url = wheel_server_url
     req = Requirement(f"{dist_name}=={dist_version}")
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
+    server.start_wheel_server(wkctx)
     build_env = build_environment.BuildEnvironment(wkctx, source_root_dir.parent, None)
     wheel_filename = wheels.build_wheel(
         ctx=wkctx,

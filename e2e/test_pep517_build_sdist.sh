@@ -36,8 +36,7 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    --wheel-server-url "https://pypi.org/simple/" \
-    step prepare-build "$DIST" "$VERSION"
+    step prepare-build --wheel-server-url "https://pypi.org/simple/" "$DIST" "$VERSION"
 
 # Build an updated sdist
 rm -rf "$OUTDIR/sdists-repo/builds"
