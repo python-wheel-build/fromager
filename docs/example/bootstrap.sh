@@ -12,10 +12,44 @@ fi
 }
 trap 'catch' EXIT INT
 
-usage() { echo "Usage: CONTAINERFILE CONSTRAINTS REQUIREMENTS" 1>&2; exit 1; }
+usage() {
+	echo "Usage: [-k <seconds>] CONTAINERFILE CONSTRAINTS REQUIREMENTS"
+	echo "       -h: help (this message)"
+	echo "       -k: set number of seconds to keep container running after execution"
+}
+
+KEEPALIVE=0
+
+BASE_ARGS=()
+while [[ $# -gt 0 ]]; do
+	case $1 in
+	-h)
+		usage
+		exit 0
+		;;
+	-k)
+		KEEPALIVE="$2"
+		re='^[0-9]+$'
+		if ! [[ "$KEEPALIVE" =~ $re ]]; then
+			echo "-k value must be a number of seconds to keep container running"
+			exit 1
+		fi
+		shift
+		shift
+		;;
+	*)
+	BASE_ARGS+=("$1")
+	shift
+	;;
+	esac
+done
+
+# reset the args with base arguments
+set -- "${BASE_ARGS[@]}"
 
 if [ "$#" -lt 3 ]; then
    usage
+   exit 1
 fi
 
 set -x
@@ -67,10 +101,10 @@ podman run \
        --volume "${REQUIREMENTS_FILE}:/bootstrap-inputs/requirements.txt" \
        "$IMAGE" \
        \
-       fromager \
-       --constraints-file "/bootstrap-inputs/constraints.txt" \
-       --log-file="$OUTDIR/bootstrap.log" \
-       --sdists-repo="$OUTDIR/sdists-repo" \
-       --wheels-repo="$OUTDIR/wheels-repo" \
-       --work-dir="$OUTDIR/work-dir" \
-       bootstrap -r "/bootstrap-inputs/requirements.txt"
+       sh -c "fromager \
+       --constraints-file /bootstrap-inputs/constraints.txt \
+       --log-file=$OUTDIR/bootstrap.log \
+       --sdists-repo=$OUTDIR/sdists-repo \
+       --wheels-repo=$OUTDIR/wheels-repo \
+       --work-dir=$OUTDIR/work-dir \
+       bootstrap -r /bootstrap-inputs/requirements.txt; sleep $KEEPALIVE"
