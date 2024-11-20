@@ -1,10 +1,20 @@
 #!/bin/bash
 
 # Script for manually testing the bootstrap process using a container
+catch() {
+if [ ! -f "$CONSTRAINTS" ] && [ -f "$CONSTRAINTS_FILE" ]; then
+	rm -f "$CONSTRAINTS_FILE"
+fi
 
-usage() { echo "Usage: CONSTRAINTS_FILE REQUIREMENTS_FILE" 1>&2; exit 1; }
+if [ ! -f "$REQUIREMENTS" ] && [ -f "$REQUIREMENTS_FILE" ]; then
+	rm -f "$REQUIREMENTS_FILE"
+fi
+}
+trap 'catch' EXIT INT
 
-if [ "$#" -ne 2 ]; then
+usage() { echo "Usage: CONTAINERFILE CONSTRAINTS REQUIREMENTS" 1>&2; exit 1; }
+
+if [ "$#" -lt 3 ]; then
    usage
 fi
 
@@ -12,10 +22,24 @@ set -x
 set -e
 set -o pipefail
 
-CONSTRAINTS_FILE="$1"
-REQUIREMENTS_FILE="$2"
+CONTAINERFILE="$1"
+CONSTRAINTS="$2"
+REQUIREMENTS="$3"
 
-CONTAINERFILE="Containerfile"
+if [ ! -f "$CONSTRAINTS" ]; then
+	CONSTRAINTS_FILE=$(mktemp)
+	echo "$CONSTRAINTS"  | tr ',' '\n' > "$CONSTRAINTS_FILE"
+else
+	CONSTRAINTS_FILE="./$CONSTRAINTS"
+fi
+
+if [ ! -f "$REQUIREMENTS" ]; then
+	REQUIREMENTS_FILE=$(mktemp)
+	echo "$REQUIREMENTS"  | tr ',' '\n' > "$REQUIREMENTS_FILE"
+else
+	REQUIREMENTS_FILE="./$REQUIREMENTS"
+fi
+
 IMAGE="wheels-builder"
 # Strip the dev suffix, if any
 VARIANT="cpu-ubi9"
@@ -39,8 +63,8 @@ podman run \
        --security-opt label=disable \
        --volume "./$OUTDIR:/work/bootstrap-output:rw,exec" \
        --volume "./$CCACHE_DIR:/var/cache/ccache:rw,exec" \
-       --volume "./${CONSTRAINTS_FILE}:/bootstrap-inputs/constraints.txt" \
-       --volume "./${REQUIREMENTS_FILE}:/bootstrap-inputs/requirements.txt" \
+       --volume "${CONSTRAINTS_FILE}:/bootstrap-inputs/constraints.txt" \
+       --volume "${REQUIREMENTS_FILE}:/bootstrap-inputs/requirements.txt" \
        "$IMAGE" \
        \
        fromager \
