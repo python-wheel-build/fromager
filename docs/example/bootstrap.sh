@@ -13,11 +13,13 @@ fi
 trap 'catch' EXIT INT
 
 usage() {
-	echo "Usage: [-k <seconds>] CONTAINERFILE CONSTRAINTS REQUIREMENTS"
+	echo "Usage: [-f <fromager arguments> | -k <seconds>] CONTAINERFILE CONSTRAINTS REQUIREMENTS"
+	echo "       -f: additional fromager arguments"
 	echo "       -h: help (this message)"
 	echo "       -k: set number of seconds to keep container running after execution"
 }
 
+FROMAGER_ARGS=""
 KEEPALIVE=0
 
 BASE_ARGS=()
@@ -26,6 +28,11 @@ while [[ $# -gt 0 ]]; do
 	-h)
 		usage
 		exit 0
+		;;
+	-f)
+		FROMAGER_ARGS="$2"
+		shift
+		shift
 		;;
 	-k)
 		KEEPALIVE="$2"
@@ -101,7 +108,7 @@ podman run \
        --volume "${REQUIREMENTS_FILE}:/bootstrap-inputs/requirements.txt" \
        "$IMAGE" \
        \
-       sh -c "fromager \
+       sh -c "fromager ${FROMAGER_ARGS} \
        --constraints-file /bootstrap-inputs/constraints.txt \
        --log-file=$OUTDIR/bootstrap.log \
        --sdists-repo=$OUTDIR/sdists-repo \
