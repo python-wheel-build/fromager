@@ -173,8 +173,7 @@ def _download_source_check(
             raise zipfile.BadZipFile(f"Empty zip file encountered: {source_filename}")
     elif source_filename.suffix == ".tgz" or source_filename.suffix == ".gz":
         with tarfile.open(source_filename) as tar:
-            contents = tar.getnames()
-            if not contents:
+            if not tar.next():
                 raise TypeError(f"Empty tar file encountered: {source_filename}")
     else:
         raise TypeError(
