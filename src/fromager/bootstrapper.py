@@ -6,6 +6,7 @@ import operator
 import pathlib
 import shutil
 import typing
+import zipfile
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
@@ -15,7 +16,6 @@ from packaging.version import Version
 from . import (
     build_environment,
     dependencies,
-    external_commands,
     finders,
     progress,
     resolver,
@@ -340,34 +340,26 @@ class Bootstrapper:
             server.update_wheel_mirror(self.ctx)
             logger.info(f"{req.name}: found built wheel on cache server")
             unpack_dir = self._create_unpack_dir(req, resolved_version)
-            # unpack the wheel
-            external_commands.run(
-                ["wheel", "unpack", str(cached_wheel), "--dest", unpack_dir],
-                cwd=unpack_dir,
-            )
-
             dist_filename = f"{dist_name}-{dist_version}"
-            metadata_dir = unpack_dir / dist_filename / f"{dist_filename}.dist-info"
-
-            # prepare files cached by fromager by placing them in the parent directory of the return path
+            metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
             try:
-                shutil.copy(
-                    metadata_dir
-                    / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{dependencies.BUILD_SYSTEM_REQ_FILE_NAME}",
-                    unpack_dir / dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
-                )
-                shutil.copy(
-                    metadata_dir
-                    / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{dependencies.BUILD_BACKEND_REQ_FILE_NAME}",
-                    unpack_dir / dependencies.BUILD_BACKEND_REQ_FILE_NAME,
-                )
-                shutil.copy(
-                    metadata_dir
-                    / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{dependencies.BUILD_SDIST_REQ_FILE_NAME}",
-                    unpack_dir / dependencies.BUILD_SDIST_REQ_FILE_NAME,
-                )
+                archive = zipfile.ZipFile(cached_wheel)
+                for filename in [
+                    dependencies.BUILD_BACKEND_REQ_FILE_NAME,
+                    dependencies.BUILD_SDIST_REQ_FILE_NAME,
+                    dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
+                ]:
+                    zipinfo = archive.getinfo(
+                        str(
+                            metadata_dir
+                            / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}"
+                        )
+                    )
+                    zipinfo.filename = filename
+                    archive.extract(zipinfo, unpack_dir)
+
                 logger.info(f"{req.name}: extracted build requirements from wheel")
-                return unpack_dir / dist_filename, cached_wheel
+                return unpack_dir / metadata_dir, cached_wheel
             except Exception:
                 # implies that the wheel server hosted non-fromager built wheels
                 logger.info(
@@ -542,7 +534,7 @@ class Bootstrapper:
 
         # Cleanup the source tree and build environment, leaving any other
         # artifacts that were created.
-        if sdist_root_dir:
+        if sdist_root_dir and sdist_root_dir.exists():
             logger.debug(f"{req.name}: cleaning up source tree {sdist_root_dir}")
             shutil.rmtree(sdist_root_dir)
             logger.debug(f"{req.name}: cleaned up source tree {sdist_root_dir}")

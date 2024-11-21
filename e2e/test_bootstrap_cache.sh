@@ -20,6 +20,7 @@ fromager \
 start_local_wheel_server
 rm -rf "$OUTDIR/sdists-repo"
 rm -rf "$OUTDIR/work-dir"
+rm "$OUTDIR/bootstrap.log"
 
 # run fromager with the cache wheel server pointing to the local wheel server
 fromager \
@@ -32,6 +33,28 @@ fromager \
   --no-cleanup \
   bootstrap --cache-wheel-server-url=$WHEEL_SERVER_URL 'stevedore==5.2.0'
 
+EXPECTED_LOG_MESSAGES=(
+"loading build sdist dependencies from build-sdist-requirements.txt"
+"loading build backend dependencies from build-backend-requirements.txt"
+"loading build system dependencies from build-system-requirements.txt"
+)
+
+for pattern in "${EXPECTED_LOG_MESSAGES[@]}"; do
+  echo $pattern
+  if ! grep -q "stevedore: $pattern" "$OUTDIR/bootstrap.log"; then
+    echo "FAIL: Did not find log message stevedore: $pattern in $OUTDIR/bootstrap.log" 1>&2
+    pass=false
+  fi
+  if ! grep -q "pbr: $pattern" "$OUTDIR/bootstrap.log"; then
+    echo "FAIL: Did not find log message pbr: $pattern in $OUTDIR/bootstrap.log" 1>&2
+    pass=false
+  fi
+  if ! grep -q "setuptools: $pattern" "$OUTDIR/bootstrap.log"; then
+    echo "FAIL: Did not find log message setuptools: $pattern in $OUTDIR/bootstrap.log" 1>&2
+    pass=false
+  fi
+done
+
 EXPECTED_FILES="
 $OUTDIR/wheels-repo/downloads/setuptools-*.whl
 $OUTDIR/wheels-repo/downloads/pbr-*.whl
@@ -41,9 +64,9 @@ $OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
 $OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
 $OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
 
-$OUTDIR/work-dir/pbr-*/pbr-*/pbr-*.dist-info/fromager-*.txt
-$OUTDIR/work-dir/setuptools-*/setuptools-*/setuptools-*.dist-info/fromager-*.txt
-$OUTDIR/work-dir/stevedore-*/stevedore-*/stevedore-*.dist-info/fromager-*.txt
+$OUTDIR/work-dir/pbr-*/*-requirements.txt
+$OUTDIR/work-dir/setuptools-*/*-requirements.txt
+$OUTDIR/work-dir/stevedore-*/*-requirements.txt
 
 $OUTDIR/work-dir/build-order.json
 $OUTDIR/work-dir/constraints.txt
@@ -61,6 +84,7 @@ $pass
 rm -rf "$OUTDIR/sdists-repo"
 rm -rf "$OUTDIR/work-dir"
 rm -rf "$OUTDIR/wheels-repo"
+rm "$OUTDIR/bootstrap.log"
 
 # run fromager with the cache wheel server pointing to the pypi server
 fromager \
@@ -95,30 +119,18 @@ done
 
 $pass
 
-NOT_EXPECTED_FILES="
-$OUTDIR/work-dir/pbr-*/pbr-*/pbr-*.dist-info/fromager-*.txt
-$OUTDIR/work-dir/setuptools-*/setuptools-*/setuptools-*.dist-info/fromager-*.txt
-$OUTDIR/work-dir/stevedore-*/stevedore-*/stevedore-*.dist-info/fromager-*.txt
-"
-
-for pattern in $NOT_EXPECTED_FILES; do
-  if [ -f "${pattern}" ]; then
-    echo "Found $pattern" 1>&2
+for pattern in "${EXPECTED_LOG_MESSAGES[@]}"; do
+  echo $pattern
+  if grep -q "stevedore: $pattern" "$OUTDIR/bootstrap.log"; then
+    echo "FAIL: found log message stevedore: $pattern in $OUTDIR/bootstrap.log" 1>&2
     pass=false
   fi
-done
-
-$pass
-
-EXPECTED_DIR="
-$OUTDIR/work-dir/pbr-*/pbr-*/pbr-*.dist-info
-$OUTDIR/work-dir/setuptools-*/setuptools-*/setuptools-*.dist-info
-$OUTDIR/work-dir/stevedore-*/stevedore-*/stevedore-*.dist-info
-"
-
-for pattern in $EXPECTED_DIR; do
-  if [ -d "${pattern}" ]; then
-    echo "Did not find $pattern" 1>&2
+  if grep -q "pbr: $pattern" "$OUTDIR/bootstrap.log"; then
+    echo "FAIL: found log message pbr: $pattern in $OUTDIR/bootstrap.log" 1>&2
+    pass=false
+  fi
+  if grep -q "setuptools: $pattern" "$OUTDIR/bootstrap.log"; then
+    echo "FAIL: found log message setuptools: $pattern in $OUTDIR/bootstrap.log" 1>&2
     pass=false
   fi
 done

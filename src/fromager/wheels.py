@@ -151,14 +151,10 @@ def add_extra_metadata_to_wheels(
     data_to_add = {}
 
     with tempfile.TemporaryDirectory() as dir_name:
-        cmd = ["wheel", "unpack", str(wheel_file), "--dest", dir_name]
-        external_commands.run(
-            cmd,
-            cwd=dir_name,
-            network_isolation=ctx.network_isolation,
-        )
-
         wheel_root_dir = pathlib.Path(dir_name) / dist_filename
+        wheel_root_dir.mkdir()
+        zipfile.ZipFile(str(wheel_file)).extractall(str(wheel_root_dir))
+
         dist_info_dir = wheel_root_dir / f"{dist_filename}.dist-info"
         if not dist_info_dir.is_dir():
             raise ValueError(
