@@ -60,10 +60,6 @@ $OUTDIR/wheels-repo/downloads/setuptools-*.whl
 $OUTDIR/wheels-repo/downloads/pbr-*.whl
 $OUTDIR/wheels-repo/downloads/stevedore-*.whl
 
-$OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
-$OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
-$OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
-
 $OUTDIR/work-dir/pbr-*/*-requirements.txt
 $OUTDIR/work-dir/setuptools-*/*-requirements.txt
 $OUTDIR/work-dir/stevedore-*/*-requirements.txt
@@ -101,10 +97,6 @@ EXPECTED_FILES="
 $OUTDIR/wheels-repo/downloads/setuptools-*.whl
 $OUTDIR/wheels-repo/downloads/pbr-*.whl
 $OUTDIR/wheels-repo/downloads/stevedore-*.whl
-
-$OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
-$OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
-$OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
 
 $OUTDIR/work-dir/build-order.json
 $OUTDIR/work-dir/constraints.txt

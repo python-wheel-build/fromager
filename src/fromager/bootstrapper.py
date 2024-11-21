@@ -71,15 +71,15 @@ class Bootstrapper:
 
         pbi = self.ctx.package_build_info(req)
         if pbi.pre_built:
-            resolved_version, wheel_url, wheel_filename, unpack_dir = (
-                self._resolve_and_download_prebuilt(req, req_type)
+            wheel_url, resolved_version = self._resolve_prebuilt_with_history(
+                req=req,
+                req_type=req_type,
             )
-            # Remember that this is a prebuilt wheel, and where we got it.
             source_url = wheel_url
-            source_url_type = str(SourceType.PREBUILT)
         else:
-            resolved_version, source_url, source_filename, source_url_type = (
-                self._resolve_and_download_source(req, req_type)
+            source_url, resolved_version = self._resolve_source_with_history(
+                req=req,
+                req_type=req_type,
             )
 
         self._add_to_graph(req, req_type, resolved_version, source_url)
@@ -104,11 +104,28 @@ class Bootstrapper:
         # for cleanup
         build_env = None
         sdist_root_dir = None
-        if not pbi.pre_built:
+        if pbi.pre_built:
+            wheel_filename, unpack_dir = self._download_prebuilt(
+                req=req,
+                req_type=req_type,
+                resolved_version=resolved_version,
+                wheel_url=source_url,
+            )
+            # Remember that this is a prebuilt wheel, and where we got it.
+            source_url_type = str(SourceType.PREBUILT)
+        else:
             unpacked_cached_wheel, cached_wheel_filename = (
                 self._download_wheel_from_cache(req, resolved_version)
             )
+            source_url_type = sources.get_source_type(self.ctx, req)
+
             if not unpacked_cached_wheel:
+                source_filename = sources.download_source(
+                    ctx=self.ctx,
+                    req=req,
+                    version=resolved_version,
+                    download_url=source_url,
+                )
                 sdist_root_dir = sources.prepare_source(
                     ctx=self.ctx,
                     req=req,
@@ -263,33 +280,14 @@ class Bootstrapper:
             build_environment.maybe_install(self.ctx, dep, build_type, str(resolved))
             self.progressbar.update()
 
-    def _resolve_and_download_source(
-        self, req: Requirement, req_type: RequirementType
-    ) -> tuple[Version, str, pathlib.Path, str]:
-        source_url, resolved_version = self._resolve_source_with_history(
-            req=req,
-            req_type=req_type,
-        )
-
-        source_filename = sources.download_source(
-            ctx=self.ctx,
-            req=req,
-            version=resolved_version,
-            download_url=source_url,
-        )
-        source_url_type = sources.get_source_type(self.ctx, req)
-
-        return (resolved_version, source_url, source_filename, source_url_type)
-
-    def _resolve_and_download_prebuilt(
-        self, req: Requirement, req_type: RequirementType
-    ) -> tuple[Version, str, pathlib.Path, pathlib.Path]:
+    def _download_prebuilt(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+        resolved_version: Version,
+        wheel_url: str,
+    ) -> tuple[pathlib.Path, pathlib.Path]:
         logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
-
-        wheel_url, resolved_version = self._resolve_prebuilt_with_history(
-            req=req,
-            req_type=req_type,
-        )
 
         wheel_filename = wheels.download_wheel(req, wheel_url, self.ctx.wheels_prebuilt)
 
@@ -304,7 +302,7 @@ class Bootstrapper:
             shutil.copy(wheel_filename, dest_name)
             server.update_wheel_mirror(self.ctx)
         unpack_dir = self._create_unpack_dir(req, resolved_version)
-        return (resolved_version, wheel_url, wheel_filename, unpack_dir)
+        return (wheel_filename, unpack_dir)
 
     def _download_wheel_from_cache(
         self, req: Requirement, resolved_version: Version
