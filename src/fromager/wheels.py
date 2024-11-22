@@ -153,7 +153,13 @@ def add_extra_metadata_to_wheels(
     with tempfile.TemporaryDirectory() as dir_name:
         wheel_root_dir = pathlib.Path(dir_name) / dist_filename
         wheel_root_dir.mkdir()
-        zipfile.ZipFile(str(wheel_file)).extractall(str(wheel_root_dir))
+        with zipfile.ZipFile(str(wheel_file)) as zf:
+            for infolist in zf.filelist:
+                zf.extract(infolist, wheel_root_dir)
+                # the higher 16 bits store the permissions and type of file (i.e. stat.filemode)
+                # the lower bits of this give us the permission
+                permissions = infolist.external_attr >> 16 & 0o777
+                wheel_root_dir.joinpath(infolist.filename).chmod(permissions)
 
         dist_info_dir = wheel_root_dir / f"{dist_filename}.dist-info"
         if not dist_info_dir.is_dir():
