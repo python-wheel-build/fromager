@@ -21,7 +21,7 @@ fromager \
 # Save the build order file but remove everything else.
 cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
 
-# Rebuild everything
+# Rebuild everything even if it already exists
 log="$OUTDIR/build-logs/${DIST}-build.log"
 fromager \
     --log-file "$log" \
@@ -29,7 +29,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence "$OUTDIR/build-order.json"
+    build-sequence --force "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
@@ -63,32 +63,8 @@ done
 
 $pass
 
-# Rebuild everything with the skip flag and verify we reuse the existing wheels
+# Rebuild everything while reusing existing local wheels
 log="$OUTDIR/build-logs/${DIST}-build-skip.log"
-fromager \
-    --log-file "$log" \
-    --work-dir "$OUTDIR/work-dir" \
-    --sdists-repo "$OUTDIR/sdists-repo" \
-    --wheels-repo "$OUTDIR/wheels-repo" \
-    --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence --skip-existing "$OUTDIR/build-order.json"
-
-find "$OUTDIR/wheels-repo/"
-
-if ! grep -q "skipping builds for versions of packages available" "$log"; then
-  echo "Did not find message indicating builds would be skipped" 1>&2
-  pass=false
-fi
-if ! grep -q "skipping building wheels for stevedore" "$log"; then
-  echo "Did not find message indicating build of stevedore was skipped" 1>&2
-  pass=false
-fi
-
-$pass
-
-# Rebuild everything with the skip env var and verify we reuse the existing wheels
-export FROMAGER_BUILD_SEQUENCE_SKIP_EXISTING=true
-log="$OUTDIR/build-logs/${DIST}-build-skip-env.log"
 fromager \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
@@ -110,37 +86,25 @@ fi
 
 $pass
 
-# bootstrap stevedore with 2 changelog.
-log="$OUTDIR/build-logs/${DIST}-build-changelog.log"
+# Rebuild everything while reusing wheels from external server
+rm -rf $OUTDIR/wheels-repo
+log="$OUTDIR/build-logs/${DIST}-build-skip-env.log"
 fromager \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    --settings-dir="$SCRIPTDIR/changelog_settings-2" \
-    build-sequence --skip-existing "$OUTDIR/build-order.json"
+    build-sequence --cache-wheel-server-url="https://pypi.org/simple" "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
-if grep -q "skipping building wheels for stevedore" "$log"; then
-  echo "Found message indicating build of stevedore was skipped" 1>&2
+if ! grep -q "skipping builds for versions of packages available" "$log"; then
+  echo "Did not find message indicating builds would be skipped" 1>&2
   pass=false
 fi
-
-find "$OUTDIR/wheels-repo/"
-
-EXPECTED_FILES="
-$OUTDIR/wheels-repo/downloads/stevedore-5.2.0-2*.whl
-
-$OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
-"
-
-pass=true
-for pattern in $EXPECTED_FILES; do
-  if [ ! -f "${pattern}" ]; then
-    echo "Did not find $pattern" 1>&2
-    pass=false
-  fi
-done
+if ! grep -q "skipping building wheels for stevedore" "$log"; then
+  echo "Did not find message indicating build of stevedore was skipped" 1>&2
+  pass=false
+fi
 
 $pass

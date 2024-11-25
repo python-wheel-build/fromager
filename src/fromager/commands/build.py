@@ -104,17 +104,26 @@ build._fromager_show_build_settings = True  # type: ignore
 
 
 @click.command()
-@click.argument("build_order_file")
 @click.option(
-    "--skip-existing",
-    default=False,
+    "-f",
+    "--force",
     is_flag=True,
+    default=False,
+    help="rebuild wheels even if they have already been built",
 )
+@click.option(
+    "-c",
+    "--cache-wheel-server-url",
+    "cache_wheel_server_url",
+    help="url to a wheel server from where fromager can check if it had already built the wheel",
+)
+@click.argument("build_order_file")
 @click.pass_obj
 def build_sequence(
     wkctx: context.WorkContext,
     build_order_file: str,
-    skip_existing: bool,
+    force: bool,
+    cache_wheel_server_url: str | None,
 ) -> None:
     """Build a sequence of wheels in order
 
@@ -127,10 +136,16 @@ def build_sequence(
 
     """
     server.start_wheel_server(wkctx)
-    if skip_existing:
+    wheel_server_urls = [wkctx.wheel_server_url]
+    if cache_wheel_server_url:
+        # put after local server so we always check local server first
+        wheel_server_urls.append(cache_wheel_server_url)
+
+    if force:
+        logger.info(f"rebuilding all wheels even if they exist in {wheel_server_urls}")
+    else:
         logger.info(
-            "skipping builds for versions of packages available at %s",
-            wkctx.wheel_server_url,
+            f"skipping builds for versions of packages available at {wheel_server_urls}"
         )
 
     entries: list[BuildSequenceEntry] = []
@@ -145,9 +160,9 @@ def build_sequence(
 
             req = Requirement(f"{dist_name}=={resolved_version}")
 
-            if skip_existing:
+            if not force:
                 is_built, wheel_filename = _is_wheel_built(
-                    wkctx, dist_name, resolved_version
+                    wkctx, dist_name, resolved_version, wheel_server_urls
                 )
                 if is_built:
                     logger.info(
@@ -372,14 +387,19 @@ def _build(
 
 
 def _is_wheel_built(
-    wkctx: context.WorkContext, dist_name: str, resolved_version: Version
+    wkctx: context.WorkContext,
+    dist_name: str,
+    resolved_version: Version,
+    wheel_server_urls: list[str],
 ) -> tuple[True, pathlib.Path] | tuple[False, None]:
     req = Requirement(f"{dist_name}=={resolved_version}")
 
     try:
         logger.info(f"{req.name}: checking if {req} was already built")
         url, _ = wheels.resolve_prebuilt_wheel(
-            ctx=wkctx, req=req, wheel_server_urls=[wkctx.wheel_server_url]
+            ctx=wkctx,
+            req=req,
+            wheel_server_urls=wheel_server_urls,
         )
         pbi = wkctx.package_build_info(req)
         build_tag_from_settings = pbi.build_tag(resolved_version)
@@ -394,7 +414,13 @@ def _is_wheel_built(
             raise ValueError(
                 f"{dist_name}: changelog for version {resolved_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
             )
-        return existing_build_tag == build_tag, pathlib.Path(wheel_filename)
+        is_built = existing_build_tag == build_tag
+        if is_built and wkctx.wheel_server_url not in url:
+            # if the found wheel was on an external server, then download it
+            wheels.download_wheel(req, url, wkctx.wheels_downloads)
+            server.update_wheel_mirror(wkctx)
+
+        return is_built, pathlib.Path(wheel_filename)
     except Exception:
         logger.info(f"{req.name}: could not locate prebuilt wheel. Will build {req}")
         return False, None
