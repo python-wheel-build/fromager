@@ -318,8 +318,6 @@ def default_build_wheel(
     build_env: build_environment.BuildEnvironment,
     extra_environ: dict[str, str],
     req: Requirement,
-    sdist_root_dir: pathlib.Path,
-    version: Version,
     build_dir: pathlib.Path,
 ) -> None:
     logger.debug(f"{req.name}: building wheel in {build_dir} with {extra_environ}")

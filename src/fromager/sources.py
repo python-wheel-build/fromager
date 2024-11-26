@@ -454,11 +454,6 @@ def build_sdist(
 
 def default_build_sdist(
     ctx: context.WorkContext,
-    extra_environ: dict,
-    req: Requirement,
-    version: Version,
-    sdist_root_dir: pathlib.Path,
-    build_env: build_environment.BuildEnvironment,
     build_dir: pathlib.Path,
 ) -> pathlib.Path:
     # It seems like the "correct" way to do this would be to run the
