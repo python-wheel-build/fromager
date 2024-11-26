@@ -1,8 +1,8 @@
 import pathlib
-import zipfile
 from unittest.mock import patch
 
 import pytest
+import wheel.cli  # type: ignore
 
 from fromager import wheels
 
@@ -15,5 +15,5 @@ def test_invalid_wheel_file_exception(mock_download_url, tmp_path: pathlib.Path)
     fake_dir.mkdir()
     text_file = fake_dir / "fake_wheel.txt"
     text_file.write_text("This is a test file")
-    with pytest.raises(zipfile.BadZipFile):
+    with pytest.raises(wheel.cli.WheelError):
         wheels._download_wheel_check(fake_dir, fake_url)

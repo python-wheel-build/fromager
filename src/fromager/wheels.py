@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 import elfdeps
 import tomlkit
+import wheel.wheelfile  # type: ignore
 from packaging.requirements import Requirement
 from packaging.tags import Tag
 from packaging.utils import BuildTag, canonicalize_name, parse_wheel_filename
@@ -361,14 +362,10 @@ def download_wheel(
     return wheel_filename
 
 
-# Helper method to check whether the .whl file is a zip file and has contents in it.
-# It will throw BadZipFile exception if any other file is encountered. Eg: index.html
 def _download_wheel_check(destination_dir, wheel_url):
     wheel_filename = sources.download_url(destination_dir, wheel_url)
-    wheel_directory_contents = zipfile.ZipFile(wheel_filename).namelist()
-    if not wheel_directory_contents:
-        raise zipfile.BadZipFile(f"Empty zip file encountered: {wheel_filename}")
-
+    # validates whether the wheel is correct or not. will raise an error in the wheel is invalid
+    wheel.wheelfile.WheelFile(wheel_filename)
     return wheel_filename
 
 
