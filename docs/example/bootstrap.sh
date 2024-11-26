@@ -106,6 +106,8 @@ podman run \
        --volume "./$CCACHE_DIR:/var/cache/ccache:rw,exec" \
        --volume "${CONSTRAINTS_FILE}:/bootstrap-inputs/constraints.txt" \
        --volume "${REQUIREMENTS_FILE}:/bootstrap-inputs/requirements.txt" \
+       --ulimit host \
+       --pids-limit -1 \
        "$IMAGE" \
        \
        sh -c "fromager ${FROMAGER_ARGS} \
