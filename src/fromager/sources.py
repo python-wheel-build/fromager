@@ -18,6 +18,7 @@ from packaging.version import Version
 from . import (
     dependencies,
     external_commands,
+    metrics,
     overrides,
     pyproject,
     requirements_file,
@@ -47,6 +48,7 @@ def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
     return str(source_type)
 
 
+@metrics.timeit(description="download source")
 def download_source(
     *,
     ctx: context.WorkContext,
@@ -72,6 +74,7 @@ def download_source(
     return source_path
 
 
+@metrics.timeit(description="resolve source")
 def resolve_source(
     *,
     ctx: context.WorkContext,
@@ -211,17 +214,6 @@ def download_url(
     return outfile
 
 
-def _sdist_root_name(source_filename: pathlib.Path) -> str:
-    base_name = pathlib.Path(source_filename).name
-    if base_name.endswith(".tar.gz"):
-        ext_to_strip = ".tar.gz"
-    elif base_name.endswith(".zip"):
-        ext_to_strip = ".zip"
-    else:
-        raise ValueError(f"Do not know how to work with {source_filename}")
-    return base_name[: -len(ext_to_strip)]
-
-
 def _takes_arg(f: typing.Callable, arg_name: str) -> bool:
     sig = inspect.signature(f)
     return arg_name in sig.parameters
@@ -342,6 +334,7 @@ def read_build_meta(unpack_dir: pathlib.Path) -> dict:
         return json.load(f)
 
 
+@metrics.timeit(description="prepare source")
 def prepare_source(
     *,
     ctx: context.WorkContext,
@@ -422,6 +415,7 @@ def prepare_new_source(
     vendor_rust.vendor_rust(req, source_root_dir)
 
 
+@metrics.timeit(description="build sdist")
 def build_sdist(
     *,
     ctx: context.WorkContext,

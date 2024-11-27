@@ -1,3 +1,4 @@
+import collections
 import logging
 import os
 import pathlib
@@ -70,6 +71,12 @@ class WorkContext:
         self._constraints_filename = self.work_dir / "constraints.txt"
 
         self.dependency_graph = dependency_graph.DependencyGraph()
+
+        # storing metrics
+        self.time_store: dict[str, dict[str, float]] = collections.defaultdict(
+            dict[str, float]
+        )
+        self.time_description_store: dict[str, str] = {}
 
     @property
     def pip_wheel_server_args(self) -> list[str]:
