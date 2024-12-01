@@ -140,7 +140,12 @@ def default_get_build_backend_dependencies(
     """
     pyproject_toml = get_pyproject_contents(build_dir)
     hook_caller = get_build_backend_hook_caller(
-        build_dir, pyproject_toml, override_environ=extra_environ
+        ctx=ctx,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=pbi.build_dir(sdist_root_dir),
+        pyproject_toml=pyproject_toml,
+        override_environ=extra_environ,
+        network_isolation=ctx.network_isolation,
     )
     return hook_caller.get_requires_for_build_wheel()
 
@@ -197,7 +202,12 @@ def default_get_build_sdist_dependencies(
     """
     pyproject_toml = get_pyproject_contents(build_dir)
     hook_caller = get_build_backend_hook_caller(
-        build_dir, pyproject_toml, override_environ=extra_environ
+        ctx=ctx,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=build_dir,
+        pyproject_toml=pyproject_toml,
+        override_environ=extra_environ,
+        network_isolation=ctx.network_isolation,
     )
     return hook_caller.get_requires_for_build_wheel()
 
@@ -247,12 +257,15 @@ def get_build_backend(pyproject_toml: dict[str, typing.Any]) -> dict[str, typing
 
 
 def get_build_backend_hook_caller(
+    ctx: context.WorkContext,
     sdist_root_dir: pathlib.Path,
+    build_dir: pathlib.Path,
     pyproject_toml: dict[str, typing.Any],
     override_environ: dict[str, typing.Any],
     *,
     network_isolation: bool = False,
 ) -> pyproject_hooks.BuildBackendHookCaller:
+    build_env = ctx.get_build_env()
     backend = get_build_backend(pyproject_toml)
 
     def _run_hook_with_extra_environ(
@@ -261,25 +274,27 @@ def get_build_backend_hook_caller(
         extra_environ: typing.Mapping[str, str] | None = None,
     ) -> None:
         """The BuildBackendHookCaller is going to pass extra_environ
-        and our build system may want to set some values, too. Merge
-        the 2 sets of values before calling the actual runner function.
+        and our build system may want to set some values, too. The hook
+        also needs env vars from the build environment's virtualenv. Merge
+        the 3 sets of values before calling the actual runner function.
         """
-        full_environ: dict[str, typing.Any] = {}
-        if extra_environ is not None:
-            full_environ.update(extra_environ)
-        full_environ.update(override_environ)
+        extra_environ = dict(extra_environ) if extra_environ else {}
+        extra_environ.update(override_environ)
+        extra_environ.update(build_env.get_venv_environ(template_env=extra_environ))
         external_commands.run(
             cmd,
             cwd=cwd,
-            extra_environ=full_environ,
+            extra_environ=extra_environ,
             network_isolation=network_isolation,
         )
 
     return pyproject_hooks.BuildBackendHookCaller(
-        source_dir=str(sdist_root_dir),
+        # sources may be in a subdirectory (PyArrow, Triton, ...)
+        source_dir=str(build_dir),
         build_backend=backend["build-backend"],
         backend_path=backend["backend-path"],
         runner=_run_hook_with_extra_environ,
+        python_executable=str(build_env.python),
     )
 
 
