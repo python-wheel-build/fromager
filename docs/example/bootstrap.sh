@@ -14,11 +14,13 @@ trap 'catch' EXIT INT
 
 usage() {
 	echo "Usage: [-f <fromager arguments> | -k <seconds>] CONTAINERFILE CONSTRAINTS REQUIREMENTS"
+	echo "       -c: Execute different command in container (must be passed with double quotes)"
 	echo "       -f: additional fromager arguments"
 	echo "       -h: help (this message)"
 	echo "       -k: set number of seconds to keep container running after execution"
 }
 
+COMMAND=""
 FROMAGER_ARGS=""
 KEEPALIVE=0
 
@@ -28,6 +30,11 @@ while [[ $# -gt 0 ]]; do
 	-h)
 		usage
 		exit 0
+		;;
+	-c)
+		COMMAND="$2"
+		shift
+		shift
 		;;
 	-f)
 		FROMAGER_ARGS="$2"
@@ -97,6 +104,15 @@ podman build \
        -t "$IMAGE" \
        .
 
+# set the default command
+[ -z "$COMMAND" ] && COMMAND="fromager ${FROMAGER_ARGS} \
+       --constraints-file /bootstrap-inputs/constraints.txt \
+       --log-file=$OUTDIR/bootstrap.log \
+       --sdists-repo=$OUTDIR/sdists-repo \
+       --wheels-repo=$OUTDIR/wheels-repo \
+       --work-dir=$OUTDIR/work-dir \
+       bootstrap -r /bootstrap-inputs/requirements.txt"
+
 # Run fromager in the image to bootstrap the requirements file.
 podman run \
        -it \
@@ -109,11 +125,4 @@ podman run \
        --ulimit host \
        --pids-limit -1 \
        "$IMAGE" \
-       \
-       sh -c "fromager ${FROMAGER_ARGS} \
-       --constraints-file /bootstrap-inputs/constraints.txt \
-       --log-file=$OUTDIR/bootstrap.log \
-       --sdists-repo=$OUTDIR/sdists-repo \
-       --wheels-repo=$OUTDIR/wheels-repo \
-       --work-dir=$OUTDIR/work-dir \
-       bootstrap -r /bootstrap-inputs/requirements.txt; sleep $KEEPALIVE"
+       sh -c "$COMMAND; sleep $KEEPALIVE"
