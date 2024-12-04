@@ -7,6 +7,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
+from .read import open_file_or_url
 from .requirements_file import RequirementType
 
 logger = logging.getLogger(__name__)
@@ -122,9 +123,9 @@ class DependencyGraph:
     @classmethod
     def from_file(
         cls,
-        graph_file: pathlib.Path,
+        graph_file: pathlib.Path | str,
     ) -> "DependencyGraph":
-        with open(graph_file) as f:
+        with open_file_or_url(graph_file) as f:
             # TODO: add JSON validation to ensure it is a parsable graph json
             raw_graph = typing.cast(dict[str, dict], json.load(f))
             return cls.from_dict(raw_graph)

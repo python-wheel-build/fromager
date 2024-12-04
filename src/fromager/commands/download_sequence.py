@@ -8,7 +8,7 @@ import click
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from .. import context, progress, sources, wheels
+from .. import context, progress, read, sources, wheels
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ def download_sequence(
         wheel_servers = [sdist_server_url]
 
     logger.info("reading build order from %s", build_order_file)
-    with open(build_order_file, "r") as f:
+    with read.open_file_or_url(build_order_file) as f:
         build_order = json.load(f)
 
     def download_one(entry: dict[str, typing.Any]):

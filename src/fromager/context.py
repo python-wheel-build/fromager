@@ -8,11 +8,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import (
-    constraints,
-    dependency_graph,
-    packagesettings,
-)
+from . import constraints, dependency_graph, packagesettings, request_session
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +21,7 @@ class WorkContext:
     def __init__(
         self,
         active_settings: packagesettings.Settings | None,
-        constraints_file: pathlib.Path | None,
+        constraints_file: str | None,
         patches_dir: pathlib.Path,
         sdists_repo: pathlib.Path,
         wheels_repo: pathlib.Path,
@@ -45,12 +41,12 @@ class WorkContext:
                 max_jobs=max_jobs,
             )
         self.settings = active_settings
-        self.input_constraints_file: pathlib.Path | None
+        self.input_constraints_uri: str | None
         if constraints_file is not None:
-            self.input_constraints_file = constraints_file.absolute()
+            self.input_constraints_uri = constraints_file
             self.constraints = constraints.load(constraints_file)
         else:
-            self.input_constraints_file = None
+            self.input_constraints_uri = None
             self.constraints = constraints.Constraints({})
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / "downloads"
@@ -88,9 +84,19 @@ class WorkContext:
 
     @property
     def pip_constraint_args(self) -> list[str]:
-        if not self.input_constraints_file:
+        if not self.input_constraints_uri:
             return []
-        return ["--constraint", os.fspath(self.input_constraints_file)]
+
+        if self.input_constraints_uri.startswith(("https://", "http://", "file://")):
+            path_to_constraints_file = self.work_dir / "input-constraints.txt"
+            if not path_to_constraints_file.exists():
+                response = request_session.session.get(self.input_constraints_uri)
+                path_to_constraints_file.write_text(response.text)
+        else:
+            path_to_constraints_file = pathlib.Path(self.input_constraints_uri)
+
+        path_to_constraints_file = path_to_constraints_file.absolute()
+        return ["--constraint", os.fspath(path_to_constraints_file)]
 
     def write_to_graph_to_file(self):
         with open(self.work_dir / "graph.json", "w") as f:
