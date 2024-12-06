@@ -91,7 +91,7 @@ def _extra_metadata_elfdeps(
         names = sorted(p.soname for p in provides)
         logger.info("%s: Provides libraries: %s", req.name, ", ".join(names))
 
-        provides_file = dist_info_dir / FROMAGER_ELF_REQUIRES
+        provides_file = dist_info_dir / FROMAGER_ELF_PROVIDES
         with provides_file.open("w", encoding="utf-8") as f:
             for soinfo in sorted(provides):
                 f.write(f"{soinfo}\n")
