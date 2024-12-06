@@ -143,3 +143,41 @@ def test_get_install_dependencies():
         for node in graph.get_install_dependencies()
     ]
     assert install_nodes == ["a==2.0", "d==6.0", "b==3.0", "e==6.0"]
+
+
+def test_cycles_get_install_dependencies():
+    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
+    # create cycle: a depends on d and d depends on a
+    graph.add_dependency(
+        parent_name=canonicalize_name("a"),
+        parent_version=Version("2.0"),
+        req_type=requirements_file.RequirementType.INSTALL,
+        req=Requirement("d>=4.0"),
+        req_version=Version("6.0"),
+        download_url="url for d",
+    )
+
+    graph.add_dependency(
+        parent_name=canonicalize_name("d"),
+        parent_version=Version("6.0"),
+        req_type=requirements_file.RequirementType.INSTALL,
+        req=Requirement("a<=2.0"),
+        req_version=Version("2.0"),
+        download_url="url for a",
+    )
+
+    # add another duplicate toplevel
+    graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=requirements_file.RequirementType.TOP_LEVEL,
+        req=Requirement("a<=2.0"),
+        req_version=Version("2.0"),
+        download_url="url for a",
+    )
+
+    install_nodes = [
+        f"{node.to_dict()['canonicalized_name']}=={node.to_dict()['version']}"
+        for node in graph.get_install_dependencies()
+    ]
+    assert install_nodes == ["a==2.0", "d==6.0"]
