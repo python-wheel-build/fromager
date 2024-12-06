@@ -240,6 +240,7 @@ class DependencyGraph:
         visited = set()
         for edge in self._depth_first_traversal(
             self.nodes[ROOT].children,
+            set(),
             match_dep_types=match_dep_types,
         ):
             if edge.destination_node.key not in visited:
@@ -277,13 +278,17 @@ class DependencyGraph:
 
     def _depth_first_traversal(
         self,
-        start_node: list[DependencyEdge],
+        start_edges: list[DependencyEdge],
+        visited: set[str],
         match_dep_types: list[RequirementType] | None = None,
     ) -> typing.Iterable[DependencyEdge]:
-        for edge in start_node:
+        for edge in start_edges:
+            if edge.destination_node.key in visited:
+                continue
             if match_dep_types and edge.req_type not in match_dep_types:
                 continue
+            visited.add(edge.destination_node.key)
             yield edge
             yield from self._depth_first_traversal(
-                edge.destination_node.children, match_dep_types
+                edge.destination_node.children, visited, match_dep_types
             )
