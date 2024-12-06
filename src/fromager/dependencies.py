@@ -75,9 +75,6 @@ def _filter_requirements(
 
 
 def default_get_build_system_dependencies(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
 ) -> typing.Iterable[str]:
     """Get build system requirements
@@ -127,9 +124,6 @@ def get_build_backend_dependencies(
 
 
 def default_get_build_backend_dependencies(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
     extra_environ: dict[str, str],
 ) -> typing.Iterable[str]:
@@ -184,9 +178,6 @@ def get_build_sdist_dependencies(
 
 
 def default_get_build_sdist_dependencies(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path,
     extra_environ: dict[str, str],
 ) -> typing.Iterable[str]:

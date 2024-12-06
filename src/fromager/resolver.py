@@ -72,7 +72,6 @@ def resolve(
 
 def default_resolver_provider(
     ctx: context.WorkContext,
-    req: Requirement,
     sdist_server_url: str,
     include_sdists: bool,
     include_wheels: bool,
