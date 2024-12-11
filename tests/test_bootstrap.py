@@ -188,3 +188,76 @@ def test_write_constraints_file_unresolvable_duplicate():
         c==3.1
         """).lstrip()
     assert expected == buffer.getvalue()
+
+
+def test_write_constraints_file_duplicates():
+    buffer = io.StringIO()
+    raw_graph = {
+        "": {
+            "download_url": "",
+            "pre_built": False,
+            "version": "0",
+            "canonicalized_name": "",
+            "edges": [
+                {"key": "a==1.0", "req_type": "install", "req": "a"},
+                {"key": "d==1.0", "req_type": "install", "req": "d"},
+            ],
+        },
+        "a==1.0": {
+            "download_url": "url for a",
+            "pre_built": False,
+            "version": "1.0",
+            "canonicalized_name": "a",
+            "edges": [
+                {"key": "c==3.0", "req_type": "install", "req": "c<=3.0"},
+            ],
+        },
+        "d==1.0": {
+            "download_url": "url for a",
+            "pre_built": False,
+            "version": "1.0",
+            "canonicalized_name": "a",
+            "edges": [
+                {"key": "c==3.1", "req_type": "install", "req": "c>=3.0"},
+            ],
+        },
+        "c==3.0": {  # transformers 4.46
+            "download_url": "url for c",
+            "pre_built": False,
+            "version": "3.0",
+            "canonicalized_name": "c",
+            "edges": [{"key": "b==2.0", "req_type": "install", "req": "b<2.1,>=2.0"}],
+        },
+        "c==3.1": {  # transformers 4.47
+            "download_url": "url for c",
+            "pre_built": False,
+            "version": "3.1",
+            "canonicalized_name": "c",
+            "edges": [{"key": "b==2.1", "req_type": "install", "req": "b<2.2,>=2.1"}],
+        },
+        "b==2.0": {  # tokenizer
+            "download_url": "url for b",
+            "pre_built": False,
+            "version": "2.0",
+            "canonicalized_name": "b",
+            "edges": [],
+        },
+        "b==2.1": {  # tokenizer
+            "download_url": "url for b",
+            "pre_built": False,
+            "version": "2.1",
+            "canonicalized_name": "b",
+            "edges": [],
+        },
+    }
+    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
+    assert bootstrap.write_constraints_file(graph, buffer)
+    expected = textwrap.dedent("""
+        a==1.0
+        # NOTE: fromager selected b==2.0 from: ['2.0', '2.1']
+        b==2.0
+        # NOTE: fromager selected c==3.0 from: ['3.0', '3.1']
+        c==3.0
+        d==1.0
+        """).lstrip()
+    assert expected == buffer.getvalue()

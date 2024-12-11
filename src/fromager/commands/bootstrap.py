@@ -3,6 +3,8 @@ import typing
 
 import click
 from packaging.requirements import Requirement
+from packaging.utils import NormalizedName
+from packaging.version import Version
 
 from .. import (
     bootstrapper,
@@ -180,7 +182,17 @@ def write_constraints_file(
     conflicts = graph.get_install_dependency_versions()
     ret = True
     conflicting_deps = set()
-    for dep_name, nodes in sorted(conflicts.items()):
+
+    # Map for already resolved versions for a given dependency Eg: {"a": "0.4"}
+    resolved: dict[NormalizedName, Version] = {}
+
+    # List of unresolved dependencies
+    unresolved_dependencies = sorted(conflicts.items())
+
+    dep_name: NormalizedName
+
+    # Loop over dependencies and resolve dependencies with single version first. This will shrink the unresolved_dependencies to begin with.
+    for dep_name, nodes in unresolved_dependencies[:]:
         versions = [node.version for node in nodes]
         if len(versions) == 0:
             # This should never happen.
@@ -189,64 +201,99 @@ def write_constraints_file(
         if len(versions) == 1:
             # This is going to be the situation for most dependencies, where we
             # only have one version.
-            output.write(f"{dep_name}=={versions[0]}\n")
-            continue
+            resolved[dep_name] = versions[0]
+            # Remove from unresolved dependencies list
+            unresolved_dependencies.remove((dep_name, nodes))
+    multiple_versions = dict(unresolved_dependencies)
 
-        # Below this point we have built multiple versions of the same thing, so
-        # we need to try to determine if any one of those versions meets all of
-        # the requirements.
-        logger.debug("%s: found multiple versions in install requirements", dep_name)
+    # Below this point we have built multiple versions of the same thing, so
+    # we need to try to determine if any one of those versions meets all of
+    # the requirements.
 
-        # Track which versions can be used by which parent requirement.
-        usable_versions: dict[str, list[str]] = {}
-        # Track how many total users of a requirement (by name) there are so we
-        # can tell later if any version can be used by all of them.
-        user_counter = 0
+    # Flag to see if something is resolved
+    resolved_something = True
 
-        # Which parent requirements can use which versions of the dependency we
-        # are working on?
-        for node in nodes:
-            parent_edges = node.get_incoming_install_edges()
-            user_counter += len(parent_edges)
-            for parent_edge in parent_edges:
-                for matching_version in parent_edge.req.specifier.filter(versions):
-                    usable_versions.setdefault(str(matching_version), []).append(
-                        str(parent_edge.destination_node.version)
+    # Outer while loop to resolve remaining dependencies with multiple versions
+    while unresolved_dependencies and resolved_something:
+        resolved_something = False
+        # Make copy of the original list and loop over unresolved dependencies
+        for dep_name, nodes in unresolved_dependencies[:]:
+            # Track which versions can be used by which parent requirement.
+            usable_versions: dict[str, list[Version]] = {}
+            # Track how many total users of a requirement (by name) there are so we
+            # can tell later if any version can be used by all of them.
+            user_counter = 0
+            # Which parent requirements can use which versions of the dependency we
+            # are working on?
+            dep_versions = [node.version for node in nodes]
+            # Loop over the nodes list
+            for node in nodes:
+                parent_edges = node.get_incoming_install_edges()
+                # Loop over parent_edges list
+                for parent_edge in parent_edges:
+                    parent_name = parent_edge.destination_node.canonicalized_name
+                    # Condition to select the right version.
+                    # We check whether parent_name is already in resolved dict and the version associated with that
+                    # is not the version of the destination node
+                    if (
+                        parent_name in resolved
+                        and resolved[parent_name]
+                        != parent_edge.destination_node.version
+                    ):
+                        continue
+                    # Loop to find the usable versions
+                    for matching_version in parent_edge.req.specifier.filter(
+                        dep_versions
+                    ):
+                        usable_versions.setdefault(str(matching_version), []).append(
+                            parent_edge.destination_node.version
+                        )
+                    user_counter += 1
+
+            # Look for one version that can be used by all the parent dependencies
+            # and output that if we find it. Otherwise, include a warning and report
+            # all versions so a human reading the file can make their own decision
+            # about how to resolve the conflict.
+            for v, users in usable_versions.items():
+                if len(users) == user_counter:
+                    version_strs = [str(v) for v in sorted(versions)]
+                    logger.debug(
+                        "%s: selecting %s from multiple candidates %s",
+                        dep_name,
+                        v,
+                        version_strs,
                     )
+                    resolved[dep_name] = Version(v)
+                    resolved_something = True
+                    unresolved_dependencies.remove((dep_name, nodes))
 
-        # Look for one version that can be used by all the parent dependencies
-        # and output that if we find it. Otherwise, include a warning and report
-        # all versions so a human reading the file can make their own decision
-        # about how to resolve the conflict.
-        for v, users in usable_versions.items():
-            if len(users) == user_counter:
-                version_strs = [str(v) for v in sorted(versions)]
-                output.write(
-                    f"# NOTE: fromager selected {dep_name}=={v} from: {version_strs}\n"
-                )
-                logger.debug(
-                    "%s: selecting %s from multiple candidates %s",
-                    dep_name,
-                    v,
-                    version_strs,
-                )
-                output.write(f"{dep_name}=={v}\n")
-                break
-        else:
-            # No single version could be used, so go ahead and print all the
-            # versions with a warning message
-            ret = False
+    # Write resolved versions to constraints file
+    for dep_name, resolved_version in sorted(resolved.items()):
+        if dep_name in multiple_versions:
+            version_strs = [
+                str(node.version)
+                for node in sorted(multiple_versions[dep_name], key=lambda n: n.version)
+            ]
             output.write(
-                f"# ERROR: no single version of {dep_name} met all requirements\n"
+                f"# NOTE: fromager selected {dep_name}=={resolved_version} from: {version_strs}\n"
             )
-            logger.error("%s: no single version meets all requirements", dep_name)
-            conflicting_deps.add(dep_name)
-            for dv in sorted(versions):
-                output.write(f"{dep_name}=={dv}\n")
+        output.write(f"{dep_name}=={resolved_version}\n")
+
+    # No single version could be used, so go ahead and print all the
+    # versions with a warning message
+    for dep_name, nodes in unresolved_dependencies:
+        ret = False
+        logger.error("%s: no single version meets all requirements", dep_name)
+        output.write(f"# ERROR: no single version of {dep_name} met all requirements\n")
+        conflicting_deps.add(dep_name)
+        for node in sorted(nodes, key=lambda n: n.version):
+            output.write(f"{dep_name}=={node.version}\n")
+
     for dep_name in conflicting_deps:
         logger.error("finding why %s was being used", dep_name)
         for node in graph.get_nodes_by_name(dep_name):
             find_why(graph, node, -1, 1, [])
+
     return ret
 
 
