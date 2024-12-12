@@ -51,6 +51,9 @@ $OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
 $OUTDIR/work-dir/logs/stevedore-*.log
 $OUTDIR/work-dir/logs/setuptools-*.log
 $OUTDIR/work-dir/logs/pbr-*.log
+
+$OUTDIR/work-dir/build-sequence-summary.md
+$OUTDIR/work-dir/build-sequence-summary.json
 "
 
 pass=true

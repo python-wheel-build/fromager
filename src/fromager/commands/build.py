@@ -44,6 +44,12 @@ class BuildSequenceEntry:
     wheel_filename: pathlib.Path
     skipped: bool = False
 
+    @staticmethod
+    def dict_factory(x):
+        return {
+            k: str(v) if isinstance(v, pathlib.Path | Version) else v for (k, v) in x
+        }
+
     def __lt__(self, other):
         if not isinstance(other, BuildSequenceEntry):
             return NotImplemented
@@ -277,6 +283,15 @@ def _summary(ctx: context.WorkContext, entries: list[BuildSequenceEntry]) -> Non
     with open(ctx.work_dir / "build-sequence-summary.md", "w", encoding="utf-8") as f:
         console = rich.console.Console(file=f, width=sys.maxsize)
         console.print(*output, sep="\n\n")
+
+    with open(ctx.work_dir / "build-sequence-summary.json", "w", encoding="utf-8") as f:
+        json.dump(
+            [
+                dataclasses.asdict(e, dict_factory=BuildSequenceEntry.dict_factory)
+                for e in entries
+            ],
+            f,
+        )
 
 
 def _create_table(entries: list[BuildSequenceEntry], **table_kwargs) -> Table:
