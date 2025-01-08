@@ -43,7 +43,7 @@ class Bootstrapper:
         self.ctx = ctx
         self.progressbar = progressbar or progress.Progressbar(None)
         self.prev_graph = prev_graph
-        self.cache_wheel_server_url = cache_wheel_server_url
+        self.cache_wheel_server_url = cache_wheel_server_url or ctx.wheel_server_url
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -335,7 +335,10 @@ class Bootstrapper:
             cached_wheel = wheels.download_wheel(
                 req=req, wheel_url=wheel_url, output_directory=self.ctx.wheels_downloads
             )
-            server.update_wheel_mirror(self.ctx)
+            if self.cache_wheel_server_url != self.ctx.wheel_server_url:
+                # Only update the local server if we actually downloaded
+                # something from a different server.
+                server.update_wheel_mirror(self.ctx)
             logger.info(f"{req.name}: found built wheel on cache server")
             unpack_dir = self._create_unpack_dir(req, resolved_version)
             dist_filename = f"{dist_name}-{dist_version}"
