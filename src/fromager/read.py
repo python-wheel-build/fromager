@@ -10,7 +10,7 @@ from .request_session import session
 @contextmanager
 def open_file_or_url(
     path_or_url: str | pathlib.Path,
-) -> typing.Generator[io.TextIOWrapper, typing.Any, None]:
+) -> typing.Generator[io.TextIOBase, typing.Any, None]:
     location = str(path_or_url)
     if location.startswith("file://"):
         location = urlparse(location).path
