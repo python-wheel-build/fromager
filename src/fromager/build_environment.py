@@ -69,7 +69,7 @@ class MissingDependency(Exception):  # noqa: N818
                 f"Failed to install {req_type} dependency. "
                 f"Check all {req_type} dependencies:\n{formatted_reqs}"
             )
-        super().__init__(f'\n{"*" * 40}\n{msg}\n{"*" * 40}\n')
+        super().__init__(f"\n{'*' * 40}\n{msg}\n{'*' * 40}\n")
 
 
 class BuildEnvironment:

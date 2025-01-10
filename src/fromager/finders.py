@@ -73,7 +73,7 @@ def find_sdist(
                 f"{req.name}-{dist_version}",
                 # Sometimes the sdist uses '.' instead of '-' in the
                 # package name portion.
-                f'{req.name.replace("-", ".")}-{dist_version}',
+                f"{req.name.replace('-', '.')}-{dist_version}",
             ]
         )
         # Case-insensitive globbing was added to Python 3.12, but we
@@ -115,7 +115,7 @@ def find_wheel(
             f"{req.name}-{dist_version}-{candidate_bases_build_tag}",
             # Sometimes the sdist uses '.' instead of '-' in the
             # package name portion.
-            f'{req.name.replace("-", ".")}-{dist_version}-{candidate_bases_build_tag}',
+            f"{req.name.replace('-', '.')}-{dist_version}-{candidate_bases_build_tag}",
         ]
     )
     # Case-insensitive globbing was added to Python 3.12, but we
@@ -181,7 +181,7 @@ def find_source_dir(
     canonical_name = canonicalize_name(req.name)
     canonical_based = f"{canonical_name}-{dist_version}"
     name_based = f"{req.name}-{dist_version}"
-    dotted_name = f'{req.name.replace("-", ".")}-{dist_version}'
+    dotted_name = f"{req.name.replace('-', '.')}-{dist_version}"
 
     candidate_bases = set(
         [
