@@ -283,7 +283,7 @@ def build_wheel(
             textwrap.dedent(
                 f"""
                 [build_ext]
-                parallel = {extra_environ['MAX_JOBS']}
+                parallel = {extra_environ["MAX_JOBS"]}
                 """
             )
         )
@@ -415,5 +415,5 @@ def resolve_prebuilt_wheel(
         if wheel_url and resolved_version:
             return (wheel_url, resolved_version)
     raise ValueError(
-        f'Could not find a prebuilt wheel for {req} on {" or ".join(wheel_server_urls)}'
+        f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}"
     )
