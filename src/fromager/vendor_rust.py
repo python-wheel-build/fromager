@@ -1,5 +1,6 @@
 """Vendor Rust crates into an sdist"""
 
+import enum
 import json
 import logging
 import os
@@ -22,8 +23,10 @@ CARGO_CONFIG = {
     },
 }
 
-# vendor when project depends on a Rust build system
-RUST_BUILD_REQUIRES = frozenset({"setuptools-rust", "maturin"})
+
+class RustBuildSystem(enum.StrEnum):
+    maturin = "maturin"
+    setuptools_rust = "setuptools-rust"
 
 
 def _cargo_vendor(
@@ -86,28 +89,32 @@ def _cargo_config(project_dir: pathlib.Path) -> None:
         tomlkit.dump(cfg, f)
 
 
-def _should_vendor_rust(req: Requirement, project_dir: pathlib.Path) -> bool:
-    """Detect if project has build requirement on Rust
+def _detect_rust_build_backend(
+    req: Requirement, pyproject_toml: dict[str, typing.Any]
+) -> RustBuildSystem | None:
+    """Detect Rust requirement and return Rust build system
 
     Detects setuptools-rust and maturin.
     """
-    pyproject_toml = dependencies.get_pyproject_contents(project_dir)
-    if not pyproject_toml:
-        logger.debug(f"{req.name}: has no pyproject.toml")
-        return False
+    build_system = dependencies.get_build_backend(pyproject_toml)
+    if build_system["build-backend"] == RustBuildSystem.maturin:
+        return RustBuildSystem.maturin
 
-    build_backend = dependencies.get_build_backend(pyproject_toml)
-
-    for reqstring in build_backend["requires"]:
+    for reqstring in build_system["requires"]:
         req = Requirement(reqstring)
-        if req.name in RUST_BUILD_REQUIRES:
+        try:
+            # StrEnum.__contains__ does not work with str type
+            rbs = RustBuildSystem(req.name)
+        except ValueError:
+            pass
+        else:
             logger.debug(
-                f"{req.name}: build-system requires {req.name}, vendoring crates"
+                f"{req.name}: build-system requires '{req.name}', vendoring crates"
             )
-            return True
+            return rbs
 
     logger.debug(f"{req.name}: no Rust build plugin detected")
-    return False
+    return None
 
 
 def vendor_rust(
@@ -119,14 +126,52 @@ def vendor_rust(
     ``setuptools-rust`` or ``maturin``, and has a ``Cargo.toml``, otherwise
     ``False``.
     """
-    if not _should_vendor_rust(req, project_dir):
+    pyproject_toml = dependencies.get_pyproject_contents(project_dir)
+    if not pyproject_toml:
+        logger.debug(f"{req.name}: has no pyproject.toml")
         return False
 
-    # check for Cargo.toml
-    manifests = list(project_dir.glob("**/Cargo.toml"))
+    backend = _detect_rust_build_backend(req, pyproject_toml)
+    manifests: list[pathlib.Path] = []
+    # By default, maturin and setuptools-rust use Cargo.toml from project
+    # root directory. Projects can specify a different file in optional
+    # "tool.setuptools-rust" or "tool.maturin" entries.
+    match backend:
+        case RustBuildSystem.maturin:
+            try:
+                tool_maturin: dict[str, typing.Any] = pyproject_toml["tool"]["maturin"]
+            except KeyError as e:
+                logger.debug(f"{req.name}: No additional maturin settings: {e}")
+            else:
+                if "manifest-path" in tool_maturin:
+                    manifests.append(project_dir / tool_maturin["manifest-path"])
+        case RustBuildSystem.setuptools_rust:
+            ext_modules: list[dict[str, typing.Any]]
+            try:
+                ext_modules = pyproject_toml["tool"]["setuptools-rust"]["ext-modules"]
+            except KeyError as e:
+                logger.debug(f"{req.name}: No additional setuptools-rust settings: {e}")
+            else:
+                for ext_module in ext_modules:
+                    if "path" in ext_module:
+                        manifests.append(project_dir / ext_module["path"])
+        case None:
+            logger.debug(f"{req.name}: no Rust build system detected")
+            return False
+        case _ as unreachable:
+            typing.assert_never(unreachable)
+
     if not manifests:
-        logger.debug(f"{req.name}: has no Cargo.toml files")
-        return False
+        # check for Cargo.toml in project root
+        root_cargo_toml = project_dir / "Cargo.toml"
+        if root_cargo_toml.is_file():
+            manifests.append(root_cargo_toml)
+        else:
+            logger.warning(
+                f"{req.name}: Rust build backend {backend} detected, but "
+                "no Cargo.toml files found."
+            )
+            return False
 
     the_manifests = sorted(str(d.relative_to(project_dir)) for d in manifests)
     logger.debug(f"{req.name}: {project_dir} has cargo manifests: {the_manifests}")
