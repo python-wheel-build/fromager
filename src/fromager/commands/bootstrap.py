@@ -219,7 +219,7 @@ def write_constraints_file(
         # Make copy of the original list and loop over unresolved dependencies
         for dep_name, nodes in unresolved_dependencies[:]:
             # Track which versions can be used by which parent requirement.
-            usable_versions: dict[str, list[Version]] = {}
+            usable_versions: dict[Version, list[Version]] = {}
             # Track how many total users of a requirement (by name) there are so we
             # can tell later if any version can be used by all of them.
             user_counter = 0
@@ -245,7 +245,7 @@ def write_constraints_file(
                     for matching_version in parent_edge.req.specifier.filter(
                         dep_versions
                     ):
-                        usable_versions.setdefault(str(matching_version), []).append(
+                        usable_versions.setdefault(matching_version, []).append(
                             parent_edge.destination_node.version
                         )
                     user_counter += 1
@@ -254,18 +254,34 @@ def write_constraints_file(
             # and output that if we find it. Otherwise, include a warning and report
             # all versions so a human reading the file can make their own decision
             # about how to resolve the conflict.
-            for v, users in usable_versions.items():
-                if len(users) == user_counter:
-                    version_strs = [str(v) for v in sorted(versions)]
+            for v, users in reversed(sorted(usable_versions.items())):
+                if len(users) != user_counter:
                     logger.debug(
-                        "%s: selecting %s from multiple candidates %s",
+                        "%s: version %s is useable by %d of %d consumers, skipping it",
                         dep_name,
                         v,
-                        version_strs,
+                        len(users),
+                        user_counter,
                     )
-                    resolved[dep_name] = Version(v)
-                    resolved_something = True
+                    continue
+                version_strs = [str(v) for v in reversed(sorted(dep_versions))]
+                logger.debug(
+                    "%s: selecting %s from multiple candidates %s",
+                    dep_name,
+                    v,
+                    version_strs,
+                )
+                resolved[dep_name] = v
+                resolved_something = True
+                try:
                     unresolved_dependencies.remove((dep_name, nodes))
+                except ValueError:
+                    logger.debug(
+                        "%s: %s not in unresolved dependencies list, ignoring",
+                        dep_name,
+                        (dep_name, nodes),
+                    )
+                break
 
     # Write resolved versions to constraints file
     for dep_name, resolved_version in sorted(resolved.items()):

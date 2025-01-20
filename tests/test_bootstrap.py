@@ -261,3 +261,62 @@ def test_write_constraints_file_duplicates():
         d==1.0
         """).lstrip()
     assert expected == buffer.getvalue()
+
+
+def test_write_constraints_file_multiples():
+    buffer = io.StringIO()
+    raw_graph = {
+        "": {
+            "download_url": "",
+            "pre_built": False,
+            "version": "0",
+            "canonicalized_name": "",
+            "edges": [
+                {
+                    "key": "a==2.7.0",
+                    "req_type": "toplevel",
+                    "req": "a==2.7.0",
+                },
+                {
+                    "key": "b==0.26.1",
+                    "req_type": "toplevel",
+                    "req": "b==0.26.1",
+                },
+            ],
+        },
+        "b==0.26.1": {
+            "download_url": "",
+            "pre_built": False,
+            "version": "0.26.1",
+            "canonicalized_name": "b",
+            "edges": [],
+        },
+        "b==0.26.2": {
+            "download_url": "",
+            "pre_built": False,
+            "version": "0.26.2",
+            "canonicalized_name": "b",
+            "edges": [],
+        },
+        "a==2.7.0": {
+            "download_url": "",
+            "pre_built": False,
+            "version": "2.7.0",
+            "canonicalized_name": "a",
+            "edges": [
+                {
+                    "key": "b==0.26.2",
+                    "req_type": "install",
+                    "req": "b<0.27.0,>=0.26.1",
+                },
+            ],
+        },
+    }
+    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
+    assert bootstrap.write_constraints_file(graph, buffer)
+    expected = textwrap.dedent("""
+        a==2.7.0
+        # NOTE: fromager selected b==0.26.2 from: ['0.26.1', '0.26.2']
+        b==0.26.2
+        """).lstrip()
+    assert expected == buffer.getvalue()
