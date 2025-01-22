@@ -19,6 +19,8 @@ __pycache__/
 /package.json
 /e2e-output/
 /dist/
+/e2e/fromager_hooks/build
+/e2e/fromager_hooks/dist
 /e2e/pyo3_test/.cargo
 /e2e/pyo3_test/build
 /e2e/pyo3_test/dist

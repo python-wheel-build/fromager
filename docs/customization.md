@@ -276,6 +276,8 @@ Fromager supports plugging in Python hooks to be run after build events.
 The `post_build` hook runs after a wheel is successfully built and can be used
 to publish that wheel to a package index or take other post-build actions.
 
+NOTE: The hook is not run for prebuilt wheels.
+
 Configure a `post_build` hook in your `pyproject.toml` like this:
 
 ```toml
@@ -300,5 +302,37 @@ def post_build(
 ):
     logger.info(
         f"{req.name}: running post build hook for {sdist_filename} and {wheel_filename}"
+    )
+```
+
+### prebuilt_wheel
+
+The `prebuilt_wheel` hook runs after a prebuilt wheel has been downloaded and
+can be used to publish that wheel to a package index or take other post-build
+actions.
+
+Configure a `prebuilt_wheel` hook in your `pyproject.toml` like this:
+
+```toml
+[project.entry-points."fromager.hooks"]
+prebuilt_wheel = "package_plugins.module:function"
+```
+
+The input arguments to the `prebuilt_build` hook are the `WorkContext`,
+`Requirement` being built, the distribution name and version, and the wheel
+filename.
+
+NOTE: The files should not be renamed or moved.
+
+```python
+def prebuilt_wheel(
+    ctx: context.WorkContext,
+    req: Requirement,
+    dist_name: str,
+    dist_version: str,
+    wheel_filename: pathlib.Path,
+):
+    logger.info(
+        f"{req.name}: running prebuilt wheel hook for {wheel_filename}"
     )
 ```

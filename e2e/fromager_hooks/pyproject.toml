@@ -29,4 +29,5 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.entry-points."fromager.hooks"]
-post_build = "package_plugins.post_build:after_build_wheel"
+post_build = "package_plugins.hooks:after_build_wheel"
+prebuilt_wheel = "package_plugins.hooks:after_prebuilt_wheel"
