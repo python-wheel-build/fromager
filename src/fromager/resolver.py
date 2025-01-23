@@ -215,7 +215,7 @@ class BaseProvider(ExtrasProvider):
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
-        self.constraints = constraints or Constraints({})
+        self.constraints = constraints or Constraints()
         self.req_type = req_type
 
     def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:

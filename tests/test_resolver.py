@@ -176,9 +176,8 @@ def test_provider_choose_sdist():
 
 
 def test_provider_choose_either_with_constraint():
-    constraint = constraints.Constraints(
-        {"hydra-core": Requirement("hydra-core==1.3.2")}
-    )
+    constraint = constraints.Constraints()
+    constraint.add_constraint("hydra-core==1.3.2")
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -204,7 +203,8 @@ def test_provider_choose_either_with_constraint():
 
 
 def test_provider_constraint_mismatch():
-    constraint = constraints.Constraints({"hydra-core": Requirement("hydra-core<=1.1")})
+    constraint = constraints.Constraints()
+    constraint.add_constraint("hydra-core<=1.1")
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -220,7 +220,8 @@ def test_provider_constraint_mismatch():
 
 
 def test_provider_constraint_match():
-    constraint = constraints.Constraints({"hydra-core": Requirement("hydra-core<=1.3")})
+    constraint = constraints.Constraints()
+    constraint.add_constraint("hydra-core<=1.3")
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -525,7 +526,8 @@ def test_resolve_github():
 
 
 def test_github_constraint_mismatch():
-    constraint = constraints.Constraints({"fromager": Requirement("fromager>=1.0")})
+    constraint = constraints.Constraints()
+    constraint.add_constraint("fromager>=1.0")
     with requests_mock.Mocker() as r:
         r.get(
             "https://api.github.com:443/repos/python-wheel-build/fromager",
@@ -547,7 +549,8 @@ def test_github_constraint_mismatch():
 
 
 def test_github_constraint_match():
-    constraint = constraints.Constraints({"fromager": Requirement("fromager<0.9")})
+    constraint = constraints.Constraints()
+    constraint.add_constraint("fromager<0.9")
     with requests_mock.Mocker() as r:
         r.get(
             "https://api.github.com:443/repos/python-wheel-build/fromager",

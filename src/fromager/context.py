@@ -42,12 +42,12 @@ class WorkContext:
             )
         self.settings = active_settings
         self.input_constraints_uri: str | None
+        self.constraints = constraints.Constraints()
         if constraints_file is not None:
             self.input_constraints_uri = constraints_file
-            self.constraints = constraints.load(constraints_file)
+            self.constraints.load_constraints_file(constraints_file)
         else:
             self.input_constraints_uri = None
-            self.constraints = constraints.Constraints({})
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / "downloads"
         self.sdists_builds = self.sdists_repo / "builds"
