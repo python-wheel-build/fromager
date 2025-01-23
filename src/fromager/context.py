@@ -8,7 +8,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import constraints, dependency_graph, packagesettings, request_session
+from . import constraints, dependency_graph, packagesettings
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class WorkContext:
     def __init__(
         self,
         active_settings: packagesettings.Settings | None,
-        constraints_file: str | None,
+        constraints_files: list[str],
         patches_dir: pathlib.Path,
         sdists_repo: pathlib.Path,
         wheels_repo: pathlib.Path,
@@ -41,13 +41,6 @@ class WorkContext:
                 max_jobs=max_jobs,
             )
         self.settings = active_settings
-        self.input_constraints_uri: str | None
-        self.constraints = constraints.Constraints()
-        if constraints_file is not None:
-            self.input_constraints_uri = constraints_file
-            self.constraints.load_constraints_file(constraints_file)
-        else:
-            self.input_constraints_uri = None
         self.sdists_repo = pathlib.Path(sdists_repo).absolute()
         self.sdists_downloads = self.sdists_repo / "downloads"
         self.sdists_builds = self.sdists_repo / "builds"
@@ -64,9 +57,15 @@ class WorkContext:
         self.network_isolation = network_isolation
         self.settings_dir = settings_dir
 
-        self._constraints_filename = self.work_dir / "constraints.txt"
-
         self.dependency_graph = dependency_graph.DependencyGraph()
+
+        self.constraints = constraints.Constraints()
+        self._constraints_filename: pathlib.Path | None = None
+        if constraints_files:
+            # local or remote (HTTPS) files
+            for cf in constraints_files:
+                self.constraints.load_constraints_file(cf)
+            self._constraints_filename = self.work_dir / "combined-constraints.txt"
 
         # storing metrics
         self.time_store: dict[str, dict[str, float]] = collections.defaultdict(
@@ -84,19 +83,10 @@ class WorkContext:
 
     @property
     def pip_constraint_args(self) -> list[str]:
-        if not self.input_constraints_uri:
+        if self._constraints_filename is None:
             return []
-
-        if self.input_constraints_uri.startswith(("https://", "http://", "file://")):
-            path_to_constraints_file = self.work_dir / "input-constraints.txt"
-            if not path_to_constraints_file.exists():
-                response = request_session.session.get(self.input_constraints_uri)
-                path_to_constraints_file.write_text(response.text)
-        else:
-            path_to_constraints_file = pathlib.Path(self.input_constraints_uri)
-
-        path_to_constraints_file = path_to_constraints_file.absolute()
-        return ["--constraint", os.fspath(path_to_constraints_file)]
+        self.constraints.dump_constraints_file(self._constraints_filename)
+        return ["--constraint", os.fspath(self._constraints_filename)]
 
     def write_to_graph_to_file(self):
         with open(self.work_dir / "graph.json", "w") as f:

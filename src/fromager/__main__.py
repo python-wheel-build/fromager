@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import os
 import pathlib
 import sys
 
@@ -107,8 +108,20 @@ else:
 @click.option(
     "-c",
     "--constraints-file",
+    # for click.Path, click splits env vars on os.pathsep (':')
+    type=clickext.ClickPath(exists=True, file_okay=True, dir_okay=False),
+    multiple=True,
+    default=[],
+    help="location of constraints files (multiple use)",
+)
+@click.option(
+    "--constraints-url",
+    # for str, click splits env vars on space
     type=str,
-    help="location of the constraints file",
+    multiple=True,
+    default=[],
+    callback=clickext.verify_url_callback,
+    help="remote location of constraints file as URL (multiple use)",
 )
 @click.option(
     "--cleanup/--no-cleanup",
@@ -142,7 +155,8 @@ def main(
     patches_dir: pathlib.Path,
     settings_file: pathlib.Path,
     settings_dir: pathlib.Path,
-    constraints_file: str,
+    constraints_file: tuple[pathlib.Path],
+    constraints_url: tuple[str],
     cleanup: bool,
     variant: str,
     jobs: int | None,
@@ -195,12 +209,18 @@ def main(
             logger.info(f"variant: {variant}")
             logger.info(f"patches dir: {patches_dir}")
             logger.info(f"maximum concurrent jobs: {jobs}")
-            logger.info(f"constraints file: {constraints_file}")
+            logger.info(
+                f"constraints files: {os.pathsep.join(str(p) for p in constraints_file)}"
+            )
+            logger.info(f"constraints URLs: {' '.join(constraints_url)}")
             logger.info(f"network isolation: {network_isolation}")
             overrides.log_overrides()
 
     if network_isolation and not SUPPORTS_NETWORK_ISOLATION:
         ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
+
+    constraints: list[str] = list(constraints_url)
+    constraints.extend(os.fspath(p) for p in constraints_file)
 
     wkctx = context.WorkContext(
         active_settings=packagesettings.Settings.from_files(
@@ -210,7 +230,7 @@ def main(
             variant=variant,
             max_jobs=jobs,
         ),
-        constraints_file=constraints_file,
+        constraints_files=constraints,
         patches_dir=patches_dir,
         sdists_repo=sdists_repo,
         wheels_repo=wheels_repo,

@@ -64,6 +64,15 @@ def test_load_non_existant_constraints_file(tmp_path: pathlib.Path):
         c.load_constraints_file(non_existant_file)
 
 
+def test_magic_methods():
+    c = constraints.Constraints()
+    assert not c
+    assert list(c) == []
+    c.add_constraint("flit_core==2.0rc3")
+    assert c
+    assert list(c) == ["flit-core"]
+
+
 def test_load_constraints_file(tmp_path: pathlib.Path):
     constraint_file = tmp_path / "constraint.txt"
     constraint_file.write_text("egg\ntorch==3.1.0 # comment\n")
@@ -71,3 +80,13 @@ def test_load_constraints_file(tmp_path: pathlib.Path):
     c.load_constraints_file(constraint_file)
     assert list(c) == ["egg", "torch"]  # type: ignore
     assert c.get_constraint("torch") == Requirement("torch==3.1.0")
+
+
+def test_dump_constraints_file(tmp_path: pathlib.Path):
+    c = constraints.Constraints()
+    c.add_constraint("foo<=1.1")
+    c.add_constraint("bar>=2.0")
+
+    constraint_file = tmp_path / "constraint.txt"
+    c.dump_constraints_file(constraint_file)
+    assert constraint_file.read_text().split("\n") == ["foo<=1.1", "bar>=2.0", ""]
