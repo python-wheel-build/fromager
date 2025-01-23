@@ -12,7 +12,7 @@ DIST="stevedore"
 VERSION="5.2.0"
 
 # Install hook for test
-pip install e2e/post_build_hook
+pip install e2e/fromager_hooks
 
 # Bootstrap the test project
 fromager \

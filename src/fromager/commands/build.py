@@ -203,6 +203,13 @@ def build_sequence(
                     wheel_url=source_download_url,
                     output_directory=wkctx.wheels_build,
                 )
+                hooks.run_prebuilt_wheel_hooks(
+                    ctx=wkctx,
+                    req=req,
+                    dist_name=dist_name,
+                    dist_version=str(resolved_version),
+                    wheel_filename=wheel_filename,
+                )
             else:
                 logger.info(
                     "%s: building %s==%s", dist_name, dist_name, resolved_version
