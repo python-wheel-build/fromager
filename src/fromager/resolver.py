@@ -509,3 +509,55 @@ class GitHubTagProvider(GenericProvider):
                 yield entry["tarball_url"], version
             # pagination links
             nexturl = resp.links.get("next", {}).get("url")
+
+
+class CustomPackageProvider(BaseProvider):
+    """Get best match"""
+
+    def __init__(
+        self,
+        req: Requirement,
+        constraints: Constraints,
+        versions: typing.Iterable(dict[Version, str]),
+    ) -> None:
+        super().__init__(constraints=constraints)
+        self.req = req
+        self.versions = versions
+
+    def get_cache(self) -> dict[str, list[Candidate]]:
+        return GenericProvider.generic_resolver_cache
+
+    def find_best_match(
+        self,
+    ) -> Version:
+        # The alorithm below assumes a sorted and reversed list in order to obtain the
+        # latest matching entry.
+
+        # convert self.versions to candidates
+        candidates = []
+        for version, _ in self.versions.items():
+            # Candidates require a URL for initialization: Use  as a place holder
+            # Candidates must match the requirement name in is_satisfied_call below
+            candidate = Candidate(self.req.name, version, "https://host.invalid")
+            candidates.append(candidate)
+
+        constraint = self.constraints.get_constraint(self.req.name)
+        constraintspec = ""
+        if constraint is not None:
+            constraintspec = str(constraint.specifier)
+
+        for candidate in candidates:
+            if self.is_satisfied_by(self.req, candidate):
+                logger.info(
+                    f"{self.req.name}{constraintspec} matches {self.req.name} {candidate.version}"
+                )
+                return candidate.version
+            else:
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        f"find_match {self.req.name} is rejected by {candidate.version}"
+                    )
+
+        raise ValueError(
+            f"{self.req.name}: {self.req.name}{self.req.specifier} and constraint{constraintspec} conflict.  No matches found."
+        )
