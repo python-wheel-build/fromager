@@ -319,9 +319,14 @@ class BaseProvider(ExtrasProvider):
         allow_prerelease = self.constraints.allow_prerelease(requirement.name) or bool(
             requirement.specifier.prereleases
         )
-        return requirement.specifier.contains(
-            candidate.version, prereleases=allow_prerelease
-        ) and self.constraints.is_satisfied_by(requirement.name, candidate.version)
+        reqbool = True
+        if len(requirement.specifier) == 1:
+            reqbool = requirement.specifier.contains(
+                candidate.version, prereleases=allow_prerelease
+            )
+        return reqbool and self.constraints.is_satisfied_by(
+            requirement.name, candidate.version
+        )
 
     def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies
