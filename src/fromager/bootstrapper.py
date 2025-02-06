@@ -323,6 +323,12 @@ class Bootstrapper:
             wheelfile_name = pathlib.Path(urlparse(wheel_url).path)
             pbi = self.ctx.package_build_info(req)
             expected_build_tag = pbi.build_tag(resolved_version)
+            # Log the expected build tag for debugging
+            logger.info(f"{req.name}: has expected build tag {expected_build_tag}")
+            # Get changelogs for debug info
+            changelogs = pbi.get_changelog(resolved_version)
+            logger.debug(f"{req.name} has change logs {changelogs}")
+
             dist_name, dist_version, build_tag, _ = wheels.extract_info_from_wheel_file(
                 req, wheelfile_name
             )

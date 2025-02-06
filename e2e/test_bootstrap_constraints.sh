@@ -38,7 +38,7 @@ fi
 $pass
 
 EXPECTED_LINES="
-pbr==6.1.0
+pbr==6.1.1
 # ERROR
 stevedore==4.0.0
 stevedore==5.2.0

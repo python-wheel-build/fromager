@@ -627,11 +627,16 @@ class PackageBuildInfo:
             return sdist_root_dir / relative_build_dir
         return sdist_root_dir
 
+    def get_changelog(self, version: Version) -> list[str]:
+        pv = typing.cast(PackageVersion, version)
+        variant_changelog = self._variant_changelog
+        package_changelog = self._ps.changelog.get(pv, [])
+        return variant_changelog + package_changelog
+
     def build_tag(self, version: Version) -> BuildTag:
         """Build tag for version's changelog and this variant"""
         pv = typing.cast(PackageVersion, version)
-        release = len(self._ps.changelog.get(pv, []))
-        release += len(self._variant_changelog)
+        release = len(self.get_changelog(pv))
         if release == 0:
             return ()
         # suffix = "." + self.variant.replace("-", "_")
