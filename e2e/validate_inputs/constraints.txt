@@ -1,0 +1,5 @@
+# This requirements.txt is used for testing lint_requirements
+# command of fromager and contains examples of packages
+
+gast==0.5.5
+torch==2.3.1
