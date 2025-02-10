@@ -101,6 +101,7 @@ jobs:
           - extra_metadata
           - elfdeps
           - prebuilt_wheel_hook
+          - lint_requirements
         os:
           - ubuntu-latest
           - macos-latest

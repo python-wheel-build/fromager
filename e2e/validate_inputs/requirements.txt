@@ -1,0 +1,5 @@
+# This requirements.txt is used for testing lint_requirements
+# command of fromager and contains examples of packages
+stevedore==5.2.0
+kfp==2.11.0
+
