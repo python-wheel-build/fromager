@@ -7,6 +7,19 @@ from packaging.version import Version
 from . import requirements_file
 
 
+def verify_url_callback(
+    ctx: click.Context, param: click.Parameter, value: tuple[str]
+) -> tuple[str]:
+    for item in value:
+        if not item.startswith(("https://", "http://", "file://")):
+            raise click.BadParameter(
+                f"value must be a http, https, or file URL, got {item}",
+                ctx=ctx,
+                param=param,
+            )
+    return value
+
+
 class ClickPath(click.Path):
     """ClickPath that returns pathlib.Path"""
 
