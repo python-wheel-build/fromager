@@ -7,8 +7,10 @@ import os.path
 import pathlib
 import shutil
 import tarfile
+import tempfile
 import typing
 import zipfile
+from email.parser import BytesParser
 from urllib.parse import urlparse
 
 import resolvelib
@@ -18,6 +20,7 @@ from packaging.version import Version
 from . import (
     dependencies,
     external_commands,
+    gitutils,
     metrics,
     overrides,
     pyproject,
@@ -56,6 +59,15 @@ def download_source(
     version: Version,
     download_url: str,
 ) -> pathlib.Path:
+    if req.url:
+        logger.info(
+            "%s: downloaded source to %s by cloning %s, ignoring any plugins",
+            req.name,
+            download_url,
+            req.url,
+        )
+        return pathlib.Path(download_url)
+
     source_path = overrides.find_and_invoke(
         req.name,
         "download_source",
@@ -83,6 +95,15 @@ def resolve_source(
     req_type: RequirementType | None = None,
 ) -> tuple[str, Version]:
     "Return URL to source and its version."
+
+    if req.url:
+        # If we have a URL, we should use that source. For now we only support
+        # git clone URLs of some sort. We are given the directory where the
+        # cloned repo resides, and return that as the URL for the source code so
+        # the next step in the process can find it and operate on it.
+        logger.info("%s: resolving source via URL, ignoring any plugins", req.name)
+        return resolve_version_from_git_url(ctx=ctx, req=req)
+
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
         f"{req.name}: resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
@@ -117,6 +138,136 @@ def resolve_source(
         raise ValueError(f"expected 2nd member to be of type Version, got {version}")
 
     return str(url), version
+
+
+def resolve_version_from_git_url(
+    ctx: context.WorkContext,
+    req: Requirement,
+) -> tuple[str, Version]:
+    "Return path to the cloned git repository and the package version."
+
+    if not req.url.startswith("git+"):
+        raise ValueError(f"unable to handle URL scheme in {req.url} from {req}")
+
+    # We start by not knowing where we would put the source because we don't
+    # know the version.
+    working_src_dir = ""
+    version: Version | None = None
+
+    # Clean up the URL so we can parse it
+    reduced_url = req.url[len("git+") :]
+    parsed_url = urlparse(reduced_url)
+
+    # Save the URL that we think we will use for cloning. This might change
+    # later if the path has a tag or branch in it.
+    url_to_clone = reduced_url
+    need_to_clone = False
+
+    # If the URL includes an @ with text after it, we use that as the reference
+    # to clone, but by default we take the default branch.
+    git_ref: str | None = None
+
+    if "@" not in parsed_url.path:
+        # If we have no reference, we know we are going to have to clone the
+        # repository to figure out the version to use.
+        need_to_clone = True
+    else:
+        # If we have a reference, it might be a valid python version string, or
+        # not. It _must_ be a valid git reference. If it can be parsed as a
+        # valid python version, we assume the tag points to source that will
+        # think that is its version, so we allow reusing an existing cloned repo
+        # if there is one.
+        new_path, _, git_ref = parsed_url.path.rpartition("@")
+        url_to_clone = parsed_url._replace(path=new_path).geturl()
+        try:
+            version = Version(git_ref)
+        except ValueError:
+            logger.info(
+                "%s: could not parse %r as a version, cloning to get the version",
+                req.name,
+                git_ref,
+            )
+            need_to_clone = True
+        else:
+            logger.info("%s: URL %s includes version %s", req.name, req.url, version)
+            working_src_dir = (
+                ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
+            )
+            if not working_src_dir.exists():
+                need_to_clone = True
+            else:
+                if ctx.cleanup:
+                    logger.debug("%s: cleaning up %s", req.name, working_src_dir)
+                    shutil.rmtree(working_src_dir)
+                    need_to_clone = True
+                else:
+                    logger.info("%s: reusing %s", req.name, working_src_dir)
+
+    if need_to_clone:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            clone_dir = pathlib.Path(tmpdir) / "src"
+            gitutils.git_clone(
+                ctx=ctx,
+                req=req,
+                output_dir=clone_dir,
+                repo_url=url_to_clone,
+                ref=git_ref,
+            )
+            if not version:
+                # If we still do not have a version, get it from the package
+                # metadata.
+                version = _get_version_from_package_metadata(ctx, req, clone_dir)
+                logger.info("%s: found version %s", req.name, version)
+                working_src_dir = (
+                    ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
+                )
+                if working_src_dir.exists():
+                    # We have to check if the destination directory exists
+                    # because if we were not given a version we did not clean it
+                    # up earlier. We do not use ctx.cleanup to control this
+                    # action because we cannot trust that the destination
+                    # directory is reusable because we have had to compute the
+                    # version and we cannot be sure that the version is dynamic
+                    # Two different commits in the repo could have the same
+                    # version if that version is set with static data in the
+                    # repo instead of via a tag or dynamically computed by
+                    # something like setuptools-scm.
+                    logger.debug("%s: cleaning up %s", req.name, working_src_dir)
+                    shutil.rmtree(working_src_dir)
+                    need_to_clone = True
+                working_src_dir.parent.mkdir(parents=True, exist_ok=True)
+            logger.info("%s: moving cloned repo to %s", req.name, working_src_dir)
+            shutil.move(clone_dir, working_src_dir)
+
+    # We must know the version and we must have a source directory.
+    assert version
+    assert working_src_dir
+    assert working_src_dir.exists()
+    return (working_src_dir, version)
+
+
+def _get_version_from_package_metadata(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_dir: str,
+) -> Version:
+    logger.info(f"{req.name}: generating metadata to get version")
+    pyproject_toml = dependencies.get_pyproject_contents(source_dir)
+    hook_caller = dependencies.get_build_backend_hook_caller(
+        source_dir,
+        pyproject_toml,
+        {},
+        network_isolation=ctx.network_isolation,
+    )
+    metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
+        metadata_directory=source_dir.parent,
+        config_settings={},
+    )
+    metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
+    with open(metadata_filename, "rb") as f:
+        p = BytesParser()
+        metadata = p.parse(f, headersonly=True)
+    return Version(metadata["Version"])
 
 
 def default_resolve_source(
@@ -342,24 +493,38 @@ def prepare_source(
     source_filename: pathlib.Path,
     version: Version,
 ) -> pathlib.Path:
-    logger.info(f"{req.name}: preparing source for {req} from {source_filename}")
-    prepare_source_details = overrides.find_and_invoke(
-        req.name,
-        "prepare_source",
-        default_prepare_source,
-        ctx=ctx,
-        req=req,
-        source_filename=source_filename,
-        version=version,
-    )
-    if not isinstance(prepare_source_details, tuple):
-        source_root_dir = prepare_source_details
-    elif len(prepare_source_details) == 2:
-        source_root_dir, _ = prepare_source_details
-    else:
-        raise ValueError(
-            f"do not know how to unpack {prepare_source_details}, expected 1 or 2 members"
+    if req.url:
+        logger.info(
+            "%s: preparing source cloned from %s, ignoring any plugins",
+            req.name,
+            req.url,
         )
+        source_root_dir = pathlib.Path(source_filename)
+        prepare_new_source(
+            ctx=ctx,
+            req=req,
+            source_root_dir=source_root_dir,
+            version=version,
+        )
+    else:
+        logger.info(f"{req.name}: preparing source for {req} from {source_filename}")
+        prepare_source_details = overrides.find_and_invoke(
+            req.name,
+            "prepare_source",
+            default_prepare_source,
+            ctx=ctx,
+            req=req,
+            source_filename=source_filename,
+            version=version,
+        )
+        if not isinstance(prepare_source_details, tuple):
+            source_root_dir = prepare_source_details
+        elif len(prepare_source_details) == 2:
+            source_root_dir, _ = prepare_source_details
+        else:
+            raise ValueError(
+                f"do not know how to unpack {prepare_source_details}, expected 1 or 2 members"
+            )
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
         logger.info(f"{req.name}: prepared source for {req} at {source_root_dir}")
@@ -430,18 +595,34 @@ def build_sdist(
 
     logger.info(f"{req.name}: building source distribution in {build_dir}")
     extra_environ = pbi.get_extra_environ(build_env=build_env)
-    sdist_filename = overrides.find_and_invoke(
-        req.name,
-        "build_sdist",
-        default_build_sdist,
-        ctx=ctx,
-        extra_environ=extra_environ,
-        req=req,
-        version=version,
-        sdist_root_dir=sdist_root_dir,
-        build_dir=build_dir,
-        build_env=build_env,
-    )
+    if req.url:
+        # The default approach to making an sdist is to make a tarball from the
+        # source directory, since most of the time we got the source directory
+        # by unpacking an existing sdist. When we know we cloned a git repo to
+        # get the source tree, we can be very sure that creating a tarball will
+        # NOT produce a valid sdist, so we can use the PEP-517 approach
+        # instead.
+        logger.info("%s: using PEP-517 sdist build, ignoring any plugins", req.name)
+        sdist_filename = pep517_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            sdist_root_dir=sdist_root_dir,
+            version=version,
+        )
+    else:
+        sdist_filename = overrides.find_and_invoke(
+            req.name,
+            "build_sdist",
+            default_build_sdist,
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            build_env=build_env,
+        )
     logger.info(f"{req.name}: built source distribution {sdist_filename}")
     return sdist_filename
 
