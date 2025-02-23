@@ -88,10 +88,38 @@ def default_resolver_provider(
     )
 
 
+class LogReporter(resolvelib.BaseReporter):
+    """Report resolution events
+
+    Implements part of the BaseReporter API to log a few events related to
+    resolving requirements.
+
+    """
+
+    def __init__(self, req: Requirement):
+        self.req = req
+        super().__init__()
+
+    def _report(self, msg: str, *args: typing.Any) -> None:
+        logger.info("%s: %s", self.req.name, msg % args)
+
+    def starting(self) -> None:
+        self._report("looking for candidates for %r", self.req)
+
+    def rejecting_candidate(self, criterion, candidate):
+        self._report("resolver rejecting candidate %s: %s", candidate, criterion)
+
+    def pinning(self, candidate):
+        self._report("selecting %s", candidate)
+
+    def ending(self, state):
+        self._report("successfully resolved %r", self.req)
+
+
 def resolve_from_provider(
     provider: BaseProvider, req: Requirement
 ) -> tuple[str, Version]:
-    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+    reporter = LogReporter(req)
     rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
     try:
         result = rslvr.resolve([req])
