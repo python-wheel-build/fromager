@@ -117,6 +117,31 @@ def _detect_rust_build_backend(
     return None
 
 
+def vendor_generic_rust_package(
+    req: Requirement,
+    manifests: list[pathlib.Path],
+    root_dir: pathlib.Path,
+    *,
+    shrink_vendored: bool = True,
+) -> typing.Iterable[pathlib.Path]:
+    """Vendor crates of a generic Rust package"""
+    if not manifests:
+        # default to Cargo.toml in root dir
+        manifests = [root_dir / "Cargo.toml"]
+    # fetch and vendor Rust crates
+    vendored = _cargo_vendor(req, manifests, root_dir)
+    logger.debug(f"{req.name}: vendored crates: {sorted(d.name for d in vendored)}")
+
+    # remove unnecessary pre-compiled files for Windows, macOS, and iOS.
+    if shrink_vendored:
+        for crate_dir in vendored:
+            _cargo_shrink(crate_dir)
+
+    # update or create .cargo/config.toml
+    _cargo_config(root_dir)
+    return vendored
+
+
 def vendor_rust(
     req: Requirement, project_dir: pathlib.Path, *, shrink_vendored: bool = True
 ) -> bool:
@@ -176,15 +201,8 @@ def vendor_rust(
     the_manifests = sorted(str(d.relative_to(project_dir)) for d in manifests)
     logger.debug(f"{req.name}: {project_dir} has cargo manifests: {the_manifests}")
 
-    # fetch and vendor Rust crates
-    vendored = _cargo_vendor(req, manifests, project_dir)
-    logger.debug(f"{req.name}: vendored crates: {sorted(d.name for d in vendored)}")
-
-    # remove unnecessary pre-compiled files for Windows, macOS, and iOS.
-    if shrink_vendored:
-        for crate_dir in vendored:
-            _cargo_shrink(crate_dir)
-    # update or create .cargo/config.toml
-    _cargo_config(project_dir)
+    vendor_generic_rust_package(
+        req, manifests, project_dir, shrink_vendored=shrink_vendored
+    )
 
     return True
