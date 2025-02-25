@@ -27,8 +27,11 @@ fi
 
 $pass
 
-CONSTRAINTS_FILE="$OUTDIR/flit_core_constraints.txt"
-echo "flit_core==2.0rc3" > $CONSTRAINTS_FILE
+CONSTRAINTS_FILE_1="$OUTDIR/flit_core_constraints.txt"
+echo "flit_core==2.0rc3" > $CONSTRAINTS_FILE_1
+
+CONSTRAINTS_FILE_2="$OUTDIR/misc_constraints.txt"
+echo "setuptools>=75.8.0" > $CONSTRAINTS_FILE_2
 
 DEBUG_RESOLVER=true fromager \
   --verbose \
@@ -36,7 +39,8 @@ DEBUG_RESOLVER=true fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
-  --constraints-file="$CONSTRAINTS_FILE" \
+  --constraints-file="$CONSTRAINTS_FILE_1" \
+  --constraints-file="$CONSTRAINTS_FILE_2" \
   bootstrap $DIST || true
 
 
