@@ -25,14 +25,15 @@ PYVER=$(python3 -c 'import sys; print("%s%s" % sys.version_info[:2])')
 EXTRACTDIR="$OUTDIR/extract"
 mkdir -p "$EXTRACTDIR"
 
-WHL=wheels-repo/downloads/${DIST}-${VERSION}-0-cp${PYVER}-cp${PYVER}-${WHEEL_PLATFORM_TAG}.whl
-unzip "$OUTDIR/$WHL" -d "$EXTRACTDIR"
+MIXED_CASE_DIST="[Mm]arkup[Ss]afe"
+WHL="wheels-repo/downloads/${MIXED_CASE_DIST}-${VERSION}-0-cp${PYVER}-cp${PYVER}-${WHEEL_PLATFORM_TAG}.whl"
+unzip $OUTDIR/$WHL -d "$EXTRACTDIR"
 
-DIST_INFO="extract/${DIST}-${VERSION}.dist-info"
+DIST_INFO="extract/${MIXED_CASE_DIST}-${VERSION}.dist-info"
 
 EXPECTED_FILES="
 $WHL
-sdists-repo/downloads/${DIST}-${VERSION}.tar.gz
+sdists-repo/downloads/${MIXED_CASE_DIST}-${VERSION}.tar.gz
 $DIST_INFO/fromager-build-backend-requirements.txt
 $DIST_INFO/fromager-build-sdist-requirements.txt
 $DIST_INFO/fromager-build-settings
@@ -48,7 +49,7 @@ fi
 
 pass=true
 for f in $EXPECTED_FILES; do
-  if [ ! -f "$OUTDIR/$f" ]; then
+  if [ ! -f $OUTDIR/$f ]; then
     echo "FAIL: Did not find $OUTDIR/$f" 1>&2
     pass=false
   fi

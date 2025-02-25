@@ -39,9 +39,9 @@ $OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
 $OUTDIR/sdists-repo/builds/setuptools-*.tar.gz
 $OUTDIR/work-dir/setuptools-*/build.log
 
-$OUTDIR/wheels-repo/downloads/PySocks-*.whl
-$OUTDIR/sdists-repo/downloads/PySocks-*.tar.gz
-$OUTDIR/sdists-repo/builds/pysocks-*.tar.gz
+$OUTDIR/wheels-repo/downloads/[Pp]y[sS]ocks-*.whl
+$OUTDIR/sdists-repo/downloads/[Pp]y[sS]ocks-*.tar.gz
+$OUTDIR/sdists-repo/builds/[Pp]y[sS]ocks-*.tar.gz
 $OUTDIR/work-dir/pysocks-*/build.log
 "
 
