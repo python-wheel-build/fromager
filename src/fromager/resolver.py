@@ -124,7 +124,10 @@ def resolve_from_provider(
     try:
         result = rslvr.resolve([req])
     except resolvelib.resolvers.exceptions.ResolutionImpossible as err:
-        raise ValueError(f"Unable to resolve {req}") from err
+        constraint = provider.constraints.get_constraint(req.name)
+        raise ValueError(
+            f"Unable to resolve requirement specifier {req} with constraint {constraint}"
+        ) from err
     # resolvelib actually just returns one candidate per requirement.
     # result.mapping is map from an identifier to its resolved candidate
     candidate: Candidate
