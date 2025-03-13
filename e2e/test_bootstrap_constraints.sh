@@ -10,6 +10,9 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
+constraints_file=$(mktemp)
+echo "stevedore==4.0.0" > "$constraints_file"
+
 # passing settings to bootstrap but should have 0 effect on it
 fromager \
   --log-file="$OUTDIR/bootstrap.log" \
@@ -18,37 +21,15 @@ fromager \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
   --settings-dir="$SCRIPTDIR/changelog_settings" \
-  bootstrap 'stevedore==5.2.0' 'stevedore==4.0.0' || true
+  --constraints-file="$constraints_file" \
+  bootstrap 'stevedore==5.2.0' || true
 
 pass=true
 
 # Check for log message that the override is loaded
-if ! grep -q "Could not produce a pip compatible constraints file" "$OUTDIR/bootstrap.log"; then
-  echo "FAIL: did not throw an error when generating an incorrect constraints file" 1>&2
+if ! grep -q "ERROR: Unable to resolve requirement specifier stevedore==5.2.0 with constraint stevedore==4.0.0" "$OUTDIR/bootstrap.log"; then
+  echo "FAIL: did not throw expected error when constraint and requirement conflict" 1>&2
   pass=false
 fi
-
-$pass
-
-if [ ! -f "$OUTDIR/work-dir/constraints.txt" ]; then
-  echo "Did not find $OUTDIR/work-dir/constraints.txt" 1>&2
-  pass=false
-fi
-
-$pass
-
-EXPECTED_LINES="
-pbr==6.1.1
-# ERROR
-stevedore==4.0.0
-stevedore==5.2.0
-"
-
-for pattern in $EXPECTED_LINES; do
-  if ! grep -q "${pattern}" "$OUTDIR/work-dir/constraints.txt"; then
-    echo "Did not find $pattern in constraints file" 1>&2
-    pass=false
-  fi
-done
 
 $pass
