@@ -55,6 +55,8 @@ The `graph.json` is an output file that contains all the paths fromager can take
 
 The format is a mapping from resolved versions expressed as a requirement specification (package==version) to a mapping with properties of the package and the list of dependencies of that package.
 
+The `graph.json` file is also used for the "repeatable builds" feature. Fromager bootstrap can pull an already existing `graph.json` file from a previous bootstrap via `--previous-bootstrap-file` option to generate a repeatable wheel build.
+
 ### Example graph.json
 
 The following example shows `graph.json` file for the top-level dependency `wheel`
