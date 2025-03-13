@@ -85,6 +85,8 @@ jobs:
           - bootstrap_prerelease
           - bootstrap_constraints
           - bootstrap_cache
+          - bootstrap_git_url
+          - bootstrap_git_url_tag
           - build
           - build_order
           - build_steps
@@ -140,7 +142,7 @@ jobs:
 
       - name: Run tests
         run: ./e2e/test_${{ matrix.test-script }}.sh
-      
+
       - name: Upload logs for debugging
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
