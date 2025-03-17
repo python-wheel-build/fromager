@@ -34,6 +34,9 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         Version("1.0.1"): ["fixed bug"],
         Version("1.0.2"): ["more bugs", "rebuild"],
     },
+    "config_settings": [
+        "setup-args=-Dsystem-freetype=true",
+    ],
     "download_source": {
         "destination_filename": "${canonicalized_name}-${version}.tar.gz",
         "url": "https://egg.test/${canonicalized_name}/v${version}.tar.gz",
@@ -84,6 +87,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "memory_per_job_gb": 1.0,
     },
     "changelog": {},
+    "config_settings": [],
     "env": {},
     "download_source": {
         "url": None,

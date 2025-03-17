@@ -295,6 +295,12 @@ class PackageSettings(pydantic.BaseModel):
     changelog: VariantChangelog = Field(default_factory=dict)
     """Changelog entries"""
 
+    config_settings: list[str] = Field(default_factory=list)
+    """PEP 517 arbitrary configuration for wheel builds
+
+    https://peps.python.org/pep-0517/#config-settings
+    """
+
     env: EnvVars = Field(default_factory=dict)
     """Common env var for all variants"""
 
@@ -725,6 +731,10 @@ class PackageBuildInfo:
     def build_ext_parallel(self) -> bool:
         """Configure [build_ext]parallel for setuptools?"""
         return self._ps.build_options.build_ext_parallel
+
+    @property
+    def config_settings(self) -> list[str]:
+        return self._ps.config_settings
 
     @property
     def project_override(self) -> ProjectOverride:
