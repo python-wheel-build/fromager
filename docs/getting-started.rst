@@ -10,7 +10,7 @@ The basic process for using fromager to build a collection of wheels is
    that dependency in different ways, you can select the version of that library
    that you want so only one version is built. Save this list in a
    `constraints.txt` file.
-3. Run `bootstrap`, passing your `requirements.txt` and `constraints.txt`, to
+3. Run `bootstrap.sh`, passing your `requirements.txt` and `constraints.txt`, to
    try to build the collection.
 4. When a package fails to build, create a settings file and mark it as
    pre-built. This lets you move through the full set of dependencies quickly,
@@ -62,7 +62,7 @@ The output below is redacted for brevity. Missing sections are replaced with ``.
    :emphasize-lines: 61
 
    $ cd docs/example
-   $ ./bootstrap.sh ./constraints.txt ./requirements.txt
+   $ ./bootstrap.sh Containerfile ./constraints.txt ./requirements.txt
 
    ...
 
@@ -168,7 +168,7 @@ canonical form of the package name::
      cpu-ubi9:
        pre_built: true
 
-Now when we re-run ``bootstrap``, we see that ``pydantic-core`` will be treated
+Now when we re-run ``bootstrap.sh``, we see that ``pydantic-core`` will be treated
 as "pre-built", the wheel is downloaded from pypi.org, and the process completes
 successfully.
 
