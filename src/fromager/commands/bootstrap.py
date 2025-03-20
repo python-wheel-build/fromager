@@ -75,6 +75,16 @@ def _get_requirements_from_args(
     "cache_wheel_server_url",
     help="url to a wheel server from where fromager can download the wheels that it has built before",
 )
+@click.option(
+    "--sdist-only/--full-build",
+    "sdist_only",
+    default=False,
+    help=(
+        "--sdist-only (fast mode) does not build missing wheels unless they "
+        "are build requirements. --full-build (default) builds all missing "
+        "wheels."
+    ),
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -82,6 +92,7 @@ def bootstrap(
     requirements_files: list[str],
     previous_bootstrap_file: str | None,
     cache_wheel_server_url: str | None,
+    sdist_only: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -91,6 +102,7 @@ def bootstrap(
 
     """
     logger.info(f"cache wheel server url: {cache_wheel_server_url}")
+
     to_build = _get_requirements_from_args(toplevel, requirements_files)
     if not to_build:
         raise RuntimeError(
@@ -104,6 +116,11 @@ def bootstrap(
     else:
         logger.info("no previous bootstrap data")
         prev_graph = None
+
+    if sdist_only:
+        logger.info("sdist-only (fast mode), getting metadata from sdists")
+    else:
+        logger.info("build all missing wheels")
 
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
@@ -144,7 +161,11 @@ def bootstrap(
 
     with progress.progress_context(total=len(to_build)) as progressbar:
         bt = bootstrapper.Bootstrapper(
-            wkctx, progressbar, prev_graph, cache_wheel_server_url
+            wkctx,
+            progressbar,
+            prev_graph,
+            cache_wheel_server_url,
+            sdist_only=sdist_only,
         )
 
         for req in to_build:

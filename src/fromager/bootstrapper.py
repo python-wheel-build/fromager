@@ -31,6 +31,9 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# package name, extras, version, sdist/wheel
+SeenKey = tuple[NormalizedName, tuple[str, ...], str, typing.Literal["sdist", "wheel"]]
+
 
 class Bootstrapper:
     def __init__(
@@ -39,11 +42,13 @@ class Bootstrapper:
         progressbar: progress.Progressbar | None = None,
         prev_graph: DependencyGraph | None = None,
         cache_wheel_server_url: str | None = None,
+        sdist_only: bool = False,
     ) -> None:
         self.ctx = ctx
         self.progressbar = progressbar or progress.Progressbar(None)
         self.prev_graph = prev_graph
         self.cache_wheel_server_url = cache_wheel_server_url or ctx.wheel_server_url
+        self.sdist_only = sdist_only
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -56,9 +61,7 @@ class Bootstrapper:
         # the dependency list. The key is the requirements spec, rather
         # than the package, in case we do have multiple rules for the same
         # package.
-        self._seen_requirements: set[tuple[NormalizedName, tuple[str, ...], str]] = (
-            set()
-        )
+        self._seen_requirements: set[SeenKey] = set()
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
@@ -84,13 +87,21 @@ class Bootstrapper:
 
         self._add_to_graph(req, req_type, resolved_version, source_url)
 
+        # Is bootstrap going to create a wheel or just an sdist?
+        # Use fast sdist-only if flag is set, requirement is not a build
+        # requirement, and wheel is not pre-built.
+        build_sdist_only = (
+            self.sdist_only and req_type.is_install_requirement and not pbi.pre_built
+        )
+
         # Avoid cyclic dependencies and redundant processing.
-        if self._has_been_seen(req, resolved_version):
+        if self._has_been_seen(req, resolved_version, build_sdist_only):
             logger.debug(
-                f"{req.name}: redundant {req_type} dependency {req} ({resolved_version}) for {self._explain}"
+                f"{req.name}: redundant {req_type} dependency {req} "
+                f"({resolved_version}, sdist_only={build_sdist_only}) for {self._explain}"
             )
             return resolved_version
-        self._mark_as_seen(req, resolved_version)
+        self._mark_as_seen(req, resolved_version, build_sdist_only)
 
         logger.info(
             f"{req.name}: new {req_type} dependency {req} resolves to {resolved_version}"
@@ -102,8 +113,10 @@ class Bootstrapper:
         self.why.append((req_type, req, resolved_version))
 
         # for cleanup
-        build_env = None
-        sdist_root_dir = None
+        build_env: build_environment.BuildEnvironment | None = None
+        sdist_root_dir: pathlib.Path | None = None
+        wheel_filename: pathlib.Path | None = None
+
         if pbi.pre_built:
             wheel_filename, unpack_dir = self._download_prebuilt(
                 req=req,
@@ -111,6 +124,7 @@ class Bootstrapper:
                 resolved_version=resolved_version,
                 wheel_url=source_url,
             )
+
             # Remember that this is a prebuilt wheel, and where we got it.
             source_url_type = str(SourceType.PREBUILT)
         else:
@@ -132,22 +146,67 @@ class Bootstrapper:
                     source_filename=source_filename,
                     version=resolved_version,
                 )
-                unpack_dir = sdist_root_dir.parent
             else:
                 sdist_root_dir = unpacked_cached_wheel
-                unpack_dir = unpacked_cached_wheel.parent
+
+            assert sdist_root_dir is not None
+            unpack_dir = sdist_root_dir.parent
 
             # need to call this function irrespective of whether we had the wheel cached
             # so that the build dependencies can be bootstrapped
             build_dependencies = self._prepare_build_dependencies(req, sdist_root_dir)
 
-            # skip building even if it is a non-fromager built wheel
-            if not cached_wheel_filename:
-                wheel_filename, build_env = self._build(
+            if cached_wheel_filename:
+                logger.debug(
+                    f"{req.name}: getting install requirements from cached "
+                    f"wheel {cached_wheel_filename.name}"
+                )
+                # prefer existing wheel even in sdist_only mode
+                # skip building even if it is a non-fromager built wheel
+                wheel_filename = cached_wheel_filename
+                build_sdist_only = False
+            elif build_sdist_only:
+                # get install dependencies from sdist and pyproject_hooks (only top-level and install)
+                logger.debug(
+                    f"{req.name}: getting install requirements from sdist "
+                    f"{req.name}=={resolved_version} ({req_type})"
+                )
+                wheel_filename = None
+                build_env = self._build_sdist(
                     req, resolved_version, sdist_root_dir, build_dependencies
                 )
             else:
-                wheel_filename = cached_wheel_filename
+                # build wheel (build requirements, full build mode)
+                logger.debug(
+                    f"{req.name}: building wheel {req.name}=={resolved_version} "
+                    f"to get install requirements ({req_type})"
+                )
+                wheel_filename, build_env = self._build_wheel(
+                    req, resolved_version, sdist_root_dir, build_dependencies
+                )
+
+        if build_sdist_only:
+            if typing.TYPE_CHECKING:
+                assert build_env is not None
+                assert sdist_root_dir is not None
+                assert wheel_filename is None
+
+            install_dependencies = dependencies.get_install_dependencies_of_sdist(
+                ctx=self.ctx,
+                req=req,
+                sdist_root_dir=sdist_root_dir,
+                build_env=build_env,
+            )
+        else:
+            if typing.TYPE_CHECKING:
+                assert wheel_filename is not None
+                assert unpack_dir is not None
+
+            install_dependencies = dependencies.get_install_dependencies_of_wheel(
+                req=req,
+                wheel_filename=wheel_filename,
+                requirements_file_dir=unpack_dir,
+            )
 
         self._add_to_build_order(
             req=req,
@@ -157,12 +216,6 @@ class Bootstrapper:
             prebuilt=pbi.pre_built,
             constraint=constraint,
         )
-
-        # Process installation dependencies for all wheels.
-        install_dependencies = dependencies.get_install_dependencies_of_wheel(
-            req, wheel_filename, unpack_dir
-        )
-
         if req_type.is_build_requirement:
             # install dependencies of build requirements are also build
             # system requirements.
@@ -192,13 +245,13 @@ class Bootstrapper:
             for req_type, req, resolved_version in reversed(self.why)
         )
 
-    def _build(
+    def _build_sdist(
         self,
         req: Requirement,
         resolved_version: Version,
         sdist_root_dir: pathlib.Path,
         build_dependencies: set[Requirement],
-    ) -> tuple[pathlib.Path, build_environment.BuildEnvironment]:
+    ) -> build_environment.BuildEnvironment:
         build_env = build_environment.BuildEnvironment(
             self.ctx,
             sdist_root_dir.parent,
@@ -222,6 +275,18 @@ class Bootstrapper:
                 )
         except Exception as err:
             logger.warning(f"{req.name}: failed to build source distribution: {err}")
+        return build_env
+
+    def _build_wheel(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        sdist_root_dir: pathlib.Path,
+        build_dependencies: set[Requirement],
+    ) -> tuple[pathlib.Path, build_environment.BuildEnvironment]:
+        build_env = self._build_sdist(
+            req, resolved_version, sdist_root_dir, build_dependencies
+        )
 
         logger.info(f"{req.name}: starting build of {self._explain}")
         built_filename = wheels.build_wheel(
@@ -592,17 +657,42 @@ class Bootstrapper:
         return sorted(requirements, key=operator.attrgetter("name"))
 
     def _resolved_key(
-        self, req: Requirement, version: Version
-    ) -> tuple[NormalizedName, tuple[str, ...], str]:
-        return (canonicalize_name(req.name), tuple(sorted(req.extras)), str(version))
+        self, req: Requirement, version: Version, typ: typing.Literal["sdist", "wheel"]
+    ) -> SeenKey:
+        return (
+            canonicalize_name(req.name),
+            tuple(sorted(req.extras)),
+            str(version),
+            typ,
+        )
 
-    def _mark_as_seen(self, req: Requirement, version: Version) -> None:
-        key = self._resolved_key(req, version)
-        logger.debug(f"{req.name}: remembering seen sdist {key}")
-        self._seen_requirements.add(key)
+    def _mark_as_seen(
+        self,
+        req: Requirement,
+        version: Version,
+        sdist_only: bool = False,
+    ) -> None:
+        """Track sdist and wheel builds
 
-    def _has_been_seen(self, req: Requirement, version: Version) -> bool:
-        return self._resolved_key(req, version) in self._seen_requirements
+        A sdist-only build just contains as an sdist.
+        A wheel build counts as wheel and sdist, because the presence of a
+        either implies we have built a wheel from an sdist or we have a
+        prebuilt wheel that will never have an sdist.
+        """
+        # Mark sdist seen for sdist-only build and wheel build
+        self._seen_requirements.add(self._resolved_key(req, version, "sdist"))
+        if not sdist_only:
+            # Mark wheel seen only for wheel build
+            self._seen_requirements.add(self._resolved_key(req, version, "wheel"))
+
+    def _has_been_seen(
+        self,
+        req: Requirement,
+        version: Version,
+        sdist_only: bool = False,
+    ) -> bool:
+        typ: typing.Literal["sdist", "wheel"] = "sdist" if sdist_only else "wheel"
+        return self._resolved_key(req, version, typ) in self._seen_requirements
 
     def _add_to_build_order(
         self,

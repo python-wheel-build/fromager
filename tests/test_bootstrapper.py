@@ -258,6 +258,30 @@ def test_seen_name_canonicalization(tmp_context):
     assert bt._has_been_seen(req, version)
 
 
+def test_seen_requirements_sdist(tmp_context):
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("testdist")
+    version = "1.2"
+    assert not bt._has_been_seen(req, version, sdist_only=False)
+    assert not bt._has_been_seen(req, version, sdist_only=True)
+    # sdist only does not affect wheel status
+    bt._mark_as_seen(req, version, sdist_only=True)
+    assert bt._has_been_seen(req, version, sdist_only=True)
+    assert not bt._has_been_seen(req, version, sdist_only=False)
+
+    bt._mark_as_seen(req, version, sdist_only=False)
+    assert bt._has_been_seen(req, version, sdist_only=True)
+    assert bt._has_been_seen(req, version, sdist_only=False)
+
+    req2 = Requirement("testwheel")
+    assert not bt._has_been_seen(req2, version, sdist_only=False)
+    assert not bt._has_been_seen(req2, version, sdist_only=True)
+    # full seen affects both sdist and wheel status
+    bt._mark_as_seen(req2, version, sdist_only=False)
+    assert bt._has_been_seen(req2, version, sdist_only=True)
+    assert bt._has_been_seen(req2, version, sdist_only=False)
+
+
 def test_build_order(tmp_context):
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt._add_to_build_order(

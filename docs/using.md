@@ -40,6 +40,13 @@ Wheels are built by running `pip wheel` configured so it will only
 download dependencies from the local wheel repository. This ensures
 that all dependencies are being built in the correct order.
 
+By default `bootstrap` builds all wheels that are neither in the local nor
+in the remote cache. The default behavior verifies that every wheel can be
+built from sources. The option `--sdist-only` switches `bootstrap` into a
+fast mode that does not build new wheel for `Requires-Dist` dependencies. The
+mode is advised if you just need `build-order.json` and have platlib packages
+that take a lot of time to compile.
+
 ## Production Builds
 
 Production builds use separate commands for the steps described as
