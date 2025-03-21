@@ -20,6 +20,9 @@ class Constraints:
     def __iter__(self) -> typing.Iterable[NormalizedName]:
         yield from self._data
 
+    def __bool__(self) -> bool:
+        return bool(self._data)
+
     def add_constraint(self, unparsed: str) -> None:
         """Add new constraint, must not conflict with any existing constraints"""
         req = Requirement(unparsed)
@@ -34,11 +37,17 @@ class Constraints:
             self._data[canon_name] = req
 
     def load_constraints_file(self, constraints_file: str | pathlib.Path) -> None:
-        """Load constraints from a constraints file"""
+        """Load constraints from a constraints file or URI"""
         logger.info("loading constraints from %s", constraints_file)
         content = requirements_file.parse_requirements_file(constraints_file)
         for line in content:
             self.add_constraint(line)
+
+    def dump_constraints_file(self, constraints_file: pathlib.Path) -> None:
+        """Dump all constraints into a file"""
+        with constraints_file.open("w", encoding="utf-8") as f:
+            for req in self._data.values():
+                f.write(f"{req}\n")
 
     def get_constraint(self, name: str) -> Requirement | None:
         return self._data.get(canonicalize_name(name))
