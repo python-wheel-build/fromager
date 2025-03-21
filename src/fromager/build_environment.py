@@ -293,7 +293,7 @@ def prepare_build_environment(
         if match:
             raise MissingDependency(
                 ctx,
-                RequirementType.BUILD,
+                next_req_type,
                 match.groups()[0],
                 build_system_dependencies
                 | build_backend_dependencies

@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 class RequirementType(StrEnum):
     INSTALL = "install"
     TOP_LEVEL = "toplevel"
-    BUILD = "build"
     BUILD_SYSTEM = "build-system"
     BUILD_BACKEND = "build-backend"
     BUILD_SDIST = "build-sdist"
@@ -22,7 +21,7 @@ class RequirementType(StrEnum):
     @property
     def is_build_requirement(self) -> bool:
         """Is requirement a build time requirement?"""
-        return self.value in {"build", "build-system", "build-backend", "build-sdist"}
+        return self.value in {"build-system", "build-backend", "build-sdist"}
 
     @property
     def is_install_requirement(self) -> bool:
