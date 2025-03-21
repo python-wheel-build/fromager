@@ -373,9 +373,9 @@ def test_explain(tmp_context: WorkContext):
 
     bt.why = [
         (RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0")),
-        (RequirementType.BUILD, Requirement("bar==4.0.0"), Version("4.0.0")),
+        (RequirementType.BUILD_SYSTEM, Requirement("bar==4.0.0"), Version("4.0.0")),
     ]
     assert (
         bt._explain
-        == f"{RequirementType.BUILD} dependency bar==4.0.0 (4.0.0) for {RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
+        == f"{RequirementType.BUILD_SYSTEM} dependency bar==4.0.0 (4.0.0) for {RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
     )

@@ -162,10 +162,19 @@ class Bootstrapper:
         install_dependencies = dependencies.get_install_dependencies_of_wheel(
             req, wheel_filename, unpack_dir
         )
+
+        if req_type.is_build_requirement:
+            # install dependencies of build requirements are also build
+            # system requirements.
+            child_req_type = RequirementType.BUILD_SYSTEM
+        else:
+            # top-level and install requirements
+            child_req_type = RequirementType.INSTALL
+
         self.progressbar.update_total(len(install_dependencies))
         for dep in self._sort_requirements(install_dependencies):
             try:
-                self.bootstrap(dep, RequirementType.INSTALL)
+                self.bootstrap(dep, child_req_type)
             except Exception as err:
                 raise ValueError(f"could not handle {self._explain}") from err
             self.progressbar.update()

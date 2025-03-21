@@ -317,7 +317,7 @@ class BaseProvider(ExtrasProvider):
         cache = self.get_cache()
         # we only want caching for build reqs because for install time reqs we always want to get the latest version
         # we can't guarantee that the latest version is available in the cache so install time reqs cannot use the cache
-        if self.req_type != RequirementType.BUILD:
+        if self.req_type is None or not self.req_type.is_build_requirement:
             return []
         return [
             c

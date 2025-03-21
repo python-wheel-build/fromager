@@ -29,11 +29,11 @@ def test_missing_dependency_format(
         req,
     ]
     ex = build_environment.MissingDependency(
-        tmp_context, RequirementType.BUILD, req, other_reqs
+        tmp_context, RequirementType.BUILD_BACKEND, req, other_reqs
     )
     s = str(ex)
     # Ensure we report the thing we're actually missing
-    assert "Failed to install build dependency setuptools>=40.8.0. " in s
+    assert "Failed to install build-backend dependency setuptools>=40.8.0. " in s
     # Ensure we report what version we expected of that thing
     assert "setuptools>=40.8.0 -> 69.5.1" in s
     # Ensure we report what version we expect of all of the other dependencies

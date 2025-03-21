@@ -14,25 +14,19 @@ logger = logging.getLogger(__name__)
 class RequirementType(StrEnum):
     INSTALL = "install"
     TOP_LEVEL = "toplevel"
-    BUILD = "build"
     BUILD_SYSTEM = "build-system"
     BUILD_BACKEND = "build-backend"
     BUILD_SDIST = "build-sdist"
 
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, RequirementType):
-            if self.value == "build" or other.value == "build":
-                allowed_values = [
-                    "build-backend",
-                    "build-system",
-                    "build-sdist",
-                    "build",
-                ]
-                return self.value in allowed_values and other.value in allowed_values
-        return super.__eq__(self, other)
+    @property
+    def is_build_requirement(self) -> bool:
+        """Is requirement a build time requirement?"""
+        return self.value in {"build-system", "build-backend", "build-sdist"}
 
-    def __ne__(self, value: object) -> bool:
-        return not self == value
+    @property
+    def is_install_requirement(self) -> bool:
+        """Is requirement an installation requirement?"""
+        return self.value in {"install", "toplevel"}
 
 
 class SourceType(StrEnum):

@@ -41,24 +41,22 @@ def test_get_requirements_file_with_comments_and_blanks(tmp_path: pathlib.Path):
     assert requirements == ["a", "b", "c"]
 
 
-def test_compare_req_type():
-    assert RequirementType.BUILD == RequirementType.BUILD_BACKEND
-    assert RequirementType.BUILD == RequirementType.BUILD_SDIST
-    assert RequirementType.BUILD == RequirementType.BUILD_SYSTEM
+def test_req_type_flag():
+    assert not RequirementType.INSTALL.is_build_requirement
+    assert not RequirementType.TOP_LEVEL.is_build_requirement
+    assert RequirementType.BUILD_SYSTEM.is_build_requirement
+    assert RequirementType.BUILD_SDIST.is_build_requirement
+    assert RequirementType.BUILD_BACKEND.is_build_requirement
 
-    # reverse order
-    assert RequirementType.BUILD_SYSTEM == RequirementType.BUILD
-    assert RequirementType.BUILD_SDIST == RequirementType.BUILD
-    assert RequirementType.BUILD_BACKEND == RequirementType.BUILD
+    assert RequirementType.INSTALL.is_install_requirement
+    assert RequirementType.TOP_LEVEL.is_install_requirement
+    assert not RequirementType.BUILD_SYSTEM.is_install_requirement
+    assert not RequirementType.BUILD_SDIST.is_install_requirement
+    assert not RequirementType.BUILD_BACKEND.is_install_requirement
 
-    assert RequirementType.INSTALL != RequirementType.BUILD_BACKEND
-    assert RequirementType.INSTALL != RequirementType.BUILD_SYSTEM
-    assert RequirementType.INSTALL != RequirementType.BUILD_SDIST
-    assert RequirementType.INSTALL != RequirementType.BUILD
-
-    # make sure they equal themselves
     for r in RequirementType:
         assert r == r
+        assert r.is_build_requirement or r.is_install_requirement
 
 
 @pytest.mark.parametrize(
