@@ -86,6 +86,7 @@ jobs:
           - bootstrap_conflicting_requirements
           - bootstrap_constraints
           - bootstrap_cache
+          - bootstrap_sdist_only
           - build
           - build_order
           - build_steps

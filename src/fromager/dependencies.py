@@ -4,14 +4,16 @@ import copy
 import logging
 import os
 import pathlib
+import tempfile
 import typing
 
 import pkginfo
 import pyproject_hooks
 import tomlkit
+from packaging.metadata import Metadata
 from packaging.requirements import Requirement
 
-from . import external_commands, overrides, requirements_file
+from . import build_environment, external_commands, overrides, requirements_file
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -202,6 +204,53 @@ def default_get_build_sdist_dependencies(
     return hook_caller.get_requires_for_build_wheel()
 
 
+def get_install_dependencies_of_sdist(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    build_env: build_environment.BuildEnvironment,
+) -> set[Requirement]:
+    """Get install requirements (Requires-Dist) from sources
+
+    Uses PEP 517 prepare_metadata_for_build_wheel() API.
+    """
+    pbi = ctx.package_build_info(req)
+    build_dir = pbi.build_dir(sdist_root_dir)
+    logger.info(
+        f"{req.name}: getting install requirements for {req} from sdist in {build_dir}"
+    )
+    pyproject_toml = get_pyproject_contents(build_dir)
+    extra_environ = pbi.get_extra_environ()
+    hook_caller = get_build_backend_hook_caller(
+        build_dir,
+        pyproject_toml,
+        override_environ=extra_environ,
+        network_isolation=ctx.network_isolation,
+        build_env=build_env,
+    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        distinfo_name = hook_caller.prepare_metadata_for_build_wheel(tmp_dir)
+        metadata_file = pathlib.Path(tmp_dir) / distinfo_name / "METADATA"
+        # ignore minor metadata issues
+        metadata = parse_metadata(metadata_file, validate=False)
+
+    if metadata.requires_dist is None:
+        return set()
+    else:
+        return _filter_requirements(req, metadata.requires_dist)
+
+
+def parse_metadata(metadata_file: pathlib.Path, *, validate: bool = True) -> Metadata:
+    """Parse a dist-info/METADATA file
+
+    The default parse mode is 'strict'. It even fails for a mismatch of field
+    and core metadata version, e.g. a package with metadata 2.2 and
+    license-expression field (added in 2.4).
+    """
+    return Metadata.from_email(metadata_file.read_bytes(), validate=validate)
+
+
 def get_install_dependencies_of_wheel(
     req: Requirement, wheel_filename: pathlib.Path, requirements_file_dir: pathlib.Path
 ) -> set[Requirement]:
@@ -252,6 +301,7 @@ def get_build_backend_hook_caller(
     override_environ: dict[str, typing.Any],
     *,
     network_isolation: bool = False,
+    build_env: build_environment.BuildEnvironment | None = None,
 ) -> pyproject_hooks.BuildBackendHookCaller:
     backend = get_build_backend(pyproject_toml)
 
@@ -275,11 +325,14 @@ def get_build_backend_hook_caller(
             network_isolation=network_isolation,
         )
 
+    python_executable = str(build_env.python) if build_env is not None else None
+
     return pyproject_hooks.BuildBackendHookCaller(
         source_dir=str(sdist_root_dir),
         build_backend=backend["build-backend"],
         backend_path=backend["backend-path"],
         runner=_run_hook_with_extra_environ,
+        python_executable=python_executable,
     )
 
 
