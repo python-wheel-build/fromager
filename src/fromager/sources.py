@@ -412,7 +412,8 @@ def prepare_new_source(
         req=req,
         sdist_root_dir=source_root_dir,
     )
-    vendor_rust.vendor_rust(req, source_root_dir)
+    if ctx.network_isolation:
+        vendor_rust.vendor_rust(req, source_root_dir)
 
 
 @metrics.timeit(description="build sdist")
