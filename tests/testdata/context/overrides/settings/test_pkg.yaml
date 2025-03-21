@@ -9,6 +9,8 @@ changelog:
     "1.0.2":
         - more bugs
         - rebuild
+config_settings:
+    - setup-args=-Dsystem-freetype=true
 env:
     EGG: spam
     EGG_AGAIN: "$EGG"

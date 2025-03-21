@@ -327,27 +327,34 @@ def default_build_wheel(
     build_dir: pathlib.Path,
 ) -> None:
     logger.debug(f"{req.name}: building wheel in {build_dir} with {extra_environ}")
+    pbi = ctx.package_build_info(req)
+
+    cmd = [
+        os.fspath(build_env.python),
+        "-m",
+        "pip",
+        "-vvv",
+        "--disable-pip-version-check",
+        "wheel",
+        "--no-build-isolation",
+        "--only-binary",
+        ":all:",
+        "--wheel-dir",
+        os.fspath(ctx.wheels_build),
+        "--no-deps",
+        "--index-url",
+        ctx.wheel_server_url,  # probably redundant, but just in case
+        "--log",
+        os.fspath(build_dir.parent / "build.log"),
+    ]
+    # config settings needs pip >= 24.0 to work. Fromager uses `virtualenv``
+    # package to create virtual envs, which comes with recent pip. Stdlib's
+    # `venv` comes with rather old pip.
+    for cs in pbi.config_settings:
+        cmd.append(f"--config-settings={cs}")
+    cmd.append(os.fspath(build_dir))
 
     with tempfile.TemporaryDirectory() as dir_name:
-        cmd = [
-            os.fspath(build_env.python),
-            "-m",
-            "pip",
-            "-vvv",
-            "--disable-pip-version-check",
-            "wheel",
-            "--no-build-isolation",
-            "--only-binary",
-            ":all:",
-            "--wheel-dir",
-            os.fspath(ctx.wheels_build),
-            "--no-deps",
-            "--index-url",
-            ctx.wheel_server_url,  # probably redundant, but just in case
-            "--log",
-            os.fspath(build_dir.parent / "build.log"),
-            os.fspath(build_dir),
-        ]
         build_env.run(
             cmd,
             cwd=dir_name,
