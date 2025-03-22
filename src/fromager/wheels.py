@@ -10,6 +10,8 @@ import tempfile
 import textwrap
 import typing
 import zipfile
+from email.message import Message
+from email.parser import BytesParser
 from urllib.parse import urlparse
 
 import elfdeps
@@ -227,6 +229,28 @@ def add_extra_metadata_to_wheels(
         build_tag_from_settings = pbi.build_tag(version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
 
+        # Add the local version value to the wheel's metadata and dist_info
+        # directory name before repacking the wheel.
+        if ctx.local_version:
+            new_version = _update_local_version(dist_version, ctx.local_version)
+            logger.debug(
+                f"{req.name}: updating version from {dist_version} to {new_version}"
+            )
+            # Here we parse the metadata file ourselves as an email message so
+            # we can rewrite the file after changing the version value.
+            metadata_filename = dist_info_dir / "METADATA"
+            p = BytesParser()
+            with metadata_filename.open("rb") as f:
+                metadata: Message = p.parse(f)
+            del metadata["Version"]
+            metadata["Version"] = str(new_version)
+            metadata_filename.write_text(str(metadata), encoding="utf-8")
+            # Update the dist_filename variable to the new expected value
+            dist_filename = f"{dist_name}-{new_version}"
+            shutil.move(
+                dist_info_dir, dist_info_dir.parent / f"{dist_filename}.dist-info"
+            )
+
         cmd = [
             "wheel",
             "pack",
@@ -250,7 +274,17 @@ def add_extra_metadata_to_wheels(
             f"{req.name}: added extra metadata and build tag {build_tag}, wheel renamed from {wheel_file.name} to {wheels[0].name}"
         )
         return wheels[0]
-    raise FileNotFoundError("Could not locate new wheels file")
+    raise FileNotFoundError(
+        f"Could not locate new wheels file for {dist_filename} among {list(wheel_file.parent.glob('*.whl'))}"
+    )
+
+
+def _update_local_version(old_version: Version, local_version: str) -> Version:
+    # If we have an old local version, we append our value to it using a '.'
+    # as a separator because that is the canonical separator for segments of
+    # the local version string.
+    sep = "+" if old_version.local is None else "."
+    return Version(str(old_version) + sep + local_version)
 
 
 @metrics.timeit(description="build wheels")

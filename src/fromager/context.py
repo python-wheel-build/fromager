@@ -31,6 +31,7 @@ class WorkContext:
         network_isolation: bool = False,
         max_jobs: int | None = None,
         settings_dir: pathlib.Path | None = None,
+        local_version: str | None = None,
     ):
         if active_settings is None:
             active_settings = packagesettings.Settings(
@@ -63,6 +64,7 @@ class WorkContext:
         self.variant = variant
         self.network_isolation = network_isolation
         self.settings_dir = settings_dir
+        self.local_version = local_version
 
         self._constraints_filename = self.work_dir / "constraints.txt"
 

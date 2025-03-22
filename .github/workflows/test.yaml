@@ -90,6 +90,7 @@ jobs:
           - bootstrap_git_url
           - bootstrap_git_url_tag
           - build
+          - build_local_version
           - build_order
           - build_steps
           - build_settings

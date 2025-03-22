@@ -57,12 +57,34 @@ class BuildSequenceEntry:
         return (self.name.lower(), self.version) < (other.name.lower(), other.version)
 
 
+def validate_local_version(ctx, param, value: typing.Any) -> str:
+    if value is None:
+        return value
+    if not isinstance(value, str):
+        raise click.BadParameter("must be a string")
+    value = value.lstrip("+").strip()  # some basic cleanup
+    if not value:
+        raise click.BadParameter("must not be empty")
+    try:
+        parsed = Version("1.2+" + value)
+    except Exception as err:
+        raise click.BadParameter(f"error parsing {value!r}: {err}") from err
+    return parsed.local  # return the normalized form
+
+
 @click.command()
 @click.option(
     "--wheel-server-url",
     default="",
     type=str,
     help="URL for the wheel server for builds",
+)
+@click.option(
+    "--local-version",
+    default=None,
+    type=click.UNPROCESSED,
+    callback=validate_local_version,
+    help="Local version string to add to wheel version",
 )
 @click.argument("dist_name")
 @click.argument("dist_version", type=clickext.PackageVersion())
@@ -74,6 +96,7 @@ def build(
     dist_name: str,
     dist_version: Version,
     sdist_server_url: str,
+    local_version: str | None,
 ) -> None:
     """Build a single version of a single wheel
 
@@ -97,6 +120,7 @@ def build(
 
     """
     wkctx.wheel_server_url = wheel_server_url
+    wkctx.local_version = local_version
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
     source_url, version = sources.resolve_source(
@@ -125,6 +149,13 @@ build._fromager_show_build_settings = True  # type: ignore
     "cache_wheel_server_url",
     help="url to a wheel server from where fromager can check if it had already built the wheel",
 )
+@click.option(
+    "--local-version",
+    default=None,
+    type=click.UNPROCESSED,
+    callback=validate_local_version,
+    help="Local version string to add to wheel version",
+)
 @click.argument("build_order_file")
 @click.pass_obj
 def build_sequence(
@@ -132,6 +163,7 @@ def build_sequence(
     build_order_file: str,
     force: bool,
     cache_wheel_server_url: str | None,
+    local_version: str,
 ) -> None:
     """Build a sequence of wheels in order
 
@@ -143,6 +175,7 @@ def build_sequence(
     the build order file.
 
     """
+    wkctx.local_version = local_version
     server.start_wheel_server(wkctx)
     wheel_server_urls = [wkctx.wheel_server_url]
     if cache_wheel_server_url:

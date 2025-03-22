@@ -45,3 +45,12 @@ def test_default_build_wheel(
     mock_run.assert_called_once()
     cmd = mock_run.call_args[0][0]
     assert "--config-settings=setup-args=-Dsystem-freetype=true" in cmd
+
+
+def test_replace_local_version():
+    assert wheels._update_local_version(Version("1.2"), "newval") == Version(
+        "1.2+newval"
+    )
+    assert wheels._update_local_version(Version("1.2+oldval"), "newval") == Version(
+        "1.2+oldval.newval"
+    )
