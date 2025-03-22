@@ -18,6 +18,7 @@ from .. import (
     sources,
     wheels,
 )
+from ..requirements_file import RequirementType
 from .graph import find_why
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
@@ -146,6 +147,7 @@ def bootstrap(
             source_url, version = sources.resolve_source(
                 ctx=wkctx,
                 req=req,
+                req_type=RequirementType.TOP_LEVEL,
                 sdist_server_url=resolver.PYPI_SERVER_URL,
             )
         logger.info("%s resolves to %s", req, version)

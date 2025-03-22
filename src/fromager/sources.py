@@ -96,7 +96,11 @@ def resolve_source(
 ) -> tuple[str, Version]:
     "Return URL to source and its version."
 
-    if req.url:
+    if req.url and req_type != RequirementType.TOP_LEVEL:
+        # Stop processing if we encounter a lower level dependency with a URL.
+        raise ValueError(f"{req} includes a URL, but is not a top-level dependency")
+
+    if req.url and req_type == RequirementType.TOP_LEVEL:
         # If we have a URL, we should use that source. For now we only support
         # git clone URLs of some sort. We are given the directory where the
         # cloned repo resides, and return that as the URL for the source code so
