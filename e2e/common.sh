@@ -70,4 +70,5 @@ start_local_wheel_server() {
         IP=$(ipconfig getifaddr en0)
     fi
     export WHEEL_SERVER_URL="http://${IP}:9999/simple"
+    export PIP_TRUSTED_HOST="${IP}"
 }
