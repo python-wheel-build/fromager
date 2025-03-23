@@ -44,9 +44,9 @@ $OUTDIR/wheels-repo/downloads/setuptools-*${LOCAL_VERSION}*.whl
 $OUTDIR/wheels-repo/downloads/pbr-*${LOCAL_VERSION}*.whl
 $OUTDIR/wheels-repo/downloads/stevedore-*${LOCAL_VERSION}*.whl
 
-$OUTDIR/sdists-repo/downloads/stevedore-*.tar.gz
-$OUTDIR/sdists-repo/downloads/setuptools-*.tar.gz
-$OUTDIR/sdists-repo/downloads/pbr-*.tar.gz
+$OUTDIR/sdists-repo/builds/stevedore-*${LOCAL_VERSION}*.tar.gz
+$OUTDIR/sdists-repo/builds/setuptools-*${LOCAL_VERSION}*.tar.gz
+$OUTDIR/sdists-repo/builds/pbr-*${LOCAL_VERSION}*.tar.gz
 
 $OUTDIR/work-dir/logs/stevedore-*.log
 $OUTDIR/work-dir/logs/setuptools-*.log

@@ -24,6 +24,7 @@ from packaging.version import Version
 
 from . import (
     external_commands,
+    local_version,
     metrics,
     overrides,
     requirements_file,
@@ -232,7 +233,9 @@ def add_extra_metadata_to_wheels(
         # Add the local version value to the wheel's metadata and dist_info
         # directory name before repacking the wheel.
         if ctx.local_version:
-            new_version = _update_local_version(dist_version, ctx.local_version)
+            new_version = local_version.update_local_version(
+                dist_version, ctx.local_version
+            )
             logger.debug(
                 f"{req.name}: updating version from {dist_version} to {new_version}"
             )
@@ -277,14 +280,6 @@ def add_extra_metadata_to_wheels(
     raise FileNotFoundError(
         f"Could not locate new wheels file for {dist_filename} among {list(wheel_file.parent.glob('*.whl'))}"
     )
-
-
-def _update_local_version(old_version: Version, local_version: str) -> Version:
-    # If we have an old local version, we append our value to it using a '.'
-    # as a separator because that is the canonical separator for segments of
-    # the local version string.
-    sep = "+" if old_version.local is None else "."
-    return Version(str(old_version) + sep + local_version)
 
 
 @metrics.timeit(description="build wheels")

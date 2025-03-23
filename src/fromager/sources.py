@@ -21,6 +21,7 @@ from . import (
     dependencies,
     external_commands,
     gitutils,
+    local_version,
     metrics,
     overrides,
     pyproject,
@@ -650,7 +651,8 @@ def default_build_sdist(
     #
     # For cases where the PEP 517 approach works, use
     # pep517_build_sdist().
-    sdist_filename = ctx.sdists_builds / f"{req.name}-{version}.tar.gz"
+    sdist_version = local_version.update_local_version(version, ctx.local_version)
+    sdist_filename = ctx.sdists_builds / f"{req.name}-{sdist_version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()
     # The format argument is specified based on
