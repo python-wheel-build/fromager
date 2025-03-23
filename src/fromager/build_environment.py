@@ -80,10 +80,13 @@ class BuildEnvironment:
         ctx: context.WorkContext,
         parent_dir: pathlib.Path,
         build_requirements: typing.Iterable[Requirement] | None,
+        *,
+        clear: bool = False,
     ):
         self._ctx = ctx
         self.path = parent_dir.absolute() / f"build-{platform.python_version()}"
         self._build_requirements = build_requirements
+        self._clear = clear
         self._createenv()
 
     @property
@@ -156,14 +159,28 @@ class BuildEnvironment:
         )
 
     def _createenv(self) -> None:
-        if self.path.exists():
+        if self.path.exists() and not self._clear:
             logger.info("reusing build environment in %s", self.path)
             return
 
         logger.debug("creating build environment in %s", self.path)
+        cmd = [
+            sys.executable,
+            "-m",
+            "virtualenv",
+            "--python",
+            sys.executable,
+            # forward compatibility with Python 3.12: install setuptools
+            "--pip=bundle",
+            "--setuptools=bundle",
+            "--wheel=none",
+        ]
+        if self._clear:
+            cmd.append("--clear")
+        cmd.append(str(self.path))
         external_commands.run(
-            [sys.executable, "-m", "virtualenv", str(self.path)],
-            network_isolation=False,
+            cmd,
+            network_isolation=True,
         )
         logger.info("created build environment in %s", self.path)
 
@@ -336,9 +353,10 @@ def _safe_install(
     req_type: RequirementType,
 ):
     logger.debug("installing %s %s", req_type, req)
-    external_commands.run(
+    build_env = ctx.get_build_env()
+    build_env.run(
         [
-            sys.executable,
+            str(build_env.python),
             "-m",
             "pip",
             "-vvv",
