@@ -653,6 +653,13 @@ def default_build_sdist(
     sdist_filename = ctx.sdists_builds / f"{req.name}-{version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()
+    ensure_pkg_info(
+        ctx=ctx,
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=build_dir,
+    )
     # The format argument is specified based on
     # https://peps.python.org/pep-0517/#build-sdist.
     with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
@@ -681,3 +688,47 @@ def pep517_build_sdist(
     )
     sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
     return ctx.sdists_builds / sdist_filename
+
+
+PKG_INFO_CONTENT = """\
+Metadata-Version: 1.0
+Name: {name}
+Version: {version}
+Summary: Fromage stub PKG-INFO
+"""
+
+
+def ensure_pkg_info(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    sdist_root_dir: pathlib.Path,
+    build_dir: pathlib.Path | None = None,
+) -> bool:
+    """Ensure that sdist has a PKG-INFO file
+
+    Returns True if PKG-INFO was presence, False if file was missing. The
+    function also updates build_dir if package has a non-standard build
+    directory. Every sdist must have a PKG-INFO file in the first directory.
+    The additional PKG-INFO file in build_dir is required for projects
+    with non-standard layout and setuptools-scm.
+    """
+    had_pkg_info = True
+    directories = [sdist_root_dir]
+    if build_dir is not None and build_dir != sdist_root_dir:
+        directories.append(build_dir)
+    for directory in directories:
+        pkg_info_file = directory / "PKG-INFO"
+        if not pkg_info_file.is_file():
+            logger.warning(
+                f"{req.name}: PKG-INFO file is missing from {directory}, creating stub file"
+            )
+            pkg_info_file.write_text(
+                PKG_INFO_CONTENT.format(
+                    name=req.name,
+                    version=str(version),
+                )
+            )
+            had_pkg_info = False
+    return had_pkg_info

@@ -54,3 +54,6 @@ for pattern in $EXPECTED_FILES; do
 done
 
 $pass
+
+twine check $OUTDIR/sdists-repo/builds/*.tar.gz
+twine check $OUTDIR/wheels-repo/downloads/*.whl

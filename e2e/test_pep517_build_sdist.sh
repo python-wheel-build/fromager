@@ -60,3 +60,5 @@ for pattern in $EXPECTED_FILES; do
 done
 
 $pass
+
+twine check $OUTDIR/sdists-repo/builds/*.tar.gz
