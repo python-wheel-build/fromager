@@ -140,9 +140,11 @@ def default_get_build_backend_dependencies(
     Defaults to result of hook call
     :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
     """
-    pyproject_toml = get_pyproject_contents(build_dir)
     hook_caller = get_build_backend_hook_caller(
-        build_dir, pyproject_toml, override_environ=extra_environ
+        ctx=ctx,
+        req=req,
+        build_dir=build_dir,
+        override_environ=extra_environ,
     )
     return hook_caller.get_requires_for_build_wheel()
 
@@ -197,9 +199,11 @@ def default_get_build_sdist_dependencies(
     Defaults to result of hook call
     :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
     """
-    pyproject_toml = get_pyproject_contents(build_dir)
     hook_caller = get_build_backend_hook_caller(
-        build_dir, pyproject_toml, override_environ=extra_environ
+        ctx=ctx,
+        req=req,
+        build_dir=build_dir,
+        override_environ=extra_environ,
     )
     return hook_caller.get_requires_for_build_wheel()
 
@@ -220,13 +224,12 @@ def get_install_dependencies_of_sdist(
     logger.info(
         f"{req.name}: getting install requirements for {req} from sdist in {build_dir}"
     )
-    pyproject_toml = get_pyproject_contents(build_dir)
     extra_environ = pbi.get_extra_environ()
     hook_caller = get_build_backend_hook_caller(
-        build_dir,
-        pyproject_toml,
+        ctx=ctx,
+        req=req,
+        build_dir=build_dir,
         override_environ=extra_environ,
-        network_isolation=ctx.network_isolation,
         build_env=build_env,
     )
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -296,14 +299,14 @@ def get_build_backend(pyproject_toml: dict[str, typing.Any]) -> dict[str, typing
 
 
 def get_build_backend_hook_caller(
-    sdist_root_dir: pathlib.Path,
-    pyproject_toml: dict[str, typing.Any],
-    override_environ: dict[str, typing.Any],
     *,
-    network_isolation: bool = False,
+    ctx: context.WorkContext,
+    req: Requirement,
+    build_dir: pathlib.Path,
+    override_environ: dict[str, typing.Any],
     build_env: build_environment.BuildEnvironment | None = None,
 ) -> pyproject_hooks.BuildBackendHookCaller:
-    backend = get_build_backend(pyproject_toml)
+    """Create pyproject_hooks build backend caller"""
 
     def _run_hook_with_extra_environ(
         cmd: typing.Sequence[str],
@@ -311,24 +314,29 @@ def get_build_backend_hook_caller(
         extra_environ: typing.Mapping[str, str] | None = None,
     ) -> None:
         """The BuildBackendHookCaller is going to pass extra_environ
-        and our build system may want to set some values, too. Merge
-        the 2 sets of values before calling the actual runner function.
+        and our build system may want to set some values, too. The hook
+        also needs env vars from the build environment's virtualenv. Merge
+        the 3 sets of values before calling the actual runner function.
         """
-        full_environ: dict[str, typing.Any] = {}
-        if extra_environ is not None:
-            full_environ.update(extra_environ)
-        full_environ.update(override_environ)
+        if typing.TYPE_CHECKING:
+            assert build_env is not None
+        extra_environ = dict(extra_environ) if extra_environ else {}
+        extra_environ.update(override_environ)
+        if build_env is not None:
+            extra_environ.update(build_env.get_venv_environ(template_env=extra_environ))
         external_commands.run(
             cmd,
             cwd=cwd,
-            extra_environ=full_environ,
-            network_isolation=network_isolation,
+            extra_environ=extra_environ,
+            network_isolation=ctx.network_isolation,
         )
 
+    pyproject_toml = get_pyproject_contents(build_dir)
+    backend = get_build_backend(pyproject_toml)
     python_executable = str(build_env.python) if build_env is not None else None
 
     return pyproject_hooks.BuildBackendHookCaller(
-        source_dir=str(sdist_root_dir),
+        source_dir=str(build_dir),
         build_backend=backend["build-backend"],
         backend_path=backend["backend-path"],
         runner=_run_hook_with_extra_environ,

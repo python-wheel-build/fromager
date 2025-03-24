@@ -255,13 +255,15 @@ def _get_version_from_package_metadata(
     req: Requirement,
     source_dir: str,
 ) -> Version:
+    pbi = ctx.package_build_info(req)
+    build_dir = pbi.build_dir(source_dir)
     logger.info(f"{req.name}: generating metadata to get version")
-    pyproject_toml = dependencies.get_pyproject_contents(source_dir)
+
     hook_caller = dependencies.get_build_backend_hook_caller(
-        source_dir,
-        pyproject_toml,
-        {},
-        network_isolation=ctx.network_isolation,
+        ctx=ctx,
+        req=req,
+        build_dir=build_dir,
+        override_environ={},
     )
     metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
         metadata_directory=source_dir.parent,
@@ -672,12 +674,13 @@ def pep517_build_sdist(
     version: Version,
 ) -> pathlib.Path:
     """Use the PEP 517 API to build a source distribution from a modified source tree."""
-    pyproject_toml = dependencies.get_pyproject_contents(sdist_root_dir)
+    pbi = ctx.package_build_info(req)
+    build_dir = pbi.build_dir(sdist_root_dir)
     hook_caller = dependencies.get_build_backend_hook_caller(
-        sdist_root_dir,
-        pyproject_toml,
-        extra_environ,
-        network_isolation=ctx.network_isolation,
+        ctx=ctx,
+        req=req,
+        build_dir=build_dir,
+        override_environ=extra_environ,
     )
     sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
     return ctx.sdists_builds / sdist_filename
