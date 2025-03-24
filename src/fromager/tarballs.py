@@ -5,6 +5,8 @@ import pathlib
 import stat
 import tarfile
 
+VCS_DIRS = {".bzr", ".git", ".hg", ".svn"}
+
 
 def _tar_reset(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo:
     """Reset user, group, mtime, and mode to create reproducible tar"""
@@ -26,16 +28,24 @@ def tar_reproducible(
     tar: tarfile.TarFile,
     basedir: pathlib.Path,
     prefix: pathlib.Path | None = None,
+    *,
+    exclude_vcs: bool = False,
 ) -> None:
     """Create reproducible tar file
 
     Add content from basedir to already opened tar. If prefix is provided, use
     it to set relative paths for the content being added.
 
+    If ``exclude_vcs`` is True, then Bazaar, git, Mercurial, and subversion
+    directories and files are excluded.
     """
-
     content = [str(basedir)]  # convert from pathlib.Path, if that's what we have
     for root, dirs, files in os.walk(basedir):
+        if exclude_vcs:
+            # modify lists in-place, so os.walk does not descent into the
+            # excluded entries. git submodules have a `.git` file.
+            dirs[:] = [directory for directory in dirs if directory not in VCS_DIRS]
+            files[:] = [filename for filename in files if filename not in VCS_DIRS]
         for directory in dirs:
             content.append(os.path.join(root, directory))
         for filename in files:
