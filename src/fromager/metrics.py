@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import logging
 import time
@@ -7,7 +9,8 @@ from datetime import timedelta
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from . import context
+if typing.TYPE_CHECKING:
+    from . import context
 
 
 def timeit(description: str) -> typing.Callable:

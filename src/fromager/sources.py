@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import enum
+import errno
 import inspect
 import json
 import logging
@@ -36,6 +38,13 @@ if typing.TYPE_CHECKING:
     from . import build_environment, context
 
 logger = logging.getLogger(__name__)
+
+
+class SDistBackend(enum.StrEnum):
+    # build sdist with PEP 517 hook
+    PEP517 = "pep571"
+    # create sdist with tarfile
+    TARBALL = "tarball"
 
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
@@ -631,7 +640,56 @@ def build_sdist(
     return sdist_filename
 
 
+# meson dist currently only works with Git or Mercurial repos
+# affects NumPy and projects with https://mesonbuild.com/meson-python/
+BUILD_BACKEND_FORCE_TARBALL = {"mesonpy"}
+
+
 def default_build_sdist(
+    ctx: context.WorkContext,
+    extra_environ: dict,
+    req: Requirement,
+    version: Version,
+    sdist_root_dir: pathlib.Path,
+    build_env: build_environment.BuildEnvironment,
+    build_dir: pathlib.Path,
+) -> pathlib.Path:
+    pbi = ctx.package_build_info(req)
+    sdist_backend = pbi.sdist_backend
+
+    pyproject_toml = dependencies.get_pyproject_contents(sdist_root_dir)
+    backend_settings = dependencies.get_build_backend(pyproject_toml)
+    build_backend = backend_settings["build-backend"]
+    if build_backend in BUILD_BACKEND_FORCE_TARBALL:
+        logger.info(
+            f"{req.name}: force build sdist tarball for backend '{build_backend}'"
+        )
+        sdist_backend = SDistBackend.TARBALL
+
+    match sdist_backend:
+        case SDistBackend.PEP517:
+            return pep517_build_sdist(
+                ctx=ctx,
+                extra_environ=extra_environ,
+                req=req,
+                version=version,
+                sdist_root_dir=sdist_root_dir,
+            )
+        case SDistBackend.TARBALL:
+            return tarball_build_sdist(
+                ctx=ctx,
+                extra_environ=extra_environ,
+                req=req,
+                version=version,
+                sdist_root_dir=sdist_root_dir,
+                build_env=build_env,
+                build_dir=build_dir,
+            )
+        case _ as unreachable:
+            typing.assert_never(unreachable)
+
+
+def tarball_build_sdist(
     ctx: context.WorkContext,
     extra_environ: dict,
     req: Requirement,
@@ -650,6 +708,7 @@ def default_build_sdist(
     #
     # For cases where the PEP 517 approach works, use
     # pep517_build_sdist().
+    logger.debug(f"{req.name}: build sdist tarball")
     sdist_filename = ctx.sdists_builds / f"{req.name}-{version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()
@@ -670,14 +729,24 @@ def pep517_build_sdist(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
+    build_env: build_environment.BuildEnvironment | None = None,
 ) -> pathlib.Path:
     """Use the PEP 517 API to build a source distribution from a modified source tree."""
+    logger.debug(f"{req.name}: build sdist PEP 517")
     pyproject_toml = dependencies.get_pyproject_contents(sdist_root_dir)
     hook_caller = dependencies.get_build_backend_hook_caller(
         sdist_root_dir,
         pyproject_toml,
         extra_environ,
         network_isolation=ctx.network_isolation,
+        build_env=build_env,
     )
     sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
-    return ctx.sdists_builds / sdist_filename
+    sdist = ctx.sdists_builds / sdist_filename
+    if not sdist.is_file():
+        raise FileNotFoundError(
+            errno.ENOENT,
+            f"{req.name}: PEP 517 build sdist failed for {req.name}=={version}",
+            sdist,
+        )
+    return sdist

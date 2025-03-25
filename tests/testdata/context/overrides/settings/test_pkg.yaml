@@ -3,6 +3,7 @@ build_options:
     build_ext_parallel: true
     cpu_cores_per_job: 4
     memory_per_job_gb: 4
+    sdist_backend: tarball
 changelog:
     "1.0.1":
         - fixed bug
