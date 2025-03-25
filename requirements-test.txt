@@ -3,3 +3,5 @@ pytest
 requests-mock
 setuptools_scm>=8
 setuptools>=64
+# Twine 6.1.0 added strict metadata validation
+twine>=6.1.0
