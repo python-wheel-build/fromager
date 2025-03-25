@@ -16,7 +16,7 @@ from packaging.version import Version
 from pydantic import Field
 from pydantic_core import CoreSchema, core_schema
 
-from . import overrides
+from . import overrides, sources
 
 if typing.TYPE_CHECKING:
     from . import build_environment
@@ -195,6 +195,15 @@ class BuildOptions(pydantic.BaseModel):
     Examples:
 
     0.5: assume each parallel job requires 512 MB virtual memory
+    """
+
+    sdist_backend: sources.SDistBackend = Field(default=sources.SDistBackend.PEP517)
+    """sdist build backend
+
+    - use PEP 517 build backend by default
+    - 'tarball' just tars the source directory
+    - projects with non-standard "build_dir" use 'tarball' automatically
+    - projects with 'build_sdist' hook ignore this setting
     """
 
 
@@ -731,6 +740,14 @@ class PackageBuildInfo:
     def build_ext_parallel(self) -> bool:
         """Configure [build_ext]parallel for setuptools?"""
         return self._ps.build_options.build_ext_parallel
+
+    @property
+    def sdist_backend(self) -> sources.SDistBackend:
+        """Source distribution backend"""
+        if self._ps.build_dir is not None:
+            # always use tarball for projects with non-standard build_dir
+            return sources.SDistBackend.TARBALL
+        return self._ps.build_options.sdist_backend
 
     @property
     def config_settings(self) -> list[str]:

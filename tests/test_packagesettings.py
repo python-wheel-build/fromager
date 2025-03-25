@@ -7,7 +7,7 @@ import pytest
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
-from fromager import build_environment, context
+from fromager import build_environment, context, sources
 from fromager.packagesettings import (
     BuildDirectory,
     EnvVars,
@@ -29,6 +29,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "build_ext_parallel": True,
         "cpu_cores_per_job": 4,
         "memory_per_job_gb": 4.0,
+        "sdist_backend": sources.SDistBackend.TARBALL,
     },
     "changelog": {
         Version("1.0.1"): ["fixed bug"],
@@ -85,6 +86,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "build_ext_parallel": False,
         "cpu_cores_per_job": 1,
         "memory_per_job_gb": 1.0,
+        "sdist_backend": sources.SDistBackend.PEP517,
     },
     "changelog": {},
     "config_settings": [],

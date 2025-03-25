@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import logging
 import pathlib
+import typing
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
 
-from fromager import context, external_commands
+from . import external_commands
+
+if typing.TYPE_CHECKING:
+    from . import context
 
 logger = logging.getLogger(__name__)
 
