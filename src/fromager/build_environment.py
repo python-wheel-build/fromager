@@ -217,7 +217,7 @@ def prepare_build_environment(
     ctx: context.WorkContext,
     req: Requirement,
     sdist_root_dir: pathlib.Path,
-) -> pathlib.Path:
+) -> BuildEnvironment:
     logger.info(f"{req.name}: preparing build environment")
 
     next_req_type = RequirementType.BUILD_SYSTEM
@@ -314,7 +314,7 @@ def prepare_build_environment(
                 | build_sdist_dependencies,
             ) from err
         raise
-    return build_env.path
+    return build_env
 
 
 def maybe_install(
