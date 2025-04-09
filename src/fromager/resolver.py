@@ -123,9 +123,9 @@ def resolve_from_provider(
     rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
     try:
         result = rslvr.resolve([req])
-    except resolvelib.resolvers.exceptions.ResolutionImpossible as err:
+    except resolvelib.resolvers.exceptions.ResolverException as err:
         constraint = provider.constraints.get_constraint(req.name)
-        raise ValueError(
+        raise resolvelib.resolvers.exceptions.ResolverException(
             f"Unable to resolve requirement specifier {req} with constraint {constraint}"
         ) from err
     # resolvelib actually just returns one candidate per requirement.
@@ -142,6 +142,8 @@ def get_project_from_pypi(
     sdist_server_url: str,
 ) -> typing.Iterable[Candidate]:
     """Return candidates created from the project name and extras."""
+    found_candidates: set[str] = set()
+    ignored_candidates: set[str] = set()
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
     logger.debug("%s: getting available versions from %s", project, simple_index_url)
     data = session.get(simple_index_url).content
@@ -151,6 +153,7 @@ def get_project_from_pypi(
         py_req = i.attrib.get("data-requires-python")
         path = urlparse(candidate_url).path
         filename = path.rsplit("/", 1)[-1]
+        found_candidates.add(filename)
         if DEBUG_RESOLVER:
             logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
         # Skip items that need a different Python version
@@ -164,12 +167,14 @@ def get_project_from_pypi(
                     logger.debug(
                         f"{project}: skipping {filename} because of an invalid python version specifier {py_req}: {err}"
                     )
+                ignored_candidates.add(filename)
                 continue
             if PYTHON_VERSION not in spec:
                 if DEBUG_RESOLVER:
                     logger.debug(
                         f"{project}: skipping {filename} because of python version {py_req}"
                     )
+                ignored_candidates.add(filename)
                 continue
 
         # TODO: Handle compatibility tags?
@@ -190,6 +195,7 @@ def get_project_from_pypi(
                 if not matching_tags:
                     if DEBUG_RESOLVER:
                         logger.debug(f"{project}: ignoring {filename} with tags {tags}")
+                    ignored_candidates.add(filename)
                     continue
         except Exception as err:
             # Ignore files with invalid versions
@@ -197,6 +203,7 @@ def get_project_from_pypi(
                 logger.debug(
                     f'{project}: could not determine version for "{filename}": {err}'
                 )
+            ignored_candidates.add(filename)
             continue
         # Look for and ignore cases like `cffi-1.0.2-2.tar.gz` which
         # produces the name `cffi-1-0-2`. We can't just compare the
@@ -208,6 +215,7 @@ def get_project_from_pypi(
         if len(name) != len(project):
             if DEBUG_RESOLVER:
                 logger.debug(f'{project}: skipping invalid filename "{filename}"')
+            ignored_candidates.add(filename)
             continue
 
         c = Candidate(
@@ -223,6 +231,11 @@ def get_project_from_pypi(
                 "%s: candidate %s (%s) %s", project, filename, c, candidate_url
             )
         yield c
+
+    if not found_candidates:
+        logger.info(f"{project}: found no candidate files at {simple_index_url}")
+    elif ignored_candidates == found_candidates:
+        logger.info(f"{project}: ignored all candidate files at {simple_index_url}")
 
 
 RequirementsMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Requirement]]
@@ -273,8 +286,6 @@ class BaseProvider(ExtrasProvider):
     ) -> bool:
         identifier_reqs = list(requirements[identifier])
         bad_versions = {c.version for c in incompatibilities[identifier]}
-        allow_prerelease = self.constraints.allow_prerelease(identifier)
-
         # Skip versions that are known bad
         if candidate.version in bad_versions:
             if DEBUG_RESOLVER:
@@ -282,28 +293,10 @@ class BaseProvider(ExtrasProvider):
                     f"{identifier}: skipping bad version {candidate.version} from {bad_versions}"
                 )
             return False
-        # Skip versions that do not match the requirement. Allow prereleases only if constraints allow prereleases
-        if not all(
-            r.specifier.contains(
-                candidate.version,
-                prereleases=(allow_prerelease or bool(r.specifier.prereleases)),
-            )
-            for r in identifier_reqs
-        ):
-            if DEBUG_RESOLVER:
-                logger.debug(
-                    f"{identifier}: skipping {candidate.version} because it does not match {identifier_reqs}"
-                )
-            return False
-        # Skip versions that do not match the constraint
-        if not self.constraints.is_satisfied_by(identifier, candidate.version):
-            if DEBUG_RESOLVER:
-                c = self.constraints.get_constraint(identifier)
-                logger.debug(
-                    f"{identifier}: skipping {candidate.version} due to constraint {c}"
-                )
-            return False
-        return True
+        for r in identifier_reqs:
+            if self.is_satisfied_by(requirement=r, candidate=candidate):
+                return True
+        return False
 
     def get_cache(self) -> dict[str, list[Candidate]]:
         raise NotImplementedError()
@@ -350,9 +343,24 @@ class BaseProvider(ExtrasProvider):
         allow_prerelease = self.constraints.allow_prerelease(requirement.name) or bool(
             requirement.specifier.prereleases
         )
-        return requirement.specifier.contains(
+        if not requirement.specifier.contains(
             candidate.version, prereleases=allow_prerelease
-        ) and self.constraints.is_satisfied_by(requirement.name, candidate.version)
+        ):
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    f"{requirement.name}: skipping candidate version {candidate.version} because it does not match {requirement.specifier}"
+                )
+            return False
+
+        if not self.constraints.is_satisfied_by(requirement.name, candidate.version):
+            if DEBUG_RESOLVER:
+                c = self.constraints.get_constraint(requirement.name)
+                logger.debug(
+                    f"{requirement.name}: skipping {candidate.version} due to constraint {c}"
+                )
+            return False
+
+        return True
 
     def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies
@@ -437,6 +445,23 @@ class PyPIProvider(BaseProvider):
                 ):
                     candidates.append(candidate)
             self.add_to_cache(identifier, candidates)
+        if not candidates:
+            # Try to construct a meaningful error message that points out the
+            # type(s) of files the resolver has been told it can choose as a
+            # hint in case that should be adjusted for the package that does not
+            # resolve.
+            r = next(iter(requirements[identifier]))
+            if self.include_sdists and self.include_wheels:
+                raise resolvelib.resolvers.exceptions.ResolverException(
+                    f"found no match for {r}, any file type, in cache or at {self.sdist_server_url}"
+                )
+            elif self.include_sdists:
+                raise resolvelib.resolvers.exceptions.ResolverException(
+                    f"found no match for {r}, limiting search to sdists, in cache or at {self.sdist_server_url}"
+                )
+            raise resolvelib.resolvers.exceptions.ResolverException(
+                f"found no match for {r}, limiting search to wheels, in cache or at {self.sdist_server_url}"
+            )
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
 
