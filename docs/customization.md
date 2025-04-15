@@ -336,3 +336,40 @@ def prebuilt_wheel(
         f"{req.name}: running prebuilt wheel hook for {wheel_filename}"
     )
 ```
+
+### post_bootstrap
+
+The `post_bootstrap` hook runs after a package is bootstrapped, before its
+installation dependencies are bootstrapped. It can be used to perform validation
+checks for the sdist and wheel that results from the bootstrap operation.
+
+Configure a `post_bootstrap` hook in your `pyproject.toml` like this:
+
+```toml
+[project.entry-points."fromager.hooks"]
+post_bootstrap = "package_plugins.module:function"
+```
+
+The input arguments to the `post_bootstrap` hook are the `WorkContext`,
+`Requirement` being built, the distribution name and version, and the sdist and
+wheel filenames.
+
+NOTE: The files should not be renamed or moved.
+
+NOTE: The `sdist_filename` argument can be None if the wheel is pre-built and
+the `wheel_filename` argument can be None if bootstrapping is running in
+sdist-only mode.
+
+```python
+def post_bootstrap(
+    ctx: context.WorkContext,
+    req: Requirement,
+    dist_name: str,
+    dist_version: str,
+    sdist_filename: pathlib.Path | None,
+    wheel_filename: pathlib.Path | None,
+):
+    logger.info(
+        f"{req.name}: running post bootstrap hook for {sdist_filename} and {wheel_filename}"
+    )
+```

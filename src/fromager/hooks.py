@@ -61,6 +61,32 @@ def run_post_build_hooks(
         )
 
 
+def run_post_bootstrap_hooks(
+    ctx: context.WorkContext,
+    req: Requirement,
+    dist_name: str,
+    dist_version: str,
+    sdist_filename: pathlib.Path | None,
+    wheel_filename: pathlib.Path | None,
+) -> None:
+    hook_mgr = _get_hooks("post_bootstrap")
+    if hook_mgr.names():
+        logger.info(
+            f"{req.name}: starting post-bootstrap hooks for sdist {sdist_filename} and wheel {wheel_filename}"
+        )
+    for ext in hook_mgr:
+        # NOTE: Each hook is responsible for doing its own logging for
+        # start/stop because we don't have a good name to use here.
+        ext.plugin(
+            ctx=ctx,
+            req=req,
+            dist_name=dist_name,
+            dist_version=dist_version,
+            sdist_filename=sdist_filename,
+            wheel_filename=wheel_filename,
+        )
+
+
 def run_prebuilt_wheel_hooks(
     ctx: context.WorkContext,
     req: Requirement,

@@ -17,6 +17,7 @@ from . import (
     build_environment,
     dependencies,
     finders,
+    hooks,
     progress,
     resolver,
     server,
@@ -116,6 +117,7 @@ class Bootstrapper:
         build_env: build_environment.BuildEnvironment | None = None
         sdist_root_dir: pathlib.Path | None = None
         wheel_filename: pathlib.Path | None = None
+        sdist_filename: pathlib.Path | None = None
 
         if pbi.pre_built:
             wheel_filename, unpack_dir = self._download_prebuilt(
@@ -172,7 +174,7 @@ class Bootstrapper:
                     f"{req.name}=={resolved_version} ({req_type})"
                 )
                 wheel_filename = None
-                build_env = self._build_sdist(
+                sdist_filename, build_env = self._build_sdist(
                     req, resolved_version, sdist_root_dir, build_dependencies
                 )
             else:
@@ -181,9 +183,18 @@ class Bootstrapper:
                     f"{req.name}: building wheel {req.name}=={resolved_version} "
                     f"to get install requirements ({req_type})"
                 )
-                wheel_filename, build_env = self._build_wheel(
+                wheel_filename, sdist_filename, build_env = self._build_wheel(
                     req, resolved_version, sdist_root_dir, build_dependencies
                 )
+
+        hooks.run_post_bootstrap_hooks(
+            ctx=self.ctx,
+            req=req,
+            dist_name=canonicalize_name(req.name),
+            dist_version=str(resolved_version),
+            sdist_filename=sdist_filename,
+            wheel_filename=wheel_filename,
+        )
 
         if build_sdist_only:
             if typing.TYPE_CHECKING:
@@ -251,7 +262,7 @@ class Bootstrapper:
         resolved_version: Version,
         sdist_root_dir: pathlib.Path,
         build_dependencies: set[Requirement],
-    ) -> build_environment.BuildEnvironment:
+    ) -> tuple[pathlib.Path, build_environment.BuildEnvironment]:
         build_env = build_environment.BuildEnvironment(
             self.ctx,
             sdist_root_dir.parent,
@@ -262,7 +273,7 @@ class Bootstrapper:
                 self.ctx, self.ctx.sdists_builds, req, str(resolved_version)
             )
             if not find_sdist_result:
-                sources.build_sdist(
+                sdist_filename = sources.build_sdist(
                     ctx=self.ctx,
                     req=req,
                     version=resolved_version,
@@ -270,12 +281,13 @@ class Bootstrapper:
                     build_env=build_env,
                 )
             else:
+                sdist_filename = find_sdist_result
                 logger.info(
                     f"{req.name} have sdist version {resolved_version}: {find_sdist_result}"
                 )
         except Exception as err:
             logger.warning(f"{req.name}: failed to build source distribution: {err}")
-        return build_env
+        return (sdist_filename, build_env)
 
     def _build_wheel(
         self,
@@ -283,8 +295,8 @@ class Bootstrapper:
         resolved_version: Version,
         sdist_root_dir: pathlib.Path,
         build_dependencies: set[Requirement],
-    ) -> tuple[pathlib.Path, build_environment.BuildEnvironment]:
-        build_env = self._build_sdist(
+    ) -> tuple[pathlib.Path, pathlib.Path, build_environment.BuildEnvironment]:
+        sdist_filename, build_env = self._build_sdist(
             req, resolved_version, sdist_root_dir, build_dependencies
         )
 
@@ -303,7 +315,7 @@ class Bootstrapper:
         logger.info(
             f"{req.name}: built wheel for version {resolved_version}: {wheel_filename}"
         )
-        return wheel_filename, build_env
+        return wheel_filename, sdist_filename, build_env
 
     def _prepare_build_dependencies(
         self, req: Requirement, sdist_root_dir: pathlib.Path
