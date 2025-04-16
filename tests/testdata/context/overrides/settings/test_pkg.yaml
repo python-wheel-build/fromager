@@ -26,6 +26,8 @@ project_override:
     update_build_requires:
         - setuptools>=68.0.0
         - torch
+    requires_external:
+        - openssl-libs
 resolver_dist:
     sdist_server_url: https://sdist.test/egg
     include_sdists: true
