@@ -619,7 +619,7 @@ class Bootstrapper:
             logger.debug(f"{req.name}: cleaning up source tree {sdist_root_dir}")
             shutil.rmtree(sdist_root_dir)
             logger.debug(f"{req.name}: cleaned up source tree {sdist_root_dir}")
-        if build_env:
+        if build_env and build_env.path.exists():
             logger.debug(f"{req.name}: cleaning up build environment {build_env.path}")
             shutil.rmtree(build_env.path)
             logger.debug(f"{req.name}: cleaned up build environment {build_env.path}")
