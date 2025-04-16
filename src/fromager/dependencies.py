@@ -72,7 +72,9 @@ def _filter_requirements(
         if requirements_file.evaluate_marker(req, r, req.extras):
             requires.add(r)
         else:
-            logger.debug(f"{req.name}: ignoring requirement {r}")
+            logger.debug(
+                f"{req.name}: evaluated {r} in the context of {req} and ignored because the environment marker does not match"
+            )
     return requires
 
 
