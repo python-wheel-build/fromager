@@ -207,6 +207,8 @@ class ProjectOverride(pydantic.BaseModel):
         - setuptools
       remove_build_requires:
         - ninja
+      requires_external:
+        - openssl-libs
     """
 
     model_config = MODEL_CONFIG
@@ -217,6 +219,19 @@ class ProjectOverride(pydantic.BaseModel):
 
     remove_build_requires: list[Package] = Field(default_factory=list)
     """Remove requirement from pyproject.toml `[build-system] requires`
+    """
+
+    requires_external: list[str] = Field(default_factory=list)
+    """Add / update Requires-External core metadata field
+
+    Each entry contains a string describing some dependency in the system
+    that the distribution is to be used. See
+    https://packaging.python.org/en/latest/specifications/core-metadata/#requires-external-multiple-use
+
+    .. note::
+       Fromager does not modify ``METADATA`` file, yet. Read the information
+       from an ``importlib.metadata`` distribution with
+       ``tomlkit.loads(dist(pkgname).read_text("fromager-build-settings"))``.
     """
 
     @pydantic.field_validator("update_build_requires")

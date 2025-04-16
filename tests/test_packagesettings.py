@@ -53,6 +53,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
     "project_override": {
         "remove_build_requires": ["cmake"],
         "update_build_requires": ["setuptools>=68.0.0", "torch"],
+        "requires_external": ["openssl-libs"],
     },
     "resolver_dist": {
         "include_sdists": True,
@@ -97,6 +98,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
     "project_override": {
         "remove_build_requires": [],
         "update_build_requires": [],
+        "requires_external": [],
     },
     "resolver_dist": {
         "sdist_server_url": None,
