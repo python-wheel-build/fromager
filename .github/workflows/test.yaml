@@ -97,6 +97,7 @@ jobs:
           - migrate_graph
           - override
           - pep517_build_sdist
+          - post_bootstrap_hook
           - prebuilt_wheels_alt_server
           - report_missing_dependency
           - rust_vendor
