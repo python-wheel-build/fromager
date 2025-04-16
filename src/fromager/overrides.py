@@ -67,7 +67,6 @@ def invoke(fn: typing.Callable, **kwargs: typing.Any) -> typing.Any:
                 f"{fn.__module__}.{fn.__name__} override does not take argument {arg_name}"
             )
             kwargs.pop(arg_name)
-        logger.debug(f"{fn.__name__} takes argument: {arg_name}")
     return fn(**kwargs)
 
 
