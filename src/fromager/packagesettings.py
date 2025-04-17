@@ -457,11 +457,20 @@ def substitute_template(value: str, template_env: dict[str, str]) -> str:
     for mo in _DEFAULT_PATTERN_RE.finditer(value):
         modict = mo.groupdict()
         name = modict["name"]
-        # add to local default, keep existing default
-        localdefault.setdefault(name, modict["default"])
-        # remove ":-default"
-        value = value.replace(mo.group(0), f"${{{name}}}")
-    return string.Template(value).substitute(localdefault)
+        default = modict["default"]
+        # Only set the default if one is explicitly provided.
+        # This ensures that undefined variables without defaults
+        # will raise KeyError later
+        if default is not None:
+            localdefault.setdefault(name, default)
+            # Replace ${var:-default} with ${var}
+            value = value.replace(mo.group(0), f"${{{name}}}")
+    try:
+        return string.Template(value).substitute(localdefault)
+    except KeyError as e:
+        raise ValueError(
+            f"Undefined environment variable {e!r} referenced in expression {value!r}"
+        ) from e
 
 
 def get_cpu_count() -> int:
