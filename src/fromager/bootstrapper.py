@@ -129,7 +129,7 @@ class Bootstrapper:
             # Remember that this is a prebuilt wheel, and where we got it.
             source_url_type = str(SourceType.PREBUILT)
         else:
-            unpacked_cached_wheel, cached_wheel_filename = (
+            cached_wheel_filename, unpacked_cached_wheel = (
                 self._download_wheel_from_cache(req, resolved_version)
             )
             source_url_type = sources.get_source_type(self.ctx, req)
@@ -465,12 +465,12 @@ class Bootstrapper:
                     archive.extract(zipinfo, unpack_dir)
 
                 logger.info("extracted build requirements from wheel")
-                return unpack_dir / metadata_dir, cached_wheel
+                return cached_wheel, unpack_dir / metadata_dir
             except Exception:
                 # implies that the wheel server hosted non-fromager built wheels
                 logger.info("could not extract build requirements from wheel")
                 shutil.rmtree(unpack_dir)
-                return None, cached_wheel
+                return cached_wheel, None
         except Exception:
             logger.info(
                 f"did not find wheel for {resolved_version} in {self.cache_wheel_server_url}"
