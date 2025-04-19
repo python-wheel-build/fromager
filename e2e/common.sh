@@ -5,6 +5,8 @@ set -e
 set -u
 set -o pipefail
 
+export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 OUTDIR="$(dirname "$SCRIPTDIR")/e2e-output"
 
