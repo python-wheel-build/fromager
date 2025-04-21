@@ -468,3 +468,14 @@ def test_parallel_jobs(
 )
 def test_substitute_template(value: str, template_env: dict[str, str], expected: str):
     assert substitute_template(value, template_env) == expected
+
+
+def test_substitute_template_key_error():
+    # This test expects a ValueError to be raised by substitute_template
+    with pytest.raises(ValueError) as excinfo:
+        substitute_template("${DEFAULT:-default} ${UNKNOWN}", {})
+    # Verify that the error message matches the expected message
+    assert (
+        str(excinfo.value)
+        == "Undefined environment variable KeyError('UNKNOWN') referenced in expression '${DEFAULT} ${UNKNOWN}'"
+    )
