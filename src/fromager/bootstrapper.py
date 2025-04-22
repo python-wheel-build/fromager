@@ -264,9 +264,10 @@ class Bootstrapper:
         build_dependencies: set[Requirement],
     ) -> tuple[pathlib.Path, build_environment.BuildEnvironment]:
         build_env = build_environment.BuildEnvironment(
-            self.ctx,
-            sdist_root_dir.parent,
-            build_dependencies,
+            ctx=self.ctx,
+            parent_dir=sdist_root_dir.parent,
+            build_requirements=build_dependencies,
+            req=req,
         )
         try:
             find_sdist_result = finders.find_sdist(
@@ -324,6 +325,7 @@ class Bootstrapper:
             ctx=self.ctx, req=req, sdist_root_dir=sdist_root_dir
         )
         self._handle_build_requirements(
+            req,
             RequirementType.BUILD_SYSTEM,
             build_system_dependencies,
         )
@@ -332,6 +334,7 @@ class Bootstrapper:
             ctx=self.ctx, req=req, sdist_root_dir=sdist_root_dir
         )
         self._handle_build_requirements(
+            req,
             RequirementType.BUILD_BACKEND,
             build_backend_dependencies,
         )
@@ -340,6 +343,7 @@ class Bootstrapper:
             ctx=self.ctx, req=req, sdist_root_dir=sdist_root_dir
         )
         self._handle_build_requirements(
+            req,
             RequirementType.BUILD_SDIST,
             build_sdist_dependencies,
         )
@@ -351,7 +355,10 @@ class Bootstrapper:
         )
 
     def _handle_build_requirements(
-        self, build_type: RequirementType, build_dependencies: set[Requirement]
+        self,
+        req: Requirement,
+        build_type: RequirementType,
+        build_dependencies: set[Requirement],
     ) -> None:
         self.progressbar.update_total(len(build_dependencies))
 
@@ -363,7 +370,13 @@ class Bootstrapper:
             # We may need these dependencies installed in order to run build hooks
             # Example: frozenlist build-system.requires includes expandvars because
             # it is used by the packaging/pep517_backend/ build backend
-            build_environment.maybe_install(self.ctx, dep, build_type, str(resolved))
+            build_environment.maybe_install(
+                ctx=self.ctx,
+                req=req,
+                dep=dep,
+                dep_version=str(resolved),
+                dep_req_type=build_type,
+            )
             self.progressbar.update()
 
     def _download_prebuilt(

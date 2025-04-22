@@ -27,8 +27,10 @@ def test_invalid_wheel_file_exception(
 def test_default_build_wheel(
     mock_run: Mock, tmp_path: pathlib.Path, testdata_context: context.WorkContext
 ) -> None:
-    build_env = build_environment.BuildEnvironment(testdata_context, tmp_path, None)
     req = Requirement("test_pkg")
+    build_env = build_environment.BuildEnvironment(
+        ctx=testdata_context, parent_dir=tmp_path, build_requirements=None, req=req
+    )
     pbi = testdata_context.package_build_info(req)
     assert pbi.config_settings
 

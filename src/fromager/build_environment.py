@@ -80,10 +80,12 @@ class BuildEnvironment:
         ctx: context.WorkContext,
         parent_dir: pathlib.Path,
         build_requirements: typing.Iterable[Requirement] | None,
+        req: Requirement,
     ):
         self._ctx = ctx
         self.path = parent_dir.absolute() / f"build-{platform.python_version()}"
         self._build_requirements = build_requirements
+        self._req = req  # for logging
         self._createenv()
 
     @property
@@ -157,10 +159,12 @@ class BuildEnvironment:
 
     def _createenv(self) -> None:
         if self.path.exists():
-            logger.info("reusing build environment in %s", self.path)
+            logger.info(
+                "%s: reusing build environment in %s", self._req.name, self.path
+            )
             return
 
-        logger.debug("creating build environment in %s", self.path)
+        logger.debug("%s: creating build environment in %s", self._req.name, self.path)
         # Python 3.12 virtual envs don't have wheel and setuptools by
         # default. Some packages still assume they are installed.
         external_commands.run(
@@ -179,7 +183,7 @@ class BuildEnvironment:
             ],
             network_isolation=self._ctx.network_isolation,
         )
-        logger.info("created build environment in %s", self.path)
+        logger.info("%s: created build environment in %s", self._req.name, self.path)
 
         req_filename = self.path / "requirements.txt"
         # FIXME: Ensure each requirement is pinned to a specific version.
@@ -208,7 +212,11 @@ class BuildEnvironment:
             cwd=str(self.path.parent),
             network_isolation=False,
         )
-        logger.info("installed dependencies into build environment in %s", self.path)
+        logger.info(
+            "%s: installed dependencies into build environment in %s",
+            self._req.name,
+            self.path,
+        )
 
 
 @metrics.timeit(description="prepare build environment")
@@ -232,7 +240,9 @@ def prepare_build_environment(
         # Example: frozenlist build-system.requires includes expandvars because
         # it is used by the packaging/pep517_backend/ build backend
         try:
-            maybe_install(ctx, dep, next_req_type, None)
+            maybe_install(
+                ctx=ctx, req=req, dep=dep, dep_version=None, dep_req_type=next_req_type
+            )
         except Exception as err:
             logger.error(
                 f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
@@ -256,7 +266,9 @@ def prepare_build_environment(
         # order to determine their dependencies they may need to be
         # installed.
         try:
-            maybe_install(ctx, dep, next_req_type, None)
+            maybe_install(
+                ctx=ctx, req=req, dep=dep, dep_version=None, dep_req_type=next_req_type
+            )
         except Exception as err:
             logger.error(
                 f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
@@ -277,7 +289,9 @@ def prepare_build_environment(
 
     for dep in build_sdist_dependencies:
         try:
-            maybe_install(ctx, dep, next_req_type, None)
+            maybe_install(
+                ctx=ctx, req=req, dep=dep, dep_version=None, dep_req_type=next_req_type
+            )
         except Exception as err:
             logger.error(
                 f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
@@ -291,11 +305,14 @@ def prepare_build_environment(
 
     try:
         build_env = BuildEnvironment(
-            ctx,
-            sdist_root_dir.parent,
-            build_system_dependencies
-            | build_backend_dependencies
-            | build_sdist_dependencies,
+            ctx=ctx,
+            parent_dir=sdist_root_dir.parent,
+            build_requirements=(
+                build_system_dependencies
+                | build_backend_dependencies
+                | build_sdist_dependencies
+            ),
+            req=req,
         )
     except subprocess.CalledProcessError as err:
         # Pip has no API, so parse its output looking for what it
@@ -320,36 +337,40 @@ def prepare_build_environment(
 def maybe_install(
     ctx: context.WorkContext,
     req: Requirement,
-    req_type: RequirementType,
-    resolved_version: str | None,
+    dep: Requirement,
+    dep_version: str | None,
+    dep_req_type: RequirementType,
 ):
     "Install the package if it is not already installed."
-    if resolved_version is not None:
+    if dep_version is not None:
         try:
-            actual_version = importlib.metadata.version(req.name)
-            if str(resolved_version) == actual_version:
+            actual_version = importlib.metadata.version(dep.name)
+            if str(dep_version) == actual_version:
                 logger.debug(
-                    f"{req.name}: already have {req.name} version {resolved_version} installed"
+                    f"{req.name}: already have {dep.name} version {dep_version} installed"
                 )
                 return
             logger.info(
-                f"{req.name}: found {req.name} {actual_version} installed, updating to {resolved_version}"
+                f"{req.name}: found {dep.name} {actual_version} installed, updating to {dep_version}"
             )
-            _safe_install(ctx, Requirement(f"{req.name}=={resolved_version}"), req_type)
+            _safe_install(
+                ctx, req, Requirement(f"{dep.name}=={dep_version}"), dep_req_type
+            )
             return
         except importlib.metadata.PackageNotFoundError as err:
             logger.debug(
-                f"{req.name}: could not determine version of {req.name}, will install: {err}"
+                f"{dep.name}: could not determine version of {dep.name}, will install: {err}"
             )
-    _safe_install(ctx, req, req_type)
+    _safe_install(ctx, req, dep, dep_req_type)
 
 
 def _safe_install(
     ctx: context.WorkContext,
     req: Requirement,
-    req_type: RequirementType,
+    dep: Requirement,
+    dep_req_type: RequirementType,
 ):
-    logger.debug("installing %s %s", req_type, req)
+    logger.debug("%s: installing %s %s", req.name, dep_req_type, dep)
     external_commands.run(
         [
             sys.executable,
@@ -365,8 +386,8 @@ def _safe_install(
         + ctx.pip_wheel_server_args
         + ctx.pip_constraint_args
         + [
-            f"{req}",
+            f"{dep}",
         ],
         network_isolation=False,
     )
-    logger.info("installed %s requirement %s", req_type, req)
+    logger.info("%s: installed %s requirement %s", req.name, dep_req_type, dep)

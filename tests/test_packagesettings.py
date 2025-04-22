@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pydantic
 import pytest
+from packaging.requirements import Requirement
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
@@ -203,7 +204,10 @@ def test_pbi_test_pkg_extra_environ(
     )
 
     build_env = build_environment.BuildEnvironment(
-        testdata_context, parent_dir=tmp_path, build_requirements=None
+        testdata_context,
+        parent_dir=tmp_path,
+        build_requirements=None,
+        req=Requirement("test_pkg"),
     )
     result = pbi.get_extra_environ(
         template_env={"EXTRA": "spam", "PATH": "/sbin:/bin"}, build_env=build_env
