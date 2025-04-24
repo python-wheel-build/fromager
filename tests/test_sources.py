@@ -1,5 +1,5 @@
 import pathlib
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from packaging.requirements import Requirement
@@ -16,8 +16,9 @@ def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
     fake_dir.mkdir()
     text_file = fake_dir / "fake_wheel.txt"
     text_file.write_text("This is a test file")
+    req = Requirement("test_pkg==42.1.2")
     with pytest.raises(TypeError):
-        sources._download_source_check(fake_dir, fake_url)
+        sources._download_source_check(req=req, destination_dir=fake_dir, url=fake_url)
 
 
 @patch("fromager.resolver.resolve")
@@ -52,9 +53,10 @@ def test_default_download_source_from_settings(
     )
 
     download_source_check.assert_called_with(
-        testdata_context.sdists_downloads,
-        "https://egg.test/test-pkg/v42.1.2.tar.gz",
-        "test-pkg-42.1.2.tar.gz",
+        req=req,
+        destination_dir=testdata_context.sdists_downloads,
+        url="https://egg.test/test-pkg/v42.1.2.tar.gz",
+        destination_filename="test-pkg-42.1.2.tar.gz",
     )
 
 
@@ -174,15 +176,12 @@ def test_patch_sources_apply_only_unversioned(
     source_root_dir = tmp_path / "deepspeed-0.5.0"
     source_root_dir.mkdir()
 
+    req = Requirement("deepspeed")
+
     sources.patch_source(
         ctx=tmp_context,
         source_root_dir=source_root_dir,
-        req=Requirement("deepspeed"),
+        req=req,
         version=Version("0.6.0"),
     )
-    assert apply_patch.call_count == 1
-    apply_patch.assert_has_calls(
-        [
-            call(unversioned_patch_file, source_root_dir),
-        ]
-    )
+    apply_patch.assert_called_once_with(req, unversioned_patch_file, source_root_dir)

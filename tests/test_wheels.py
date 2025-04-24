@@ -19,8 +19,9 @@ def test_invalid_wheel_file_exception(
     fake_dir.mkdir()
     text_file = fake_dir / "fake_wheel.txt"
     text_file.write_text("This is a test file")
+    req = Requirement("test_pkg")
     with pytest.raises(wheel.cli.WheelError):
-        wheels._download_wheel_check(fake_dir, fake_url)
+        wheels._download_wheel_check(req, fake_dir, fake_url)
 
 
 @patch("fromager.build_environment.BuildEnvironment.run")
