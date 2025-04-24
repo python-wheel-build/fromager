@@ -310,7 +310,10 @@ def default_download_source(
     destination_filename = pbi.download_source_destination_filename(version=version)
     url = pbi.download_source_url(version=version, default=download_url)
     source_filename = _download_source_check(
-        sdists_downloads_dir, url, destination_filename
+        req=req,
+        destination_dir=sdists_downloads_dir,
+        url=url,
+        destination_filename=destination_filename,
     )
 
     logger.debug(
@@ -322,11 +325,17 @@ def default_download_source(
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
 # It will throw exception if any other file is encountered. Eg: index.html
 def _download_source_check(
+    req: Requirement,
     destination_dir: pathlib.Path,
     url: str,
     destination_filename: str | None = None,
 ) -> str:
-    source_filename = download_url(destination_dir, url, destination_filename)
+    source_filename = download_url(
+        req=req,
+        destination_dir=destination_dir,
+        url=url,
+        destination_filename=destination_filename,
+    )
     if source_filename.suffix == ".zip":
         source_file_contents = zipfile.ZipFile(source_filename).namelist()
         if not source_file_contents:
@@ -343,6 +352,8 @@ def _download_source_check(
 
 
 def download_url(
+    *,
+    req: Requirement,
     destination_dir: pathlib.Path,
     url: str,
     destination_filename: str | None = None,
@@ -354,20 +365,23 @@ def download_url(
     )
     outfile = pathlib.Path(destination_dir) / basename
     logger.debug(
-        "looking for %s %s", outfile, "(exists)" if outfile.exists() else "(not there)"
+        "%s: looking for %s %s",
+        req.name,
+        outfile,
+        "(exists)" if outfile.exists() else "(not there)",
     )
     if outfile.exists():
-        logger.debug(f"already have {outfile}")
+        logger.debug("%s: already have %s", req.name, outfile)
         return outfile
     # Open the URL first in case that fails, so we don't end up with an empty file.
     logger.debug(f"reading from {url}")
     with session.get(url, stream=True) as r:
         r.raise_for_status()
         with open(outfile, "wb") as f:
-            logger.debug(f"writing to {outfile}")
+            logger.debug("%s: writing to %s", req.name, outfile)
             for chunk in r.iter_content(chunk_size=1024 * 1024):
                 f.write(chunk)
-    logger.info(f"saved {outfile}")
+    logger.info(f"%s: saved {outfile}", req.name)
     return outfile
 
 
@@ -446,7 +460,7 @@ def patch_source(
     patch_count = 0
 
     for p in pbi.get_patches(version):
-        _apply_patch(p, source_root_dir)
+        _apply_patch(req, p, source_root_dir)
         patch_count += 1
 
     logger.debug("%s: applied %d patches", req.name, patch_count)
@@ -459,8 +473,8 @@ def patch_source(
             )
 
 
-def _apply_patch(patch: pathlib.Path, source_root_dir: pathlib.Path):
-    logger.info("applying patch file %s to %s", patch, source_root_dir)
+def _apply_patch(req: Requirement, patch: pathlib.Path, source_root_dir: pathlib.Path):
+    logger.info("%s: applying patch file %s to %s", req.name, patch, source_root_dir)
     with open(patch, "r") as f:
         external_commands.run(["patch", "-p1"], stdin=f, cwd=source_root_dir)
 
