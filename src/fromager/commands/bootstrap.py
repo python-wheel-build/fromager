@@ -18,6 +18,7 @@ from .. import (
     sources,
     wheels,
 )
+from ..log import requirement_ctxvar
 from ..requirements_file import RequirementType
 from .graph import find_why
 
@@ -47,7 +48,7 @@ def _get_requirements_from_args(
         # their parent, so they include values like the parent's extras settings.
         if not requirements_file.evaluate_marker(req, req):
             logger.info(
-                f"{req.name}: ignoring {requirements_file.RequirementType.TOP_LEVEL} dependency {req} because of its marker expression"
+                f"ignoring {requirements_file.RequirementType.TOP_LEVEL} dependency {req} because of its marker expression"
             )
         else:
             to_build.append(req)
@@ -135,6 +136,7 @@ def bootstrap(
     # in the toplevel without having to fall back to history
     logger.info("resolving top-level dependencies before building")
     for req in to_build:
+        token = requirement_ctxvar.set(req)
         pbi = wkctx.package_build_info(req)
         if pbi.pre_built:
             servers = wheels.get_wheel_server_urls(wkctx, req)
@@ -160,6 +162,7 @@ def bootstrap(
             download_url=source_url,
             pre_built=pbi.pre_built,
         )
+        requirement_ctxvar.reset(token)
 
     with progress.progress_context(total=len(to_build)) as progressbar:
         bt = bootstrapper.Bootstrapper(
@@ -171,8 +174,10 @@ def bootstrap(
         )
 
         for req in to_build:
+            token = requirement_ctxvar.set(req)
             bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
             progressbar.update()
+            requirement_ctxvar.reset(token)
 
     # If we put pre-built wheels in the downloads directory, we should
     # remove them so we can treat that directory as a source of wheels

@@ -61,8 +61,7 @@ def download_source(
 ) -> pathlib.Path:
     if req.url:
         logger.info(
-            "%s: downloaded source to %s by cloning %s, ignoring any plugins",
-            req.name,
+            "downloaded source to %s by cloning %s, ignoring any plugins",
             download_url,
             req.url,
         )
@@ -105,12 +104,12 @@ def resolve_source(
         # git clone URLs of some sort. We are given the directory where the
         # cloned repo resides, and return that as the URL for the source code so
         # the next step in the process can find it and operate on it.
-        logger.info("%s: resolving source via URL, ignoring any plugins", req.name)
+        logger.info("resolving source via URL, ignoring any plugins")
         return resolve_version_from_git_url(ctx=ctx, req=req)
 
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
-        f"{req.name}: resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
+        f"resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
     )
 
     try:
@@ -128,7 +127,7 @@ def resolve_source(
         resolvelib.RequirementsConflicted,
         resolvelib.ResolutionImpossible,
     ) as err:
-        logger.debug(f"{req.name}: could not resolve {req} with {constraint}: {err}")
+        logger.debug(f"could not resolve {req} with {constraint}: {err}")
         raise
 
     if len(resolver_results) == 2:
@@ -187,13 +186,12 @@ def resolve_version_from_git_url(
             version = Version(git_ref)
         except ValueError:
             logger.info(
-                "%s: could not parse %r as a version, cloning to get the version",
-                req.name,
+                "could not parse %r as a version, cloning to get the version",
                 git_ref,
             )
             need_to_clone = True
         else:
-            logger.info("%s: URL %s includes version %s", req.name, req.url, version)
+            logger.info("URL %s includes version %s", req.url, version)
             working_src_dir = (
                 ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
             )
@@ -201,11 +199,11 @@ def resolve_version_from_git_url(
                 need_to_clone = True
             else:
                 if ctx.cleanup:
-                    logger.debug("%s: cleaning up %s", req.name, working_src_dir)
+                    logger.debug("cleaning up %s", working_src_dir)
                     shutil.rmtree(working_src_dir)
                     need_to_clone = True
                 else:
-                    logger.info("%s: reusing %s", req.name, working_src_dir)
+                    logger.info("reusing %s", working_src_dir)
 
     if need_to_clone:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -221,7 +219,7 @@ def resolve_version_from_git_url(
                 # If we still do not have a version, get it from the package
                 # metadata.
                 version = _get_version_from_package_metadata(ctx, req, clone_dir)
-                logger.info("%s: found version %s", req.name, version)
+                logger.info("found version %s", version)
                 working_src_dir = (
                     ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
                 )
@@ -236,11 +234,11 @@ def resolve_version_from_git_url(
                     # version if that version is set with static data in the
                     # repo instead of via a tag or dynamically computed by
                     # something like setuptools-scm.
-                    logger.debug("%s: cleaning up %s", req.name, working_src_dir)
+                    logger.debug("cleaning up %s", working_src_dir)
                     shutil.rmtree(working_src_dir)
                     need_to_clone = True
                 working_src_dir.parent.mkdir(parents=True, exist_ok=True)
-            logger.info("%s: moving cloned repo to %s", req.name, working_src_dir)
+            logger.info("moving cloned repo to %s", working_src_dir)
             shutil.move(clone_dir, working_src_dir)
 
     # We must know the version and we must have a source directory.
@@ -257,7 +255,7 @@ def _get_version_from_package_metadata(
 ) -> Version:
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(source_dir)
-    logger.info(f"{req.name}: generating metadata to get version")
+    logger.info("generating metadata to get version")
 
     hook_caller = dependencies.get_build_backend_hook_caller(
         ctx=ctx,
@@ -316,9 +314,7 @@ def default_download_source(
         destination_filename=destination_filename,
     )
 
-    logger.debug(
-        f"{req.name}: have source for {req} version {version} in {source_filename}"
-    )
+    logger.debug(f"have source for {req} version {version} in {source_filename}")
     return source_filename
 
 
@@ -365,23 +361,22 @@ def download_url(
     )
     outfile = pathlib.Path(destination_dir) / basename
     logger.debug(
-        "%s: looking for %s %s",
-        req.name,
+        "looking for %s %s",
         outfile,
         "(exists)" if outfile.exists() else "(not there)",
     )
     if outfile.exists():
-        logger.debug("%s: already have %s", req.name, outfile)
+        logger.debug("already have %s", outfile)
         return outfile
     # Open the URL first in case that fails, so we don't end up with an empty file.
     logger.debug(f"reading from {url}")
     with session.get(url, stream=True) as r:
         r.raise_for_status()
         with open(outfile, "wb") as f:
-            logger.debug("%s: writing to %s", req.name, outfile)
+            logger.debug("writing to %s", outfile)
             for chunk in r.iter_content(chunk_size=1024 * 1024):
                 f.write(chunk)
-    logger.info(f"%s: saved {outfile}", req.name)
+    logger.info("saved %s", outfile)
     return outfile
 
 
@@ -463,18 +458,18 @@ def patch_source(
         _apply_patch(req, p, source_root_dir)
         patch_count += 1
 
-    logger.debug("%s: applied %d patches", req.name, patch_count)
+    logger.debug("applied %d patches", patch_count)
     # If no patch has been applied, call warn for old patch
     patchmap = pbi.get_all_patches()
     if not patch_count and patchmap:
         for patchversion in sorted(patchmap):
             logger.warning(
-                f"{req.name}: patch {patchversion} exists but will not be applied for version {version}"
+                f"patch {patchversion} exists but will not be applied for version {version}"
             )
 
 
 def _apply_patch(req: Requirement, patch: pathlib.Path, source_root_dir: pathlib.Path):
-    logger.info("%s: applying patch file %s to %s", req.name, patch, source_root_dir)
+    logger.info("applying patch file %s to %s", patch, source_root_dir)
     with open(patch, "r") as f:
         external_commands.run(["patch", "-p1"], stdin=f, cwd=source_root_dir)
 
@@ -495,7 +490,7 @@ def write_build_meta(
             },
             f,
         )
-    logger.debug("%s: wrote build metadata to %s", req.name, meta_file)
+    logger.debug("wrote build metadata to %s", meta_file)
     return meta_file
 
 
@@ -515,8 +510,7 @@ def prepare_source(
 ) -> pathlib.Path:
     if req.url:
         logger.info(
-            "%s: preparing source cloned from %s, ignoring any plugins",
-            req.name,
+            "preparing source cloned from %s, ignoring any plugins",
             req.url,
         )
         source_root_dir = pathlib.Path(source_filename)
@@ -527,7 +521,7 @@ def prepare_source(
             version=version,
         )
     else:
-        logger.info(f"{req.name}: preparing source for {req} from {source_filename}")
+        logger.info(f"preparing source for {req} from {source_filename}")
         prepare_source_details = overrides.find_and_invoke(
             req.name,
             "prepare_source",
@@ -547,7 +541,7 @@ def prepare_source(
             )
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
-        logger.info(f"{req.name}: prepared source for {req} at {source_root_dir}")
+        logger.info(f"prepared source for {req} at {source_root_dir}")
     return source_root_dir
 
 
@@ -613,7 +607,7 @@ def build_sdist(
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(sdist_root_dir)
 
-    logger.info(f"{req.name}: building source distribution in {build_dir}")
+    logger.info(f"building source distribution in {build_dir}")
     extra_environ = pbi.get_extra_environ(build_env=build_env)
     if req.url:
         # The default approach to making an sdist is to make a tarball from the
@@ -622,7 +616,7 @@ def build_sdist(
         # get the source tree, we can be very sure that creating a tarball will
         # NOT produce a valid sdist, so we can use the PEP-517 approach
         # instead.
-        logger.info("%s: using PEP-517 sdist build, ignoring any plugins", req.name)
+        logger.info("using PEP-517 sdist build, ignoring any plugins")
         sdist_filename = pep517_build_sdist(
             ctx=ctx,
             extra_environ=extra_environ,
@@ -643,7 +637,7 @@ def build_sdist(
             build_dir=build_dir,
             build_env=build_env,
         )
-    logger.info(f"{req.name}: built source distribution {sdist_filename}")
+    logger.info(f"built source distribution {sdist_filename}")
     return sdist_filename
 
 
@@ -739,7 +733,7 @@ def ensure_pkg_info(
         pkg_info_file = directory / "PKG-INFO"
         if not pkg_info_file.is_file():
             logger.warning(
-                f"{req.name}: PKG-INFO file is missing from {directory}, creating stub file"
+                f"PKG-INFO file is missing from {directory}, creating stub file"
             )
             pkg_info_file.write_text(
                 PKG_INFO_CONTENT.format(

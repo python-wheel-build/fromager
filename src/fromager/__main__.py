@@ -11,6 +11,7 @@ from . import (
     commands,
     context,
     external_commands,
+    log,
     overrides,
     packagesettings,
 )
@@ -152,6 +153,8 @@ def main(
     global _DEBUG
     _DEBUG = debug
 
+    # Set custom log factory to prepend requirement name.
+    logging.setLogRecordFactory(log.FromagerLogRecord)
     # Set the overall logger level to debug and allow the handlers to filter
     # messages at their own level.
     logging.getLogger().setLevel(logging.DEBUG)

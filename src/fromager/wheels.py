@@ -63,7 +63,7 @@ def _extra_metadata_elfdeps(
         else:
             relname = "n/a"
         logger.debug(
-            f"{req.name}: {relname} ({info.soname}) "
+            f"{relname} ({info.soname}) "
             f"requires {sorted(info.requires)}, "
             f"provides {sorted(info.provides)}"
         )
@@ -82,11 +82,10 @@ def _extra_metadata_elfdeps(
         names = sorted(
             name for name in reqmap if not name.startswith(("ld-linux", "rtld"))
         )
-        logger.info("%s: Requires libraries: %s", req.name, ", ".join(names))
+        logger.info("Requires libraries: %s", ", ".join(names))
         for name, versions in sorted(reqmap.items()):
             logger.debug(
-                "%s: Requires %s(%s)",
-                req.name,
+                "Requires %s(%s)",
                 name,
                 ", ".join(v for v in versions if v),
             )
@@ -98,7 +97,7 @@ def _extra_metadata_elfdeps(
 
     if provides:
         names = sorted(p.soname for p in provides)
-        logger.info("%s: Provides libraries: %s", req.name, ", ".join(names))
+        logger.info("Provides libraries: %s", ", ".join(names))
 
         provides_file = dist_info_dir / FROMAGER_ELF_PROVIDES
         with provides_file.open("w", encoding="utf-8") as f:
@@ -120,9 +119,7 @@ def extract_info_from_wheel_file(
     dist_name = wheel_file.name.split("-", 1)[0]
     if dist_name_normalized != canonicalize_name(dist_name):
         # sanity check, should never fail
-        raise ValueError(
-            f"{req.name}: {dist_name_normalized} does not match {dist_name}"
-        )
+        raise ValueError(f"{dist_name_normalized} does not match {dist_name}")
     return (dist_name, dist_version, build_tag, wheel_tags)
 
 
@@ -171,9 +168,7 @@ def add_extra_metadata_to_wheels(
 
         dist_info_dir = wheel_root_dir / f"{dist_filename}.dist-info"
         if not dist_info_dir.is_dir():
-            raise ValueError(
-                f"{req.name}: {wheel_file} does not contain {dist_info_dir.name}"
-            )
+            raise ValueError(f"{wheel_file} does not contain {dist_info_dir.name}")
 
         if extra_data_plugin:
             data_to_add = overrides.invoke(
@@ -187,7 +182,7 @@ def add_extra_metadata_to_wheels(
             )
             if not isinstance(data_to_add, dict):
                 logger.warning(
-                    f"{req.name}: unexpected return type from plugin add_extra_metadata_to_wheels. Expected dictionary. Will ignore"
+                    "unexpected return type from plugin add_extra_metadata_to_wheels. Expected dictionary. Will ignore"
                 )
                 data_to_add = {}
 
@@ -217,12 +212,11 @@ def add_extra_metadata_to_wheels(
                 )
             else:
                 logger.debug(
-                    "%s: shared library dependency analysis not implemented for %s",
-                    req.name,
+                    "shared library dependency analysis not implemented for %s",
                     sys.platform,
                 )
         else:
-            logger.debug("%s: is a purelib wheel", req.name)
+            logger.debug("%s is a purelib wheel", req.name)
 
         build_tag_from_settings = pbi.build_tag(version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
@@ -247,7 +241,7 @@ def add_extra_metadata_to_wheels(
     wheels = list(wheel_file.parent.glob(f"{dist_filename}-*.whl"))
     if wheels:
         logger.info(
-            f"{req.name}: added extra metadata and build tag {build_tag}, wheel renamed from {wheel_file.name} to {wheels[0].name}"
+            f"added extra metadata and build tag {build_tag}, wheel renamed from {wheel_file.name} to {wheels[0].name}"
         )
         return wheels[0]
     raise FileNotFoundError("Could not locate new wheels file")
@@ -264,7 +258,7 @@ def build_wheel(
 ) -> pathlib.Path:
     pbi = ctx.package_build_info(req)
     logger.info(
-        f"{req.name}: building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
+        f"building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
     )
 
     # add package and variant env vars, package's parallel job vars, and
@@ -326,7 +320,7 @@ def default_build_wheel(
     version: Version,
     build_dir: pathlib.Path,
 ) -> None:
-    logger.debug(f"{req.name}: building wheel in {build_dir} with {extra_environ}")
+    logger.debug(f"building wheel in {build_dir} with {extra_environ}")
     pbi = ctx.package_build_info(req)
 
     cmd = [
@@ -370,11 +364,11 @@ def download_wheel(
 ) -> pathlib.Path:
     wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
     if not wheel_filename.exists():
-        logger.info(f"{req.name}: downloading pre-built wheel {wheel_url}")
+        logger.info(f"downloading pre-built wheel {wheel_url}")
         wheel_filename = _download_wheel_check(req, output_directory, wheel_url)
-        logger.info(f"{req.name}: saved wheel to {wheel_filename}")
+        logger.info(f"saved wheel to {wheel_filename}")
     else:
-        logger.info(f"{req.name}: have existing wheel {wheel_filename}")
+        logger.info(f"have existing wheel {wheel_filename}")
 
     return wheel_filename
 

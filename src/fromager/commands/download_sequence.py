@@ -9,6 +9,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from .. import context, progress, read, sources, wheels
+from ..log import requirement_ctxvar
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ def download_sequence(
 
     def download_one(entry: dict[str, typing.Any]):
         req = Requirement(f"{entry['dist']}=={entry['version']}")
+        token = requirement_ctxvar.set(req)
 
         if entry["prebuilt"]:
             if include_wheels:
@@ -99,6 +101,7 @@ def download_sequence(
                 )
             except Exception as err:
                 logger.error(f"failed to download wheel for {req}: {err}")
+        requirement_ctxvar.reset(token)
 
     num_items = len(build_order)
     logger.debug(

@@ -38,7 +38,7 @@ def timeit(description: str) -> typing.Callable:
 
             if req:
                 logger.debug(
-                    f"{req.name}: {func.__name__} took {timedelta(seconds=runtime)} to {description}"
+                    f"{func.__name__} took {timedelta(seconds=runtime)} to {description}"
                 )
             else:
                 logger.debug(
