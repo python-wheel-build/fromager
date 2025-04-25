@@ -1,4 +1,3 @@
-import logging
 import os
 import pathlib
 import shlex
@@ -7,7 +6,9 @@ import sys
 import typing
 from io import TextIOWrapper
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 HERE = pathlib.Path(__file__).absolute().parent
 

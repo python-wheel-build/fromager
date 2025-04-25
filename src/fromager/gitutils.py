@@ -1,4 +1,3 @@
-import logging
 import pathlib
 from urllib.parse import urlparse
 
@@ -6,7 +5,9 @@ from packaging.requirements import Requirement
 
 from fromager import context, external_commands
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 
 def git_clone(

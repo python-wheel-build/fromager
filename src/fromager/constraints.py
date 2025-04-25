@@ -1,4 +1,3 @@
-import logging
 import pathlib
 import typing
 
@@ -7,8 +6,9 @@ from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import requirements_file
+from .log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Constraints:

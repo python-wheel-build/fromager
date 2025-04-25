@@ -1,4 +1,3 @@
-import logging
 import pathlib
 
 import click
@@ -14,8 +13,9 @@ from .. import (
     sources,
     wheels,
 )
+from ..log import get_logger, requirement_ctxvar
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @click.group()
@@ -45,6 +45,7 @@ def download_source_archive(
 
     """
     req = Requirement(f"{dist_name}=={dist_version}")
+    token = requirement_ctxvar.set(req)
     source_url, version = sources.resolve_source(
         ctx=wkctx, req=req, sdist_server_url=sdist_server_url
     )
@@ -54,6 +55,7 @@ def download_source_archive(
         version=version,
         download_url=source_url,
     )
+    requirement_ctxvar.reset(token)
     print(filename)
 
 
@@ -74,6 +76,7 @@ def prepare_source(
 
     """
     req = Requirement(f"{dist_name}=={dist_version}")
+    token = requirement_ctxvar.set(req)
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
     source_filename = finders.find_sdist(
         wkctx, wkctx.sdists_downloads, req, str(dist_version)
@@ -91,6 +94,7 @@ def prepare_source(
         source_filename=source_filename,
         version=dist_version,
     )
+    requirement_ctxvar.reset(token)
     print(source_root_dir)
 
 
@@ -114,6 +118,7 @@ def build_sdist(
 
     """
     req = Requirement(f"{dist_name}=={dist_version}")
+    token = requirement_ctxvar.set(req)
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
     build_env = build_environment.BuildEnvironment(
         ctx=wkctx, parent_dir=source_root_dir.parent, build_requirements=None, req=req
@@ -125,6 +130,7 @@ def build_sdist(
         sdist_root_dir=source_root_dir,
         build_env=build_env,
     )
+    requirement_ctxvar.reset(token)
     print(sdist_filename)
 
 
@@ -169,10 +175,12 @@ def prepare_build(
     wkctx.wheel_server_url = wheel_server_url
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
+    token = requirement_ctxvar.set(req)
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
     build_environment.prepare_build_environment(
         ctx=wkctx, req=req, sdist_root_dir=source_root_dir
     )
+    requirement_ctxvar.reset(token)
 
 
 @step.command()
@@ -200,6 +208,7 @@ def build_wheel(
     """
     wkctx.wheel_server_url = wheel_server_url
     req = Requirement(f"{dist_name}=={dist_version}")
+    token = requirement_ctxvar.set(req)
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
     server.start_wheel_server(wkctx)
     build_env = build_environment.BuildEnvironment(
@@ -212,4 +221,5 @@ def build_wheel(
         version=dist_version,
         build_env=build_env,
     )
+    requirement_ctxvar.reset(token)
     print(wheel_filename)

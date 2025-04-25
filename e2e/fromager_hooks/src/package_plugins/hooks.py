@@ -17,10 +17,10 @@ def after_build_wheel(
     wheel_filename: pathlib.Path,
 ):
     logger.info(
-        f"{req.name}: running post build hook in {__name__} for {sdist_filename} and {wheel_filename}"
+        f"running post build hook in {__name__} for {sdist_filename} and {wheel_filename}"
     )
     test_file = sdist_filename.parent / "test-output-file.txt"
-    logger.info(f"{req.name}: post-build hook writing to {test_file}")
+    logger.info(f"post-build hook writing to {test_file}")
     test_file.write_text(f"{dist_name}=={dist_version}")
 
 
@@ -33,10 +33,10 @@ def after_bootstrap(
     wheel_filename: pathlib.Path | None,
 ):
     logger.info(
-        f"{req.name}: running post bootstrap hook in {__name__} for {sdist_filename} and {wheel_filename}"
+        f"running post bootstrap hook in {__name__} for {sdist_filename} and {wheel_filename}"
     )
     test_file = ctx.work_dir / "test-output-file.txt"
-    logger.info(f"{req.name}: post-bootstrap hook writing to {test_file}")
+    logger.info(f"post-bootstrap hook writing to {test_file}")
     test_file.write_text(f"{dist_name}=={dist_version}")
 
 
@@ -48,8 +48,8 @@ def after_prebuilt_wheel(
     wheel_filename: pathlib.Path,
 ):
     logger.info(
-        f"{req.name}: running post build hook in {__name__} for {wheel_filename}"
+        f"running post build hook in {__name__} for {wheel_filename}"
     )
     test_file = ctx.work_dir / "test-prebuilt.txt"
-    logger.info(f"{req.name}: prebuilt-wheel hook writing to {test_file}")
+    logger.info(f"prebuilt-wheel hook writing to {test_file}")
     test_file.write_text(f"{dist_name}=={dist_version}")

@@ -1,5 +1,4 @@
 import collections
-import logging
 import os
 import pathlib
 from urllib.parse import urlparse
@@ -9,8 +8,9 @@ from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import constraints, dependency_graph, packagesettings, request_session
+from .log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Map package names to (requirement type, dependency name, version)
 BuildRequirements = dict[str, list[tuple[str, NormalizedName, Version, Requirement]]]

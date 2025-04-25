@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import logging
 import os
 import pathlib
 import tempfile
@@ -18,7 +17,9 @@ from . import build_environment, external_commands, overrides, requirements_file
 if typing.TYPE_CHECKING:
     from . import context
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 BUILD_SYSTEM_REQ_FILE_NAME = "build-system-requirements.txt"
 BUILD_BACKEND_REQ_FILE_NAME = "build-backend-requirements.txt"
@@ -31,15 +32,13 @@ def get_build_system_dependencies(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
 ) -> set[Requirement]:
-    logger.info(
-        f"{req.name}: getting build system dependencies for {req} in {sdist_root_dir}"
-    )
+    logger.info(f"getting build system dependencies for {req} in {sdist_root_dir}")
     pbi = ctx.package_build_info(req)
 
     build_system_req_file = sdist_root_dir.parent / BUILD_SYSTEM_REQ_FILE_NAME
     if build_system_req_file.exists():
         logger.info(
-            f"{req.name}: loading build system dependencies from {build_system_req_file.name}"
+            f"loading build system dependencies from {build_system_req_file.name}"
         )
         return _read_requirements_file(build_system_req_file)
 
@@ -73,7 +72,7 @@ def _filter_requirements(
             requires.add(r)
         else:
             logger.debug(
-                f"{req.name}: evaluated {r} in the context of {req} and ignored because the environment marker does not match"
+                f"evaluated {r} in the context of {req} and ignored because the environment marker does not match"
             )
     return requires
 
@@ -98,15 +97,13 @@ def get_build_backend_dependencies(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
 ) -> set[Requirement]:
-    logger.info(
-        f"{req.name}: getting build backend dependencies for {req} in {sdist_root_dir}"
-    )
+    logger.info(f"getting build backend dependencies for {req} in {sdist_root_dir}")
     pbi = ctx.package_build_info(req)
 
     build_backend_req_file = sdist_root_dir.parent / BUILD_BACKEND_REQ_FILE_NAME
     if build_backend_req_file.exists():
         logger.info(
-            f"{req.name}: loading build backend dependencies from {build_backend_req_file.name}"
+            f"loading build backend dependencies from {build_backend_req_file.name}"
         )
         return _read_requirements_file(build_backend_req_file)
 
@@ -157,15 +154,13 @@ def get_build_sdist_dependencies(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
 ) -> set[Requirement]:
-    logger.info(
-        f"{req.name}: getting build sdist dependencies for {req} in {sdist_root_dir}"
-    )
+    logger.info(f"getting build sdist dependencies for {req} in {sdist_root_dir}")
     pbi = ctx.package_build_info(req)
 
     build_sdist_req_file = sdist_root_dir.parent / BUILD_SDIST_REQ_FILE_NAME
     if build_sdist_req_file.exists():
         logger.info(
-            f"{req.name}: loading build sdist dependencies from {build_sdist_req_file.name}"
+            f"loading build sdist dependencies from {build_sdist_req_file.name}"
         )
         return _read_requirements_file(build_sdist_req_file)
 
@@ -223,9 +218,7 @@ def get_install_dependencies_of_sdist(
     """
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(sdist_root_dir)
-    logger.info(
-        f"{req.name}: getting install requirements for {req} from sdist in {build_dir}"
-    )
+    logger.info(f"getting install requirements for {req} from sdist in {build_dir}")
     extra_environ = pbi.get_extra_environ()
     hook_caller = get_build_backend_hook_caller(
         ctx=ctx,
@@ -259,7 +252,7 @@ def parse_metadata(metadata_file: pathlib.Path, *, validate: bool = True) -> Met
 def get_install_dependencies_of_wheel(
     req: Requirement, wheel_filename: pathlib.Path, requirements_file_dir: pathlib.Path
 ) -> set[Requirement]:
-    logger.info(f"{req.name}: getting installation dependencies from {wheel_filename}")
+    logger.info(f"getting installation dependencies from {wheel_filename}")
     wheel = pkginfo.Wheel(str(wheel_filename))
     deps = _filter_requirements(req, wheel.requires_dist)
     _write_requirements_file(

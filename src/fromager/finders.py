@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import pathlib
 import re
 import typing
@@ -13,7 +12,9 @@ from . import overrides
 if typing.TYPE_CHECKING:
     from . import context
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 
 def _dist_name_to_filename(dist_name: str) -> str:
@@ -81,7 +82,7 @@ def find_sdist(
         # comparison.
         for base in candidate_bases:
             for ext in [".tar.gz", ".zip"]:
-                logger.debug('%s: looking for sdist as "%s%s"', req.name, base, ext)
+                logger.debug('looking for sdist as "%s%s"', base, ext)
                 for filename in downloads_dir.glob("*" + ext):
                     if str(filename.name).lower()[: -len(ext)] == base.lower():
                         return filename
@@ -122,7 +123,7 @@ def find_wheel(
     # have to run with older versions, too, so do our own name
     # comparison.
     for base in candidate_bases:
-        logger.debug('%s looking for wheel as "%s"', req.name, base)
+        logger.debug('looking for wheel as "%s"', base)
         for filename in downloads_dir.glob("*"):
             if str(filename.name).lower().startswith(base.lower()):
                 return filename
@@ -206,7 +207,7 @@ def find_source_dir(
     # have to run with older versions, too, so do our own name
     # comparison.
     for base in candidate_bases:
-        logger.debug("%s: looking for source directory as %s", req.name, base)
+        logger.debug("looking for source directory as %s", base)
         for dirname in work_dir.glob("*"):
             if str(dirname.name).lower() == base.lower():
                 # We expect the unpack directory and the source

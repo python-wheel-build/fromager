@@ -14,8 +14,9 @@ from . import (
     overrides,
     packagesettings,
 )
+from .log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 TERSE_LOG_FMT = "%(message)s"
 VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"

@@ -1,10 +1,9 @@
-import logging
-
 import click
 
 from .. import context, overrides
+from ..log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @click.command()

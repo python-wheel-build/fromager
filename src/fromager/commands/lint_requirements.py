@@ -1,4 +1,3 @@
-import logging
 import sys
 
 import click
@@ -6,7 +5,9 @@ from packaging.requirements import InvalidRequirement, Requirement
 
 from fromager import requirements_file
 
-logger = logging.getLogger(__name__)
+from ..log import get_logger
+
+logger = get_logger(__name__)
 
 
 @click.command()

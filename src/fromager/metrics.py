@@ -1,5 +1,4 @@
 import functools
-import logging
 import time
 import typing
 from datetime import timedelta
@@ -8,6 +7,9 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from . import context
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 
 def timeit(description: str) -> typing.Callable:
@@ -25,7 +27,7 @@ def timeit(description: str) -> typing.Callable:
             ret = func(ctx=ctx, req=req, **kwargs)
             end = time.perf_counter()
             # get the logger for the module from which this function was called
-            logger = logging.getLogger(func.__module__)
+            logger = get_logger(func.__module__)
             version = (
                 kwargs.get("version")
                 or kwargs.get("dist_version")
@@ -38,7 +40,7 @@ def timeit(description: str) -> typing.Callable:
 
             if req:
                 logger.debug(
-                    f"{req.name}: {func.__name__} took {timedelta(seconds=runtime)} to {description}"
+                    f"{func.__name__} took {timedelta(seconds=runtime)} to {description}"
                 )
             else:
                 logger.debug(
@@ -60,7 +62,6 @@ def timeit(description: str) -> typing.Callable:
 
 
 def summarize(ctx: context.WorkContext, prefix: str) -> None:
-    logger = logging.getLogger(__name__)
     for req in sorted(ctx.time_store.keys()):
         total_time = sum(ctx.time_store[req].values())
         log = f"{prefix} {req} took {timedelta(seconds=total_time)} total"

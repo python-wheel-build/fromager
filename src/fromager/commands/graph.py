@@ -1,6 +1,5 @@
 import itertools
 import json
-import logging
 import pathlib
 import sys
 import typing
@@ -19,7 +18,9 @@ from fromager.dependency_graph import (
 )
 from fromager.requirements_file import RequirementType
 
-logger = logging.getLogger(__name__)
+from ..log import get_logger
+
+logger = get_logger(__name__)
 
 
 @click.group()

@@ -1,5 +1,4 @@
 import inspect
-import logging
 import pathlib
 import typing
 from importlib import metadata
@@ -12,9 +11,9 @@ from stevedore import extension
 # the build process for a particular package - i.e. for a given package
 # and build target, what patches should we apply, what environment variables
 # should we set, etc.
+from .log import get_logger
 
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 _mgr = None

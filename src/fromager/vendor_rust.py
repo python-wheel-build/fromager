@@ -2,7 +2,6 @@
 
 import enum
 import json
-import logging
 import os
 import pathlib
 import typing
@@ -11,8 +10,9 @@ import tomlkit
 from packaging.requirements import Requirement
 
 from . import dependencies, external_commands
+from .log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 VENDOR_DIR = "vendor"
 
@@ -35,7 +35,7 @@ def _cargo_vendor(
     project_dir: pathlib.Path,
 ) -> typing.Iterable[pathlib.Path]:
     """Run cargo vendor"""
-    logger.info(f"{req.name}: updating vendored rust dependencies in {project_dir}")
+    logger.info(f"updating vendored rust dependencies in {project_dir}")
     args = ["cargo", "vendor", f"--manifest-path={manifests[0]}"]
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
@@ -108,12 +108,10 @@ def _detect_rust_build_backend(
         except ValueError:
             pass
         else:
-            logger.debug(
-                f"{req.name}: build-system requires '{req.name}', vendoring crates"
-            )
+            logger.debug(f"build-system requires '{req.name}', vendoring crates")
             return rbs
 
-    logger.debug(f"{req.name}: no Rust build plugin detected")
+    logger.debug("no Rust build plugin detected")
     return None
 
 
@@ -130,7 +128,7 @@ def vendor_generic_rust_package(
         manifests = [root_dir / "Cargo.toml"]
     # fetch and vendor Rust crates
     vendored = _cargo_vendor(req, manifests, root_dir)
-    logger.debug(f"{req.name}: vendored crates: {sorted(d.name for d in vendored)}")
+    logger.debug(f"vendored crates: {sorted(d.name for d in vendored)}")
 
     # remove unnecessary pre-compiled files for Windows, macOS, and iOS.
     if shrink_vendored:
@@ -153,7 +151,7 @@ def vendor_rust(
     """
     pyproject_toml = dependencies.get_pyproject_contents(project_dir)
     if not pyproject_toml:
-        logger.debug(f"{req.name}: has no pyproject.toml")
+        logger.debug("has no pyproject.toml")
         return False
 
     backend = _detect_rust_build_backend(req, pyproject_toml)
@@ -166,7 +164,7 @@ def vendor_rust(
             try:
                 tool_maturin: dict[str, typing.Any] = pyproject_toml["tool"]["maturin"]
             except KeyError as e:
-                logger.debug(f"{req.name}: No additional maturin settings: {e}")
+                logger.debug(f"No additional maturin settings: {e}")
             else:
                 if "manifest-path" in tool_maturin:
                     manifests.append(project_dir / tool_maturin["manifest-path"])
@@ -175,13 +173,13 @@ def vendor_rust(
             try:
                 ext_modules = pyproject_toml["tool"]["setuptools-rust"]["ext-modules"]
             except KeyError as e:
-                logger.debug(f"{req.name}: No additional setuptools-rust settings: {e}")
+                logger.debug(f"No additional setuptools-rust settings: {e}")
             else:
                 for ext_module in ext_modules:
                     if "path" in ext_module:
                         manifests.append(project_dir / ext_module["path"])
         case None:
-            logger.debug(f"{req.name}: no Rust build system detected")
+            logger.debug("no Rust build system detected")
             return False
         case _ as unreachable:
             typing.assert_never(unreachable)
@@ -193,13 +191,12 @@ def vendor_rust(
             manifests.append(root_cargo_toml)
         else:
             logger.warning(
-                f"{req.name}: Rust build backend {backend} detected, but "
-                "no Cargo.toml files found."
+                f"Rust build backend {backend} detected, but no Cargo.toml files found."
             )
             return False
 
     the_manifests = sorted(str(d.relative_to(project_dir)) for d in manifests)
-    logger.debug(f"{req.name}: {project_dir} has cargo manifests: {the_manifests}")
+    logger.debug(f"{project_dir} has cargo manifests: {the_manifests}")
 
     vendor_generic_rust_package(
         req, manifests, project_dir, shrink_vendored=shrink_vendored

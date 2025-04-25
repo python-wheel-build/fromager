@@ -1,4 +1,3 @@
-import logging
 import os
 import pathlib
 import re
@@ -21,7 +20,9 @@ from . import overrides
 if typing.TYPE_CHECKING:
     from . import build_environment
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 
 # build directory

@@ -5,7 +5,6 @@
 #
 from __future__ import annotations
 
-import logging
 import os
 import typing
 from collections import defaultdict
@@ -37,7 +36,9 @@ from .requirements_file import RequirementType
 if typing.TYPE_CHECKING:
     from . import context
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
@@ -101,7 +102,7 @@ class LogReporter(resolvelib.BaseReporter):
         super().__init__()
 
     def _report(self, msg: str, *args: typing.Any) -> None:
-        logger.info("%s: %s", self.req.name, msg % args)
+        logger.info(msg, *args)
 
     def starting(self) -> None:
         self._report("looking for candidates for %r", self.req)

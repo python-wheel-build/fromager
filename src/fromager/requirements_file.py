@@ -1,4 +1,3 @@
-import logging
 import pathlib
 import typing
 from enum import StrEnum
@@ -6,9 +5,10 @@ from enum import StrEnum
 from packaging import markers
 from packaging.requirements import Requirement
 
+from .log import get_logger
 from .read import open_file_or_url
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RequirementType(StrEnum):

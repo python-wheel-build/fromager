@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import pathlib
 import typing
 
@@ -13,7 +12,9 @@ from packaging.utils import NormalizedName, canonicalize_name
 if typing.TYPE_CHECKING:
     from . import context
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 TomlDict = dict[str, typing.Any]
 
@@ -57,8 +58,7 @@ class PyprojectFix:
         build_system = self._default_build_system(doc)
         self._update_build_requires(build_system)
         logger.debug(
-            "%s: pyproject.toml %s: %s=%r, %s=%r",
-            self.req.name,
+            "pyproject.toml %s: %s=%r, %s=%r",
             BUILD_SYSTEM,
             BUILD_BACKEND,
             build_system.get(BUILD_BACKEND),
@@ -71,9 +71,9 @@ class PyprojectFix:
         """Load pyproject toml or create empty TOML doc"""
         try:
             doc = tomlkit.parse(self.pyproject_toml.read_bytes())
-            logger.debug("%s: loaded pyproject.toml", self.req.name)
+            logger.debug("loaded pyproject.toml")
         except FileNotFoundError:
-            logger.debug("%s: no pyproject.toml, create empty doc", self.req.name)
+            logger.debug(" no pyproject.toml, create empty doc")
             doc = tomlkit.parse(b"")
         return doc
 
@@ -86,7 +86,7 @@ class PyprojectFix:
         """Add / fix basic 'build-system' dict"""
         build_system: TomlDict | None = doc.get(BUILD_SYSTEM)
         if build_system is None:
-            logger.debug("%s: adding %s", self.req.name, BUILD_SYSTEM)
+            logger.debug("adding %s", BUILD_SYSTEM)
             build_system = doc.setdefault(BUILD_SYSTEM, {})
         # ensure `[build-system] requires` exists
         build_system.setdefault(BUILD_REQUIRES, [])
@@ -115,8 +115,7 @@ class PyprojectFix:
             # ignore order of items
             build_system[BUILD_REQUIRES] = new_requires
             logger.info(
-                "%s: changed build-system requires from %r to %r",
-                self.req.name,
+                "changed build-system requires from %r to %r",
                 old_requires,
                 new_requires,
             )
@@ -131,7 +130,7 @@ def apply_project_override(
     remove_build_requires = pbi.project_override.remove_build_requires
     if update_build_requires or remove_build_requires:
         logger.debug(
-            f"{req.name}: applying project_override: "
+            f"applying project_override: "
             f"{update_build_requires=}, {remove_build_requires=}"
         )
         build_dir = pbi.build_dir(sdist_root_dir)
@@ -142,4 +141,4 @@ def apply_project_override(
             remove_build_requires=remove_build_requires,
         ).run()
     else:
-        logger.debug(f"{req.name}: no project_override")
+        logger.debug("no project_override")

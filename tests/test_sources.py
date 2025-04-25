@@ -106,7 +106,7 @@ def test_invalid_version(mock_default_resolve_source, tmp_context: context.WorkC
         )
 
 
-@patch("logging.Logger.warning")
+@patch("logging.LoggerAdapter.warning")
 @patch("fromager.sources._apply_patch")
 def test_patch_sources_apply_unversioned_and_versioned(
     apply_patch: Mock,

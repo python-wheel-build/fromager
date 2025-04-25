@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import http.server
-import logging
 import os
 import shutil
 import threading
@@ -13,7 +12,9 @@ from . import external_commands
 if typing.TYPE_CHECKING:
     from . import context
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 
 class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):

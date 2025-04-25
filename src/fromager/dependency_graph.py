@@ -1,5 +1,4 @@
 import json
-import logging
 import pathlib
 import typing
 
@@ -7,10 +6,11 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
+from .log import get_logger
 from .read import open_file_or_url
 from .requirements_file import RequirementType
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ROOT = ""
 

@@ -1,4 +1,3 @@
-import logging
 import pathlib
 import typing
 
@@ -8,7 +7,9 @@ from packaging.utils import NormalizedName, canonicalize_name
 
 from fromager import clickext, context, overrides, packagesettings
 
-logger = logging.getLogger(__name__)
+from ..log import get_logger
+
+logger = get_logger(__name__)
 
 PkgEnv = dict[NormalizedName, packagesettings.EnvVars]
 VariantPkgEnv = dict[
