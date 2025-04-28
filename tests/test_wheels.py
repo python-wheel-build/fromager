@@ -30,7 +30,8 @@ def test_default_build_wheel(
 ) -> None:
     req = Requirement("test_pkg")
     build_env = build_environment.BuildEnvironment(
-        ctx=testdata_context, parent_dir=tmp_path, build_requirements=None, req=req
+        ctx=testdata_context,
+        parent_dir=tmp_path,
     )
     pbi = testdata_context.package_build_info(req)
     assert pbi.config_settings
