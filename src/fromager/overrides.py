@@ -12,8 +12,6 @@ from stevedore import extension
 # the build process for a particular package - i.e. for a given package
 # and build target, what patches should we apply, what environment variables
 # should we set, etc.
-
-
 logger = logging.getLogger(__name__)
 
 

@@ -31,6 +31,8 @@ from fromager import (
     wheels,
 )
 
+from ..log import requirement_ctxvar
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,12 +101,14 @@ def build(
     wkctx.wheel_server_url = wheel_server_url
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
+    token = requirement_ctxvar.set(req)
     source_url, version = sources.resolve_source(
         ctx=wkctx,
         req=req,
         sdist_server_url=sdist_server_url,
     )
     wheel_filename = _build(wkctx, version, req, source_url)
+    requirement_ctxvar.reset(token)
     print(wheel_filename)
 
 
@@ -167,6 +171,7 @@ def build_sequence(
             source_download_url = entry["source_url"]
 
             req = Requirement(f"{dist_name}=={resolved_version}")
+            token = requirement_ctxvar.set(req)
 
             if not force:
                 is_built, wheel_filename = _is_wheel_built(
@@ -232,6 +237,7 @@ def build_sequence(
                 )
             )
             print(wheel_filename)
+            requirement_ctxvar.reset(token)
     metrics.summarize(wkctx, "Building")
 
     _summary(wkctx, entries)
@@ -419,7 +425,7 @@ def _is_wheel_built(
     req = Requirement(f"{dist_name}=={resolved_version}")
 
     try:
-        logger.info(f"{req.name}: checking if {req} was already built")
+        logger.info(f"checking if {req} was already built")
         url, _ = wheels.resolve_prebuilt_wheel(
             ctx=wkctx,
             req=req,
@@ -446,5 +452,5 @@ def _is_wheel_built(
 
         return is_built, pathlib.Path(wheel_filename)
     except Exception:
-        logger.info(f"{req.name}: could not locate prebuilt wheel. Will build {req}")
+        logger.info(f"could not locate prebuilt wheel. Will build {req}")
         return False, None

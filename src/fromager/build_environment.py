@@ -159,12 +159,10 @@ class BuildEnvironment:
 
     def _createenv(self) -> None:
         if self.path.exists():
-            logger.info(
-                "%s: reusing build environment in %s", self._req.name, self.path
-            )
+            logger.info("reusing build environment in %s", self.path)
             return
 
-        logger.debug("%s: creating build environment in %s", self._req.name, self.path)
+        logger.debug("creating build environment in %s", self.path)
         # Python 3.12 virtual envs don't have wheel and setuptools by
         # default. Some packages still assume they are installed.
         external_commands.run(
@@ -183,7 +181,7 @@ class BuildEnvironment:
             ],
             network_isolation=self._ctx.network_isolation,
         )
-        logger.info("%s: created build environment in %s", self._req.name, self.path)
+        logger.info("created build environment in %s", self.path)
 
         req_filename = self.path / "requirements.txt"
         # FIXME: Ensure each requirement is pinned to a specific version.
@@ -213,8 +211,7 @@ class BuildEnvironment:
             network_isolation=False,
         )
         logger.info(
-            "%s: installed dependencies into build environment in %s",
-            self._req.name,
+            "installed dependencies into build environment in %s",
             self.path,
         )
 
@@ -226,7 +223,7 @@ def prepare_build_environment(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
 ) -> BuildEnvironment:
-    logger.info(f"{req.name}: preparing build environment")
+    logger.info("preparing build environment")
 
     next_req_type = RequirementType.BUILD_SYSTEM
     build_system_dependencies = dependencies.get_build_system_dependencies(
@@ -244,9 +241,7 @@ def prepare_build_environment(
                 ctx=ctx, req=req, dep=dep, dep_version=None, dep_req_type=next_req_type
             )
         except Exception as err:
-            logger.error(
-                f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
-            )
+            logger.error(f"failed to install {next_req_type} dependency {dep}: {err}")
             raise MissingDependency(
                 ctx,
                 next_req_type,
@@ -270,9 +265,7 @@ def prepare_build_environment(
                 ctx=ctx, req=req, dep=dep, dep_version=None, dep_req_type=next_req_type
             )
         except Exception as err:
-            logger.error(
-                f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
-            )
+            logger.error(f"failed to install {next_req_type} dependency {dep}: {err}")
             raise MissingDependency(
                 ctx,
                 next_req_type,
@@ -293,9 +286,7 @@ def prepare_build_environment(
                 ctx=ctx, req=req, dep=dep, dep_version=None, dep_req_type=next_req_type
             )
         except Exception as err:
-            logger.error(
-                f"{req.name}: failed to install {next_req_type} dependency {dep}: {err}"
-            )
+            logger.error(f"failed to install {next_req_type} dependency {dep}: {err}")
             raise MissingDependency(
                 ctx,
                 next_req_type,
@@ -318,7 +309,7 @@ def prepare_build_environment(
         # Pip has no API, so parse its output looking for what it
         # couldn't install. If we don't find something, just re-raise
         # the exception we already have.
-        logger.error(f"{req.name}: failed to create build environment for {dep}: {err}")
+        logger.error(f"failed to create build environment for {dep}: {err}")
         logger.info(f"looking for pattern in {err.output!r}")
         match = _pip_missing_dependency_pattern.search(err.output)
         if match:
@@ -346,12 +337,10 @@ def maybe_install(
         try:
             actual_version = importlib.metadata.version(dep.name)
             if str(dep_version) == actual_version:
-                logger.debug(
-                    f"{req.name}: already have {dep.name} version {dep_version} installed"
-                )
+                logger.debug(f"already have {dep.name} version {dep_version} installed")
                 return
             logger.info(
-                f"{req.name}: found {dep.name} {actual_version} installed, updating to {dep_version}"
+                f"found {dep.name} {actual_version} installed, updating to {dep_version}"
             )
             _safe_install(
                 ctx, req, Requirement(f"{dep.name}=={dep_version}"), dep_req_type
@@ -370,7 +359,7 @@ def _safe_install(
     dep: Requirement,
     dep_req_type: RequirementType,
 ):
-    logger.debug("%s: installing %s %s", req.name, dep_req_type, dep)
+    logger.debug("installing %s %s", dep_req_type, dep)
     external_commands.run(
         [
             sys.executable,
@@ -390,4 +379,4 @@ def _safe_install(
         ],
         network_isolation=False,
     )
-    logger.info("%s: installed %s requirement %s", req.name, dep_req_type, dep)
+    logger.info("installed %s requirement %s", dep_req_type, dep)

@@ -101,7 +101,7 @@ class LogReporter(resolvelib.BaseReporter):
         super().__init__()
 
     def _report(self, msg: str, *args: typing.Any) -> None:
-        logger.info("%s: %s", self.req.name, msg % args)
+        logger.info(msg, *args)
 
     def starting(self) -> None:
         self._report("looking for candidates for %r", self.req)

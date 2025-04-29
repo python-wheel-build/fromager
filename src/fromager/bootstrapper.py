@@ -25,6 +25,7 @@ from . import (
     wheels,
 )
 from .dependency_graph import DependencyGraph
+from .log import requirement_ctxvar
 from .requirements_file import RequirementType, SourceType
 
 if typing.TYPE_CHECKING:
@@ -70,7 +71,7 @@ class Bootstrapper:
         constraint = self.ctx.constraints.get_constraint(req.name)
         if constraint:
             logger.info(
-                f"{req.name}: incoming requirement {req} matches constraint {constraint}. Will apply both."
+                f"incoming requirement {req} matches constraint {constraint}. Will apply both."
             )
 
         pbi = self.ctx.package_build_info(req)
@@ -98,15 +99,13 @@ class Bootstrapper:
         # Avoid cyclic dependencies and redundant processing.
         if self._has_been_seen(req, resolved_version, build_sdist_only):
             logger.debug(
-                f"{req.name}: redundant {req_type} dependency {req} "
+                f"redundant {req_type} dependency {req} "
                 f"({resolved_version}, sdist_only={build_sdist_only}) for {self._explain}"
             )
             return resolved_version
         self._mark_as_seen(req, resolved_version, build_sdist_only)
 
-        logger.info(
-            f"{req.name}: new {req_type} dependency {req} resolves to {resolved_version}"
-        )
+        logger.info(f"new {req_type} dependency {req} resolves to {resolved_version}")
 
         # Build the dependency chain up to the point of this new
         # requirement using a new list so we can avoid modifying the list
@@ -160,7 +159,7 @@ class Bootstrapper:
 
             if cached_wheel_filename:
                 logger.debug(
-                    f"{req.name}: getting install requirements from cached "
+                    f"getting install requirements from cached "
                     f"wheel {cached_wheel_filename.name}"
                 )
                 # prefer existing wheel even in sdist_only mode
@@ -170,7 +169,7 @@ class Bootstrapper:
             elif build_sdist_only:
                 # get install dependencies from sdist and pyproject_hooks (only top-level and install)
                 logger.debug(
-                    f"{req.name}: getting install requirements from sdist "
+                    f"getting install requirements from sdist "
                     f"{req.name}=={resolved_version} ({req_type})"
                 )
                 wheel_filename = None
@@ -180,7 +179,7 @@ class Bootstrapper:
             else:
                 # build wheel (build requirements, full build mode)
                 logger.debug(
-                    f"{req.name}: building wheel {req.name}=={resolved_version} "
+                    f"building wheel {req.name}=={resolved_version} "
                     f"to get install requirements ({req_type})"
                 )
                 wheel_filename, sdist_filename, build_env = self._build_wheel(
@@ -287,7 +286,7 @@ class Bootstrapper:
                     f"{req.name} have sdist version {resolved_version}: {find_sdist_result}"
                 )
         except Exception as err:
-            logger.warning(f"{req.name}: failed to build source distribution: {err}")
+            logger.warning(f"failed to build source distribution: {err}")
         return (sdist_filename, build_env)
 
     def _build_wheel(
@@ -301,7 +300,7 @@ class Bootstrapper:
             req, resolved_version, sdist_root_dir, build_dependencies
         )
 
-        logger.info(f"{req.name}: starting build of {self._explain}")
+        logger.info(f"starting build of {self._explain}")
         built_filename = wheels.build_wheel(
             ctx=self.ctx,
             req=req,
@@ -313,9 +312,7 @@ class Bootstrapper:
         # When we update the mirror, the built file moves to the
         # downloads directory.
         wheel_filename = self.ctx.wheels_downloads / built_filename.name
-        logger.info(
-            f"{req.name}: built wheel for version {resolved_version}: {wheel_filename}"
-        )
+        logger.info(f"built wheel for version {resolved_version}: {wheel_filename}")
         return wheel_filename, sdist_filename, build_env
 
     def _prepare_build_dependencies(
@@ -363,9 +360,11 @@ class Bootstrapper:
         self.progressbar.update_total(len(build_dependencies))
 
         for dep in self._sort_requirements(build_dependencies):
+            token = requirement_ctxvar.set(dep)
             try:
                 resolved = self.bootstrap(req=dep, req_type=build_type)
             except Exception as err:
+                requirement_ctxvar.reset(token)
                 raise ValueError(f"could not handle {self._explain}") from err
             # We may need these dependencies installed in order to run build hooks
             # Example: frozenlist build-system.requires includes expandvars because
@@ -378,6 +377,7 @@ class Bootstrapper:
                 dep_req_type=build_type,
             )
             self.progressbar.update()
+            requirement_ctxvar.reset(token)
 
     def _download_prebuilt(
         self,
@@ -386,7 +386,7 @@ class Bootstrapper:
         resolved_version: Version,
         wheel_url: str,
     ) -> tuple[pathlib.Path, pathlib.Path]:
-        logger.info(f"{req.name}: {req_type} requirement {req} uses a pre-built wheel")
+        logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
 
         wheel_filename = wheels.download_wheel(req, wheel_url, self.ctx.wheels_prebuilt)
 
@@ -397,7 +397,7 @@ class Bootstrapper:
         # index.
         dest_name = self.ctx.wheels_downloads / wheel_filename.name
         if not dest_name.exists():
-            logger.info(f"{req.name}: updating temporary mirror with pre-built wheel")
+            logger.info("updating temporary mirror with pre-built wheel")
             shutil.copy(wheel_filename, dest_name)
             server.update_wheel_mirror(self.ctx)
         unpack_dir = self._create_unpack_dir(req, resolved_version)
@@ -409,7 +409,7 @@ class Bootstrapper:
         if not self.cache_wheel_server_url:
             return None, None
         logger.info(
-            f"{req.name}: checking if wheel was already uploaded to {self.cache_wheel_server_url}"
+            f"checking if wheel was already uploaded to {self.cache_wheel_server_url}"
         )
         try:
             wheel_url, _ = resolver.resolve(
@@ -423,7 +423,7 @@ class Bootstrapper:
             pbi = self.ctx.package_build_info(req)
             expected_build_tag = pbi.build_tag(resolved_version)
             # Log the expected build tag for debugging
-            logger.info(f"{req.name}: has expected build tag {expected_build_tag}")
+            logger.info(f"has expected build tag {expected_build_tag}")
             # Get changelogs for debug info
             changelogs = pbi.get_changelog(resolved_version)
             logger.debug(f"{req.name} has change logs {changelogs}")
@@ -433,7 +433,7 @@ class Bootstrapper:
             )
             if expected_build_tag and expected_build_tag != build_tag:
                 logger.info(
-                    f"{req.name}: found wheel for {resolved_version} in cache but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
+                    f"found wheel for {resolved_version} in cache but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
                 )
                 return None, None
 
@@ -444,7 +444,7 @@ class Bootstrapper:
                 # Only update the local server if we actually downloaded
                 # something from a different server.
                 server.update_wheel_mirror(self.ctx)
-            logger.info(f"{req.name}: found built wheel on cache server")
+            logger.info("found built wheel on cache server")
             unpack_dir = self._create_unpack_dir(req, resolved_version)
             dist_filename = f"{dist_name}-{dist_version}"
             metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
@@ -464,18 +464,16 @@ class Bootstrapper:
                     zipinfo.filename = filename
                     archive.extract(zipinfo, unpack_dir)
 
-                logger.info(f"{req.name}: extracted build requirements from wheel")
+                logger.info("extracted build requirements from wheel")
                 return unpack_dir / metadata_dir, cached_wheel
             except Exception:
                 # implies that the wheel server hosted non-fromager built wheels
-                logger.info(
-                    f"{req.name}: could not extract build requirements from wheel"
-                )
+                logger.info("could not extract build requirements from wheel")
                 shutil.rmtree(unpack_dir)
                 return None, cached_wheel
         except Exception:
             logger.info(
-                f"{req.name}: did not find wheel for {resolved_version} in {self.cache_wheel_server_url}"
+                f"did not find wheel for {resolved_version} in {self.cache_wheel_server_url}"
             )
             return None, None
 
@@ -491,9 +489,7 @@ class Bootstrapper:
         )
         if cached_resolution:
             source_url, resolved_version = cached_resolution
-            logger.debug(
-                f"{req.name}: resolved from previous bootstrap to {resolved_version}"
-            )
+            logger.debug(f"resolved from previous bootstrap to {resolved_version}")
         else:
             source_url, resolved_version = sources.resolve_source(
                 ctx=self.ctx,
@@ -516,9 +512,7 @@ class Bootstrapper:
 
         if cached_resolution:
             wheel_url, resolved_version = cached_resolution
-            logger.debug(
-                f"{req.name}: resolved from previous bootstrap to {resolved_version}"
-            )
+            logger.debug(f"resolved from previous bootstrap to {resolved_version}")
         else:
             servers = wheels.get_wheel_server_urls(self.ctx, req)
             wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
@@ -548,7 +542,7 @@ class Bootstrapper:
             # this should never happen since we already resolved top level reqs and their
             # resolution should be in the root nodes
             raise ValueError(
-                f"{req.name}: {req} appears as a toplevel requirement but it's resolution does not exist in the root node of the graph"
+                f"{req} appears as a toplevel requirement but it's resolution does not exist in the root node of the graph"
             )
 
         if not self.prev_graph:
@@ -618,9 +612,7 @@ class Bootstrapper:
             )
             return resolver.resolve_from_provider(provider, req)
         except Exception as err:
-            logger.debug(
-                f"{req.name}: could not resolve {req} from {version_source}: {err}"
-            )
+            logger.debug(f"could not resolve {req} from {version_source}: {err}")
             return None
 
     def _create_unpack_dir(self, req: Requirement, resolved_version: Version):
@@ -641,13 +633,13 @@ class Bootstrapper:
         # Cleanup the source tree and build environment, leaving any other
         # artifacts that were created.
         if sdist_root_dir and sdist_root_dir.exists():
-            logger.debug(f"{req.name}: cleaning up source tree {sdist_root_dir}")
+            logger.debug(f"cleaning up source tree {sdist_root_dir}")
             shutil.rmtree(sdist_root_dir)
-            logger.debug(f"{req.name}: cleaned up source tree {sdist_root_dir}")
+            logger.debug(f"cleaned up source tree {sdist_root_dir}")
         if build_env and build_env.path.exists():
-            logger.debug(f"{req.name}: cleaning up build environment {build_env.path}")
+            logger.debug(f"cleaning up build environment {build_env.path}")
             shutil.rmtree(build_env.path)
-            logger.debug(f"{req.name}: cleaned up build environment {build_env.path}")
+            logger.debug(f"cleaned up build environment {build_env.path}")
 
     def _add_to_graph(
         self,
@@ -736,7 +728,7 @@ class Bootstrapper:
         key = (canonicalize_name(req.name), str(version))
         if key in self._build_requirements:
             return
-        logger.info(f"{req.name}: adding {key} to build order")
+        logger.info(f"adding {key} to build order")
         self._build_requirements.add(key)
         info = {
             "req": str(req),
