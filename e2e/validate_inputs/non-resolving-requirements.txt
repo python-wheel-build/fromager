@@ -1,0 +1,4 @@
+# This requirements.txt is used for testing check_requirements_resolve
+# command of fromager and contains a non-resolving packages
+
+not_a_real_pkg==1.0.0
