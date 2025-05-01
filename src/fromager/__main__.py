@@ -18,8 +18,9 @@ from . import (
 
 logger = logging.getLogger(__name__)
 
-TERSE_LOG_FMT = "%(message)s"
-VERBOSE_LOG_FMT = "%(levelname)s:%(name)s:%(lineno)d: %(message)s"
+TERSE_LOG_FMT = "%(asctime)s %(levelname)s %(message)s"
+TERSE_DATE_FMT = "%H:%M:%S"
+VERBOSE_LOG_FMT = "%(asctime)s %(levelname)s:%(name)s:%(lineno)d: %(message)s"
 _DEBUG = False
 
 try:
@@ -50,6 +51,12 @@ else:
     "--log-file",
     type=clickext.ClickPath(),
     help="save detailed report of actions to file",
+)
+@click.option(
+    "--log-format",
+    type=str,
+    default="",
+    help="python log format instructions, refer to https://docs.python.org/3/library/logging.html#logrecord-attributes for details",
 )
 @click.option(
     "--error-log-file",
@@ -136,6 +143,7 @@ def main(
     verbose: bool,
     debug: bool,
     log_file: pathlib.Path,
+    log_format: str,
     error_log_file: pathlib.Path,
     sdists_repo: pathlib.Path,
     wheels_repo: pathlib.Path,
@@ -162,7 +170,12 @@ def main(
     # level.
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
-    stream_formatter = logging.Formatter(VERBOSE_LOG_FMT if verbose else TERSE_LOG_FMT)
+    log_format = log_format or (VERBOSE_LOG_FMT if verbose else TERSE_LOG_FMT)
+    date_format: str | None = None if verbose else TERSE_DATE_FMT
+    stream_formatter = logging.Formatter(
+        log_format,
+        datefmt=date_format,
+    )
     stream_handler.setFormatter(stream_formatter)
     logging.getLogger().addHandler(stream_handler)
     # If we're given an error log file, configure a file handler for all error
