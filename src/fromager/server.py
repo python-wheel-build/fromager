@@ -3,12 +3,12 @@ from __future__ import annotations
 import functools
 import http.server
 import logging
-import os
+import pathlib
 import shutil
 import threading
 import typing
 
-from . import external_commands
+from packaging.utils import parse_wheel_filename
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -60,18 +60,38 @@ def run_wheel_server(
     return t
 
 
+_ever_built = False
+
+
 def update_wheel_mirror(ctx: context.WorkContext) -> None:
-    logger.debug("updating wheel mirror")
+    global _ever_built
+
+    to_update: list[pathlib.Path] = []
+
     for wheel in ctx.wheels_build.glob("*.whl"):
-        logger.debug("adding %s", wheel)
-        shutil.move(wheel, ctx.wheels_downloads / wheel.name)
-    external_commands.run(
-        [
-            "pypi-mirror",
-            "create",
-            "-d",
-            os.fspath(ctx.wheels_downloads),
-            "-m",
-            os.fspath(ctx.wheel_server_dir),
-        ]
-    )
+        logger.info("adding %s to local wheel server", wheel.name)
+        downloads_dest_filename = ctx.wheels_downloads / wheel.name
+        # Always move the file so the code managing the timer for the
+        # wheels does not find more than one wheel in the build
+        # directory.
+        shutil.move(wheel, downloads_dest_filename)
+        to_update.append(downloads_dest_filename)
+
+    # Make sure we process all the existing wheels the first time we're invoked
+    # because after that we only update the ones that are built to avoid looping
+    # over an ever growing list of files doing the same work to create the same
+    # symlinks.
+    if not _ever_built:
+        to_update = list(ctx.wheels_downloads.glob("*.whl"))
+        _ever_built = True
+
+    for wheel in to_update:
+        # Now also symlink the files into the simple hierarchy.
+        (normalized_name, _, _, _) = parse_wheel_filename(wheel.name)
+        simple_dest_filename = ctx.wheel_server_dir / normalized_name / wheel.name
+        if simple_dest_filename.exists():
+            logger.debug("already have %s", simple_dest_filename)
+            continue
+        logger.debug("linking %s into local index", wheel.name)
+        simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
+        simple_dest_filename.symlink_to(downloads_dest_filename)

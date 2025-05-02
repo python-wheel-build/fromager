@@ -298,7 +298,9 @@ def build_wheel(
     # End the timer
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if len(wheels) != 1:
-        raise FileNotFoundError("Could not locate built wheels")
+        raise FileNotFoundError(
+            f"Expected 1 built wheel in {ctx.wheels_build}, got {len(wheels)}"
+        )
 
     wheel = add_extra_metadata_to_wheels(
         ctx=ctx,
