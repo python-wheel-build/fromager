@@ -23,7 +23,8 @@ cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
 rm -r "$OUTDIR/work-dir" "$OUTDIR/sdists-repo" "$OUTDIR/wheels-repo"
 
 # Rebuild the wheel mirror to be empty
-pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
+rm -rf "$OUTDIR/wheels-repo/simple"
+mkdir -p "$OUTDIR/wheels-repo/simple"
 
 start_local_wheel_server
 
@@ -74,13 +75,6 @@ build_wheel() {
 
     # Move the built wheel into place
     mv "$OUTDIR"/wheels-repo/build/*.whl "$OUTDIR/wheels-repo/downloads/"
-
-    # update the wheel server
-    pypi-mirror \
-        create \
-        -d "$OUTDIR/wheels-repo/downloads/" \
-        -m "$OUTDIR/wheels-repo/simple/"
-
 }
 
 # Create and run a script to build everything, one wheel at a time.

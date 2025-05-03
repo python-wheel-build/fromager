@@ -142,7 +142,7 @@ wheels-repo
 * The `build` sub-directoy holds temporary builds. We use it as the output directory when building the wheel because we can't predict the filename, and so using an empty directory with a name we know gives us a way to find the file and move it into the `downloads` directory after it's built
 * The `downloads` sub-directory contains the wheels in `.whl` format that fromager builds combined with the pre-built wheels so we can create a local package index in `simple`
 * The `prebuilt` sub-directory contains wheels that are being used as prebuilt
-* The `simple` sub-directory is managed by [pypi-mirror](https://pypi.org/project/pypi-mirror/) to create a local wheel index.
+* The `simple` sub-directory is laid out as a simple local wheel index.
 
 For example, the `wheels-repo` for `stevedore` package looks as follows:
 

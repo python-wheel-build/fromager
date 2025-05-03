@@ -34,8 +34,8 @@ rm "$OUTDIR/wheels-repo/downloads/${DIST}"*
 rm "$OUTDIR/sdists-repo/downloads/${DIST}"*
 rm -r "$OUTDIR/work-dir/${DIST}"*
 
-# Rebuild the wheel mirror without stevedore
-pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
+# Remove stevedore from the server directory
+rm -r "$OUTDIR/wheels-repo/simple/stevedore"
 
 # Rebuild the wheel
 fromager \
