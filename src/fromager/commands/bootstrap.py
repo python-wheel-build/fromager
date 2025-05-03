@@ -174,10 +174,8 @@ def bootstrap(
         )
 
         for req in to_build:
-            token = requirement_ctxvar.set(req)
             bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
             progressbar.update()
-            requirement_ctxvar.reset(token)
 
     # If we put pre-built wheels in the downloads directory, we should
     # remove them so we can treat that directory as a source of wheels
