@@ -78,4 +78,4 @@ def update_wheel_mirror(ctx: context.WorkContext) -> None:
             continue
         logger.debug("linking %s into local index", wheel.name)
         simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
-        simple_dest_filename.symlink_to(downloads_dest_filename)
+        simple_dest_filename.symlink_to(wheel)
