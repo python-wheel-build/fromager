@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-import functools
 import http.server
 import logging
 import os
+import pathlib
 import shutil
+import socket
 import threading
 import typing
 
-from . import external_commands
-
 if typing.TYPE_CHECKING:
     from . import context
+
+import pypiserver
+import pypiserver.bottle
+from packaging.utils import parse_wheel_filename
 
 logger = logging.getLogger(__name__)
 
@@ -34,27 +37,24 @@ def run_wheel_server(
     address: str = "localhost",
     port: int = 0,
 ) -> threading.Thread:
-    server = http.server.ThreadingHTTPServer(
-        (address, port),
-        functools.partial(LoggingHTTPRequestHandler, directory=str(ctx.wheels_repo)),
-        bind_and_activate=False,
+    # bottle does not support port 0, get free high port
+    if port == 0:
+        with socket.socket() as s:
+            s.bind((address, 0))
+            port = s.getsockname()[-1]
+
+    ctx.wheel_server_url = f"http://{address}:{port}/simple/"
+    logger.info("starting pypiserver at %s", ctx.wheel_server_url)
+
+    app = pypiserver.app(
+        roots=[str(ctx.wheels_repo)],
+        backend_arg="cached-dir",
+        hash_algo=None,
     )
-    server.timeout = 0.5
-    server.allow_reuse_address = True
-
-    logger.debug(f"address {server.server_address}")
-    server.server_bind()
-    ctx.wheel_server_url = f"http://{address}:{server.server_port}/simple/"
-
-    logger.debug("starting wheel server at %s", ctx.wheel_server_url)
-    server.server_activate()
-
-    def serve_forever(server: http.server.ThreadingHTTPServer) -> None:
-        # ensure server.server_close() is called
-        with server:
-            server.serve_forever()
-
-    t = threading.Thread(target=serve_forever, args=(server,))
+    t = threading.Thread(
+        target=pypiserver.bottle.run,
+        kwargs={"app": app, "host": address, "port": port, "server": "auto"},
+    )
     t.setDaemon(True)
     t.start()
     return t
@@ -65,13 +65,28 @@ def update_wheel_mirror(ctx: context.WorkContext) -> None:
     for wheel in ctx.wheels_build.glob("*.whl"):
         logger.debug("adding %s", wheel)
         shutil.move(wheel, ctx.wheels_downloads / wheel.name)
-    external_commands.run(
-        [
-            "pypi-mirror",
-            "create",
-            "-d",
-            os.fspath(ctx.wheels_downloads),
-            "-m",
-            os.fspath(ctx.wheel_server_dir),
-        ]
-    )
+
+    # map wheels to package names
+    packages: dict[str, list[pathlib.Path]] = {}
+    for wheel in ctx.wheels_downloads.glob("*.whl"):
+        name, _, _, _ = parse_wheel_filename(wheel.name)
+        package = name.replace("_", "-")
+        packages.setdefault(package, []).append(wheel)
+
+    # cleanup stale symlinks
+    for wheel in ctx.wheel_server_dir.glob("*/*.whl"):
+        if not wheel.is_file():
+            logger.debug("removing stale symlink %s", wheel)
+            wheel.unlink()
+
+    # symlink wheels
+    for package, wheels in packages.items():
+        packagedir = ctx.wheel_server_dir / package
+        packagedir.mkdir(exist_ok=True, parents=True)
+        for wheel in wheels:
+            index_wheel = packagedir / wheel.name
+            if not index_wheel.is_symlink():
+                # relative symlink (Path.relative_to() does not work)
+                target = os.path.relpath(wheel, package)
+                logger.debug("symlink %s -> %s", index_wheel, target)
+                index_wheel.symlink_to(target)

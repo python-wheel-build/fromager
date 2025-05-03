@@ -34,3 +34,12 @@ def wheel_server(
     )
     print(f"Listening on {wkctx.wheel_server_url}")
     t.join()
+
+
+@click.command()
+@click.pass_obj
+def refresh_wheel_server(
+    wkctx: context.WorkContext,
+) -> None:
+    "Refresh wheel server"
+    server.update_wheel_mirror(wkctx)

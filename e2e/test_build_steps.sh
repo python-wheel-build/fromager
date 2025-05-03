@@ -20,10 +20,7 @@ fromager \
 
 # Save the build order file but remove everything else.
 cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
-rm -r "$OUTDIR/work-dir" "$OUTDIR/sdists-repo" "$OUTDIR/wheels-repo"
-
-# Rebuild the wheel mirror to be empty
-pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
+rm -r "$OUTDIR/work-dir" "$OUTDIR/sdists-repo" "$OUTDIR/wheels-repo" "$OUTDIR/wheels-repo/simple/"
 
 start_local_wheel_server
 
@@ -76,10 +73,7 @@ build_wheel() {
     mv "$OUTDIR"/wheels-repo/build/*.whl "$OUTDIR/wheels-repo/downloads/"
 
     # update the wheel server
-    pypi-mirror \
-        create \
-        -d "$OUTDIR/wheels-repo/downloads/" \
-        -m "$OUTDIR/wheels-repo/simple/"
+    fromager refresh-wheel-server
 
 }
 

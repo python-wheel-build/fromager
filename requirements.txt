@@ -6,7 +6,7 @@ pkginfo
 psutil
 pydantic
 pyproject_hooks>=1.0.0,!=1.1.0
-python-pypi-mirror
+pypiserver[cache]
 PyYAML
 rich
 requests

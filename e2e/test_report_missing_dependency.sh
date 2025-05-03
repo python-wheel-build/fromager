@@ -30,7 +30,6 @@ done
 
 # Rebuild the wheel mirror to only include the things we have not deleted.
 rm -rf "$OUTDIR/wheels-repo/simple"
-pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
 start_local_wheel_server
 

@@ -24,10 +24,8 @@ fromager \
 # Remove traces of stevedore
 rm "$OUTDIR/wheels-repo/downloads/${DIST}"*
 rm "$OUTDIR/sdists-repo/downloads/${DIST}"*
+rm -rf "$OUTDIR/wheels-repo/simple/${DIST}"
 rm -r "$OUTDIR/work-dir/${DIST}"*
-
-# Rebuild the wheel mirror without stevedore
-pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
 # Rebuild the wheel
 fromager \

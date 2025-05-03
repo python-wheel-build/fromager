@@ -130,5 +130,5 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["pyproject_hooks", "requests_mock", "resolver", "stevedore"]
+module = ["pypiserver", "pypiserver.bottle", "pyproject_hooks", "requests_mock", "resolver", "stevedore"]
 ignore_missing_imports = true
