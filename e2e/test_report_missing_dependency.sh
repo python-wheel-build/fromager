@@ -26,11 +26,8 @@ jq -r '.[] | .edges | .[] | select( .req_type | contains("build-") ) | .key | sp
   | while read -r to_remove; do
   echo "Removing build dependency ${to_remove}"
   rm -f "$OUTDIR/wheels-repo/downloads/${to_remove}"*
+  rm -rf "$OUTDIR/wheels-repo/simple/${to_remove}"*
 done
-
-# Rebuild the wheel mirror to only include the things we have not deleted.
-rm -rf "$OUTDIR/wheels-repo/simple"
-pypi-mirror create -d "$OUTDIR/wheels-repo/downloads/" -m "$OUTDIR/wheels-repo/simple/"
 
 start_local_wheel_server
 
