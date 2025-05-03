@@ -198,6 +198,7 @@ class BuildEnvironment:
                 "pip",
                 "install",
                 "--disable-pip-version-check",
+                "--no-compile",  # don't compile byte code
                 "--only-binary",
                 ":all:",
             ]
@@ -368,6 +369,7 @@ def _safe_install(
             "-vvv",
             "install",
             "--disable-pip-version-check",
+            "--no-compile",  # don't compile byte code
             "--upgrade",
             "--only-binary",
             ":all:",
