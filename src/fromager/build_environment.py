@@ -163,20 +163,13 @@ class BuildEnvironment:
             return
 
         logger.debug("creating build environment in %s", self.path)
-        # Python 3.12 virtual envs don't have wheel and setuptools by
-        # default. Some packages still assume they are installed.
+        # Use venv instead of virtualenv because virtualenv 20.31.0 broke
+        # compatibility by removing the --wheel commandline option.
         external_commands.run(
             [
                 sys.executable,
                 "-m",
-                "virtualenv",
-                "--python",
-                sys.executable,
-                "--pip=bundle",
-                "--setuptools=bundle",
-                "--wheel=bundle",
-                "--no-periodic-update",
-                "--no-download",
+                "venv",
                 str(self.path),
             ],
             network_isolation=self._ctx.network_isolation,
