@@ -14,6 +14,7 @@ VERSION="1.6.0"
 
 # Bootstrap the test project
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     $NETWORK_ISOLATION \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \

@@ -13,6 +13,7 @@ VERSION="2.1.5"
 
 # Bootstrap the test project
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     $NETWORK_ISOLATION \
     --verbose \
     --sdists-repo="$OUTDIR/sdists-repo" \

@@ -14,6 +14,7 @@ VER=78.1.0
 # run fromager once to build wheels that can be used by a local wheel server
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --debug \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
@@ -32,6 +33,7 @@ rm -rf "$OUTDIR/wheels-repo/simple"
 rm "$OUTDIR/bootstrap.log"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --debug \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
@@ -78,6 +80,7 @@ rm -rf "$OUTDIR/wheels-repo/download"
 rm "$OUTDIR/bootstrap.log"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --debug \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \

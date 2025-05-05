@@ -9,6 +9,7 @@ source "$SCRIPTDIR/common.sh"
 
 # Bootstrap the test project
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   -v \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \

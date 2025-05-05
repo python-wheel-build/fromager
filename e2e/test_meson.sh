@@ -12,6 +12,7 @@ VERSION="1.5.0"
 
 # Bootstrap the test project
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \

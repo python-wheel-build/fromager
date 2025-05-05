@@ -5,6 +5,7 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
@@ -22,6 +23,7 @@ rm -rf "$OUTDIR/wheels-repo/downloads"
 rm -rf "$OUTDIR/logfile.txt"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
@@ -38,6 +40,7 @@ rm -rf "$OUTDIR/wheels-repo/downloads"
 rm -rf "$OUTDIR/logfile.txt"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \

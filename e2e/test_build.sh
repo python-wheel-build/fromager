@@ -23,6 +23,7 @@ fi
 
 # Bootstrap the test project
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     $NETWORK_ISOLATION \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
@@ -39,6 +40,7 @@ rm -r "$OUTDIR/wheels-repo/simple/stevedore"
 
 # Rebuild the wheel
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --log-file="$OUTDIR/build.log" \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \

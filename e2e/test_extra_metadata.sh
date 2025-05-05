@@ -7,6 +7,7 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \

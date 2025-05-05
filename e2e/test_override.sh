@@ -13,6 +13,7 @@ source "$SCRIPTDIR/common.sh"
 pip install e2e/flit_core_override
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --verbose \
   --log-file="$OUTDIR/bootstrap.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \

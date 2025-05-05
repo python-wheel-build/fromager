@@ -11,7 +11,8 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
 constraints_file=$(mktemp)
-echo "stevedore==4.0.0" > "$constraints_file"
+cp "$SCRIPTDIR/constraints.txt" "$constraints_file"
+echo "stevedore==4.0.0" >> "$constraints_file"
 
 # passing settings to bootstrap but should have 0 effect on it
 fromager \

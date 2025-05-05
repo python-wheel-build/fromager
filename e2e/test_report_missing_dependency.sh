@@ -12,6 +12,7 @@ DIST="stevedore"
 VERSION="5.2.0"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
@@ -36,6 +37,7 @@ version=$(jq -r '.[] | select ( .dist == "'$DIST'" ) | .version' "$OUTDIR/work-d
 
 # Download the source archive
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file "$OUTDIR/build-logs/download-source-archive.log" \
   --work-dir "$OUTDIR/work-dir" \
   --sdists-repo "$OUTDIR/sdists-repo" \
@@ -44,6 +46,7 @@ fromager \
 
 # Prepare the source dir for building
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file "$OUTDIR/build-logs/prepare-source.log" \
   --work-dir "$OUTDIR/work-dir" \
   --sdists-repo "$OUTDIR/sdists-repo" \
@@ -53,6 +56,7 @@ fromager \
 # Prepare the build environment
 build_log="$OUTDIR/build-logs/prepare-build.log"
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file "$build_log" \
   --work-dir "$OUTDIR/work-dir" \
   --sdists-repo "$OUTDIR/sdists-repo" \

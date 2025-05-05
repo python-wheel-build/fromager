@@ -13,6 +13,7 @@ VERSION="5.2.0"
 
 # Bootstrap the test project
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \
@@ -35,6 +36,7 @@ build_wheel() {
 
     # Download the source archive
     fromager \
+        --constraints-file="$SCRIPTDIR/constraints.txt" \
         --log-file "$OUTDIR/build-logs/${dist}-download-source-archive.log" \
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
@@ -43,6 +45,7 @@ build_wheel() {
 
     # Prepare the source dir for building
     fromager \
+        --constraints-file="$SCRIPTDIR/constraints.txt" \
         --log-file "$OUTDIR/build-logs/${dist}-prepare-source.log" \
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
@@ -51,6 +54,7 @@ build_wheel() {
 
     # Prepare the build environment
     fromager \
+        --constraints-file="$SCRIPTDIR/constraints.txt" \
         --log-file "$OUTDIR/build-logs/${dist}-prepare-build.log" \
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
@@ -59,6 +63,7 @@ build_wheel() {
 
     # Build an updated sdist
     fromager \
+        --constraints-file="$SCRIPTDIR/constraints.txt" \
         --log-file "$OUTDIR/build-logs/${dist}-build-sdist.log" \
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \
@@ -67,6 +72,7 @@ build_wheel() {
 
     # Build the wheel
     fromager \
+        --constraints-file="$SCRIPTDIR/constraints.txt" \
         --log-file "$OUTDIR/build-logs/${dist}-prepare-build.log" \
         --work-dir "$OUTDIR/work-dir" \
         --sdists-repo "$OUTDIR/sdists-repo" \

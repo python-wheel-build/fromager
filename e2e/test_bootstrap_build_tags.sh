@@ -8,6 +8,7 @@ source "$SCRIPTDIR/common.sh"
 
 # bootstrap stevedore with 1 change log
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file="$OUTDIR/bootstrap1.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \
@@ -47,6 +48,7 @@ start_local_wheel_server
 
 LOGFILE="$OUTDIR/bootstrap2.log"
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file="$LOGFILE" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \
@@ -69,6 +71,7 @@ find "$OUTDIR/wheels-repo"
 
 LOGFILE="$OUTDIR/bootstrap3.log"
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file="$LOGFILE" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \
@@ -87,6 +90,7 @@ $pass
 # bootstrap stevedore with 2 changelog. should result in a build instead of being skipped
 LOGFILE="$OUTDIR/bootstrap4.log"
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file="$LOGFILE" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \

@@ -9,6 +9,7 @@ source "$SCRIPTDIR/common.sh"
 GIT_REPO_URL="https://opendev.org/openstack/stevedore.git"
 
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --debug \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \

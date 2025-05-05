@@ -15,6 +15,7 @@ pip install e2e/stevedore_override
 
 # Download the source archive
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --log-file "$OUTDIR/build-logs/${DIST}-download-source-archive.log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -24,6 +25,7 @@ fromager \
 # Prepare the source dir for building
 rm -rf "$OUTDIR/work-dir/${DIST}*"
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --log-file "$OUTDIR/build-logs/${DIST}-prepare-source.log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -32,6 +34,7 @@ fromager \
 
 # Prepare the build environment
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --log-file "$OUTDIR/build-logs/${DIST}-prepare-build.log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -41,6 +44,7 @@ fromager \
 # Build an updated sdist
 rm -rf "$OUTDIR/sdists-repo/builds"
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --log-file "$OUTDIR/build-logs/${DIST}-build-sdist.log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \

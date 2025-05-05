@@ -16,6 +16,7 @@ VERSION="3.9.0"
 
 # Get the wheel we need from PyPI
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --sdists-repo="$INIT/sdists-repo" \
   --wheels-repo="$INIT/wheels-repo" \
   --work-dir="$INIT/work-dir" \
@@ -48,6 +49,7 @@ EOF
 # Bootstrap the package we modified, and another that we don't have on
 # the local server.
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   -v \
   --settings-dir="$TESTDIR/overrides/settings" \
   --sdists-repo="$INIT/sdists-repo" \

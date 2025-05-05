@@ -10,6 +10,7 @@ DIST="flit_core<2.0.1"
 
 # building flit_core 2.0 is not possible because it requires pytoml. we just care about resolution anyways
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --verbose \
   --log-file="$OUTDIR/bootstrap.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \

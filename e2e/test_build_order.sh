@@ -12,6 +12,7 @@ VERSION="5.2.0"
 
 # Bootstrap the test project
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \
@@ -24,6 +25,7 @@ cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
 # Rebuild everything even if it already exists
 log="$OUTDIR/build-logs/${DIST}-build.log"
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \

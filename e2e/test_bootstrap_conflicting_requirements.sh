@@ -12,6 +12,7 @@ source "$SCRIPTDIR/common.sh"
 
 # passing settings to bootstrap but should have 0 effect on it
 fromager \
+  --constraints-file="$SCRIPTDIR/constraints.txt" \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \

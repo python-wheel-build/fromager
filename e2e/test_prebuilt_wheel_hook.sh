@@ -15,6 +15,7 @@ pip install e2e/fromager_hooks
 
 # Bootstrap the test project
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \
@@ -29,6 +30,7 @@ rm -rf "$OUTDIR/wheels-repo"
 
 log="$OUTDIR/build-logs/${DIST}-build.log"
 fromager \
+    --constraints-file="$SCRIPTDIR/constraints.txt" \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
