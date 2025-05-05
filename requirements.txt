@@ -10,7 +10,7 @@ PyYAML
 rich
 requests
 resolvelib
-setuptools>=73.0.0 # https://github.com/pypa/setuptools/issues/4519
+setuptools>=73.0.0,<80.3.0 # https://github.com/pypa/setuptools/issues/4519
 stevedore
 tomlkit
 tqdm
