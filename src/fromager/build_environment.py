@@ -194,6 +194,7 @@ class BuildEnvironment:
                 "--no-compile",  # don't compile byte code
                 "--only-binary",
                 ":all:",
+                "--no-cache-dir",
             ]
             + self._ctx.pip_wheel_server_args
             + self._ctx.pip_constraint_args
