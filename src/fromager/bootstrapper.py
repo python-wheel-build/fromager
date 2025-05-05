@@ -317,7 +317,7 @@ class Bootstrapper:
             else:
                 sdist_filename = find_sdist_result
                 logger.info(
-                    f"{req.name} have sdist version {resolved_version}: {find_sdist_result}"
+                    f"have sdist version {resolved_version}: {find_sdist_result}"
                 )
         except Exception as err:
             logger.warning(f"failed to build source distribution: {err}")
@@ -446,7 +446,7 @@ class Bootstrapper:
         pbi = self.ctx.package_build_info(req)
         expected_build_tag = pbi.build_tag(resolved_version)
         logger.info(
-            f"{req.name}: looking for existing wheel for version {resolved_version} with build tag {expected_build_tag} in {search_in}"
+            f"looking for existing wheel for version {resolved_version} with build tag {expected_build_tag} in {search_in}"
         )
         wheel_filename = finders.find_wheel(
             downloads_dir=search_in,
@@ -460,11 +460,11 @@ class Bootstrapper:
         _, _, build_tag, _ = wheels.extract_info_from_wheel_file(req, wheel_filename)
         if expected_build_tag and expected_build_tag != build_tag:
             logger.info(
-                f"{req.name}: found wheel for {resolved_version} in {wheel_filename} but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
+                f"found wheel for {resolved_version} in {wheel_filename} but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
             )
             return None, None
 
-        logger.info(f"{req.name}: found existing wheel {wheel_filename}")
+        logger.info(f"found existing wheel {wheel_filename}")
         metadata_dir = self._unpack_metadata_from_wheel(
             req, resolved_version, wheel_filename
         )
@@ -546,17 +546,13 @@ class Bootstrapper:
                 )
                 zipinfo.filename = filename
                 output_file = archive.extract(zipinfo, output_dir)
-                logger.info(f"{req.name}: extracted {output_file}")
+                logger.info(f"extracted {output_file}")
 
-            logger.info(
-                f"{req.name}: extracted build requirements from wheel into {output_dir}"
-            )
+            logger.info(f"extracted build requirements from wheel into {output_dir}")
             return output_dir
         except Exception as e:
             # implies that the wheel server hosted non-fromager built wheels
-            logger.info(
-                f"{req.name}: could not extract build requirements from wheel: {e}"
-            )
+            logger.info(f"could not extract build requirements from wheel: {e}")
             shutil.rmtree(output_dir)
             return None
 
