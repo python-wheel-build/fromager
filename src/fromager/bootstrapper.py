@@ -236,10 +236,13 @@ class Bootstrapper:
 
         self.progressbar.update_total(len(install_dependencies))
         for dep in self._sort_requirements(install_dependencies):
+            token = requirement_ctxvar.set(dep)
             try:
-                self.bootstrap(dep, child_req_type)
+                self.bootstrap(req=dep, req_type=child_req_type)
             except Exception as err:
                 raise ValueError(f"could not handle {self._explain}") from err
+            finally:
+                requirement_ctxvar.reset(token)
             self.progressbar.update()
 
         # we are done processing this req, so lets remove it from the why chain
