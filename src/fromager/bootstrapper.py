@@ -115,8 +115,13 @@ class Bootstrapper:
         # for cleanup
         build_env: build_environment.BuildEnvironment | None = None
         sdist_root_dir: pathlib.Path | None = None
+        cached_wheel_filename: pathlib.Path | None = None
         wheel_filename: pathlib.Path | None = None
         sdist_filename: pathlib.Path | None = None
+        unpack_dir: pathlib.Path | None = None
+        unpacked_cached_wheel: pathlib.Path | None = None
+
+        source_url_type = sources.get_source_type(self.ctx, req)
 
         if pbi.pre_built:
             wheel_filename, unpack_dir = self._download_prebuilt(
@@ -125,16 +130,45 @@ class Bootstrapper:
                 resolved_version=resolved_version,
                 wheel_url=source_url,
             )
-
             # Remember that this is a prebuilt wheel, and where we got it.
             source_url_type = str(SourceType.PREBUILT)
         else:
-            unpacked_cached_wheel, cached_wheel_filename = (
-                self._download_wheel_from_cache(req, resolved_version)
-            )
-            source_url_type = sources.get_source_type(self.ctx, req)
+            # Look a few places for an existing wheel that matches what we need,
+            # using caches for locations where we might have built the wheel
+            # before.
+
+            # Check if we have previously built a wheel and still have it on the
+            # local filesystem.
+            if not wheel_filename and not cached_wheel_filename:
+                cached_wheel_filename, unpacked_cached_wheel = (
+                    self._look_for_existing_wheel(
+                        req,
+                        resolved_version,
+                        self.ctx.wheels_build,
+                    )
+                )
+
+            # Check if we have previously downloaded a wheel and still have it
+            # on the local filesystem.
+            if not wheel_filename and not cached_wheel_filename:
+                cached_wheel_filename, unpacked_cached_wheel = (
+                    self._look_for_existing_wheel(
+                        req,
+                        resolved_version,
+                        self.ctx.wheels_downloads,
+                    )
+                )
+
+            # Look for a wheel on the cache server and download it if there is
+            # one.
+            if not wheel_filename and not cached_wheel_filename:
+                cached_wheel_filename, unpacked_cached_wheel = (
+                    self._download_wheel_from_cache(req, resolved_version)
+                )
 
             if not unpacked_cached_wheel:
+                # We didn't find anything so we are going to have to build the
+                # wheel in order to process its installation dependencies.
                 source_filename = sources.download_source(
                     ctx=self.ctx,
                     req=req,
@@ -286,7 +320,7 @@ class Bootstrapper:
             else:
                 sdist_filename = find_sdist_result
                 logger.info(
-                    f"{req.name} have sdist version {resolved_version}: {find_sdist_result}"
+                    f"have sdist version {resolved_version}: {find_sdist_result}"
                 )
         except Exception as err:
             logger.warning(f"failed to build source distribution: {err}")
@@ -406,6 +440,39 @@ class Bootstrapper:
         unpack_dir = self._create_unpack_dir(req, resolved_version)
         return (wheel_filename, unpack_dir)
 
+    def _look_for_existing_wheel(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        search_in: pathlib.Path,
+    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+        pbi = self.ctx.package_build_info(req)
+        expected_build_tag = pbi.build_tag(resolved_version)
+        logger.info(
+            f"looking for existing wheel for version {resolved_version} with build tag {expected_build_tag} in {search_in}"
+        )
+        wheel_filename = finders.find_wheel(
+            downloads_dir=search_in,
+            req=req,
+            dist_version=str(resolved_version),
+            build_tag=expected_build_tag,
+        )
+        if not wheel_filename:
+            return None, None
+
+        _, _, build_tag, _ = wheels.extract_info_from_wheel_file(req, wheel_filename)
+        if expected_build_tag and expected_build_tag != build_tag:
+            logger.info(
+                f"found wheel for {resolved_version} in {wheel_filename} but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
+            )
+            return None, None
+
+        logger.info(f"found existing wheel {wheel_filename}")
+        metadata_dir = self._unpack_metadata_from_wheel(
+            req, resolved_version, wheel_filename
+        )
+        return wheel_filename, metadata_dir
+
     def _download_wheel_from_cache(
         self, req: Requirement, resolved_version: Version
     ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
@@ -448,37 +515,49 @@ class Bootstrapper:
                 # something from a different server.
                 server.update_wheel_mirror(self.ctx)
             logger.info("found built wheel on cache server")
-            unpack_dir = self._create_unpack_dir(req, resolved_version)
-            dist_filename = f"{dist_name}-{dist_version}"
-            metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
-            try:
-                archive = zipfile.ZipFile(cached_wheel)
-                for filename in [
-                    dependencies.BUILD_BACKEND_REQ_FILE_NAME,
-                    dependencies.BUILD_SDIST_REQ_FILE_NAME,
-                    dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
-                ]:
-                    zipinfo = archive.getinfo(
-                        str(
-                            metadata_dir
-                            / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}"
-                        )
-                    )
-                    zipinfo.filename = filename
-                    archive.extract(zipinfo, unpack_dir)
-
-                logger.info("extracted build requirements from wheel")
-                return unpack_dir / metadata_dir, cached_wheel
-            except Exception:
-                # implies that the wheel server hosted non-fromager built wheels
-                logger.info("could not extract build requirements from wheel")
-                shutil.rmtree(unpack_dir)
-                return None, cached_wheel
+            unpack_dir = self._unpack_metadata_from_wheel(
+                req, resolved_version, cached_wheel
+            )
+            return cached_wheel, unpack_dir
         except Exception:
             logger.info(
                 f"did not find wheel for {resolved_version} in {self.cache_wheel_server_url}"
             )
             return None, None
+
+    def _unpack_metadata_from_wheel(
+        self, req: Requirement, resolved_version: Version, wheel_filename: pathlib.Path
+    ) -> pathlib.Path | None:
+        dist_name, dist_version, build_tag, _ = wheels.extract_info_from_wheel_file(
+            req,
+            wheel_filename,
+        )
+        unpack_dir = self._create_unpack_dir(req, resolved_version)
+        dist_filename = f"{dist_name}-{dist_version}"
+        metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
+        output_dir = unpack_dir / metadata_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            archive = zipfile.ZipFile(wheel_filename)
+            for filename in [
+                dependencies.BUILD_BACKEND_REQ_FILE_NAME,
+                dependencies.BUILD_SDIST_REQ_FILE_NAME,
+                dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
+            ]:
+                zipinfo = archive.getinfo(
+                    str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
+                )
+                zipinfo.filename = filename
+                output_file = archive.extract(zipinfo, output_dir)
+                logger.info(f"extracted {output_file}")
+
+            logger.info(f"extracted build requirements from wheel into {output_dir}")
+            return output_dir
+        except Exception as e:
+            # implies that the wheel server hosted non-fromager built wheels
+            logger.info(f"could not extract build requirements from wheel: {e}")
+            shutil.rmtree(output_dir)
+            return None
 
     def _resolve_source_with_history(
         self,
