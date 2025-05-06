@@ -25,7 +25,7 @@ def wheel_server(
     port: int,
     address: str,
 ) -> None:
-    "Start a web server to server the local wheels-repo"
+    "Start a web server to serve the local wheels-repo"
     server.update_wheel_mirror(wkctx)
     t = server.run_wheel_server(
         wkctx,
