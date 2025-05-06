@@ -535,8 +535,6 @@ class Bootstrapper:
         unpack_dir = self._create_unpack_dir(req, resolved_version)
         dist_filename = f"{dist_name}-{dist_version}"
         metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
-        output_dir = unpack_dir / metadata_dir
-        output_dir.mkdir(parents=True, exist_ok=True)
         try:
             archive = zipfile.ZipFile(wheel_filename)
             for filename in [
@@ -548,15 +546,15 @@ class Bootstrapper:
                     str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
                 )
                 zipinfo.filename = filename
-                output_file = archive.extract(zipinfo, output_dir)
+                output_file = archive.extract(zipinfo, unpack_dir)
                 logger.info(f"extracted {output_file}")
 
-            logger.info(f"extracted build requirements from wheel into {output_dir}")
-            return output_dir
+            logger.info(f"extracted build requirements from wheel into {unpack_dir}")
+            return unpack_dir
         except Exception as e:
             # implies that the wheel server hosted non-fromager built wheels
             logger.info(f"could not extract build requirements from wheel: {e}")
-            shutil.rmtree(output_dir)
+            shutil.rmtree(unpack_dir)
             return None
 
     def _resolve_source_with_history(
