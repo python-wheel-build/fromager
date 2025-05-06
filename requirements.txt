@@ -14,5 +14,5 @@ setuptools>=73.0.0 # https://github.com/pypa/setuptools/issues/4519
 stevedore
 tomlkit
 tqdm
-virtualenv<20.31.0
+virtualenv
 wheel
