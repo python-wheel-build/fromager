@@ -337,7 +337,7 @@ class Bootstrapper:
             req, resolved_version, sdist_root_dir, build_dependencies
         )
 
-        logger.info(f"starting build of {self._explain}")
+        logger.info(f"starting build of {self._explain} for {self.ctx.variant}")
         built_filename = wheels.build_wheel(
             ctx=self.ctx,
             req=req,

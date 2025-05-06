@@ -258,7 +258,8 @@ def build_wheel(
 ) -> pathlib.Path:
     pbi = ctx.package_build_info(req)
     logger.info(
-        f"building wheel for {req} in {sdist_root_dir} writing to {ctx.wheels_build}"
+        f"building {ctx.variant} wheel for {req} in {sdist_root_dir} "
+        f"writing to {ctx.wheels_build}"
     )
 
     # add package and variant env vars, package's parallel job vars, and
