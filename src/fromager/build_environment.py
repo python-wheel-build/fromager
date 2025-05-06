@@ -174,7 +174,6 @@ class BuildEnvironment:
                 sys.executable,
                 "--pip=bundle",
                 "--setuptools=bundle",
-                "--wheel=bundle",
                 "--no-periodic-update",
                 "--no-download",
                 str(self.path),
