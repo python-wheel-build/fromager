@@ -607,7 +607,7 @@ def build_sdist(
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(sdist_root_dir)
 
-    logger.info(f"building source distribution in {build_dir}")
+    logger.info(f"building {ctx.variant} source distribution for {req} in {build_dir}")
     extra_environ = pbi.get_extra_environ(build_env=build_env)
     if req.url:
         # The default approach to making an sdist is to make a tarball from the
