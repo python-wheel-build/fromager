@@ -63,9 +63,9 @@ def summarize(ctx: context.WorkContext, prefix: str) -> None:
     logger = logging.getLogger(__name__)
     for req in sorted(ctx.time_store.keys()):
         total_time = sum(ctx.time_store[req].values())
-        log = f"{prefix} {req} took {timedelta(seconds=total_time)} total"
+        log = f"{prefix} {req} took {timedelta(seconds=round(total_time))} total"
         for fn_name, time_taken in ctx.time_store[req].items():
-            log += f", {timedelta(seconds=time_taken)} to {ctx.time_description_store[fn_name]}"
+            log += f", {timedelta(seconds=round(time_taken))} to {ctx.time_description_store[fn_name]}"
         logger.info(log)
 
 
