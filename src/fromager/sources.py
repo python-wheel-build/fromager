@@ -18,6 +18,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from . import (
+    build_environment,
     dependencies,
     external_commands,
     gitutils,
@@ -218,8 +219,16 @@ def resolve_version_from_git_url(
             if not version:
                 # If we still do not have a version, get it from the package
                 # metadata.
-                version = _get_version_from_package_metadata(ctx, req, clone_dir)
-                logger.info("found version %s", version)
+                build_env = build_environment.BuildEnvironment(
+                    ctx=ctx,
+                    parent_dir=pathlib.Path(tmpdir),
+                    build_requirements=None,
+                    req=req,
+                )
+                version = _get_version_from_package_metadata(
+                    ctx, req, clone_dir, build_env
+                )
+                logger.info("found version %s==%s", req.name, version)
                 working_src_dir = (
                     ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
                 )
@@ -252,16 +261,33 @@ def _get_version_from_package_metadata(
     ctx: context.WorkContext,
     req: Requirement,
     source_dir: str,
+    build_env: build_environment.BuildEnvironment,
 ) -> Version:
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(source_dir)
     logger.info("generating metadata to get version")
+
+    build_system_requirements = dependencies.get_build_system_dependencies(
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=source_dir,
+    )
+    build_env.install(build_system_requirements)
+
+    build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=source_dir,
+        build_env=build_env,
+    )
+    build_env.install(build_sdist_dependencies)
 
     hook_caller = dependencies.get_build_backend_hook_caller(
         ctx=ctx,
         req=req,
         build_dir=build_dir,
         override_environ={},
+        build_env=build_env,
     )
     metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
         metadata_directory=source_dir.parent,
@@ -623,6 +649,7 @@ def build_sdist(
             req=req,
             sdist_root_dir=sdist_root_dir,
             version=version,
+            build_env=build_env,
         )
     else:
         sdist_filename = overrides.find_and_invoke(
@@ -687,6 +714,7 @@ def pep517_build_sdist(
     req: Requirement,
     sdist_root_dir: pathlib.Path,
     version: Version,
+    build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
     """Use the PEP 517 API to build a source distribution from a modified source tree."""
     pbi = ctx.package_build_info(req)
@@ -696,6 +724,7 @@ def pep517_build_sdist(
         req=req,
         build_dir=build_dir,
         override_environ=extra_environ,
+        build_env=build_env,
     )
     sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
     return ctx.sdists_builds / sdist_filename
