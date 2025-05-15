@@ -68,6 +68,13 @@ class Bootstrapper:
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
     def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
+        token = requirement_ctxvar.set(req)
+        try:
+            return self._bootstrap(req=req, req_type=req_type)
+        finally:
+            requirement_ctxvar.reset(token)
+
+    def _bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
         constraint = self.ctx.constraints.get_constraint(req.name)
         if constraint:
             logger.info(
@@ -397,11 +404,9 @@ class Bootstrapper:
         self.progressbar.update_total(len(build_dependencies))
 
         for dep in self._sort_requirements(build_dependencies):
-            token = requirement_ctxvar.set(dep)
             try:
                 resolved = self.bootstrap(req=dep, req_type=build_type)
             except Exception as err:
-                requirement_ctxvar.reset(token)
                 raise ValueError(f"could not handle {self._explain}") from err
             # We may need these dependencies installed in order to run build hooks
             # Example: frozenlist build-system.requires includes expandvars because
@@ -414,7 +419,6 @@ class Bootstrapper:
                 dep_req_type=build_type,
             )
             self.progressbar.update()
-            requirement_ctxvar.reset(token)
 
     def _download_prebuilt(
         self,
