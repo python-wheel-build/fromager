@@ -91,6 +91,7 @@ jobs:
           - bootstrap_git_url_tag
           - build
           - build_order
+          - build_parallel
           - build_steps
           - build_settings
           - meson
