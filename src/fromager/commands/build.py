@@ -1,3 +1,4 @@
+import concurrent.futures
 import dataclasses
 import datetime
 import functools
@@ -572,7 +573,6 @@ def build_parallel(
             raise ValueError(f"Circular dependency detected among: {remaining}")
 
         # Build up to jobs nodes concurrently (or all if jobs is None)
-        import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
             # If jobs is None, build all buildable nodes
@@ -595,7 +595,7 @@ def build_parallel(
                 requirement_ctxvar.reset(token)
 
             # Wait for all builds to complete
-            for node, future in zip(nodes_to_process, futures):
+            for node, future in zip(nodes_to_process, futures, strict=True):
                 try:
                     wheel_filename = future.result()
                     server.update_wheel_mirror(wkctx)
@@ -613,7 +613,6 @@ def build_parallel(
                     )
                     built_nodes.add(node.key)
                     nodes_to_build.remove(node)
-                    print(wheel_filename)
                 except Exception as e:
                     logger.error(f"Failed to build {node.key}: {e}")
                     raise
