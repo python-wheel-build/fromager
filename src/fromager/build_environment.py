@@ -163,8 +163,6 @@ class BuildEnvironment:
             return
 
         logger.debug("creating build environment in %s", self.path)
-        # Python 3.12 virtual envs don't have wheel and setuptools by
-        # default. Some packages still assume they are installed.
         external_commands.run(
             [
                 sys.executable,
@@ -173,7 +171,7 @@ class BuildEnvironment:
                 "--python",
                 sys.executable,
                 "--pip=bundle",
-                "--setuptools=bundle",
+                "--setuptools=none",
                 "--no-periodic-update",
                 "--no-download",
                 str(self.path),
