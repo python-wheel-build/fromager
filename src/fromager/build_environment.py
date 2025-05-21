@@ -15,6 +15,7 @@ from packaging.requirements import Requirement
 
 from . import dependencies, external_commands, metrics, resolver
 from .requirements_file import RequirementType
+from .threading_utils import with_thread_lock
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -163,8 +164,6 @@ class BuildEnvironment:
             return
 
         logger.debug("creating build environment in %s", self.path)
-        # Python 3.12 virtual envs don't have wheel and setuptools by
-        # default. Some packages still assume they are installed.
         external_commands.run(
             [
                 sys.executable,
@@ -173,7 +172,7 @@ class BuildEnvironment:
                 "--python",
                 sys.executable,
                 "--pip=bundle",
-                "--setuptools=bundle",
+                "--setuptools=none",
                 "--no-periodic-update",
                 "--no-download",
                 str(self.path),
@@ -325,6 +324,7 @@ def prepare_build_environment(
     return build_env
 
 
+@with_thread_lock()
 def maybe_install(
     ctx: context.WorkContext,
     req: Requirement,
