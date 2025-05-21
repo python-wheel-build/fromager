@@ -14,6 +14,7 @@ from packaging.requirements import Requirement
 
 from . import dependencies, external_commands, metrics, resolver
 from .requirements_file import RequirementType
+from .threading_utils import with_thread_lock
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -268,6 +269,7 @@ def prepare_build_environment(
     return build_env
 
 
+@with_thread_lock()
 def _safe_install(
     ctx: context.WorkContext,
     req: Requirement,
