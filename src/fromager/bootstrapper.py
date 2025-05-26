@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import operator
+import os
 import pathlib
 import shutil
 import typing
@@ -545,6 +546,9 @@ class Bootstrapper:
                 zipinfo = archive.getinfo(
                     str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
                 )
+                # Check for path traversal attempts
+                if os.path.isabs(zipinfo.filename) or ".." in zipinfo.filename:
+                    raise ValueError(f"Unsafe path in wheel: {zipinfo.filename}")
                 zipinfo.filename = filename
                 output_file = archive.extract(zipinfo, unpack_dir)
                 logger.info(f"extracted {output_file}")
