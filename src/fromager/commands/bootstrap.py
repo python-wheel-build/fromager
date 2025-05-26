@@ -87,6 +87,13 @@ def _get_requirements_from_args(
         "wheels."
     ),
 )
+@click.option(
+    "--skip-constraints",
+    "skip_constraints",
+    is_flag=True,
+    default=False,
+    help="Skip generating constraints.txt file to allow building collections with conflicting versions",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -95,6 +102,7 @@ def bootstrap(
     previous_bootstrap_file: str | None,
     cache_wheel_server_url: str | None,
     sdist_only: bool,
+    skip_constraints: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -191,12 +199,15 @@ def bootstrap(
             filename.unlink()
 
     constraints_filename = wkctx.work_dir / "constraints.txt"
-    logger.info(f"writing installation dependencies to {constraints_filename}")
-    with open(constraints_filename, "w") as f:
-        if not write_constraints_file(graph=wkctx.dependency_graph, output=f):
-            raise ValueError(
-                f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
-            )
+    if skip_constraints:
+        logger.info("skipping constraints.txt generation as requested")
+    else:
+        logger.info(f"writing installation dependencies to {constraints_filename}")
+        with open(constraints_filename, "w") as f:
+            if not write_constraints_file(graph=wkctx.dependency_graph, output=f):
+                raise ValueError(
+                    f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
+                )
 
     metrics.summarize(wkctx, "Bootstrapping")
 

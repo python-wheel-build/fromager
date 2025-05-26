@@ -21,6 +21,14 @@ The basic process for using fromager to build a collection of wheels is
    distributions, and packages for which wheels cannot be built from the source
    distribution because it is incomplete.
 
+.. note::
+   For advanced use cases where you need to build collections with conflicting
+   package versions (such as building package indexes or testing with multiple
+   versions), you can use the ``--skip-constraints`` option with the bootstrap
+   command. This bypasses the constraints validation step but may result in a
+   wheel collection that cannot be installed as a coherent set. See the
+   :doc:`how-to` guide for more details.
+
 It may be useful to use a container to run fromager so you can use the
 `Containerfile` to manage the build-time dependencies.
 

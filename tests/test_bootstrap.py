@@ -2,6 +2,7 @@ import io
 import pathlib
 import textwrap
 
+from click.testing import CliRunner
 from packaging.requirements import Requirement
 
 from fromager import dependency_graph
@@ -320,3 +321,13 @@ def test_write_constraints_file_multiples():
         b==0.26.2
         """).lstrip()
     assert expected == buffer.getvalue()
+
+
+def test_skip_constraints_cli_option():
+    """Test that the --skip-constraints option is available in the CLI"""
+    runner = CliRunner()
+    result = runner.invoke(bootstrap.bootstrap, ["--help"])
+
+    # Check that the help text includes our new option
+    assert "--skip-constraints" in result.output
+    assert "Skip generating constraints.txt file" in result.output

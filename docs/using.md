@@ -46,6 +46,31 @@ fast mode that does not build new wheel for `Requires-Dist` dependencies. The
 mode is advised if you just need `build-order.json` and have platlib packages
 that take a lot of time to compile.
 
+### Bootstrap Options
+
+#### Skip Constraints Generation
+
+The `--skip-constraints` option modifies the bootstrap behavior to allow building collections with conflicting package versions:
+
+```bash
+fromager bootstrap --skip-constraints package1==1.0 package2==2.0
+```
+
+When this option is used:
+
+* The `constraints.txt` file generation is bypassed
+* Packages with conflicting version requirements can be built in the same run
+* The dependency resolution and build order logic still applies to individual packages
+* Other output files (`build-order.json`, `graph.json`) are generated normally
+
+This option is useful for:
+
+* Building large package indexes that may contain multiple versions
+* Testing scenarios requiring conflicting package versions  
+* Creating wheel collections where pip-installability is not required
+
+**Important:** The resulting wheel collection may not be installable as a coherent set using pip.
+
 ## Production Builds
 
 Production builds use separate commands for the steps described as
