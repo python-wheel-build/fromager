@@ -1,0 +1,15 @@
+# Example requirements.txt with git submodules support
+# This file shows how to specify git+https:// URLs in requirements.txt
+# that can be configured with git submodules support
+
+# Standard PyPI package
+pydantic-core==2.18.4
+
+# Git repository URL with tag (configure git_options in package settings)
+my-package @ git+https://github.com/example/repo.git@v1.2.3
+
+# Git repository URL with branch
+dev-package @ git+https://github.com/example/dev-repo.git@main
+
+# Git repository URL with commit hash
+fixed-package @ git+https://github.com/example/fixed-repo.git@abc123def456
