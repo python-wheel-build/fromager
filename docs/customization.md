@@ -65,6 +65,8 @@ resolver_dist:
     sdist_server_url: "https://pypi.org/simple"
     include_wheels: true
     include_sdists: false
+git_options:
+    submodules: true  # Clone all submodules for git+https:// URLs
 build_dir: directory name relative to sdist directory, defaults to an empty string, which means to use the sdist directory
 env:
     USE_FFMPEG: "0"
@@ -98,6 +100,69 @@ The source distribution index server used by the package resolver can
 be overriden for a particular package. The resolver can also be told
 to whether include wheels or sdist sources while trying to resolve
 the package. Templating is not supported here.
+
+### Git submodules
+
+When building packages from git repositories using `git+https://` URLs in your
+requirements, you can configure git submodule handling using the `git_options`
+settings. This is useful for packages that depend on external libraries included
+as git submodules.
+
+#### Enabling all submodules
+
+To clone all submodules recursively when building a package from a git repository:
+
+```yaml
+# overrides/settings/my_package.yaml
+git_options:
+  submodules: true
+```
+
+#### Cloning specific submodule paths
+
+To clone only specific submodule paths, which can be more efficient for large
+repositories with many submodules:
+
+```yaml
+# overrides/settings/my_package.yaml
+git_options:
+  submodule_paths:
+    - "vendor/lib1"
+    - "external/dependency"
+    - "third-party/openssl"
+```
+
+#### Combining both settings
+
+When both `submodules` and `submodule_paths` are configured, the
+`submodule_paths` setting takes precedence, and only the specified paths
+will be cloned:
+
+```yaml
+# overrides/settings/my_package.yaml
+git_options:
+  submodules: true          # This will be ignored
+  submodule_paths:          # Only these paths will be cloned
+    - "vendor/lib1"
+    - "vendor/lib2"
+```
+
+Git submodules are supported for packages specified as `git+https://` URLs in
+bootstrap requirements, such as:
+
+```text
+my-package @ git+https://github.com/example/repo.git@v1.2.3
+```
+
+For example requirements with git URLs, see:
+
+.. literalinclude:: example/requirements-git-example.txt
+   :caption: requirements-git-example.txt
+
+For a complete package configuration example, see:
+
+.. literalinclude:: example/git-submodules-example.yaml
+   :caption: git-submodules-example.yaml
 
 ### Build directory
 
