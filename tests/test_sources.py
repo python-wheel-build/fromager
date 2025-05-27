@@ -17,7 +17,7 @@ def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
     text_file = fake_dir / "fake_wheel.txt"
     text_file.write_text("This is a test file")
     req = Requirement("test_pkg==42.1.2")
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         sources._download_source_check(req=req, destination_dir=fake_dir, url=fake_url)
 
 

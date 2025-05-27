@@ -160,6 +160,9 @@ def add_extra_metadata_to_wheels(
         wheel_root_dir.mkdir()
         with zipfile.ZipFile(str(wheel_file)) as zf:
             for infolist in zf.filelist:
+                # Check for path traversal attempts
+                if os.path.isabs(infolist.filename) or ".." in infolist.filename:
+                    raise ValueError(f"Unsafe path in wheel: {infolist.filename}")
                 zf.extract(infolist, wheel_root_dir)
                 # the higher 16 bits store the permissions and type of file (i.e. stat.filemode)
                 # the lower bits of this give us the permission

@@ -333,15 +333,22 @@ def _download_source_check(
         destination_filename=destination_filename,
     )
     if source_filename.suffix == ".zip":
-        source_file_contents = zipfile.ZipFile(source_filename).namelist()
-        if not source_file_contents:
-            raise zipfile.BadZipFile(f"Empty zip file encountered: {source_filename}")
-    elif source_filename.suffix == ".tgz" or source_filename.suffix == ".gz":
+        with zipfile.ZipFile(source_filename) as zip_file:
+            source_file_contents = zip_file.namelist()
+            if not source_file_contents:
+                raise zipfile.BadZipFile(
+                    f"Empty zip file encountered: {source_filename}"
+                )
+    elif (
+        source_filename.suffix == ".tgz"
+        or source_filename.suffix == ".gz"
+        or str(source_filename).endswith(".tar.gz")
+    ):
         with tarfile.open(source_filename) as tar:
             if not tar.next():
-                raise TypeError(f"Empty tar file encountered: {source_filename}")
+                raise tarfile.TarError(f"Empty tar file encountered: {source_filename}")
     else:
-        raise TypeError(
+        raise ValueError(
             f"The source file encountered is not a zip or tar file: {source_filename}"
         )
     return source_filename

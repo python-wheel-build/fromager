@@ -19,8 +19,5 @@ def open_file_or_url(
         response = session.get(location)
         yield io.StringIO(response.text)
     else:
-        f = open(location, "r")
-        try:
+        with open(location, "r") as f:
             yield f
-        finally:
-            f.close()
