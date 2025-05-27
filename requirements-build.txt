@@ -1,2 +1,4 @@
 build
 twine
+hatchling>=1.18.0
+hatch-vcs>=0.3.0

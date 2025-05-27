@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "fromager"
@@ -29,12 +29,26 @@ classifiers = [
 
 requires-python = ">=3.11"
 
-[tool.setuptools.dynamic]
-optional-dependencies.build = { file = ["requirements-build.txt"] }
-optional-dependencies.mypy = { file = ["requirements-mypy.txt"] }
-optional-dependencies.test = { file = ["requirements-test.txt"] }
-optional-dependencies.docs = { file = ["docs/requirements.txt"] }
-dependencies = { file = ["requirements.txt"] }
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fromager"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/fromager",
+    "tests",
+    "docs",
+    "LICENSE",
+    "README.md",
+    "requirements*.txt",
+    "docs/requirements.txt",
+]
+
+[tool.hatch.version]
+source = "vcs"
+version-file = "src/fromager/version.py"
 
 [project.urls]
 Repository = "https://github.com/python-wheel-build/fromager"
@@ -73,9 +87,6 @@ exclude_lines = [
     "@typing.overload",
     "if typing.TYPE_CHECKING",
 ]
-
-[tool.setuptools_scm]
-version_file = "src/fromager/version.py"
 
 [tool.ruff]
 target-version = "py311"

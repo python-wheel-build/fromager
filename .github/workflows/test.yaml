@@ -47,14 +47,14 @@ jobs:
         run: unshare -rn echo "unshare works"
 
       - name: Install dependencies
-        run: python -m pip install tox
+        run: python -m pip install hatch
 
       - name: Run tests
-        run: tox -e py
+        run: hatch run py:test
 
       - name: Run tests for pyo3_test
         working-directory: ./e2e/pyo3_test/
-        run: tox -e py
+        run: hatch run py:test
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -141,7 +141,7 @@ jobs:
         run: unshare -rn echo "unshare works"
 
       - name: Install dependencies
-        run: python -m pip install tox
+        run: python -m pip install hatch
 
       - name: Run tests
         run: ./e2e/test_${{ matrix.test-script }}.sh
@@ -181,7 +181,6 @@ jobs:
           cache: pip
           cache-dependency-path: |
             **/pyproject.toml
-            **/tox.ini
 
       - name: Install dependencies
         run: |

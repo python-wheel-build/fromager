@@ -1,0 +1,47 @@
+[envs]
+default = {dependencies = ["pytest", "coverage[toml]"], extras = ["test"]}
+
+[envs.py]
+inherit = ["default"]
+extras = ["test"]
+scripts.test = "python -m coverage run -m pytest --log-level DEBUG -vv {args}"
+
+[envs.coverage-report]
+dependencies = ["coverage[toml]"]
+scripts.combine = "coverage combine"
+scripts.report = "coverage report"
+
+[envs.linter]
+dependencies = ["ruff", "packaging", "PyYAML"]
+scripts.check = "ruff check src tests"
+scripts.format = "ruff format --check src tests"
+scripts.mergify = "python ./e2e/mergify_lint.py"
+
+[envs.fix]
+dependencies = ["ruff"]
+scripts.format = "ruff format src tests docs"
+scripts.check = "ruff check --fix src tests docs"
+
+[envs.cli]
+dependencies = ["."]
+scripts.run = "fromager {args}"
+
+[envs.e2e]
+dependencies = ["."]
+env-vars = {COVERAGE_PROCESS_START = "{root}/pyproject.toml"}
+scripts.setup = "python -c 'import pathlib; pathlib.Path(\"{env_site_packages_dir}/cov.pth\").write_text(\"import coverage; coverage.process_startup()\")'"
+
+[envs.mypy]
+dependencies = ["mypy"]
+extras = ["mypy"]
+scripts.check = "mypy -p fromager tests/"
+
+[envs.pkglint]
+dependencies = [".[build]", "check-python-versions"]
+scripts.build = "python -m build"
+scripts.check = "twine check dist/*.tar.gz dist/*.whl"
+scripts.versions = "check-python-versions --only pyproject.toml,.github/workflows/test.yml"
+
+[envs.docs]
+dependencies = [".[docs]"]
+scripts.build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args}" 

@@ -25,8 +25,12 @@ mkdir -p "$OUTDIR/build-logs"
 
 # Recreate the virtualenv with fromager installed
 # command_pre hook creates cov.pth
-tox -e e2e -r
-source .tox/e2e/bin/activate
+cd "$(dirname "$SCRIPTDIR")"  # Change to project root
+python -m venv .venv/e2e
+source .venv/e2e/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e .
 
 # Set a variable to constrain packages used in the tests
 export FROMAGER_CONSTRAINTS_FILE="${SCRIPTDIR}/constraints.txt"
