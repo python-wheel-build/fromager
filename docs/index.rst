@@ -32,6 +32,7 @@ those special cases directly into fromager.
    how-to.md
    hooks.rst
    files.md
+   http-retry.md
    config-reference.rst
    cli.rst
    develop.md
