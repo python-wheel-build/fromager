@@ -26,7 +26,11 @@ mkdir -p "$OUTDIR/build-logs"
 # Recreate the virtualenv with fromager installed
 # command_pre hook creates cov.pth
 cd "$(dirname "$SCRIPTDIR")"  # Change to project root
-python -m venv .venv/e2e
+# Create a venv
+# python -m venv .venv/e2e
+hatch env create e2e
+
+# Activate it
 source .venv/e2e/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt

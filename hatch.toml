@@ -1,9 +1,9 @@
 [envs]
-default = {dependencies = ["pytest", "coverage[toml]"], extras = ["test"]}
+default = {dependencies = [ "pytest", "coverage[toml]"], features = ["test"]}
 
 [envs.py]
 inherit = ["default"]
-extras = ["test"]
+features = ["test"]
 scripts.test = "python -m coverage run -m pytest --log-level DEBUG -vv {args}"
 
 [envs.coverage-report]
@@ -27,6 +27,7 @@ dependencies = ["."]
 scripts.run = "fromager {args}"
 
 [envs.e2e]
+path = ".venv/e2e"
 dependencies = ["."]
 env-vars = {COVERAGE_PROCESS_START = "{root}/pyproject.toml"}
 scripts.setup = "python -c 'import pathlib; pathlib.Path(\"{env_site_packages_dir}/cov.pth\").write_text(\"import coverage; coverage.process_startup()\")'"
