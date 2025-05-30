@@ -47,7 +47,15 @@ jobs:
         run: unshare -rn echo "unshare works"
 
       - name: Install dependencies
-        run: python -m pip install hatch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install hatch
+          pip install -r requirements.txt # Install fromager's core dependencies
+          pip install -r requirements-build.txt # Install build dependencies like hatchling, hatch-vcs
+          pip install -r requirements-test.txt # Install test dependencies like pytest, coverage
+          pip install -r requirements-mypy.txt # Install mypy dependencies
+          # If your project itself needs to be installed in editable mode for testing:
+          pip install -e .
 
       - name: Run tests
         run: hatch run py:test
