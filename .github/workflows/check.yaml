@@ -21,10 +21,16 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install tox
+        run: python -m pip install hatch
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip # Ensure pip is up-to-date
+          python -m pip install hatch
 
       - name: Run
-        run: tox -e linter
+        run: hatch run linter:check
+        run: hatch run linter:format
+        run: hatch run linter:mergify
 
   mypy:
     name: mypy
@@ -42,10 +48,10 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install tox
+        run: python -m pip install hatch
 
       - name: Check MyPy
-        run: tox -e mypy
+        run: hatch run mypy:check
 
   pkglint:
     name: pkglint
@@ -63,10 +69,12 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install tox
+        run: python -m pip install hatch
 
       - name: Run
-        run: tox -e pkglint
+        run: hatch run pkglint:check
+        run: hatch run pkglint:build
+        run: hatch run pkglint:versions
 
   markdownlint:
     # https://github.com/marketplace/actions/markdown-lint
@@ -100,10 +108,10 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install tox
+        run: python -m pip install hatch
 
       - name: Run
-        run: tox -e docs
+        run: hatch run docs:build
 
   super-linter:
     name: super-linter
