@@ -592,3 +592,171 @@ def test_resolve_generic():
 
     candidate = result.mapping["fromager"]
     assert str(candidate.version) == "1.4.1"
+
+
+_gitlab_submodlib_repo_response = """
+[
+  {
+    "name": "v0.0.3",
+    "message": "Version 0.0.3 release targeting specific commit",
+    "target": "5d7737e306d8a266f2da162fb535f52f1570cea4",
+    "commit": {
+      "id": "72ae33a1ead9761e7240c2e095873047339ada7c",
+      "short_id": "72ae33a1",
+      "created_at": "2025-04-24T07:38:34.000-05:00",
+      "parent_ids": [
+        "ae066d21ec3bb92b7994e4aaede01d6e3decd177",
+        "c77e898cfa5e34b8af8b545205315e221951b23a"
+      ],
+      "title": "Merge pull request #54 from anastasds/sampling-termination",
+      "message": "Merge pull request #54 from anastasds/sampling-termination Ensure that random sampling always terminates in randomness-based optimizers",
+      "author_name": "Krishnateja Killamsetty",
+      "author_email": "61333497+krishnatejakk@users.noreply.github.com",
+      "authored_date": "2025-04-24T07:38:34.000-05:00",
+      "committer_name": "GitHub",
+      "committer_email": "noreply@github.com",
+      "committed_date": "2025-04-24T07:38:34.000-05:00",
+      "trailers": {},
+      "extended_trailers": {},
+      "web_url": "https://gitlab.com/mirrors/github/decile-team/submodlib/-/commit/72ae33a1ead9761e7240c2e095873047339ada7c"
+    },
+    "release": null,
+    "protected": false,
+    "created_at": "2025-05-14T15:43:00.000Z"
+  },
+  {
+    "name": "v0.0.2",
+    "message": "",
+    "target": "ae066d21ec3bb92b7994e4aaede01d6e3decd177",
+    "commit": {
+      "id": "ae066d21ec3bb92b7994e4aaede01d6e3decd177",
+      "short_id": "ae066d21",
+      "created_at": "2025-04-14T14:41:32.000-05:00",
+      "parent_ids": [
+        "b414069392bca65b1829caeeaea3138cfd69aa53"
+      ],
+      "title": "Update python-publish.yml",
+      "message": "Update python-publish.yml",
+      "author_name": "Krishnateja Killamsetty",
+      "author_email": "61333497+krishnatejakk@users.noreply.github.com",
+      "authored_date": "2025-04-14T14:41:32.000-05:00",
+      "committer_name": "GitHub",
+      "committer_email": "noreply@github.com",
+      "committed_date": "2025-04-14T14:41:32.000-05:00",
+      "trailers": {},
+      "extended_trailers": {},
+      "web_url": "https://gitlab.com/mirrors/github/decile-team/submodlib/-/commit/ae066d21ec3bb92b7994e4aaede01d6e3decd177"
+    },
+    "release": null,
+    "protected": false,
+    "created_at": null
+  },
+  {
+    "name": "v0.0.1",
+    "message": "Version 0.0.1 release targeting specific commit",
+    "target": "e60a53f357d8851c6c61de7b0952ac04bd6415b3",
+    "commit": {
+      "id": "7fdc3f67c81af78554aee173ad90ee7dc9948902",
+      "short_id": "7fdc3f67",
+      "created_at": "2025-04-07T18:58:04.000+00:00",
+      "parent_ids": [
+        "d93fcdc6bb4467015a7c9375716f89ded9e466e7",
+        "0db18f7f86dcf21d141da89a6e4adffc7a85d5d1"
+      ],
+      "title": "Merge branch 'master' of https://github.com/decile-team/submodlib",
+      "message": "Merge branch 'master' of https://github.com/decile-team/submodlib",
+      "author_name": "Krishnateja",
+      "author_email": "krishnateja.k@ibm.com",
+      "authored_date": "2025-04-07T18:58:04.000+00:00",
+      "committer_name": "Krishnateja",
+      "committer_email": "krishnateja.k@ibm.com",
+      "committed_date": "2025-04-07T18:58:04.000+00:00",
+      "trailers": {},
+      "extended_trailers": {},
+      "web_url": "https://gitlab.com/mirrors/github/decile-team/submodlib/-/commit/7fdc3f67c81af78554aee173ad90ee7dc9948902"
+    },
+    "release": null,
+    "protected": false,
+    "created_at": "2025-04-14T19:04:20.000Z"
+  }
+]
+"""
+
+
+def test_resolve_gitlab():
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
+            text=_gitlab_submodlib_repo_response,
+        )
+
+        provider = resolver.GitLabTagProvider(
+            project_path="mirrors/github/decile-team/submodlib",
+            server_url="https://gitlab.com",
+            tag_regex="v(.*)",  # Extract version from v-prefixed tags
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("submodlib")])
+        assert "submodlib" in result.mapping
+
+        candidate = result.mapping["submodlib"]
+        assert str(candidate.version) == "0.0.3"
+        # check the "URL" in case tag syntax does not match version syntax
+        assert (
+            str(candidate.url)
+            == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/commit/72ae33a1ead9761e7240c2e095873047339ada7c/-/archive/v0.0.3/submodlib-v0.0.3.tar.gz"
+        )
+
+
+def test_gitlab_constraint_mismatch():
+    constraint = constraints.Constraints()
+    constraint.add_constraint("submodlib>=1.0")
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
+            text=_gitlab_submodlib_repo_response,
+        )
+
+        provider = resolver.GitLabTagProvider(
+            project_path="mirrors/github/decile-team/submodlib",
+            server_url="https://gitlab.com",
+            tag_regex="v(.*)",  # Extract version from v-prefixed tags
+            constraints=constraint,
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        with pytest.raises(resolvelib.resolvers.ResolutionImpossible):
+            rslvr.resolve([Requirement("submodlib")])
+
+
+def test_gitlab_constraint_match():
+    constraint = constraints.Constraints()
+    constraint.add_constraint("submodlib<0.0.3")
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
+            text=_gitlab_submodlib_repo_response,
+        )
+
+        provider = resolver.GitLabTagProvider(
+            project_path="mirrors/github/decile-team/submodlib",
+            server_url="https://gitlab.com",
+            tag_regex="v(.*)",  # Extract version from v-prefixed tags
+            constraints=constraint,
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("submodlib")])
+        assert "submodlib" in result.mapping
+
+        candidate = result.mapping["submodlib"]
+        assert str(candidate.version) == "0.0.2"
+        # check the "URL" in case tag syntax does not match version syntax
+        assert (
+            str(candidate.url)
+            == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/commit/ae066d21ec3bb92b7994e4aaede01d6e3decd177/-/archive/v0.0.2/submodlib-v0.0.2.tar.gz"
+        )
