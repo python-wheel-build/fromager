@@ -6,6 +6,8 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
+from fromager.dependency_graph import DependencyNode
+
 from .. import (
     bootstrapper,
     context,
@@ -218,21 +220,25 @@ def write_constraints_file(
 ) -> bool:
     # Look for potential conflicts by tracking how many different versions of
     # each package are needed.
-    conflicts = graph.get_install_dependency_versions()
+    conflicts: dict[NormalizedName, list[DependencyNode]] = (
+        graph.get_install_dependency_versions()
+    )
     ret = True
-    conflicting_deps = set()
+    conflicting_deps: set[NormalizedName] = set()
 
     # Map for already resolved versions for a given dependency Eg: {"a": "0.4"}
     resolved: dict[NormalizedName, Version] = {}
 
     # List of unresolved dependencies
-    unresolved_dependencies = sorted(conflicts.items())
+    unresolved_dependencies: list[tuple[NormalizedName, list[DependencyNode]]] = sorted(
+        conflicts.items()
+    )
 
     dep_name: NormalizedName
 
     # Loop over dependencies and resolve dependencies with single version first. This will shrink the unresolved_dependencies to begin with.
     for dep_name, nodes in unresolved_dependencies[:]:
-        versions = [node.version for node in nodes]
+        versions: list[Version] = [node.version for node in nodes]
         if len(versions) == 0:
             # This should never happen.
             raise ValueError(f"No versions of {dep_name} supported")
@@ -243,14 +249,16 @@ def write_constraints_file(
             resolved[dep_name] = versions[0]
             # Remove from unresolved dependencies list
             unresolved_dependencies.remove((dep_name, nodes))
-    multiple_versions = dict(unresolved_dependencies)
+    multiple_versions: dict[NormalizedName, list[DependencyNode]] = dict(
+        unresolved_dependencies
+    )
 
     # Below this point we have built multiple versions of the same thing, so
     # we need to try to determine if any one of those versions meets all of
     # the requirements.
 
     # Flag to see if something is resolved
-    resolved_something = True
+    resolved_something: bool = True
 
     # Outer while loop to resolve remaining dependencies with multiple versions
     while unresolved_dependencies and resolved_something:
@@ -261,16 +269,20 @@ def write_constraints_file(
             usable_versions: dict[Version, list[Version]] = {}
             # Track how many total users of a requirement (by name) there are so we
             # can tell later if any version can be used by all of them.
-            user_counter = 0
+            user_counter: int = 0
             # Which parent requirements can use which versions of the dependency we
             # are working on?
-            dep_versions = [node.version for node in nodes]
+            dep_versions: list[Version] = [node.version for node in nodes]
             # Loop over the nodes list
             for node in nodes:
-                parent_edges = node.get_incoming_install_edges()
+                parent_edges: list[dependency_graph.DependencyEdge] = (
+                    node.get_incoming_install_edges()
+                )
                 # Loop over parent_edges list
                 for parent_edge in parent_edges:
-                    parent_name = parent_edge.destination_node.canonicalized_name
+                    parent_name: NormalizedName = (
+                        parent_edge.destination_node.canonicalized_name
+                    )
                     # Condition to select the right version.
                     # We check whether parent_name is already in resolved dict and the version associated with that
                     # is not the version of the destination node
@@ -281,7 +293,7 @@ def write_constraints_file(
                     ):
                         continue
                     # Loop to find the usable versions
-                    for matching_version in parent_edge.req.specifier.filter(
+                    for matching_version in parent_edge.req.specifier.filter(  # type: ignore
                         dep_versions
                     ):
                         usable_versions.setdefault(matching_version, []).append(
@@ -293,7 +305,7 @@ def write_constraints_file(
             # and output that if we find it. Otherwise, include a warning and report
             # all versions so a human reading the file can make their own decision
             # about how to resolve the conflict.
-            for v, users in reversed(sorted(usable_versions.items())):
+            for v, users in reversed(sorted(usable_versions.items())):  # type: ignore
                 if len(users) != user_counter:
                     logger.debug(
                         "%s: version %s is useable by %d of %d consumers, skipping it",
@@ -303,7 +315,9 @@ def write_constraints_file(
                         user_counter,
                     )
                     continue
-                version_strs = [str(v) for v in reversed(sorted(dep_versions))]
+                version_strs: list[str] = [
+                    str(v) for v in reversed(sorted(dep_versions))
+                ]
                 logger.debug(
                     "%s: selecting %s from multiple candidates %s",
                     dep_name,
@@ -323,7 +337,7 @@ def write_constraints_file(
                 break
 
     # Write resolved versions to constraints file
-    for dep_name, resolved_version in sorted(resolved.items()):
+    for dep_name, resolved_version in sorted(resolved.items()):  # type: ignore
         if dep_name in multiple_versions:
             version_strs = [
                 str(node.version)
@@ -336,7 +350,7 @@ def write_constraints_file(
 
     # No single version could be used, so go ahead and print all the
     # versions with a warning message
-    for dep_name, nodes in unresolved_dependencies:
+    for dep_name, nodes in unresolved_dependencies:  # type: ignore
         ret = False
         logger.error("%s: no single version meets all requirements", dep_name)
         output.write(f"# ERROR: no single version of {dep_name} met all requirements\n")
