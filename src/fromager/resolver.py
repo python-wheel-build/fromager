@@ -10,8 +10,10 @@ import os
 import re
 import typing
 from collections import defaultdict
+from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
+from re import Match
 from urllib.parse import quote, urljoin, urlparse
 
 import html5lib
@@ -26,6 +28,7 @@ from packaging.utils import (
     parse_wheel_filename,
 )
 from packaging.version import Version
+from requests.models import Response
 from resolvelib.resolvers import RequirementInformation
 
 from . import overrides
@@ -547,7 +550,7 @@ class GitHubTagProvider(GenericProvider):
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[tuple[str, Version]]:
+    ) -> Iterable[tuple[str, Version]]:
         headers = {"accept": "application/vnd.github+json"}
         nexturl = self.api_url.format(self=self)
         while nexturl:
@@ -582,21 +585,21 @@ class GitLabTagProvider(GenericProvider):
 
     def __init__(
         self,
-        server_url: str,
         project_path: str,
-        tag_regex: str = ".*",
+        server_url: str = "https://gitlab.com",
+        tag_regex: str = "(.*)",
         constraints: Constraints | None = None,
-    ):
+    ) -> None:
         super().__init__(version_source=self._find_tags, constraints=constraints)
         self.server_url = server_url.rstrip("/")
         self.project_path = project_path.lstrip("/")
-        self.tag_regex = tag_regex
+        self.tag_regex = re.compile(tag_regex)
         # URL-encode the project path as required by GitLab API.
         # The safe="" parameter tells quote() to encode ALL characters,
         # including forward slashes (/), which would otherwise be left
         # unencoded. This ensures paths like "group/subgroup/project"
         # become "group%2Fsubgroup%2Fproject" as required by the API.
-        encoded_path = quote(self.project_path, safe="")
+        encoded_path: str = quote(self.project_path, safe="")
         self.api_url = (
             f"{self.server_url}/api/v4/projects/{encoded_path}/repository/tags"
         )
@@ -609,15 +612,14 @@ class GitLabTagProvider(GenericProvider):
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[tuple[str, Version]]:
-        tag_pattern = re.compile(self.tag_regex)
-        nexturl = self.api_url
+    ) -> Iterable[tuple[str, Version]]:
+        nexturl: str = self.api_url
         while nexturl:
-            resp = session.get(nexturl)
+            resp: Response = session.get(nexturl)
             resp.raise_for_status()
             for entry in resp.json():
                 name = entry["name"]
-                match = tag_pattern.match(name)
+                match: Match[str] | None = self.tag_regex.match(name)
                 if not match:
                     logger.debug(
                         f"{identifier}: tag {name} does not match pattern {self.tag_regex}"
@@ -625,8 +627,8 @@ class GitLabTagProvider(GenericProvider):
                     continue
                 try:
                     # Use the entire match as the version string
-                    version_str = match.group(0)
-                    version = Version(version_str)
+                    version_str: str = match.group(0)
+                    version: Version = Version(version_str)
                 except Exception as err:
                     logger.debug(
                         f"{identifier}: could not parse version from {name}: {err}"
