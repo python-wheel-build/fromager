@@ -16,7 +16,7 @@ if fromager graph to-constraints; then
 fi
 
 # Test that the command fails when given a graph with dependency conflicts
-if fromager graph to-constraints "$SCRIPTDIR/graph-with-dependency-conflict.json" -o "$OUTDIR/constraints.txt"; then
+if fromager -v graph to-constraints "$SCRIPTDIR/graph-with-dependency-conflict.json" -o "$OUTDIR/constraints.txt"; then
     echo "Command should have failed when given a graph with dependency conflicts, instead got:" 1>&2
     grep docling "$OUTDIR/constraints.txt" 1>&2
     pass=false
