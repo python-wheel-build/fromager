@@ -244,6 +244,11 @@ def write_constraints_file(
             raise ValueError(f"No versions of {dep_name} supported")
 
         if len(versions) == 1:
+            logger.debug(
+                "resolving %s to %s",
+                dep_name,
+                versions[0],
+            )
             # This is going to be the situation for most dependencies, where we
             # only have one version.
             resolved[dep_name] = versions[0]
@@ -262,6 +267,10 @@ def write_constraints_file(
 
     # Outer while loop to resolve remaining dependencies with multiple versions
     while unresolved_dependencies and resolved_something:
+        logger.debug(
+            "starting to resolve %s",
+            [dep_name for dep_name, _ in unresolved_dependencies],
+        )
         resolved_something = False
         # Make copy of the original list and loop over unresolved dependencies
         for dep_name, nodes in unresolved_dependencies[:]:
@@ -273,11 +282,17 @@ def write_constraints_file(
             # Which parent requirements can use which versions of the dependency we
             # are working on?
             dep_versions: list[Version] = [node.version for node in nodes]
+
             # Loop over the nodes list
             for node in nodes:
                 parent_edges: list[dependency_graph.DependencyEdge] = (
                     node.get_incoming_install_edges()
                 )
+                if not parent_edges:
+                    # This is a top level dependency, so we should ensure that the
+                    # resolved version is considered as a candidate.
+                    usable_versions.setdefault(node.version, []).append(node.version)
+
                 # Loop over parent_edges list
                 for parent_edge in parent_edges:
                     parent_name: NormalizedName = (
@@ -306,6 +321,13 @@ def write_constraints_file(
             # all versions so a human reading the file can make their own decision
             # about how to resolve the conflict.
             for v, users in reversed(sorted(usable_versions.items())):  # type: ignore
+                logger.debug(
+                    "considering %s for %s, %d of %d consumers",
+                    v,
+                    dep_name,
+                    len(users),
+                    user_counter,
+                )
                 if len(users) != user_counter:
                     logger.debug(
                         "%s: version %s is useable by %d of %d consumers, skipping it",

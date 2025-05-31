@@ -41,12 +41,18 @@ def graph():
 @click.pass_obj
 def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.Path):
     "Convert a graph file to a constraints file."
-    graph = DependencyGraph.from_file(graph_file)
+    graph: DependencyGraph = DependencyGraph.from_file(graph_file)
+    ret: bool = True
     if output:
         with open(output, "w") as f:
-            bootstrap.write_constraints_file(graph, f)
+            ret = bootstrap.write_constraints_file(graph, f)
     else:
-        bootstrap.write_constraints_file(graph, sys.stdout)
+        ret = bootstrap.write_constraints_file(graph, sys.stdout)
+
+    if not ret:
+        raise ValueError(
+            "Failed to write constraints file - no valid set of installation dependencies could be generated"
+        )
 
 
 @graph.command()
