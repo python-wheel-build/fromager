@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import typing
 from collections import defaultdict
 from operator import attrgetter
 from platform import python_version
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import html5lib
 import resolvelib
@@ -564,4 +565,86 @@ class GitHubTagProvider(GenericProvider):
 
                 yield entry["tarball_url"], version
             # pagination links
+            nexturl = resp.links.get("next", {}).get("url")
+
+
+class GitLabTagProvider(GenericProvider):
+    """Lookup tarball and version from GitLab git tags
+
+    Uses a regular expression to extract version numbers from tag names.
+    The default regex matches everything, but can be customized to match
+    specific tag patterns like 'v1.2.3' or 'release-1.2.3'.
+    """
+
+    gitlab_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(
+        list
+    )
+
+    def __init__(
+        self,
+        server_url: str,
+        project_path: str,
+        tag_regex: str = ".*",
+        constraints: Constraints | None = None,
+    ):
+        super().__init__(version_source=self._find_tags, constraints=constraints)
+        self.server_url = server_url.rstrip("/")
+        self.project_path = project_path.lstrip("/")
+        self.tag_regex = tag_regex
+        # URL-encode the project path as required by GitLab API.
+        # The safe="" parameter tells quote() to encode ALL characters,
+        # including forward slashes (/), which would otherwise be left
+        # unencoded. This ensures paths like "group/subgroup/project"
+        # become "group%2Fsubgroup%2Fproject" as required by the API.
+        encoded_path = quote(self.project_path, safe="")
+        self.api_url = (
+            f"{self.server_url}/api/v4/projects/{encoded_path}/repository/tags"
+        )
+
+    def get_cache(self) -> dict[str, list[Candidate]]:
+        return GitLabTagProvider.gitlab_resolver_cache
+
+    def _find_tags(
+        self,
+        identifier: str,
+        requirements: RequirementsMap,
+        incompatibilities: CandidatesMap,
+    ) -> typing.Iterable[tuple[str, Version]]:
+        tag_pattern = re.compile(self.tag_regex)
+        nexturl = self.api_url
+        while nexturl:
+            resp = session.get(nexturl)
+            resp.raise_for_status()
+            for entry in resp.json():
+                name = entry["name"]
+                match = tag_pattern.match(name)
+                if not match:
+                    logger.debug(
+                        f"{identifier}: tag {name} does not match pattern {self.tag_regex}"
+                    )
+                    continue
+                try:
+                    # Use the entire match as the version string
+                    version_str = match.group(0)
+                    version = Version(version_str)
+                except Exception as err:
+                    logger.debug(
+                        f"{identifier}: could not parse version from {name}: {err}"
+                    )
+                    continue
+
+                # GitLab provides a download URL for the archive
+                yield (
+                    entry["commit"]["web_url"]
+                    + "/-/archive/"
+                    + name
+                    + "/"
+                    + self.project_path.split("/")[-1]
+                    + "-"
+                    + name
+                    + ".tar.gz",
+                    version,
+                )
+
+            # GitLab API uses Link headers for pagination
             nexturl = resp.links.get("next", {}).get("url")
