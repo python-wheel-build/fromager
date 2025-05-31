@@ -94,6 +94,7 @@ jobs:
           - build_order
           - build_steps
           - build_settings
+          - graph_to_constraints
           - meson
           - migrate_graph
           - override
