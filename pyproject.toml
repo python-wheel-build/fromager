@@ -132,3 +132,12 @@ exclude = [
 # packages without typing annotations and stubs
 module = ["pyproject_hooks", "requests_mock", "resolver", "stevedore"]
 ignore_missing_imports = true
+
+[tool.basedpyright]
+reportUnannotatedClassAttribute = false
+reportUnusedCallResult = false
+reportUntypedFunctionDecorator = false
+reportUnknownMemberType = false
+reportUnusedParameter = false
+reportAny = false
+reportImplicitOverride = false
