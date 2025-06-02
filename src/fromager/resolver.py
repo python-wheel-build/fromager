@@ -150,7 +150,20 @@ def get_project_from_pypi(
     ignored_candidates: set[str] = set()
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
     logger.debug("%s: getting available versions from %s", project, simple_index_url)
-    data = session.get(simple_index_url).content
+
+    try:
+        response = session.get(simple_index_url)
+        response.raise_for_status()
+        data = response.content
+    except Exception as e:
+        logger.error(
+            "%s: failed to fetch package index from %s: %s",
+            project,
+            simple_index_url,
+            e,
+        )
+        raise
+
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
@@ -552,10 +565,26 @@ class GitHubTagProvider(GenericProvider):
         incompatibilities: CandidatesMap,
     ) -> Iterable[tuple[str, Version]]:
         headers = {"accept": "application/vnd.github+json"}
+
+        # Add GitHub authentication if available
+        github_token = os.environ.get("GITHUB_TOKEN")
+        if github_token:
+            headers["Authorization"] = f"token {github_token}"
+
         nexturl = self.api_url.format(self=self)
         while nexturl:
-            resp = session.get(nexturl, headers=headers)
-            resp.raise_for_status()
+            try:
+                resp = session.get(nexturl, headers=headers)
+                resp.raise_for_status()
+            except Exception as e:
+                logger.error(
+                    "%s: Failed to fetch GitHub tags from %s: %s",
+                    identifier,
+                    nexturl,
+                    e,
+                )
+                raise
+
             for entry in resp.json():
                 name = entry["name"]
                 try:
@@ -615,8 +644,17 @@ class GitLabTagProvider(GenericProvider):
     ) -> Iterable[tuple[str, Version]]:
         nexturl: str = self.api_url
         while nexturl:
-            resp: Response = session.get(nexturl)
-            resp.raise_for_status()
+            try:
+                resp: Response = session.get(nexturl)
+                resp.raise_for_status()
+            except Exception as e:
+                logger.error(
+                    "%s: Failed to fetch GitLab tags from %s: %s",
+                    identifier,
+                    nexturl,
+                    e,
+                )
+                raise
             for entry in resp.json():
                 name = entry["name"]
                 match: Match[str] | None = self.tag_regex.match(name)

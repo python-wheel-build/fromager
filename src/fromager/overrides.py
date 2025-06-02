@@ -97,7 +97,7 @@ def log_overrides() -> None:
 def get_versioned_patch_directories(
     patches_dir: pathlib.Path,
     req: Requirement,
-) -> typing.Generator[pathlib.Path, None, None]:
+) -> typing.Iterator[pathlib.Path]:
     """
     This function will return directories that may contain patches for any version of a specific requirement.
     """

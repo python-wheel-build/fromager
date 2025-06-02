@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 import resolvelib
 from packaging.requirements import Requirement
 from packaging.version import Version
+from requests.exceptions import ChunkedEncodingError, ConnectionError
+from urllib3.exceptions import IncompleteRead, ProtocolError
 
 from . import (
     dependencies,
@@ -29,6 +31,7 @@ from . import (
     tarballs,
     vendor_rust,
 )
+from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
 from .requirements_file import RequirementType
 
@@ -375,16 +378,62 @@ def download_url(
     if outfile.exists():
         logger.debug("already have %s", outfile)
         return outfile
-    # Open the URL first in case that fails, so we don't end up with an empty file.
-    logger.debug(f"reading from {url}")
-    with session.get(url, stream=True) as r:
-        r.raise_for_status()
-        with open(outfile, "wb") as f:
-            logger.debug("writing to %s", outfile)
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
-    logger.info("saved %s", outfile)
-    return outfile
+
+    # Create a temporary file to avoid partial downloads
+    temp_file = outfile.with_suffix(outfile.suffix + ".tmp")
+
+    def _download_with_retry():
+        """Internal function that performs the actual download with retry logic."""
+        logger.debug(f"reading from {url}")
+        try:
+            with session.get(url, stream=True) as r:
+                r.raise_for_status()
+                with open(temp_file, "wb") as f:
+                    logger.debug("writing to %s", temp_file)
+                    # Use smaller chunk size for better error recovery
+                    for chunk in r.iter_content(chunk_size=64 * 1024):
+                        if chunk:  # Filter out keep-alive chunks
+                            f.write(chunk)
+
+            # Only move to final location if download completed successfully
+            temp_file.rename(outfile)
+            logger.info("saved %s", outfile)
+            return outfile
+
+        except (
+            ChunkedEncodingError,
+            IncompleteRead,
+            ProtocolError,
+            ConnectionError,
+        ) as e:
+            # Clean up partial file on failure
+            if temp_file.exists():
+                temp_file.unlink()
+            logger.warning(f"Download failed for {url}: {e}")
+            raise
+        except Exception:
+            # Clean up partial file on any other failure
+            if temp_file.exists():
+                temp_file.unlink()
+            raise
+
+    # Apply retry logic specifically for download operations
+    @retry_on_exception(
+        exceptions=RETRYABLE_EXCEPTIONS,
+        max_attempts=5,
+        backoff_factor=1.5,
+        max_backoff=120.0,
+    )
+    def download_with_retry():
+        return _download_with_retry()
+
+    try:
+        return download_with_retry()
+    except Exception:
+        # Ensure temp file is cleaned up if it still exists
+        if temp_file.exists():
+            temp_file.unlink()
+        raise
 
 
 def _takes_arg(f: typing.Callable, arg_name: str) -> bool:

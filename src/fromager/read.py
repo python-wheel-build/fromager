@@ -16,8 +16,12 @@ def open_file_or_url(
         location = urlparse(location).path
 
     if location.startswith(("https://", "http://")):
-        response = session.get(location)
-        yield io.StringIO(response.text)
+        try:
+            response = session.get(location)
+            response.raise_for_status()
+            yield io.StringIO(response.text)
+        except Exception as e:
+            raise OSError(f"Failed to read from URL {location}: {e}") from e
     else:
         with open(location, "r") as f:
             yield f
