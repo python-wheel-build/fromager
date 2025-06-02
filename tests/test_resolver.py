@@ -706,7 +706,7 @@ def test_resolve_gitlab():
         # check the "URL" in case tag syntax does not match version syntax
         assert (
             str(candidate.url)
-            == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/commit/72ae33a1ead9761e7240c2e095873047339ada7c/-/archive/v0.0.3/submodlib-v0.0.3.tar.gz"
+            == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/archive/v0.0.3/submodlib-v0.0.3.tar.gz"
         )
 
 
@@ -758,5 +758,5 @@ def test_gitlab_constraint_match():
         # check the "URL" in case tag syntax does not match version syntax
         assert (
             str(candidate.url)
-            == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/commit/ae066d21ec3bb92b7994e4aaede01d6e3decd177/-/archive/v0.0.2/submodlib-v0.0.2.tar.gz"
+            == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/archive/v0.0.2/submodlib-v0.0.2.tar.gz"
         )

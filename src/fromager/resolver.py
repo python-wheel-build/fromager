@@ -627,7 +627,7 @@ class GitLabTagProvider(GenericProvider):
                     continue
                 try:
                     # Use the entire match as the version string
-                    version_str: str = match.group(0)
+                    version_str: str = match.group(1)
                     version: Version = Version(version_str)
                 except Exception as err:
                     logger.debug(
@@ -635,18 +635,12 @@ class GitLabTagProvider(GenericProvider):
                     )
                     continue
 
-                # GitLab provides a download URL for the archive
-                yield (
-                    entry["commit"]["web_url"]
-                    + "/-/archive/"
-                    + name
-                    + "/"
-                    + self.project_path.split("/")[-1]
-                    + "-"
-                    + name
-                    + ".tar.gz",
-                    version,
-                )
+                # GitLab provides a download URL for the archive, so return it
+                # in case prepare_source wants to download it instead of cloning
+                # the repository.
+                archive_path: str = f"{self.project_path}/-/archive/{name}/{self.project_path.split('/')[-1]}-{name}.tar.gz"
+                archive_url: str = urljoin(self.server_url, archive_path)
+                yield (archive_url, version)
 
             # GitLab API uses Link headers for pagination
             nexturl = resp.links.get("next", {}).get("url")
