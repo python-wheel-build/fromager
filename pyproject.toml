@@ -141,3 +141,4 @@ reportUnknownMemberType = false
 reportUnusedParameter = false
 reportAny = false
 reportImplicitOverride = false
+reportAttributeAccessIssue = false  # adding our own private property on click commands
