@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "fromager"
@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Wheel maker"
 readme = "README.md"
-dynamic = ["version", "dependencies", "optional-dependencies"]
+dynamic = ["version"]
 license = { file = "LICENSE" }
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -29,12 +29,60 @@ classifiers = [
 
 requires-python = ">=3.11"
 
-[tool.setuptools.dynamic]
-optional-dependencies.build = { file = ["requirements-build.txt"] }
-optional-dependencies.mypy = { file = ["requirements-mypy.txt"] }
-optional-dependencies.test = { file = ["requirements-test.txt"] }
-optional-dependencies.docs = { file = ["docs/requirements.txt"] }
-dependencies = { file = ["requirements.txt"] }
+dependencies = [
+    "click>=8.1.7",
+    "elfdeps>=0.2.0",
+    "html5lib",
+    "packaging",
+    "pkginfo",
+    "psutil",
+    "pydantic",
+    "pyproject_hooks>=1.0.0,!=1.1.0",
+    "PyYAML",
+    "rich",
+    "requests",
+    "resolvelib",
+    "requests-mock",
+    "stevedore",
+    "tomlkit",
+    "tqdm",
+    "virtualenv",
+    "wheel",
+]
+
+[project.optional-dependencies]
+build = [
+    "build",
+    "twine",
+]
+coverage = [
+    "coverage[toml]>=4.0,!=4.4",
+]
+mypy = [
+    "mypy",
+    "pytest",
+    "types-html5lib",
+    "types-psutil",
+    "types-PyYAML",
+    "types-requests",
+    "types-toml",
+    "types-tqdm",
+]
+test = [
+    "coverage[toml]!=4.4,>=4.0",
+    "pytest",
+    "requests-mock",
+    "twine>=6.1.0",
+    "hatchling",
+    "hatch-vcs",
+]
+docs = [
+    "sphinx",
+    "sphinx-click",
+    "myst-parser",
+    "sphinx-rtd-theme",
+    "autodoc-pydantic",
+]
 
 [project.urls]
 Repository = "https://github.com/python-wheel-build/fromager"
@@ -74,8 +122,12 @@ exclude_lines = [
     "if typing.TYPE_CHECKING",
 ]
 
-[tool.setuptools_scm]
-version_file = "src/fromager/version.py"
+[tool.hatch.version]
+path = "src/fromager/version.py"
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fromager"]
 
 [tool.ruff]
 target-version = "py311"

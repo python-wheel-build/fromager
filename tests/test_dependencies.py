@@ -75,7 +75,7 @@ def test_get_build_system_dependencies(_: Mock, tmp_context: context.WorkContext
         sdist_root_dir=_fromager_root,
     )
     names = set(r.name for r in results)
-    assert names == set(["setuptools", "setuptools_scm"])
+    assert names == set(["hatchling", "hatch-vcs"])
 
 
 def test_get_build_system_dependencies_cached(
