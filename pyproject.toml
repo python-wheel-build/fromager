@@ -213,16 +213,17 @@ dependencies = [
   "packaging",
   "check-python-versions"
 ]
-scripts.check = [
+[tool.hatch.envs.lint.scripts]
+check = [
   "ruff check src tests",
   "ruff format --check src tests",
   "python ./e2e/mergify_lint.py",
 ]
-scripts.fix = [
+fix = [
   "ruff format src tests docs",
   "ruff check --fix src tests docs",
 ]
-scripts.pkglint = [
+pkglint = [
   "python -m build",
   "twine check dist/*.tar.gz dist/*.whl",
   "check-python-versions --only pyproject.toml,.github/workflows/test.yml",
@@ -232,16 +233,18 @@ scripts.pkglint = [
 description = "Run end-to-end tests."
 dependencies = ["coverage[toml]", "twine"]
 env-vars.COVERAGE_PROCESS_START = "{root}/pyproject.toml"
+[tool.hatch.envs.e2e.scripts]
 # Script to create cov.pth for coverage in subprocesses
-scripts.setup-cov = "python e2e/setup_coverage.py"
+setup-cov = "python e2e/setup_coverage.py"
 # Generic script to run any command in the e2e environment
 # e.g. hatch run e2e:run ./e2e/test_bootstrap.sh
-scripts.run = "{args}"
+run = "{args}"
 
 [tool.hatch.envs.mypy]
 description = "Python type checking with mypy."
 features = ["mypy"]
-scripts.check = [
+[tool.hatch.envs.mypy.scripts]
+check = [
   "mypy -p fromager",
   "mypy tests/",
 ]
@@ -249,4 +252,5 @@ scripts.check = [
 [tool.hatch.envs.docs]
 description = "Sphinx docs."
 features = ["docs"]
-scripts.build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
+[tool.hatch.envs.docs.scripts]
+build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
