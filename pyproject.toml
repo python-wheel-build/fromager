@@ -202,7 +202,7 @@ features = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run
 [tool.hatch.envs.test.scripts]
 test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
-coverage-report = ["coverage combine", "coverage report"]
+coverage-report = ["coverage combine", "coverage report --format=markdown"]
 
 [tool.hatch.envs.lint]
 description = "Run linters."

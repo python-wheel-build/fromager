@@ -191,10 +191,10 @@ jobs:
 
       - name: Coverage report
         run: |
-          hatch run coverage-report:coverage combine
-          hatch run coverage-report:coverage html
-          hatch run coverage-report:coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
-          hatch run coverage-report:coverage report --fail-under=60
+          hatch run test:coverage combine
+          hatch run test:coverage report
+          hatch run test:coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
+          hatch run test:coverage report --fail-under=60
 
       - name: Upload report
         uses: actions/upload-artifact@v4
