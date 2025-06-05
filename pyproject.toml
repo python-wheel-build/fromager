@@ -217,16 +217,10 @@ scripts.check = [
   "ruff format --check src tests",
   "python ./e2e/mergify_lint.py",
 ]
-skip-install = true # Corresponds to skipping project installation for linting
-
-[tool.hatch.envs.fix]
-description = "Apply auto-fixes."
-dependencies = ["ruff"]
 scripts.fix = [
   "ruff format src tests docs",
   "ruff check --fix src tests docs",
 ]
-skip-install = true
 
 [tool.hatch.envs.e2e]
 description = "Run end-to-end tests."
