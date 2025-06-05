@@ -68,11 +68,16 @@ def _clean_build_artifacts(f):
 
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
-def test_get_build_system_dependencies(_: Mock, tmp_context: context.WorkContext):
+def test_get_build_system_dependencies(
+    _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
+):
+    pyproject_file = _fromager_root / "pyproject.toml"
+    shutil.copyfile(pyproject_file, tmp_path / "pyproject.toml")
+
     results = dependencies.get_build_system_dependencies(
         ctx=tmp_context,
         req=Requirement("fromager"),
-        sdist_root_dir=_fromager_root,
+        sdist_root_dir=tmp_path,
     )
     names = set(r.name for r in results)
     assert names == set(["hatchling", "hatch-vcs"])
