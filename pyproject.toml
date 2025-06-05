@@ -221,6 +221,11 @@ scripts.fix = [
   "ruff format src tests docs",
   "ruff check --fix src tests docs",
 ]
+scripts.pkglint = [
+  "python -m build",
+  "twine check dist/*.tar.gz dist/*.whl",
+  "check-python-versions --only pyproject.toml,.github/workflows/test.yml",
+]
 
 [tool.hatch.envs.e2e]
 description = "Run end-to-end tests."
@@ -238,16 +243,6 @@ features = ["mypy"]
 scripts.check = [
   "mypy -p fromager",
   "mypy tests/",
-]
-
-[tool.hatch.envs.pkglint]
-description = "Check package and distribution."
-features = ["build"]
-dependencies = ["check-python-versions"]
-scripts.check = [
-  "python -m build",
-  "twine check dist/*.tar.gz dist/*.whl",
-  "check-python-versions --only pyproject.toml,.github/workflows/test.yml",
 ]
 
 [tool.hatch.envs.docs]
