@@ -199,19 +199,9 @@ dependencies = []
 [tool.hatch.envs.test]
 features = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run
-scripts.test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
-
-[tool.hatch.envs.coverage-report]
-description = "Report coverage over all test runs."
-# Depends on test environment to have run and generated coverage data
-depends-on = ["test"] # Add "e2e" if its coverage data should be combined.
-dependencies = ["coverage[toml]"]
-skip-install = true
-detached = true # Allows running in parallel
-scripts.report = [
-  "coverage combine",
-  "coverage report",
-]
+[tool.hatch.envs.test.scripts]
+test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
+coverage-report = ["coverage combine", "coverage report"]
 
 [tool.hatch.envs.lint]
 description = "Run linters."
