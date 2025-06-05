@@ -260,7 +260,3 @@ scripts.check = [
 description = "Sphinx docs."
 features = ["docs"]
 scripts.build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
-
-# Default environments to run if `hatch run` is called without arguments
-[tool.hatch.matrix]
-default.envs = ["test", "lint", "mypy", "docs", "coverage-report"]
