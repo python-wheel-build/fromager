@@ -206,10 +206,11 @@ coverage-report = ["coverage combine", "coverage report"]
 [tool.hatch.envs.lint]
 description = "Run linters."
 skip-install = true # Corresponds to skipping project installation for linting
+features = ["build"]
 dependencies = [
   "ruff",
   "packaging",
-  "PyYAML",
+  "check-python-versions"
 ]
 scripts.check = [
   "ruff check src tests",
