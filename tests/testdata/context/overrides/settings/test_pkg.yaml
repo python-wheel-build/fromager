@@ -10,7 +10,9 @@ changelog:
         - more bugs
         - rebuild
 config_settings:
-    - setup-args=-Dsystem-freetype=true
+  setup-args:
+    - "-Dsystem-freetype=true"
+    - "-Dsystem-qhull=true"
 env:
     EGG: spam
     EGG_AGAIN: "$EGG"

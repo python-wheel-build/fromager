@@ -1,0 +1,7 @@
+changelog:
+  "3.10.3":
+    - "Build matplotlib with system packages"
+config_settings:
+  setup-args:
+    - "-Dsystem-freetype=true"
+    - "-Dsystem-qhull=true"

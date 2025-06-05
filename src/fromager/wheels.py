@@ -350,8 +350,9 @@ def default_build_wheel(
     # config settings needs pip >= 24.0 to work. Fromager uses `virtualenv``
     # package to create virtual envs, which comes with recent pip. Stdlib's
     # `venv` comes with rather old pip.
-    for cs in pbi.config_settings:
-        cmd.append(f"--config-settings={cs}")
+    for key, values in pbi.config_settings.items():
+        for value in values:
+            cmd.append(f"--config-settings={key}={value}")
     cmd.append(os.fspath(build_dir))
 
     with tempfile.TemporaryDirectory() as dir_name:

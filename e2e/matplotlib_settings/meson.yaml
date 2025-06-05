@@ -1,0 +1,4 @@
+# speed up tests
+variants:
+  cpu:
+    pre_built: True

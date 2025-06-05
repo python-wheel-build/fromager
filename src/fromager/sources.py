@@ -268,7 +268,7 @@ def _get_version_from_package_metadata(
     )
     metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
         metadata_directory=source_dir.parent,
-        config_settings={},
+        config_settings=pbi.config_settings,
     )
     metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
     with open(metadata_filename, "rb") as f:
@@ -753,7 +753,10 @@ def pep517_build_sdist(
         build_dir=build_dir,
         override_environ=extra_environ,
     )
-    sdist_filename = hook_caller.build_sdist(ctx.sdists_builds)
+    sdist_filename = hook_caller.build_sdist(
+        ctx.sdists_builds,
+        config_settings=pbi.config_settings,
+    )
     return ctx.sdists_builds / sdist_filename
 
 
