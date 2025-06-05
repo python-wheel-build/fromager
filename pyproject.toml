@@ -55,9 +55,6 @@ build = [
     "build",
     "twine",
 ]
-coverage = [
-    "coverage[toml]>=4.0,!=4.4",
-]
 mypy = [
     "mypy",
     "pytest",
