@@ -10,10 +10,10 @@ import tarfile
 import tempfile
 import typing
 import zipfile
-from email.parser import BytesParser
 from urllib.parse import urlparse
 
 import resolvelib
+from packaging.metadata import Metadata
 from packaging.requirements import Requirement
 from packaging.version import Version
 from requests.exceptions import ChunkedEncodingError, ConnectionError
@@ -272,8 +272,7 @@ def _get_version_from_package_metadata(
     )
     metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
     with open(metadata_filename, "rb") as f:
-        p = BytesParser()
-        metadata = p.parse(f, headersonly=True)
+        metadata = Metadata.from_raw(f)
     return Version(metadata["Version"])
 
 
