@@ -17,6 +17,7 @@ commands = [
     bootstrap.bootstrap,
     build.build,
     build.build_sequence,
+    build.build_parallel,
     build_order.build_order,
     graph.graph,
     lint.lint,
