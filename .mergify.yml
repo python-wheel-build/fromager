@@ -2,10 +2,10 @@ pull_request_rules:
   - name: Add CI label
     conditions:
       - or:
-          - "title~=^tox:"
+          - "title~=^hatch:"
           - "title~=^ci:"
           - "title~=^e2e:"
-          - files~=tox.ini
+          - files~=pyproject.toml
           - files~=.github/
           - files~=.markdownlint-config.yaml
           - files~=tests/
