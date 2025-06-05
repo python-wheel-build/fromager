@@ -1,4 +1,6 @@
 graft python
 graft rust
-include Cargo.toml Cargo.lock tests.py tox.ini
+include Cargo.toml Cargo.lock tests.py
 exclude .cargo vendor
+graft src
+global-exclude *.py[cod]

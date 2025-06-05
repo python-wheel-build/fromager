@@ -25,8 +25,12 @@ mkdir -p "$OUTDIR/build-logs"
 
 # Recreate the virtualenv with fromager installed
 # command_pre hook creates cov.pth
-tox -e e2e -r
-source .tox/e2e/bin/activate
+# tox -e e2e -r
+# source .tox/e2e/bin/activate
+hatch env remove e2e || true # Remove the e2e env if it exists, ignore error if it doesn't
+hatch env create e2e # Ensures the environment exists and dependencies are installed
+hatch run e2e:setup-cov # Run the coverage setup script
+source "$(hatch env find e2e)/bin/activate"
 
 # Set a variable to constrain packages used in the tests
 export FROMAGER_CONSTRAINTS_FILE="${SCRIPTDIR}/constraints.txt"

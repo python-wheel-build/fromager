@@ -109,7 +109,7 @@ relative_files = true
 source = ["fromager", "tests/"]
 
 [tool.coverage.paths]
-source = ["src/fromager", ".tox/**/site-packages/fromager"]
+source = ["src/fromager", ".hatch/**/site-packages/fromager"]
 tests = ["tests/"]
 
 [tool.coverage.report]
@@ -194,3 +194,92 @@ reportUnusedParameter = false
 reportAny = false
 reportImplicitOverride = false
 reportAttributeAccessIssue = false  # adding our own private property on click commands
+
+[tool.hatch.envs.default]
+# No specific python version here, so it uses the active Python by default.
+dependencies = []
+
+[tool.hatch.envs.test]
+# Corresponds to the default test environment
+dependencies = [
+  "coverage[toml]!=4.4,>=4.0",
+  "pytest",
+  "requests-mock",
+  "twine>=6.1.0",
+  "hatchling",
+  "hatch-vcs",
+]
+# {args:tests} allows passing arguments to specify which tests to run
+scripts.test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
+
+[tool.hatch.envs.coverage-report]
+description = "Report coverage over all test runs."
+# Depends on test environment to have run and generated coverage data
+depends-on = ["test"] # Add "e2e" if its coverage data should be combined.
+dependencies = ["coverage[toml]"]
+skip-install = true
+detached = true # Allows running in parallel
+scripts.report = [
+  "coverage combine",
+  "coverage report",
+]
+
+[tool.hatch.envs.lint]
+description = "Run linters."
+dependencies = [
+  "ruff",
+  "packaging",
+  "PyYAML",
+]
+scripts.check = [
+  "ruff check src tests",
+  "ruff format --check src tests",
+  "python ./e2e/mergify_lint.py",
+]
+skip-install = true # Corresponds to skipping project installation for linting
+
+[tool.hatch.envs.fix]
+description = "Apply auto-fixes."
+dependencies = ["ruff"]
+scripts.fix = [
+  "ruff format src tests docs",
+  "ruff check --fix src tests docs",
+]
+skip-install = true
+
+[tool.hatch.envs.e2e]
+description = "Run end-to-end tests."
+dependencies = ["coverage[toml]", "twine"]
+env-vars.COVERAGE_PROCESS_START = "{root}/pyproject.toml"
+# Script to create cov.pth for coverage in subprocesses
+scripts.setup-cov = "python e2e/setup_coverage.py"
+# Generic script to run any command in the e2e environment
+# e.g. hatch run e2e:run ./e2e/test_bootstrap.sh
+scripts.run = "{args}"
+
+[tool.hatch.envs.mypy]
+description = "Python type checking with mypy."
+features = ["mypy"]
+scripts.check = [
+  "mypy -p fromager",
+  "mypy tests/",
+]
+
+[tool.hatch.envs.pkglint]
+description = "Check package and distribution."
+features = ["build"]
+dependencies = ["check-python-versions"]
+scripts.check = [
+  "python -m build",
+  "twine check dist/*.tar.gz dist/*.whl",
+  "check-python-versions --only pyproject.toml,.github/workflows/test.yml",
+]
+
+[tool.hatch.envs.docs]
+description = "Sphinx docs."
+features = ["docs"]
+scripts.build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
+
+# Default environments to run if `hatch run` is called without arguments
+[tool.hatch.matrix]
+default.envs = ["test", "lint", "mypy", "docs", "coverage-report"]
