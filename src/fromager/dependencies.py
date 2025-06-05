@@ -138,13 +138,16 @@ def default_get_build_backend_dependencies(
     Defaults to result of hook call
     :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
     """
+    pbi = ctx.package_build_info(req)
     hook_caller = get_build_backend_hook_caller(
         ctx=ctx,
         req=req,
         build_dir=build_dir,
         override_environ=extra_environ,
     )
-    return hook_caller.get_requires_for_build_wheel()
+    return hook_caller.get_requires_for_build_wheel(
+        config_settings=pbi.config_settings,
+    )
 
 
 def get_build_sdist_dependencies(
@@ -195,13 +198,16 @@ def default_get_build_sdist_dependencies(
     Defaults to result of hook call
     :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
     """
+    pbi = ctx.package_build_info(req)
     hook_caller = get_build_backend_hook_caller(
         ctx=ctx,
         req=req,
         build_dir=build_dir,
         override_environ=extra_environ,
     )
-    return hook_caller.get_requires_for_build_wheel()
+    return hook_caller.get_requires_for_build_wheel(
+        config_settings=pbi.config_settings,
+    )
 
 
 def get_install_dependencies_of_sdist(
@@ -227,7 +233,10 @@ def get_install_dependencies_of_sdist(
         build_env=build_env,
     )
     with tempfile.TemporaryDirectory() as tmp_dir:
-        distinfo_name = hook_caller.prepare_metadata_for_build_wheel(tmp_dir)
+        distinfo_name = hook_caller.prepare_metadata_for_build_wheel(
+            tmp_dir,
+            config_settings=pbi.config_settings,
+        )
         metadata_file = pathlib.Path(tmp_dir) / distinfo_name / "METADATA"
         # ignore minor metadata issues
         metadata = parse_metadata(metadata_file, validate=False)

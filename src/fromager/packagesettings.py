@@ -310,10 +310,17 @@ class PackageSettings(pydantic.BaseModel):
     changelog: VariantChangelog = Field(default_factory=dict)
     """Changelog entries"""
 
-    config_settings: list[str] = Field(default_factory=list)
+    config_settings: dict[str, list[str]] = Field(default_factory=dict)
     """PEP 517 arbitrary configuration for wheel builds
 
     https://peps.python.org/pep-0517/#config-settings
+
+    ::
+
+       config_settings:
+         setup-args:
+           - "-Dsystem-freetype=true"
+           - "-Dsystem-qhull=true"
     """
 
     env: EnvVars = Field(default_factory=dict)
@@ -757,7 +764,7 @@ class PackageBuildInfo:
         return self._ps.build_options.build_ext_parallel
 
     @property
-    def config_settings(self) -> list[str]:
+    def config_settings(self) -> dict[str, list[str]]:
         return self._ps.config_settings
 
     @property
