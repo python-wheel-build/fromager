@@ -197,15 +197,7 @@ reportAttributeAccessIssue = false  # adding our own private property on click c
 dependencies = []
 
 [tool.hatch.envs.test]
-# Corresponds to the default test environment
-dependencies = [
-  "coverage[toml]!=4.4,>=4.0",
-  "pytest",
-  "requests-mock",
-  "twine>=6.1.0",
-  "hatchling",
-  "hatch-vcs",
-]
+features = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run
 scripts.test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
 
