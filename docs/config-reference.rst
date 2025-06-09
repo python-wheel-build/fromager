@@ -14,6 +14,8 @@ For example `flash_attn.yaml`.
 
 .. autopydantic_model:: fromager.packagesettings.DownloadSource
 
+.. autopydantic_model:: fromager.packagesettings.GitOptions
+
 .. autopydantic_model:: fromager.packagesettings.ResolverDist
 
 .. autopydantic_model:: fromager.packagesettings.ProjectOverride

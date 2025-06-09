@@ -1,0 +1,21 @@
+# Example package configuration with git submodules support
+# This file shows how to configure git submodule cloning for packages
+# built from git repositories.
+
+# Enable submodules for all git URLs for this package
+git_options:
+  submodules: true
+
+# Alternative: only clone specific submodule paths
+# git_options:
+#   submodule_paths:
+#     - vendor/libfoo
+#     - vendor/libbar
+
+# You can also combine both settings:
+# git_options:
+#   submodules: true
+#   submodule_paths:
+#     - vendor/lib1
+#     - vendor/lib2
+# In this case, submodule_paths takes precedence and only the specified paths will be cloned.
