@@ -94,9 +94,8 @@ def stats(
 
             # Check if package has patches
             try:
-                # Look for patches in the patches directory
-                patches_dir = wkctx.patches_dir / pbi.override_module_name
-                if patches_dir.exists() and any(patches_dir.iterdir()):
+                all_patches = pbi.get_all_patches()
+                if all_patches:  # Check if the patch map is not empty
                     patched_packages.add(package_name)
             except Exception:
                 pass
