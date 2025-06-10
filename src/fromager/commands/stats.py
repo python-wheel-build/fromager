@@ -1,6 +1,5 @@
 import logging
 import pathlib
-import sys
 
 import click
 import rich
@@ -10,7 +9,6 @@ from rich.table import Table
 
 from fromager import (
     context,
-    read,
     requirements_file,
 )
 from fromager.dependency_graph import DependencyGraph
