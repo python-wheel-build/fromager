@@ -125,21 +125,22 @@ def stats(
         return f"{(count / total) * 100:.1f}%"
 
     table.add_row("Requirements in requirements.txt", str(requirements_count), "-")
+    table.add_row("Constraints defined", str(len(list(wkctx.constraints))), "-")
     table.add_row("Unique packages in build", str(total_packages), "100.0%")
     table.add_row(
-        "Packages with constraints",
+        "Packages in the build with constraints",
         str(len(constrained_packages)),
         format_percentage(len(constrained_packages), total_packages),
-    )
-    table.add_row(
-        "Packages with fromager config",
-        str(len(configured_packages)),
-        format_percentage(len(configured_packages), total_packages),
     )
     table.add_row(
         "Pre-built packages",
         str(len(prebuilt_packages)),
         format_percentage(len(prebuilt_packages), total_packages),
+    )
+    table.add_row(
+        "Packages with any fromager config",
+        str(len(configured_packages)),
+        format_percentage(len(configured_packages), total_packages),
     )
     table.add_row(
         "Packages with patches",
