@@ -10,6 +10,7 @@ from . import (
     list_overrides,
     migrate_config,
     server,
+    stats,
     step,
 )
 
@@ -22,6 +23,7 @@ commands = [
     lint.lint,
     list_overrides.list_overrides,
     migrate_config.migrate_config,
+    stats.stats,
     step.step,
     canonicalize.canonicalize,
     download_sequence.download_sequence,

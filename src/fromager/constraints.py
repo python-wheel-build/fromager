@@ -1,6 +1,6 @@
 import logging
 import pathlib
-import typing
+from collections.abc import Generator
 
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
@@ -17,7 +17,7 @@ class Constraints:
         # NOTE: Requirement.name is not normalized
         self._data: dict[NormalizedName, Requirement] = {}
 
-    def __iter__(self) -> typing.Iterable[NormalizedName]:
+    def __iter__(self) -> Generator[NormalizedName, None, None]:
         yield from self._data
 
     def add_constraint(self, unparsed: str) -> None:
