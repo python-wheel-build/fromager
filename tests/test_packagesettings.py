@@ -31,6 +31,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "build_ext_parallel": True,
         "cpu_cores_per_job": 4,
         "memory_per_job_gb": 4.0,
+        "exclusive_build": False,
     },
     "changelog": {
         Version("1.0.1"): ["fixed bug"],
@@ -95,6 +96,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "build_ext_parallel": False,
         "cpu_cores_per_job": 1,
         "memory_per_job_gb": 1.0,
+        "exclusive_build": False,
     },
     "changelog": {},
     "config_settings": {},
@@ -595,3 +597,36 @@ git_options:
     custom_settings = PackageSettings.from_string("custom-pkg", settings_yaml)
     assert custom_settings.git_options.submodules is True
     assert custom_settings.git_options.submodule_paths == ["vendor/lib"]
+
+
+def test_package_build_info_exclusive_build(testdata_context: context.WorkContext):
+    """Test that PackageBuildInfo correctly exposes exclusive_build from build_options."""
+    # Test default package (should have exclusive_build=False by default)
+    req = Requirement("test-empty-pkg==1.0.0")
+    pbi = testdata_context.package_build_info(req)
+    assert pbi.exclusive_build is False
+
+    # Test creating a package settings with exclusive_build=True
+    settings_yaml = """
+build_options:
+  exclusive_build: true
+"""
+    custom_settings = PackageSettings.from_string("exclusive-pkg", settings_yaml)
+    assert custom_settings.build_options.exclusive_build is True
+
+    # Test PackageBuildInfo properly accesses it through build_options
+    import pathlib
+
+    from fromager.packagesettings import Settings, SettingsFile
+
+    # Create a temporary Settings object to test with
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[custom_settings],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+
+    custom_pbi = settings.package_build_info("exclusive-pkg")
+    assert custom_pbi.exclusive_build is True

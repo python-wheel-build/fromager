@@ -197,6 +197,9 @@ class BuildOptions(pydantic.BaseModel):
     0.5: assume each parallel job requires 512 MB virtual memory
     """
 
+    exclusive_build: bool = False
+    """If true, this package must be built on its own (not in parallel with other packages). Default: False."""
+
 
 class ProjectOverride(pydantic.BaseModel):
     """Override pyproject.toml settings
@@ -317,6 +320,11 @@ class PackageSettings(pydantic.BaseModel):
             sdist_server_url: https://sdist.test/egg
             include_sdists: true
             include_wheels: false
+        build_options:
+            build_ext_parallel: False
+            cpu_cores_per_job: 1
+            memory_per_job_gb: 1.0
+            exclusive_build: False
         variants:
             cpu:
                 env:
@@ -809,6 +817,10 @@ class PackageBuildInfo:
     def project_override(self) -> ProjectOverride:
         return self._ps.project_override
 
+    @property
+    def exclusive_build(self) -> bool:
+        return self._ps.build_options.exclusive_build
+
     def serialize(self, **kwargs) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)
 
@@ -847,6 +859,9 @@ class SettingsFile(pydantic.BaseModel):
         # ignore legacy settings
         parsed.pop("pre_built", None)
         parsed.pop("packages", None)
+        # Ensure changelog is correct type
+        if "changelog" in parsed and not isinstance(parsed["changelog"], dict):
+            parsed["changelog"] = {}
         try:
             return cls(**parsed)
         except Exception as err:
