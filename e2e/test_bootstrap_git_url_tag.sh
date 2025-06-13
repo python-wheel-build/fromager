@@ -9,7 +9,6 @@ source "$SCRIPTDIR/common.sh"
 GIT_REPO_URL="https://github.com/python-wheel-build/stevedore-test-repo.git"
 
 fromager \
-  --verbose \
   --debug \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \

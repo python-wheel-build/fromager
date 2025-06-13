@@ -742,8 +742,19 @@ class Bootstrapper:
     ) -> Version:
         pbi = self.ctx.package_build_info(req)
         build_dir = pbi.build_dir(source_dir)
-        logger.info("generating metadata to get version")
 
+        logger.info(
+            "preparing build dependencies so we can access the metadata to get the version"
+        )
+        build_dependencies = self._prepare_build_dependencies(req, source_dir)
+        build_environment.BuildEnvironment(
+            ctx=self.ctx,
+            parent_dir=source_dir.parent,
+            build_requirements=build_dependencies,
+            req=req,
+        )
+
+        logger.info("generating metadata to get version")
         hook_caller = dependencies.get_build_backend_hook_caller(
             ctx=self.ctx,
             req=req,

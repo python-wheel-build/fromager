@@ -10,7 +10,6 @@ GIT_REPO_URL="https://github.com/python-wheel-build/stevedore-test-repo.git"
 
 fromager \
   --debug \
-  --verbose \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
   --sdists-repo="$OUTDIR/sdists-repo" \
