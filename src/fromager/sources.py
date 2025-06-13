@@ -7,10 +7,8 @@ import os.path
 import pathlib
 import shutil
 import tarfile
-import tempfile
 import typing
 import zipfile
-from email.parser import BytesParser
 from urllib.parse import urlparse
 
 import resolvelib
@@ -22,7 +20,6 @@ from urllib3.exceptions import IncompleteRead, ProtocolError
 from . import (
     dependencies,
     external_commands,
-    gitutils,
     metrics,
     overrides,
     pyproject,
@@ -98,18 +95,6 @@ def resolve_source(
 ) -> tuple[str, Version]:
     "Return URL to source and its version."
 
-    if req.url and req_type != RequirementType.TOP_LEVEL:
-        # Stop processing if we encounter a lower level dependency with a URL.
-        raise ValueError(f"{req} includes a URL, but is not a top-level dependency")
-
-    if req.url and req_type == RequirementType.TOP_LEVEL:
-        # If we have a URL, we should use that source. For now we only support
-        # git clone URLs of some sort. We are given the directory where the
-        # cloned repo resides, and return that as the URL for the source code so
-        # the next step in the process can find it and operate on it.
-        logger.info("resolving source via URL, ignoring any plugins")
-        return resolve_version_from_git_url(ctx=ctx, req=req)
-
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
         f"resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
@@ -144,137 +129,6 @@ def resolve_source(
         raise ValueError(f"expected 2nd member to be of type Version, got {version}")
 
     return str(url), version
-
-
-def resolve_version_from_git_url(
-    ctx: context.WorkContext,
-    req: Requirement,
-) -> tuple[str, Version]:
-    "Return path to the cloned git repository and the package version."
-
-    if not req.url.startswith("git+"):
-        raise ValueError(f"unable to handle URL scheme in {req.url} from {req}")
-
-    # We start by not knowing where we would put the source because we don't
-    # know the version.
-    working_src_dir = ""
-    version: Version | None = None
-
-    # Clean up the URL so we can parse it
-    reduced_url = req.url[len("git+") :]
-    parsed_url = urlparse(reduced_url)
-
-    # Save the URL that we think we will use for cloning. This might change
-    # later if the path has a tag or branch in it.
-    url_to_clone = reduced_url
-    need_to_clone = False
-
-    # If the URL includes an @ with text after it, we use that as the reference
-    # to clone, but by default we take the default branch.
-    git_ref: str | None = None
-
-    if "@" not in parsed_url.path:
-        # If we have no reference, we know we are going to have to clone the
-        # repository to figure out the version to use.
-        need_to_clone = True
-    else:
-        # If we have a reference, it might be a valid python version string, or
-        # not. It _must_ be a valid git reference. If it can be parsed as a
-        # valid python version, we assume the tag points to source that will
-        # think that is its version, so we allow reusing an existing cloned repo
-        # if there is one.
-        new_path, _, git_ref = parsed_url.path.rpartition("@")
-        url_to_clone = parsed_url._replace(path=new_path).geturl()
-        try:
-            version = Version(git_ref)
-        except ValueError:
-            logger.info(
-                "could not parse %r as a version, cloning to get the version",
-                git_ref,
-            )
-            need_to_clone = True
-        else:
-            logger.info("URL %s includes version %s", req.url, version)
-            working_src_dir = (
-                ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
-            )
-            if not working_src_dir.exists():
-                need_to_clone = True
-            else:
-                if ctx.cleanup:
-                    logger.debug("cleaning up %s", working_src_dir)
-                    shutil.rmtree(working_src_dir)
-                    need_to_clone = True
-                else:
-                    logger.info("reusing %s", working_src_dir)
-
-    if need_to_clone:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            clone_dir = pathlib.Path(tmpdir) / "src"
-            gitutils.git_clone(
-                ctx=ctx,
-                req=req,
-                output_dir=clone_dir,
-                repo_url=url_to_clone,
-                ref=git_ref,
-            )
-            if not version:
-                # If we still do not have a version, get it from the package
-                # metadata.
-                version = _get_version_from_package_metadata(ctx, req, clone_dir)
-                logger.info("found version %s", version)
-                working_src_dir = (
-                    ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
-                )
-                if working_src_dir.exists():
-                    # We have to check if the destination directory exists
-                    # because if we were not given a version we did not clean it
-                    # up earlier. We do not use ctx.cleanup to control this
-                    # action because we cannot trust that the destination
-                    # directory is reusable because we have had to compute the
-                    # version and we cannot be sure that the version is dynamic
-                    # Two different commits in the repo could have the same
-                    # version if that version is set with static data in the
-                    # repo instead of via a tag or dynamically computed by
-                    # something like setuptools-scm.
-                    logger.debug("cleaning up %s", working_src_dir)
-                    shutil.rmtree(working_src_dir)
-                    need_to_clone = True
-                working_src_dir.parent.mkdir(parents=True, exist_ok=True)
-            logger.info("moving cloned repo to %s", working_src_dir)
-            shutil.move(clone_dir, working_src_dir)
-
-    # We must know the version and we must have a source directory.
-    assert version
-    assert working_src_dir
-    assert working_src_dir.exists()
-    return (working_src_dir, version)
-
-
-def _get_version_from_package_metadata(
-    ctx: context.WorkContext,
-    req: Requirement,
-    source_dir: str,
-) -> Version:
-    pbi = ctx.package_build_info(req)
-    build_dir = pbi.build_dir(source_dir)
-    logger.info("generating metadata to get version")
-
-    hook_caller = dependencies.get_build_backend_hook_caller(
-        ctx=ctx,
-        req=req,
-        build_dir=build_dir,
-        override_environ={},
-    )
-    metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
-        metadata_directory=source_dir.parent,
-        config_settings=pbi.config_settings,
-    )
-    metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
-    with open(metadata_filename, "rb") as f:
-        p = BytesParser()
-        metadata = p.parse(f, headersonly=True)
-    return Version(metadata["Version"])
 
 
 def default_resolve_source(
@@ -566,8 +420,9 @@ def prepare_source(
 ) -> pathlib.Path:
     if req.url:
         logger.info(
-            "preparing source cloned from %s, ignoring any plugins",
+            "preparing source cloned from %s into %s, ignoring any plugins",
             req.url,
+            source_filename,
         )
         source_root_dir = pathlib.Path(source_filename)
         prepare_new_source(
