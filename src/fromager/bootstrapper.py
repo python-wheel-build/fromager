@@ -71,13 +71,15 @@ class Bootstrapper:
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
-    def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
-        constraint = self.ctx.constraints.get_constraint(req.name)
-        if constraint:
-            logger.info(
-                f"incoming requirement {req} matches constraint {constraint}. Will apply both."
-            )
+    def resolve_version(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+    ) -> tuple[str, Version]:
+        """Resolve the version of a requirement.
 
+        Returns the source URL and the version of the requirement.
+        """
         pbi = self.ctx.package_build_info(req)
         if pbi.pre_built:
             wheel_url, resolved_version = self._resolve_prebuilt_with_history(
@@ -87,6 +89,27 @@ class Bootstrapper:
             source_url = wheel_url
         else:
             source_url, resolved_version = self._resolve_source_with_history(
+                req=req,
+                req_type=req_type,
+            )
+        return source_url, resolved_version
+
+    def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
+        constraint = self.ctx.constraints.get_constraint(req.name)
+        if constraint:
+            logger.info(
+                f"incoming requirement {req} matches constraint {constraint}. Will apply both."
+            )
+
+        pbi = self.ctx.package_build_info(req)
+        if pbi.pre_built:
+            wheel_url, resolved_version = self.resolve_version(
+                req=req,
+                req_type=req_type,
+            )
+            source_url = wheel_url
+        else:
+            source_url, resolved_version = self.resolve_version(
                 req=req,
                 req_type=req_type,
             )
@@ -765,23 +788,6 @@ class Bootstrapper:
         pre_built: bool,
     ) -> tuple[str, Version] | None:
         _, parent_req, _ = self.why[-1] if self.why else (None, None, None)
-
-        # we have already resolved top level reqs before bootstrapping
-        # so they should already be in the root node
-        if req_type == RequirementType.TOP_LEVEL:
-            for edge in self.ctx.dependency_graph.get_root_node().get_outgoing_edges(
-                req.name, RequirementType.TOP_LEVEL
-            ):
-                if edge.req == req:
-                    return (
-                        edge.destination_node.download_url,
-                        edge.destination_node.version,
-                    )
-            # this should never happen since we already resolved top level reqs and their
-            # resolution should be in the root nodes
-            raise ValueError(
-                f"{req} appears as a toplevel requirement but it's resolution does not exist in the root node of the graph"
-            )
 
         if not self.prev_graph:
             return None
