@@ -6,8 +6,10 @@ import operator
 import os
 import pathlib
 import shutil
+import tempfile
 import typing
 import zipfile
+from email.parser import BytesParser
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
@@ -18,6 +20,7 @@ from . import (
     build_environment,
     dependencies,
     finders,
+    gitutils,
     hooks,
     progress,
     resolver,
@@ -566,6 +569,20 @@ class Bootstrapper:
         req: Requirement,
         req_type: RequirementType,
     ) -> tuple[str, Version]:
+        if req.url:
+            # If we have a URL, we should use that source. For now we only
+            # support git clone URLs of some sort. We are given the directory
+            # where the cloned repo resides, and return that as the URL for the
+            # source code so the next step in the process can find it and
+            # operate on it. However, we only support that if the package is a
+            # top-level dependency.
+            if req_type != RequirementType.TOP_LEVEL:
+                raise ValueError(
+                    f"{req} includes a URL, but is not a top-level dependency"
+                )
+            logger.info("resolving source via URL, ignoring any plugins")
+            return self._resolve_version_from_git_url(req=req)
+
         cached_resolution = self._resolve_from_graph(
             req=req,
             req_type=req_type,
@@ -583,6 +600,143 @@ class Bootstrapper:
             )
         return (source_url, resolved_version)
 
+    def _resolve_version_from_git_url(self, req: Requirement) -> tuple[str, Version]:
+        "Return path to the cloned git repository and the package version."
+
+        if not req.url:
+            raise ValueError(f"unable to resolve from URL with no URL in {req}")
+
+        if not req.url.startswith("git+"):
+            raise ValueError(f"unable to handle URL scheme in {req.url} from {req}")
+
+        # We start by not knowing where we would put the source because we don't
+        # know the version.
+        working_src_dir: pathlib.Path | None = None
+        version: Version | None = None
+
+        # Clean up the URL so we can parse it
+        reduced_url = req.url[len("git+") :]
+        parsed_url = urlparse(reduced_url)
+
+        # Save the URL that we think we will use for cloning. This might change
+        # later if the path has a tag or branch in it.
+        url_to_clone = reduced_url
+        need_to_clone = False
+
+        # If the URL includes an @ with text after it, we use that as the reference
+        # to clone, but by default we take the default branch.
+        git_ref: str | None = None
+
+        if "@" not in parsed_url.path:
+            # If we have no reference, we know we are going to have to clone the
+            # repository to figure out the version to use.
+            logger.debug("no reference in URL, will clone")
+            need_to_clone = True
+        else:
+            # If we have a reference, it might be a valid python version string, or
+            # not. It _must_ be a valid git reference. If it can be parsed as a
+            # valid python version, we assume the tag points to source that will
+            # think that is its version, so we allow reusing an existing cloned repo
+            # if there is one.
+            new_path, _, git_ref = parsed_url.path.rpartition("@")
+            url_to_clone = parsed_url._replace(path=new_path).geturl()
+            try:
+                version = Version(git_ref)
+            except ValueError:
+                logger.info(
+                    "could not parse %r as a version, cloning to get the version",
+                    git_ref,
+                )
+                need_to_clone = True
+            else:
+                logger.info("URL %s includes version %s", req.url, version)
+                working_src_dir = (
+                    self.ctx.work_dir
+                    / f"{req.name}-{version}"
+                    / f"{req.name}-{version}"
+                )
+                if not working_src_dir.exists():
+                    need_to_clone = True
+                else:
+                    if self.ctx.cleanup:
+                        logger.debug("cleaning up %s to reclone", working_src_dir)
+                        shutil.rmtree(working_src_dir)
+                        need_to_clone = True
+                    else:
+                        logger.info("reusing %s", working_src_dir)
+
+        if need_to_clone:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                clone_dir = pathlib.Path(tmpdir) / "src"
+                gitutils.git_clone(
+                    ctx=self.ctx,
+                    req=req,
+                    output_dir=clone_dir,
+                    repo_url=url_to_clone,
+                    ref=git_ref,
+                )
+                if not version:
+                    # If we still do not have a version, get it from the package
+                    # metadata.
+                    version = self._get_version_from_package_metadata(req, clone_dir)
+                    logger.info("found version %s", version)
+                    working_src_dir = (
+                        self.ctx.work_dir
+                        / f"{req.name}-{version}"
+                        / f"{req.name}-{version}"
+                    )
+                    if working_src_dir.exists():
+                        # We have to check if the destination directory exists
+                        # because if we were not given a version we did not
+                        # clean it up earlier. We do not use ctx.cleanup to
+                        # control this action because we cannot trust that the
+                        # destination directory is reusable because we have had
+                        # to compute the version and we cannot be sure that the
+                        # version is dynamic. Two different commits in the repo
+                        # could have the same version if that version is set
+                        # with static data in the repo instead of via a tag or
+                        # dynamically computed by something like setuptools-scm.
+                        logger.debug("cleaning up %s", working_src_dir)
+                        shutil.rmtree(working_src_dir)
+                        need_to_clone = True
+                    working_src_dir.parent.mkdir(parents=True, exist_ok=True)
+                logger.info("moving cloned repo to %s", working_src_dir)
+                shutil.move(clone_dir, str(working_src_dir))
+
+        if not version:
+            raise ValueError(f"unable to determine version for {req}")
+
+        if not working_src_dir:
+            raise ValueError(f"unable to determine working source directory for {req}")
+
+        logging.info("resolved from git URL to %s, %s", working_src_dir, version)
+        return (str(working_src_dir), version)
+
+    def _get_version_from_package_metadata(
+        self,
+        req: Requirement,
+        source_dir: pathlib.Path,
+    ) -> Version:
+        pbi = self.ctx.package_build_info(req)
+        build_dir = pbi.build_dir(source_dir)
+        logger.info("generating metadata to get version")
+
+        hook_caller = dependencies.get_build_backend_hook_caller(
+            ctx=self.ctx,
+            req=req,
+            build_dir=build_dir,
+            override_environ={},
+        )
+        metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
+            metadata_directory=str(source_dir.parent),
+            config_settings=pbi.config_settings,
+        )
+        metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
+        with open(metadata_filename, "rb") as f:
+            p = BytesParser()
+            metadata = p.parse(f, headersonly=True)
+        return Version(metadata["Version"])
+
     def _resolve_prebuilt_with_history(
         self,
         req: Requirement,
@@ -594,7 +748,7 @@ class Bootstrapper:
             pre_built=True,
         )
 
-        if cached_resolution:
+        if cached_resolution and not req.url:
             wheel_url, resolved_version = cached_resolution
             logger.debug(f"resolved from previous bootstrap to {resolved_version}")
         else:
