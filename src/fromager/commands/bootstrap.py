@@ -15,10 +15,7 @@ from .. import (
     metrics,
     progress,
     requirements_file,
-    resolver,
     server,
-    sources,
-    wheels,
 )
 from ..log import requirement_ctxvar
 from ..requirements_file import RequirementType
@@ -140,41 +137,7 @@ def bootstrap(
 
     server.start_wheel_server(wkctx)
 
-    # we need to resolve all the top level dependencies before we start bootstrapping.
-    # this is to ensure that if we are using an older bootstrap to resolve packages
-    # we are able to upgrade a package anywhere in the dependency tree if it is mentioned
-    # in the toplevel without having to fall back to history
-    logger.info("resolving top-level dependencies before building")
-    for req in to_build:
-        token = requirement_ctxvar.set(req)
-        pbi = wkctx.package_build_info(req)
-        if pbi.pre_built:
-            servers = wheels.get_wheel_server_urls(wkctx, req)
-            source_url, version = wheels.resolve_prebuilt_wheel(
-                ctx=wkctx,
-                req=req,
-                wheel_server_urls=servers,
-            )
-        else:
-            source_url, version = sources.resolve_source(
-                ctx=wkctx,
-                req=req,
-                req_type=RequirementType.TOP_LEVEL,
-                sdist_server_url=resolver.PYPI_SERVER_URL,
-            )
-        logger.info("%s resolves to %s", req, version)
-        wkctx.dependency_graph.add_dependency(
-            parent_name=None,
-            parent_version=None,
-            req_type=requirements_file.RequirementType.TOP_LEVEL,
-            req=req,
-            req_version=version,
-            download_url=source_url,
-            pre_built=pbi.pre_built,
-        )
-        requirement_ctxvar.reset(token)
-
-    with progress.progress_context(total=len(to_build)) as progressbar:
+    with progress.progress_context(total=len(to_build * 2)) as progressbar:
         bt = bootstrapper.Bootstrapper(
             wkctx,
             progressbar,
@@ -182,6 +145,36 @@ def bootstrap(
             cache_wheel_server_url,
             sdist_only=sdist_only,
         )
+
+        # we need to resolve all the top level dependencies before we start bootstrapping.
+        # this is to ensure that if we are using an older bootstrap to resolve packages
+        # we are able to upgrade a package anywhere in the dependency tree if it is mentioned
+        # in the toplevel without having to fall back to history
+        logger.info("resolving top-level dependencies before building")
+        for req in to_build:
+            token = requirement_ctxvar.set(req)
+            pbi = wkctx.package_build_info(req)
+            if pbi.pre_built:
+                source_url, version = bt.resolve_version(
+                    req=req,
+                    req_type=RequirementType.TOP_LEVEL,
+                )
+            else:
+                source_url, version = bt.resolve_version(
+                    req=req,
+                    req_type=RequirementType.TOP_LEVEL,
+                )
+            logger.info("%s resolves to %s", req, version)
+            wkctx.dependency_graph.add_dependency(
+                parent_name=None,
+                parent_version=None,
+                req_type=requirements_file.RequirementType.TOP_LEVEL,
+                req=req,
+                req_version=version,
+                download_url=source_url,
+                pre_built=pbi.pre_built,
+            )
+            requirement_ctxvar.reset(token)
 
         for req in to_build:
             token = requirement_ctxvar.set(req)

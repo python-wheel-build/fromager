@@ -6,8 +6,10 @@ import operator
 import os
 import pathlib
 import shutil
+import tempfile
 import typing
 import zipfile
+from email.parser import BytesParser
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
@@ -18,6 +20,7 @@ from . import (
     build_environment,
     dependencies,
     finders,
+    gitutils,
     hooks,
     progress,
     resolver,
@@ -68,13 +71,15 @@ class Bootstrapper:
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
-    def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
-        constraint = self.ctx.constraints.get_constraint(req.name)
-        if constraint:
-            logger.info(
-                f"incoming requirement {req} matches constraint {constraint}. Will apply both."
-            )
+    def resolve_version(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+    ) -> tuple[str, Version]:
+        """Resolve the version of a requirement.
 
+        Returns the source URL and the version of the requirement.
+        """
         pbi = self.ctx.package_build_info(req)
         if pbi.pre_built:
             wheel_url, resolved_version = self._resolve_prebuilt_with_history(
@@ -84,6 +89,27 @@ class Bootstrapper:
             source_url = wheel_url
         else:
             source_url, resolved_version = self._resolve_source_with_history(
+                req=req,
+                req_type=req_type,
+            )
+        return source_url, resolved_version
+
+    def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
+        constraint = self.ctx.constraints.get_constraint(req.name)
+        if constraint:
+            logger.info(
+                f"incoming requirement {req} matches constraint {constraint}. Will apply both."
+            )
+
+        pbi = self.ctx.package_build_info(req)
+        if pbi.pre_built:
+            wheel_url, resolved_version = self.resolve_version(
+                req=req,
+                req_type=req_type,
+            )
+            source_url = wheel_url
+        else:
+            source_url, resolved_version = self.resolve_version(
                 req=req,
                 req_type=req_type,
             )
@@ -188,9 +214,16 @@ class Bootstrapper:
             assert sdist_root_dir is not None
             unpack_dir = sdist_root_dir.parent
 
+            build_env = build_environment.BuildEnvironment(
+                ctx=self.ctx,
+                parent_dir=sdist_root_dir.parent,
+                build_requirements=None,
+                req=req,
+            )
+
             # need to call this function irrespective of whether we had the wheel cached
             # so that the build dependencies can be bootstrapped
-            build_dependencies = self._prepare_build_dependencies(req, sdist_root_dir)
+            self._prepare_build_dependencies(req, sdist_root_dir, build_env)
 
             if cached_wheel_filename:
                 logger.debug(
@@ -208,8 +241,8 @@ class Bootstrapper:
                     f"{req.name}=={resolved_version} ({req_type})"
                 )
                 wheel_filename = None
-                sdist_filename, build_env = self._build_sdist(
-                    req, resolved_version, sdist_root_dir, build_dependencies
+                sdist_filename = self._build_sdist(
+                    req, resolved_version, sdist_root_dir, build_env
                 )
             else:
                 # build wheel (build requirements, full build mode)
@@ -217,8 +250,8 @@ class Bootstrapper:
                     f"building wheel {req.name}=={resolved_version} "
                     f"to get install requirements ({req_type})"
                 )
-                wheel_filename, sdist_filename, build_env = self._build_wheel(
-                    req, resolved_version, sdist_root_dir, build_dependencies
+                wheel_filename, sdist_filename = self._build_wheel(
+                    req, resolved_version, sdist_root_dir, build_env
                 )
 
         hooks.run_post_bootstrap_hooks(
@@ -298,14 +331,8 @@ class Bootstrapper:
         req: Requirement,
         resolved_version: Version,
         sdist_root_dir: pathlib.Path,
-        build_dependencies: set[Requirement],
-    ) -> tuple[pathlib.Path, build_environment.BuildEnvironment]:
-        build_env = build_environment.BuildEnvironment(
-            ctx=self.ctx,
-            parent_dir=sdist_root_dir.parent,
-            build_requirements=build_dependencies,
-            req=req,
-        )
+        build_env: build_environment.BuildEnvironment,
+    ) -> pathlib.Path:
         try:
             find_sdist_result = finders.find_sdist(
                 self.ctx, self.ctx.sdists_builds, req, str(resolved_version)
@@ -325,17 +352,18 @@ class Bootstrapper:
                 )
         except Exception as err:
             logger.warning(f"failed to build source distribution: {err}")
-        return (sdist_filename, build_env)
+            raise
+        return sdist_filename
 
     def _build_wheel(
         self,
         req: Requirement,
         resolved_version: Version,
         sdist_root_dir: pathlib.Path,
-        build_dependencies: set[Requirement],
-    ) -> tuple[pathlib.Path, pathlib.Path, build_environment.BuildEnvironment]:
-        sdist_filename, build_env = self._build_sdist(
-            req, resolved_version, sdist_root_dir, build_dependencies
+        build_env: build_environment.BuildEnvironment,
+    ) -> tuple[pathlib.Path, pathlib.Path]:
+        sdist_filename = self._build_sdist(
+            req, resolved_version, sdist_root_dir, build_env
         )
 
         logger.info(f"starting build of {self._explain} for {self.ctx.variant}")
@@ -351,22 +379,34 @@ class Bootstrapper:
         # downloads directory.
         wheel_filename = self.ctx.wheels_downloads / built_filename.name
         logger.info(f"built wheel for version {resolved_version}: {wheel_filename}")
-        return wheel_filename, sdist_filename, build_env
+        return wheel_filename, sdist_filename
 
     def _prepare_build_dependencies(
-        self, req: Requirement, sdist_root_dir: pathlib.Path
+        self,
+        req: Requirement,
+        sdist_root_dir: pathlib.Path,
+        build_env: build_environment.BuildEnvironment,
     ) -> set[Requirement]:
+        # build system
         build_system_dependencies = dependencies.get_build_system_dependencies(
-            ctx=self.ctx, req=req, sdist_root_dir=sdist_root_dir
+            ctx=self.ctx,
+            req=req,
+            sdist_root_dir=sdist_root_dir,
         )
         self._handle_build_requirements(
             req,
             RequirementType.BUILD_SYSTEM,
             build_system_dependencies,
         )
+        # The next hooks need build system requirements.
+        build_env.install(build_system_dependencies)
 
+        # build backend
         build_backend_dependencies = dependencies.get_build_backend_dependencies(
-            ctx=self.ctx, req=req, sdist_root_dir=sdist_root_dir
+            ctx=self.ctx,
+            req=req,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
         )
         self._handle_build_requirements(
             req,
@@ -374,14 +414,22 @@ class Bootstrapper:
             build_backend_dependencies,
         )
 
+        # build sdist
         build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
-            ctx=self.ctx, req=req, sdist_root_dir=sdist_root_dir
+            ctx=self.ctx,
+            req=req,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
         )
         self._handle_build_requirements(
             req,
             RequirementType.BUILD_SDIST,
             build_sdist_dependencies,
         )
+
+        build_dependencies = build_sdist_dependencies | build_backend_dependencies
+        if build_dependencies.isdisjoint(build_system_dependencies):
+            build_env.install(build_dependencies)
 
         return (
             build_system_dependencies
@@ -400,20 +448,10 @@ class Bootstrapper:
         for dep in self._sort_requirements(build_dependencies):
             token = requirement_ctxvar.set(dep)
             try:
-                resolved = self.bootstrap(req=dep, req_type=build_type)
+                self.bootstrap(req=dep, req_type=build_type)
             except Exception as err:
                 requirement_ctxvar.reset(token)
                 raise ValueError(f"could not handle {self._explain}") from err
-            # We may need these dependencies installed in order to run build hooks
-            # Example: frozenlist build-system.requires includes expandvars because
-            # it is used by the packaging/pep517_backend/ build backend
-            build_environment.maybe_install(
-                ctx=self.ctx,
-                req=req,
-                dep=dep,
-                dep_version=str(resolved),
-                dep_req_type=build_type,
-            )
             self.progressbar.update()
             requirement_ctxvar.reset(token)
 
@@ -566,6 +604,20 @@ class Bootstrapper:
         req: Requirement,
         req_type: RequirementType,
     ) -> tuple[str, Version]:
+        if req.url:
+            # If we have a URL, we should use that source. For now we only
+            # support git clone URLs of some sort. We are given the directory
+            # where the cloned repo resides, and return that as the URL for the
+            # source code so the next step in the process can find it and
+            # operate on it. However, we only support that if the package is a
+            # top-level dependency.
+            if req_type != RequirementType.TOP_LEVEL:
+                raise ValueError(
+                    f"{req} includes a URL, but is not a top-level dependency"
+                )
+            logger.info("resolving source via URL, ignoring any plugins")
+            return self._resolve_version_from_git_url(req=req)
+
         cached_resolution = self._resolve_from_graph(
             req=req,
             req_type=req_type,
@@ -583,6 +635,154 @@ class Bootstrapper:
             )
         return (source_url, resolved_version)
 
+    def _resolve_version_from_git_url(self, req: Requirement) -> tuple[str, Version]:
+        "Return path to the cloned git repository and the package version."
+
+        if not req.url:
+            raise ValueError(f"unable to resolve from URL with no URL in {req}")
+
+        if not req.url.startswith("git+"):
+            raise ValueError(f"unable to handle URL scheme in {req.url} from {req}")
+
+        # We start by not knowing where we would put the source because we don't
+        # know the version.
+        working_src_dir: pathlib.Path | None = None
+        version: Version | None = None
+
+        # Clean up the URL so we can parse it
+        reduced_url = req.url[len("git+") :]
+        parsed_url = urlparse(reduced_url)
+
+        # Save the URL that we think we will use for cloning. This might change
+        # later if the path has a tag or branch in it.
+        url_to_clone = reduced_url
+        need_to_clone = False
+
+        # If the URL includes an @ with text after it, we use that as the reference
+        # to clone, but by default we take the default branch.
+        git_ref: str | None = None
+
+        if "@" not in parsed_url.path:
+            # If we have no reference, we know we are going to have to clone the
+            # repository to figure out the version to use.
+            logger.debug("no reference in URL, will clone")
+            need_to_clone = True
+        else:
+            # If we have a reference, it might be a valid python version string, or
+            # not. It _must_ be a valid git reference. If it can be parsed as a
+            # valid python version, we assume the tag points to source that will
+            # think that is its version, so we allow reusing an existing cloned repo
+            # if there is one.
+            new_path, _, git_ref = parsed_url.path.rpartition("@")
+            url_to_clone = parsed_url._replace(path=new_path).geturl()
+            try:
+                version = Version(git_ref)
+            except ValueError:
+                logger.info(
+                    "could not parse %r as a version, cloning to get the version",
+                    git_ref,
+                )
+                need_to_clone = True
+            else:
+                logger.info("URL %s includes version %s", req.url, version)
+                working_src_dir = (
+                    self.ctx.work_dir
+                    / f"{req.name}-{version}"
+                    / f"{req.name}-{version}"
+                )
+                if not working_src_dir.exists():
+                    need_to_clone = True
+                else:
+                    if self.ctx.cleanup:
+                        logger.debug("cleaning up %s to reclone", working_src_dir)
+                        shutil.rmtree(working_src_dir)
+                        need_to_clone = True
+                    else:
+                        logger.info("reusing %s", working_src_dir)
+
+        if need_to_clone:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                clone_dir = pathlib.Path(tmpdir) / "src"
+                gitutils.git_clone(
+                    ctx=self.ctx,
+                    req=req,
+                    output_dir=clone_dir,
+                    repo_url=url_to_clone,
+                    ref=git_ref,
+                )
+                if not version:
+                    # If we still do not have a version, get it from the package
+                    # metadata.
+                    version = self._get_version_from_package_metadata(req, clone_dir)
+                    logger.info("found version %s", version)
+                    working_src_dir = (
+                        self.ctx.work_dir
+                        / f"{req.name}-{version}"
+                        / f"{req.name}-{version}"
+                    )
+                    if working_src_dir.exists():
+                        # We have to check if the destination directory exists
+                        # because if we were not given a version we did not
+                        # clean it up earlier. We do not use ctx.cleanup to
+                        # control this action because we cannot trust that the
+                        # destination directory is reusable because we have had
+                        # to compute the version and we cannot be sure that the
+                        # version is dynamic. Two different commits in the repo
+                        # could have the same version if that version is set
+                        # with static data in the repo instead of via a tag or
+                        # dynamically computed by something like setuptools-scm.
+                        logger.debug("cleaning up %s", working_src_dir)
+                        shutil.rmtree(working_src_dir)
+                        need_to_clone = True
+                    working_src_dir.parent.mkdir(parents=True, exist_ok=True)
+                logger.info("moving cloned repo to %s", working_src_dir)
+                shutil.move(clone_dir, str(working_src_dir))
+
+        if not version:
+            raise ValueError(f"unable to determine version for {req}")
+
+        if not working_src_dir:
+            raise ValueError(f"unable to determine working source directory for {req}")
+
+        logging.info("resolved from git URL to %s, %s", working_src_dir, version)
+        return (str(working_src_dir), version)
+
+    def _get_version_from_package_metadata(
+        self,
+        req: Requirement,
+        source_dir: pathlib.Path,
+    ) -> Version:
+        pbi = self.ctx.package_build_info(req)
+        build_dir = pbi.build_dir(source_dir)
+
+        logger.info(
+            "preparing build dependencies so we can access the metadata to get the version"
+        )
+        build_dependencies = self._prepare_build_dependencies(req, source_dir)
+        build_environment.BuildEnvironment(
+            ctx=self.ctx,
+            parent_dir=source_dir.parent,
+            build_requirements=build_dependencies,
+            req=req,
+        )
+
+        logger.info("generating metadata to get version")
+        hook_caller = dependencies.get_build_backend_hook_caller(
+            ctx=self.ctx,
+            req=req,
+            build_dir=build_dir,
+            override_environ={},
+        )
+        metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
+            metadata_directory=str(source_dir.parent),
+            config_settings=pbi.config_settings,
+        )
+        metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
+        with open(metadata_filename, "rb") as f:
+            p = BytesParser()
+            metadata = p.parse(f, headersonly=True)
+        return Version(metadata["Version"])
+
     def _resolve_prebuilt_with_history(
         self,
         req: Requirement,
@@ -594,7 +794,7 @@ class Bootstrapper:
             pre_built=True,
         )
 
-        if cached_resolution:
+        if cached_resolution and not req.url:
             wheel_url, resolved_version = cached_resolution
             logger.debug(f"resolved from previous bootstrap to {resolved_version}")
         else:
@@ -611,23 +811,6 @@ class Bootstrapper:
         pre_built: bool,
     ) -> tuple[str, Version] | None:
         _, parent_req, _ = self.why[-1] if self.why else (None, None, None)
-
-        # we have already resolved top level reqs before bootstrapping
-        # so they should already be in the root node
-        if req_type == RequirementType.TOP_LEVEL:
-            for edge in self.ctx.dependency_graph.get_root_node().get_outgoing_edges(
-                req.name, RequirementType.TOP_LEVEL
-            ):
-                if edge.req == req:
-                    return (
-                        edge.destination_node.download_url,
-                        edge.destination_node.version,
-                    )
-            # this should never happen since we already resolved top level reqs and their
-            # resolution should be in the root nodes
-            raise ValueError(
-                f"{req} appears as a toplevel requirement but it's resolution does not exist in the root node of the graph"
-            )
 
         if not self.prev_graph:
             return None
