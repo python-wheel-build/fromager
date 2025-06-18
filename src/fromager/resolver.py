@@ -151,18 +151,9 @@ def get_project_from_pypi(
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
     logger.debug("%s: getting available versions from %s", project, simple_index_url)
 
-    try:
-        response = session.get(simple_index_url)
-        response.raise_for_status()
-        data = response.content
-    except Exception as e:
-        logger.error(
-            "%s: failed to fetch package index from %s: %s",
-            project,
-            simple_index_url,
-            e,
-        )
-        raise
+    response = session.get(simple_index_url)
+    response.raise_for_status()
+    data = response.content
 
     doc = html5lib.parse(data, namespaceHTMLElements=False)
     for i in doc.findall(".//a"):
