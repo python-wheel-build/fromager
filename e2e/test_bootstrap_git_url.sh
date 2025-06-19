@@ -6,7 +6,7 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
-GIT_REPO_URL="https://opendev.org/openstack/stevedore.git"
+GIT_REPO_URL="https://github.com/python-wheel-build/stevedore-test-repo.git"
 
 fromager \
   --debug \
