@@ -701,12 +701,26 @@ class Bootstrapper:
         if need_to_clone:
             with tempfile.TemporaryDirectory() as tmpdir:
                 clone_dir = pathlib.Path(tmpdir) / "src"
+                # Get git options from package settings
+                pbi = self.ctx.package_build_info(req)
+                git_opts = pbi.git_options
+
+                # Configure submodules based on package settings
+                submodules: bool | list[str] = False
+                if git_opts.submodule_paths:
+                    # If specific paths are configured, use those
+                    submodules = git_opts.submodule_paths
+                elif git_opts.submodules:
+                    # If general submodule support is enabled, clone all submodules
+                    submodules = True
+
                 gitutils.git_clone(
                     ctx=self.ctx,
                     req=req,
                     output_dir=clone_dir,
                     repo_url=url_to_clone,
                     ref=git_ref,
+                    submodules=submodules,
                 )
                 if not version:
                     # If we still do not have a version, get it from the package

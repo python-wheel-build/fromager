@@ -185,3 +185,143 @@ def test_patch_sources_apply_only_unversioned(
         version=Version("0.6.0"),
     )
     apply_patch.assert_called_once_with(req, unversioned_patch_file, source_root_dir)
+
+
+@patch("fromager.gitutils.git_clone")
+def test_resolve_version_from_git_url_with_submodules_enabled(
+    mock_git_clone: Mock,
+    tmp_context: context.WorkContext,
+):
+    """Test that git_clone is called with submodules=True when configured."""
+    req = Requirement("test-pkg @ git+https://github.com/example/repo.git")
+
+    mock_git_options = packagesettings.GitOptions(submodules=True)
+
+    with patch.object(tmp_context, "package_build_info") as mock_pbi:
+        mock_pbi_instance = Mock()
+        mock_pbi_instance.git_options = mock_git_options
+        mock_pbi.return_value = mock_pbi_instance
+
+        with patch(
+            "fromager.sources._get_version_from_package_metadata"
+        ) as mock_get_version:
+            with patch("shutil.move"):
+                with patch("pathlib.Path.mkdir"):
+                    mock_get_version.return_value = Version("1.0.0")
+
+                    # Execute
+                    try:
+                        sources.resolve_version_from_git_url(tmp_context, req)
+                    except AssertionError:
+                        # Expected since we're mocking everything
+                        pass
+
+    mock_git_clone.assert_called_once()
+    call_args = mock_git_clone.call_args
+    assert call_args.kwargs["submodules"] is True
+    assert call_args.kwargs["repo_url"] == "https://github.com/example/repo.git"
+    assert call_args.kwargs["ref"] is None
+
+
+@patch("fromager.gitutils.git_clone")
+def test_resolve_version_from_git_url_with_specific_submodule_paths(
+    mock_git_clone: Mock,
+    tmp_context: context.WorkContext,
+):
+    """Test that git_clone is called with specific submodule paths when configured."""
+    req = Requirement("test-pkg @ git+https://github.com/example/repo.git")
+
+    mock_git_options = packagesettings.GitOptions(
+        submodule_paths=["vendor/lib1", "vendor/lib2"]
+    )
+
+    with patch.object(tmp_context, "package_build_info") as mock_pbi:
+        mock_pbi_instance = Mock()
+        mock_pbi_instance.git_options = mock_git_options
+        mock_pbi.return_value = mock_pbi_instance
+
+        with patch(
+            "fromager.sources._get_version_from_package_metadata"
+        ) as mock_get_version:
+            with patch("shutil.move"):
+                with patch("pathlib.Path.mkdir"):
+                    mock_get_version.return_value = Version("1.0.0")
+
+                    try:
+                        sources.resolve_version_from_git_url(tmp_context, req)
+                    except AssertionError:
+                        # Expected since we're mocking everything
+                        pass
+
+    mock_git_clone.assert_called_once()
+    call_args = mock_git_clone.call_args
+    assert call_args.kwargs["submodules"] == ["vendor/lib1", "vendor/lib2"]
+
+
+@patch("fromager.gitutils.git_clone")
+def test_resolve_version_from_git_url_with_submodules_disabled(
+    mock_git_clone: Mock,
+    tmp_context: context.WorkContext,
+):
+    """Test that git_clone is called with submodules=False by default."""
+    req = Requirement("test-pkg @ git+https://github.com/example/repo.git")
+
+    with patch(
+        "fromager.sources._get_version_from_package_metadata"
+    ) as mock_get_version:
+        with patch("shutil.move"):
+            with patch("pathlib.Path.mkdir"):
+                mock_get_version.return_value = Version("1.0.0")
+
+                try:
+                    sources.resolve_version_from_git_url(tmp_context, req)
+                except AssertionError:
+                    # Expected since we're mocking everything
+                    pass
+
+    mock_git_clone.assert_called_once()
+    call_args = mock_git_clone.call_args
+    assert call_args.kwargs["submodules"] is False
+
+
+@patch("fromager.gitutils.git_clone")
+def test_resolve_version_from_git_url_with_git_ref(
+    mock_git_clone: Mock,
+    tmp_context: context.WorkContext,
+):
+    """Test that git_clone is called with the correct ref when URL includes @ref."""
+    req = Requirement("test-pkg @ git+https://github.com/example/repo.git@v1.2.3")
+
+    mock_git_options = packagesettings.GitOptions(submodules=True)
+
+    with patch.object(tmp_context, "package_build_info") as mock_pbi:
+        mock_pbi_instance = Mock()
+        mock_pbi_instance.git_options = mock_git_options
+        mock_pbi.return_value = mock_pbi_instance
+
+        with patch(
+            "fromager.sources._get_version_from_package_metadata"
+        ) as mock_get_version:
+            with patch("shutil.move"):
+                with patch("pathlib.Path.mkdir"):
+                    mock_get_version.return_value = Version("1.2.3")
+
+                    try:
+                        sources.resolve_version_from_git_url(tmp_context, req)
+                    except AssertionError:
+                        # Expected since we're mocking everything
+                        pass
+
+    mock_git_clone.assert_called_once()
+    call_args = mock_git_clone.call_args
+    assert call_args.kwargs["submodules"] is True
+    assert call_args.kwargs["repo_url"] == "https://github.com/example/repo.git"
+    assert call_args.kwargs["ref"] == "v1.2.3"
+
+
+def test_resolve_version_from_git_url_invalid_scheme(tmp_context: context.WorkContext):
+    """Test that non-git URLs raise ValueError."""
+    req = Requirement("test-pkg @ https://github.com/example/repo.git")
+
+    with pytest.raises(ValueError, match="unable to handle URL scheme"):
+        sources.resolve_version_from_git_url(tmp_context, req)

@@ -11,6 +11,7 @@ from fromager import build_environment, context
 from fromager.packagesettings import (
     BuildDirectory,
     EnvVars,
+    GitOptions,
     Package,
     PackageSettings,
     SettingsFile,
@@ -50,6 +51,10 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "SPAM": "alot $EXTRA",
         "QUOTES": "A\"BC'$$EGG",
         "DEF": "${DEF:-default}",
+    },
+    "git_options": {
+        "submodules": False,
+        "submodule_paths": [],
     },
     "name": "test-pkg",
     "has_config": True,
@@ -96,6 +101,10 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
     "download_source": {
         "url": None,
         "destination_filename": None,
+    },
+    "git_options": {
+        "submodules": False,
+        "submodule_paths": [],
     },
     "has_config": True,
     "project_override": {
@@ -483,3 +492,105 @@ def test_substitute_template_key_error():
         str(excinfo.value)
         == "Undefined environment variable KeyError('UNKNOWN') referenced in expression '${DEFAULT} ${UNKNOWN}'"
     )
+
+
+def test_git_options_default():
+    """Test that GitOptions has correct default values."""
+    git_opts = GitOptions()
+    assert git_opts.submodules is False
+    assert git_opts.submodule_paths == []
+
+
+def test_git_options_with_submodules_enabled():
+    """Test GitOptions with submodules enabled."""
+    git_opts = GitOptions(submodules=True)
+    assert git_opts.submodules is True
+    assert git_opts.submodule_paths == []
+
+
+def test_git_options_with_specific_paths():
+    """Test GitOptions with specific submodule paths."""
+    paths = ["vendor/lib1", "vendor/lib2"]
+    git_opts = GitOptions(submodule_paths=paths)
+    assert git_opts.submodules is False  # Default value
+    assert git_opts.submodule_paths == paths
+
+
+def test_git_options_with_both_settings():
+    """Test GitOptions with both submodules and paths configured."""
+    paths = ["vendor/lib1"]
+    git_opts = GitOptions(submodules=True, submodule_paths=paths)
+    assert git_opts.submodules is True
+    assert git_opts.submodule_paths == paths
+
+
+def test_package_settings_git_options_default():
+    """Test that PackageSettings includes GitOptions with defaults."""
+    settings = PackageSettings.from_default("test-pkg")
+    assert hasattr(settings, "git_options")
+    assert isinstance(settings.git_options, GitOptions)
+    assert settings.git_options.submodules is False
+    assert settings.git_options.submodule_paths == []
+
+
+def test_package_settings_git_options_from_dict():
+    """Test PackageSettings can parse git_options from dictionary."""
+    settings = PackageSettings(
+        **{
+            "name": "test-pkg",
+            "has_config": True,
+            "git_options": {
+                "submodules": True,
+            },
+        }
+    )
+    assert settings.git_options.submodules is True
+    assert settings.git_options.submodule_paths == []  # Default value
+
+
+def test_package_settings_git_options_from_dict_empty():
+    """Test PackageSettings can parse empty git_options from dictionary."""
+    settings = PackageSettings(
+        **{"name": "test-pkg", "has_config": True, "git_options": {}}
+    )
+    assert settings.git_options.submodules is False  # Default value
+    assert settings.git_options.submodule_paths == []  # Default value
+
+
+def test_package_settings_git_options_from_file(tmp_path):
+    """Test PackageSettings can parse git_options from a YAML file."""
+    data = """
+git_options:
+  submodules: true
+  submodule_paths:
+    - path/to/submodule
+"""
+    settings = PackageSettings.from_string("test-pkg", data)
+    assert settings.git_options.submodules is True
+    assert settings.git_options.submodule_paths == ["path/to/submodule"]
+
+
+def test_package_build_info_git_options(testdata_context: context.WorkContext):
+    """Test that PackageBuildInfo exposes git_options property."""
+    req = Requirement("test-pkg==1.0.0")
+    pbi = testdata_context.package_build_info(req)
+
+    # Check that git_options property exists and returns GitOptions
+    assert hasattr(pbi, "git_options")
+    git_opts = pbi.git_options
+    assert isinstance(git_opts, GitOptions)
+
+    # Test that default values are correct
+    assert git_opts.submodules is False
+    assert git_opts.submodule_paths == []
+
+    # Test creating a new package settings with custom git options
+    settings_yaml = """
+git_options:
+  submodules: true
+  submodule_paths:
+    - vendor/lib
+"""
+    custom_settings = PackageSettings.from_string("custom-pkg", settings_yaml)
+    assert custom_settings.git_options.submodules is True
+    assert custom_settings.git_options.submodule_paths == ["vendor/lib"]

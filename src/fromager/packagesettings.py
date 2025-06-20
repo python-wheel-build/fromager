@@ -266,6 +266,36 @@ class VariantInfo(pydantic.BaseModel):
     """Use pre-built wheel from index server?"""
 
 
+class GitOptions(pydantic.BaseModel):
+    """Git repository cloning options
+
+    ::
+
+        submodules: False
+        submodule_paths: []
+    """
+
+    model_config = MODEL_CONFIG
+
+    submodules: bool = False
+    """Clone git submodules recursively?
+
+    When True, all submodules will be cloned recursively.
+    When False (default), no submodules will be cloned.
+    """
+
+    submodule_paths: list[str] = Field(default_factory=list)
+    """Clone specific submodule paths only
+
+    If provided, only the specified submodule paths will be cloned.
+    This option takes precedence over the 'submodules' boolean setting.
+
+    Examples:
+    - ["third-party/openssl"]
+    - ["vendor/lib1", "vendor/lib2"]
+    """
+
+
 _DictStrAny = dict[str, typing.Any]
 
 
@@ -335,6 +365,9 @@ class PackageSettings(pydantic.BaseModel):
     build_options: BuildOptions = Field(default_factory=BuildOptions)
     """Build system options"""
 
+    git_options: GitOptions = Field(default_factory=GitOptions)
+    """Git repository cloning options"""
+
     project_override: ProjectOverride = Field(default_factory=ProjectOverride)
     """Patch project settings"""
 
@@ -342,7 +375,7 @@ class PackageSettings(pydantic.BaseModel):
     """Variant configuration"""
 
     @pydantic.field_validator(
-        "download_source", "resolver_dist", "variants", mode="before"
+        "download_source", "resolver_dist", "git_options", "variants", mode="before"
     )
     @classmethod
     def before_none_dict(
@@ -766,6 +799,11 @@ class PackageBuildInfo:
     @property
     def config_settings(self) -> dict[str, list[str]]:
         return self._ps.config_settings
+
+    @property
+    def git_options(self) -> GitOptions:
+        """Git repository cloning options"""
+        return self._ps.git_options
 
     @property
     def project_override(self) -> ProjectOverride:
