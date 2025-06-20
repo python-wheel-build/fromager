@@ -28,6 +28,15 @@ pull_request_rules:
       - and:
           - "-draft"
 
+          # Unit tests
+          - check-success=unit (3.11, 1.75, ubuntu-latest)
+          - check-success=unit (3.11, 1.75, macos-latest)
+          - check-success=unit (3.12, 1.75, ubuntu-latest)
+          - check-success=unit (3.12, 1.75, macos-latest)
+
+          # MyPy type checking
+          - check-success=mypy
+
           - check-success=e2e (3.11, 1.75, bootstrap, ubuntu-latest)
           - check-success=e2e (3.11, 1.75, bootstrap_build_tags, ubuntu-latest)
           - check-success=e2e (3.11, 1.75, bootstrap_cache, ubuntu-latest)
