@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import pytest
 from packaging.requirements import Requirement
 
-from fromager import context, dependencies
+from fromager import build_environment, context, dependencies
 
 _fromager_root = pathlib.Path(__file__).parent.parent
 
@@ -101,11 +101,31 @@ def test_get_build_system_dependencies_cached(
 
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
-def test_get_build_backend_dependencies(_: Mock, tmp_context: context.WorkContext):
+def test_get_build_backend_dependencies(
+    _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
+):
+    # We have to install the build system dependencies into the build
+    # environment to get the build sdist dependencies, and we are not running
+    # our own local wheel server, so use the public one.
+    tmp_context.wheel_server_url = "https://pypi.org/simple"
+
+    req = Requirement("fromager")
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
+    build_system_dependencies = dependencies.get_build_system_dependencies(
+        ctx=tmp_context,
+        req=req,
+        sdist_root_dir=_fromager_root,
+    )
+    build_env.install(build_system_dependencies)
+
     results = dependencies.get_build_backend_dependencies(
         ctx=tmp_context,
-        req=Requirement("fromager"),
+        req=req,
         sdist_root_dir=_fromager_root,
+        build_env=build_env,
     )
     names = set(r.name for r in results)
     assert names == set()
@@ -119,21 +139,47 @@ def test_get_build_backend_dependencies_cached(
 
     req_file = tmp_path / "build-backend-requirements.txt"
     req_file.write_text("foo==1.0")
+
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
     results = dependencies.get_build_backend_dependencies(
         ctx=tmp_context,
         req=Requirement("fromager"),
         sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
     )
     assert results == set([Requirement("foo==1.0")])
 
 
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
-def test_get_build_sdist_dependencies(_: Mock, tmp_context: context.WorkContext):
+def test_get_build_sdist_dependencies(
+    _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
+):
+    # We have to install the build system dependencies into the build
+    # environment to get the build sdist dependencies, and we are not running
+    # our own local wheel server, so use the public one.
+    tmp_context.wheel_server_url = "https://pypi.org/simple"
+
+    req = Requirement("fromager")
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
+    build_system_dependencies = dependencies.get_build_system_dependencies(
+        ctx=tmp_context,
+        req=req,
+        sdist_root_dir=_fromager_root,
+    )
+    build_env.install(build_system_dependencies)
+
     results = dependencies.get_build_sdist_dependencies(
         ctx=tmp_context,
-        req=Requirement("fromager"),
+        req=req,
         sdist_root_dir=_fromager_root,
+        build_env=build_env,
     )
     names = set(r.name for r in results)
     assert names == set()
@@ -147,9 +193,16 @@ def test_get_build_sdist_dependencies_cached(
 
     req_file = tmp_path / "build-sdist-requirements.txt"
     req_file.write_text("foo==1.0")
+
+    req = Requirement("fromager")
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
     results = dependencies.get_build_sdist_dependencies(
         ctx=tmp_context,
-        req=Requirement("fromager"),
+        req=req,
         sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
     )
     assert results == set([Requirement("foo==1.0")])
