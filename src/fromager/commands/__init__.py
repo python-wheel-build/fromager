@@ -3,6 +3,7 @@ from . import (
     build,
     build_order,
     canonicalize,
+    check_requirements_resolve,
     download_sequence,
     graph,
     lint,
@@ -30,4 +31,5 @@ commands = [
     server.wheel_server,
     migrate_config.migrate_config,
     lint_requirements.lint_requirements,
+    check_requirements_resolve.check_requirements_resolve,
 ]
