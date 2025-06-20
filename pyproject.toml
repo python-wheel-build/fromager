@@ -200,6 +200,10 @@ dependencies = []
 [tool.hatch.envs.test]
 features = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.11", "3.12", "3.13"]
+
 [tool.hatch.envs.test.scripts]
 test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
 coverage-report = ["coverage combine", "coverage report --format=markdown"]
@@ -254,3 +258,6 @@ description = "Sphinx docs."
 features = ["docs"]
 [tool.hatch.envs.docs.scripts]
 build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
+
+[tool.hatch.envs.default.scripts]
+check-all = "hatch run test:test & hatch run lint:check & hatch run mypy:check & hatch run lint:pkglint & hatch run docs:build & wait"
