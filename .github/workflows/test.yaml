@@ -88,6 +88,7 @@ jobs:
           - bootstrap_skip_constraints
           - build
           - build_order
+          - build_sequence_git_url
           - build_steps
           - build_settings
           - graph_to_constraints
