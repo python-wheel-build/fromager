@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
 from re import Match
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 import html5lib
 import resolvelib
@@ -169,7 +169,8 @@ def get_project_from_pypi(
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
         path = urlparse(candidate_url).path
-        filename = path.rsplit("/", 1)[-1]
+        # file names are URL quoted, "1.0%2Blocal" -> "1.0+local"
+        filename = unquote(path.rsplit("/", 1)[-1])
         found_candidates.add(filename)
         if DEBUG_RESOLVER:
             logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
