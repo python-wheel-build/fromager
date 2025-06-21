@@ -82,11 +82,10 @@ class Bootstrapper:
         """
         pbi = self.ctx.package_build_info(req)
         if pbi.pre_built:
-            wheel_url, resolved_version = self._resolve_prebuilt_with_history(
+            source_url, resolved_version = self._resolve_prebuilt_with_history(
                 req=req,
                 req_type=req_type,
             )
-            source_url = wheel_url
         else:
             source_url, resolved_version = self._resolve_source_with_history(
                 req=req,
@@ -101,18 +100,11 @@ class Bootstrapper:
                 f"incoming requirement {req} matches constraint {constraint}. Will apply both."
             )
 
+        source_url, resolved_version = self.resolve_version(
+            req=req,
+            req_type=req_type,
+        )
         pbi = self.ctx.package_build_info(req)
-        if pbi.pre_built:
-            wheel_url, resolved_version = self.resolve_version(
-                req=req,
-                req_type=req_type,
-            )
-            source_url = wheel_url
-        else:
-            source_url, resolved_version = self.resolve_version(
-                req=req,
-                req_type=req_type,
-            )
 
         self._add_to_graph(req, req_type, resolved_version, source_url)
 
