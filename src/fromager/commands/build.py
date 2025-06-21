@@ -170,7 +170,14 @@ def build_sequence(
             prebuilt = entry["prebuilt"]
             source_download_url = entry["source_url"]
 
-            req = Requirement(f"{dist_name}=={resolved_version}")
+            # If we are building from git, use the requirement as specified so
+            # we include the URL. Otherwise, create a fake requirement with the
+            # name and version so we are explicitly building the expected
+            # version.
+            if entry["source_url_type"] == "git":
+                req = Requirement(entry["req"])
+            else:
+                req = Requirement(f"{dist_name}=={resolved_version}")
             token = requirement_ctxvar.set(req)
 
             if not force:
