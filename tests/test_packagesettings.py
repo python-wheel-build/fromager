@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pydantic
 import pytest
+from packaging.requirements import Requirement
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
