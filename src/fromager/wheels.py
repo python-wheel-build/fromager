@@ -10,7 +10,7 @@ import tempfile
 import textwrap
 import typing
 import zipfile
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import elfdeps
 import tomlkit
@@ -372,7 +372,9 @@ def download_wheel(
     wheel_url: str,
     output_directory: pathlib.Path,
 ) -> pathlib.Path:
-    wheel_filename = output_directory / os.path.basename(urlparse(wheel_url).path)
+    wheel_filename = output_directory / unquote(
+        os.path.basename(urlparse(wheel_url).path)
+    )
     if not wheel_filename.exists():
         logger.info(f"downloading pre-built wheel {wheel_url}")
         wheel_filename = _download_wheel_check(req, output_directory, wheel_url)

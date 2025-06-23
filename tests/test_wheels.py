@@ -1,4 +1,5 @@
 import pathlib
+import tempfile
 import zipfile
 from unittest.mock import Mock, patch
 
@@ -7,7 +8,7 @@ import wheel.cli  # type: ignore
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import build_environment, context, wheels
+from fromager import build_environment, context, sources, wheels
 
 
 @patch("fromager.sources.download_url")
@@ -102,6 +103,69 @@ def test_add_extra_metadata_allows_legitimate_double_dots(
     # Verify the function completed without error
     assert result_wheel.exists()
     mock_run.assert_called_once()
+
+
+def test_download_wheel_unquotes_url_encoded_filenames(tmp_path: pathlib.Path) -> None:
+    """Test that download_wheel properly unquotes URL-encoded characters in filenames."""
+    req = Requirement("test_pkg")
+    # URL with encoded plus sign (%2B)
+    wheel_url = "https://example.test/test_pkg-1.0%2Blocal-py3-none-any.whl"
+
+    mock_wheel, mock_wheel_file = tempfile.mkstemp()
+    with zipfile.ZipFile(mock_wheel_file, "w") as zf:
+        # Add minimal legitimate files
+        zf.writestr("test_pkg/__init__.py", "")
+        zf.writestr(
+            "test_pkg-1.0+local.dist-info/METADATA",
+            "Name: test_pkg\nVersion: 1.0.0\n",
+        )
+        zf.writestr(
+            "test_pkg-1.0+local.dist-info/WHEEL",
+            "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        )
+        zf.writestr(
+            "test_pkg-1.0+local.dist-info/RECORD",
+            "test_pkg/static/js/icon..569adb91.chunk.js,,",
+        )
+
+        # This should be allowed - ".." is part of filename, not a path component
+        zf.writestr("test_pkg/static/js/icon..569adb91.chunk.js", "content")
+
+    with patch("fromager.request_session.session.get") as mock_get:
+        # Mock successful response
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        with open(mock_wheel_file, "rb") as wf:
+            mock_response.iter_content.return_value = [wf.read()]
+        mock_get.return_value.__enter__.return_value = mock_response
+
+        result_filename = wheels.download_wheel(req, wheel_url, tmp_path)
+
+        # The filename should be unquoted, containing actual + character
+        expected_filename = tmp_path / "test_pkg-1.0+local-py3-none-any.whl"
+        assert result_filename == expected_filename
+
+
+def test_sources_download_url_unquotes_filenames(tmp_path: pathlib.Path) -> None:
+    """Test that sources.download_url properly unquotes URL-encoded characters in filenames."""
+    req = Requirement("test_pkg")
+    # URL with encoded plus sign (%2B)
+    url = "https://example.test/test_pkg-1.0%2Blocal.tar.gz"
+
+    with patch("fromager.request_session.session.get") as mock_get:
+        # Mock successful response
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.iter_content.return_value = [b"test content"]
+        mock_get.return_value.__enter__.return_value = mock_response
+
+        result_filename = sources.download_url(
+            req=req, destination_dir=tmp_path, url=url
+        )
+
+        # The filename should be unquoted, containing actual + character
+        expected_filename = tmp_path / "test_pkg-1.0+local.tar.gz"
+        assert result_filename == expected_filename
 
 
 def test_add_extra_metadata_blocks_path_traversal(
