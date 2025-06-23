@@ -21,6 +21,7 @@ from . import (
     build_environment,
     dependencies,
     external_commands,
+    gitutils,
     metrics,
     overrides,
     pyproject,
@@ -41,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
     source_type = requirements_file.SourceType.SDIST
+    if req.url:
+        return requirements_file.SourceType.GIT
     pbi = ctx.package_build_info(req)
     if (
         overrides.find_override_method(req.name, "download_source")
@@ -60,13 +63,25 @@ def download_source(
     version: Version,
     download_url: str,
 ) -> pathlib.Path:
-    if req.url:
+    logger.info(f"downloading source for {req}")
+    download_path = pathlib.Path(download_url)
+    if req.url and download_path.exists():
         logger.info(
-            "downloaded source to %s by cloning %s, ignoring any plugins",
+            "source is already downloaded to %s by cloning %s, ignoring any plugins",
             download_url,
             req.url,
         )
-        return pathlib.Path(download_url)
+        return download_path
+    elif req.url:
+        download_path = ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
+        download_path.mkdir(parents=True, exist_ok=True)
+        download_git_source(
+            ctx=ctx,
+            req=req,
+            url_to_clone=req.url,
+            destination_dir=download_path,
+        )
+        return download_path
 
     source_path = overrides.find_and_invoke(
         req.name,
@@ -174,6 +189,40 @@ def default_download_source(
 
     logger.debug(f"have source for {req} version {version} in {source_filename}")
     return source_filename
+
+
+def download_git_source(
+    ctx: context.WorkContext,
+    req: Requirement,
+    url_to_clone: str,
+    destination_dir: pathlib.Path,
+    ref: str | None = None,
+) -> None:
+    if url_to_clone.startswith("git+"):
+        url_to_clone = url_to_clone[len("git+") :]
+
+    logger.info(f"cloning source from {url_to_clone}@{ref} to {destination_dir}")
+    # Get git options from package settings
+    pbi = ctx.package_build_info(req)
+    git_opts = pbi.git_options
+
+    # Configure submodules based on package settings
+    submodules: bool | list[str] = False
+    if git_opts.submodule_paths:
+        # If specific paths are configured, use those
+        submodules = git_opts.submodule_paths
+    elif git_opts.submodules:
+        # If general submodule support is enabled, clone all submodules
+        submodules = True
+
+    gitutils.git_clone(
+        ctx=ctx,
+        req=req,
+        output_dir=destination_dir,
+        repo_url=url_to_clone,
+        submodules=submodules,
+        ref=ref,
+    )
 
 
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.

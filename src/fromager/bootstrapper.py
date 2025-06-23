@@ -20,7 +20,6 @@ from . import (
     build_environment,
     dependencies,
     finders,
-    gitutils,
     hooks,
     progress,
     resolver,
@@ -693,26 +692,12 @@ class Bootstrapper:
         if need_to_clone:
             with tempfile.TemporaryDirectory() as tmpdir:
                 clone_dir = pathlib.Path(tmpdir) / "src"
-                # Get git options from package settings
-                pbi = self.ctx.package_build_info(req)
-                git_opts = pbi.git_options
-
-                # Configure submodules based on package settings
-                submodules: bool | list[str] = False
-                if git_opts.submodule_paths:
-                    # If specific paths are configured, use those
-                    submodules = git_opts.submodule_paths
-                elif git_opts.submodules:
-                    # If general submodule support is enabled, clone all submodules
-                    submodules = True
-
-                gitutils.git_clone(
+                sources.download_git_source(
                     ctx=self.ctx,
                     req=req,
-                    output_dir=clone_dir,
-                    repo_url=url_to_clone,
+                    url_to_clone=url_to_clone,
+                    destination_dir=clone_dir,
                     ref=git_ref,
-                    submodules=submodules,
                 )
                 if not version:
                     # If we still do not have a version, get it from the package
@@ -737,8 +722,7 @@ class Bootstrapper:
                         # dynamically computed by something like setuptools-scm.
                         logger.debug("cleaning up %s", working_src_dir)
                         shutil.rmtree(working_src_dir)
-                        need_to_clone = True
-                    working_src_dir.parent.mkdir(parents=True, exist_ok=True)
+                        working_src_dir.parent.mkdir(parents=True, exist_ok=True)
                 logger.info("moving cloned repo to %s", working_src_dir)
                 shutil.move(clone_dir, str(working_src_dir))
 
@@ -1012,6 +996,8 @@ class Bootstrapper:
             "source_url": source_url,
             "source_url_type": source_url_type,
         }
+        if req.url:
+            info["source_url"] = req.url
         self._build_stack.append(info)
         with open(self._build_order_filename, "w") as f:
             # Set default=str because the why value includes

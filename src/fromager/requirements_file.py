@@ -33,6 +33,7 @@ class SourceType(StrEnum):
     PREBUILT = "prebuilt"
     SDIST = "sdist"
     OVERRIDE = "override"
+    GIT = "git"
 
 
 def parse_requirements_file(
