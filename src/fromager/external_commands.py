@@ -1,6 +1,7 @@
 import logging
 import os
 import pathlib
+import re
 import shlex
 import subprocess
 import sys
@@ -46,6 +47,23 @@ class NetworkIsolationError(subprocess.CalledProcessError):
     pass
 
 
+# *PAT (GitLab), SECRET, PASSWORD, PASSPHRASE, CRED(entials), TOKEN
+SENSITIVE_KEYS = re.compile(
+    "^(*.PAT|.*SECRET.*|.*PASSWORD.*|.*PASSPHRASE.*|.*CRED.*|.*TOKEN.*)$",
+    re.IGNORECASE,
+)
+
+
+def mask_envvars(env: dict[str, typing.Any]) -> typing.Iterator[tuple[str, str]]:
+    """Mask sensistive env keys, shlex quote others"""
+    for key, value in sorted(env.items()):
+        if SENSITIVE_KEYS.match(key):
+            value = "'[MASKED]'"
+        else:
+            value = shlex.quote(str(value))
+        yield key, value
+
+
 # based on pyproject_hooks/_impl.py: quiet_subprocess_runner
 def run(
     cmd: typing.Sequence[str],
@@ -70,14 +88,17 @@ def run(
             *cmd,
         ]
 
-    logger.debug(
-        "running: %s %s in %s",
-        " ".join(f"{k}={shlex.quote(v)}" for k, v in extra_environ.items()),
-        " ".join(shlex.quote(str(s)) for s in cmd),
-        cwd or ".",
-    )
+    cmd_str = " ".join(shlex.quote(str(s)) for s in cmd)
+    env_str = " ".join(f"{k}={v}" for k, v in mask_envvars(env))
+    cwd_str = cwd or os.path.abspath(os.getcwd())
+
+    logger.debug("running: %s %s in %s", cmd_str, env_str, cwd_str)
     if log_filename:
         with open(log_filename, "w") as log_file:
+            print(f"cmd: {cmd_str}", file=log_file)
+            print(f"env: {env_str}", file=log_file)
+            print(f"cwd: {cwd_str}", file=log_file)
+            log_file.flush()
             completed = subprocess.run(
                 cmd,
                 cwd=cwd,

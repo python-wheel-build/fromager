@@ -1,5 +1,6 @@
 import os
 import pathlib
+import shlex
 import subprocess
 import typing
 from unittest import mock
@@ -7,6 +8,25 @@ from unittest import mock
 import pytest
 
 from fromager import external_commands
+
+MASKED = "'[MASKED]'"
+
+
+@pytest.mark.parametrize(
+    "key,value,expected_value",
+    [
+        ("KEY", "value", "value"),
+        ("KEY", "value;value", "'value;value'"),
+        ("PATH", "/bin:/sbin", "/bin:/sbin"),
+        ("BOT_PAT", "value", MASKED),
+        ("MY_SECRET", "value", MASKED),
+        ("MY_CREDENTIALS", "value", MASKED),
+        ("SOME_PASSWORD_VALUE", "value", MASKED),
+    ],
+)
+def test_mask_envvars(key: str, value: str, expected_value: str):
+    out = dict(external_commands.mask_envvars({key: value}))
+    assert out == {key: expected_value}
 
 
 def test_external_commands_environ():
@@ -18,15 +38,23 @@ def test_external_commands_environ():
 def test_external_commands_log_file(tmp_path):
     log_filename = pathlib.Path(tmp_path) / "test.log"
     env = {"BLAH": "test"}
+    cmd = ["sh", "-c", "echo $BLAH"]
     output = external_commands.run(
-        ["sh", "-c", "echo $BLAH"],
+        cmd,
         extra_environ=env,
         log_filename=log_filename,
     )
-    assert "test\n" == output
+    assert output.endswith("test\n")
+
     assert log_filename.exists()
     file_contents = log_filename.read_text()
-    assert "test\n" == file_contents
+    assert file_contents == output
+
+    file_lines = file_contents.split("\n")
+    assert file_lines[0] == f"cmd: {shlex.join(cmd)}"
+    assert file_lines[1].startswith("env:")
+    assert file_lines[2].startswith("cwd:")
+    assert file_lines[3] == "test"
 
 
 @mock.patch("subprocess.run", return_value=mock.Mock(returncode=0))
