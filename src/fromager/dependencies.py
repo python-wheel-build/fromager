@@ -36,11 +36,12 @@ def get_build_system_dependencies(
 
     build_system_req_file = sdist_root_dir.parent / BUILD_SYSTEM_REQ_FILE_NAME
     if build_system_req_file.exists():
-        logger.info(
-            f"loading build system dependencies from {build_system_req_file.name}"
-        )
+        logger.info(f"loading build system dependencies from {build_system_req_file}")
         return _read_requirements_file(build_system_req_file)
 
+    logger.debug(
+        f"file {build_system_req_file} does not exist, getting dependencies from hook"
+    )
     orig_deps = overrides.find_and_invoke(
         req.name,
         "get_build_system_dependencies",
@@ -102,11 +103,12 @@ def get_build_backend_dependencies(
 
     build_backend_req_file = sdist_root_dir.parent / BUILD_BACKEND_REQ_FILE_NAME
     if build_backend_req_file.exists():
-        logger.info(
-            f"loading build backend dependencies from {build_backend_req_file.name}"
-        )
+        logger.info(f"loading build backend dependencies from {build_backend_req_file}")
         return _read_requirements_file(build_backend_req_file)
 
+    logger.debug(
+        f"file {build_backend_req_file} does not exist, getting dependencies from hook"
+    )
     extra_environ = pbi.get_extra_environ(build_env=build_env)
     orig_deps = overrides.find_and_invoke(
         req.name,
@@ -166,11 +168,12 @@ def get_build_sdist_dependencies(
 
     build_sdist_req_file = sdist_root_dir.parent / BUILD_SDIST_REQ_FILE_NAME
     if build_sdist_req_file.exists():
-        logger.info(
-            f"loading build sdist dependencies from {build_sdist_req_file.name}"
-        )
+        logger.info(f"loading build sdist dependencies from {build_sdist_req_file}")
         return _read_requirements_file(build_sdist_req_file)
 
+    logger.debug(
+        f"file {build_sdist_req_file} does not exist, getting dependencies from hook"
+    )
     extra_environ = pbi.get_extra_environ(build_env=build_env)
     orig_deps = overrides.find_and_invoke(
         req.name,
