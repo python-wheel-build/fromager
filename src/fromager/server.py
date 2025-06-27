@@ -9,6 +9,8 @@ import typing
 
 from packaging.utils import parse_wheel_filename
 
+from .threading_utils import with_thread_lock
+
 if typing.TYPE_CHECKING:
     from . import context
 
@@ -59,6 +61,7 @@ def run_wheel_server(
     return t
 
 
+@with_thread_lock()
 def update_wheel_mirror(ctx: context.WorkContext) -> None:
     for wheel in ctx.wheels_build.glob("*.whl"):
         logger.info("adding %s to local wheel server", wheel.name)
