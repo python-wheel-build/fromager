@@ -156,7 +156,7 @@ def get_project_from_pypi(
         response.raise_for_status()
         data = response.content
     except Exception as e:
-        logger.error(
+        logger.debug(
             "%s: failed to fetch package index from %s: %s",
             project,
             simple_index_url,

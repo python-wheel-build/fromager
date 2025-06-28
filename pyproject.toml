@@ -197,6 +197,9 @@ reportAttributeAccessIssue = false  # adding our own private property on click c
 # No specific python version here, so it uses the active Python by default.
 dependencies = []
 
+[[tool.hatch.envs.default.matrix]]
+python = ["3.11", "3.12", "3.13"]
+
 [tool.hatch.envs.test]
 features = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run

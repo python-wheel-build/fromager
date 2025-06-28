@@ -29,7 +29,7 @@ those special cases directly into fromager.
    using.md
    getting-started.rst
    customization.md
-   how-to.md
+   how-tos/index.rst
    hooks.rst
    files.md
    http-retry.md
