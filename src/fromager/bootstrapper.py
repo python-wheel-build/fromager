@@ -187,6 +187,7 @@ class Bootstrapper:
             if not unpacked_cached_wheel:
                 # We didn't find anything so we are going to have to build the
                 # wheel in order to process its installation dependencies.
+                logger.debug("no cached wheel, downloading sources")
                 source_filename = sources.download_source(
                     ctx=self.ctx,
                     req=req,
@@ -200,10 +201,15 @@ class Bootstrapper:
                     version=resolved_version,
                 )
             else:
-                sdist_root_dir = unpacked_cached_wheel
+                logger.debug(f"have cached wheel in {unpacked_cached_wheel}")
+                sdist_root_dir = unpacked_cached_wheel / unpacked_cached_wheel.stem
 
             assert sdist_root_dir is not None
-            assert sdist_root_dir.parent != self.ctx.work_dir
+
+            if sdist_root_dir.parent.parent != self.ctx.work_dir:
+                raise ValueError(
+                    f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}"
+                )
             unpack_dir = sdist_root_dir.parent
 
             build_env = build_environment.BuildEnvironment(
@@ -570,13 +576,14 @@ class Bootstrapper:
         unpack_dir = self._create_unpack_dir(req, resolved_version)
         dist_filename = f"{dist_name}-{dist_version}"
         metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
+        req_filenames: list[str] = [
+            dependencies.BUILD_BACKEND_REQ_FILE_NAME,
+            dependencies.BUILD_SDIST_REQ_FILE_NAME,
+            dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
+        ]
         try:
             archive = zipfile.ZipFile(wheel_filename)
-            for filename in [
-                dependencies.BUILD_BACKEND_REQ_FILE_NAME,
-                dependencies.BUILD_SDIST_REQ_FILE_NAME,
-                dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
-            ]:
+            for filename in req_filenames:
                 zipinfo = archive.getinfo(
                     str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
                 )
@@ -592,7 +599,8 @@ class Bootstrapper:
         except Exception as e:
             # implies that the wheel server hosted non-fromager built wheels
             logger.info(f"could not extract build requirements from wheel: {e}")
-            shutil.rmtree(unpack_dir)
+            for filename in req_filenames:
+                unpack_dir.joinpath(filename).unlink(missing_ok=True)
             return None
 
     def _resolve_source_with_history(
@@ -880,8 +888,7 @@ class Bootstrapper:
             return None
 
     def _create_unpack_dir(self, req: Requirement, resolved_version: Version):
-        # unpack_dir.parent directory must be a subdirectory of ctx.work_dir
-        unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}" / "unpack"
+        unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
         unpack_dir.mkdir(parents=True, exist_ok=True)
         return unpack_dir
 
