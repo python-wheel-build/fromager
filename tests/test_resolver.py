@@ -267,6 +267,64 @@ def test_provider_constraint_match():
         assert str(candidate.version) == "1.2.2"
 
 
+_ignore_platform_simple_response = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="pypi:repository-version" content="1.1">
+<title>Links for fromager</title>
+</head>
+<body>
+<h1>Links for fromager</h1>
+<a href="https://files.pythonhosted.org/packages/7c/06/620610984c2794ef55c4257c77211b7a625431b380880c524c2f6bc264b1/fromager-0.51.0-cp311-abi3-manylinux_2_28_plan9.whl" >fromager-0.51.0-cp311-abi3-manylinux_2_28_plan9.whl</a>
+<br />
+<a href="https://files.pythonhosted.org/packages/7c/06/620610984c2794ef55c4257c77211b7a625431b380880c524c2f6bc264b1/fromager-0.51.0-cp3000-abi3-manylinux_2_28_plan9.whl" >fromager-0.51.0-cp3000-abi3-manylinux_2_28_plan9.whl</a>
+</body>
+</html>
+"""
+
+
+def test_provider_platform_mismatch():
+    constraint = constraints.Constraints()
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/fromager/",
+            text=_ignore_platform_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_wheels=True, constraints=constraint)
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        with pytest.raises(resolvelib.resolvers.exceptions.ResolverException):
+            rslvr.resolve([Requirement("fromager")])
+
+
+def test_provider_ignore_platform():
+    constraint = constraints.Constraints()
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/fromager/",
+            text=_ignore_platform_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(
+            include_wheels=True, constraints=constraint, ignore_platform=True
+        )
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("fromager")])
+        assert "fromager" in result.mapping
+
+        candidate = result.mapping["fromager"]
+        assert (
+            candidate.url
+            == "https://files.pythonhosted.org/packages/7c/06/620610984c2794ef55c4257c77211b7a625431b380880c524c2f6bc264b1/fromager-0.51.0-cp311-abi3-manylinux_2_28_plan9.whl"
+        )
+        assert str(candidate.version) == "0.51.0"
+
+
 _github_fromager_repo_response = """
 {
   "id": 808690091,

@@ -428,6 +428,8 @@ def resolve_prebuilt_wheel(
                 include_sdists=False,
                 include_wheels=True,
                 req_type=req_type,
+                # pre-built wheels must match platform
+                ignore_platform=False,
             )
         except Exception:
             continue
