@@ -33,7 +33,8 @@ project_override:
 resolver_dist:
     sdist_server_url: https://sdist.test/egg
     include_sdists: true
-    include_wheels: false
+    include_wheels: true
+    ignore_platform: true
 variants:
     cpu:
         env:

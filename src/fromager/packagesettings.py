@@ -119,6 +119,7 @@ class ResolverDist(pydantic.BaseModel):
       sdist_server_url: https://pypi.org/simple/
       include_sdists: True
       include_wheels: False
+      ignore_platform: False
     """
 
     model_config = MODEL_CONFIG
@@ -131,6 +132,23 @@ class ResolverDist(pydantic.BaseModel):
 
     include_wheels: bool = False
     """Use wheels to resolve? (default: no)"""
+
+    ignore_platform: bool = False
+    """Ignore the platform when resolving with wheels? (default: no)
+
+    This option ignores the platform field (OS, CPU arch) when resolving with
+    *include_wheels* enabled.
+
+    .. versionadded:: 0.52
+    """
+
+    @pydantic.model_validator(mode="after")
+    def validate_ignore_platform(self) -> typing.Self:
+        if self.ignore_platform and not self.include_wheels:
+            raise ValueError(
+                "'ignore_platforms' has no effect without 'include_wheels'"
+            )
+        return self
 
 
 class DownloadSource(pydantic.BaseModel):
@@ -695,6 +713,11 @@ class PackageBuildInfo:
     def resolver_include_sdists(self) -> bool:
         """Include sdists when resolving package versions?"""
         return self._ps.resolver_dist.include_sdists
+
+    @property
+    def resolver_ignore_platform(self) -> bool:
+        """Ignore the platform when resolving with wheels?"""
+        return self._ps.resolver_dist.ignore_platform
 
     def build_dir(self, sdist_root_dir: pathlib.Path) -> pathlib.Path:
         """Build directory for package (e.g. subdirectory)"""

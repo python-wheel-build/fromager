@@ -45,9 +45,16 @@ logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
-SUPPORTED_TAGS = set(sys_tags())
 PYPI_SERVER_URL = "https://pypi.org/simple"
 GITHUB_URL = "https://github.com"
+
+# all supported tags
+SUPPORTED_TAGS: frozenset[Tag] = frozenset(sys_tags())
+# same, but ignore the platform for 'ignore_platform' flag
+IGNORE_PLATFORM: str = "ignore"
+SUPPORTED_TAGS_IGNORE_PLATFORM: frozenset[Tag] = frozenset(
+    Tag(t.interpreter, t.abi, IGNORE_PLATFORM) for t in SUPPORTED_TAGS
+)
 
 
 def resolve(
@@ -58,6 +65,7 @@ def resolve(
     include_sdists: bool = True,
     include_wheels: bool = True,
     req_type: RequirementType | None = None,
+    ignore_platform: bool = False,
 ) -> tuple[str, Version]:
     # Create the (reusable) resolver.
     provider = overrides.find_and_invoke(
@@ -70,6 +78,7 @@ def resolve(
         include_wheels=include_wheels,
         sdist_server_url=sdist_server_url,
         req_type=req_type,
+        ignore_platform=ignore_platform,
     )
     return resolve_from_provider(provider, req)
 
@@ -81,6 +90,7 @@ def default_resolver_provider(
     include_sdists: bool,
     include_wheels: bool,
     req_type: RequirementType | None = None,
+    ignore_platform: bool = False,
 ) -> PyPIProvider | GenericProvider | GitHubTagProvider:
     """Lookup resolver provider to resolve package versions"""
     return PyPIProvider(
@@ -89,6 +99,7 @@ def default_resolver_provider(
         sdist_server_url=sdist_server_url,
         constraints=ctx.constraints,
         req_type=req_type,
+        ignore_platform=ignore_platform,
     )
 
 
@@ -144,6 +155,7 @@ def get_project_from_pypi(
     project: str,
     extras: typing.Iterable[str],
     sdist_server_url: str,
+    ignore_platform: bool = False,
 ) -> typing.Iterable[Candidate]:
     """Return candidates created from the project name and extras."""
     found_candidates: set[str] = set()
@@ -210,6 +222,15 @@ def get_project_from_pypi(
                 # FIXME: This doesn't take into account precedence of
                 # the supported tags for best fit.
                 matching_tags = SUPPORTED_TAGS.intersection(tags)
+                if not matching_tags and ignore_platform:
+                    if DEBUG_RESOLVER:
+                        logger.debug(f"{project}: ignoring platform for {filename}")
+                    ignore_platform_tags: frozenset[Tag] = frozenset(
+                        Tag(t.interpreter, t.abi, IGNORE_PLATFORM) for t in tags
+                    )
+                    matching_tags = SUPPORTED_TAGS_IGNORE_PLATFORM.intersection(
+                        ignore_platform_tags
+                    )
                 if not matching_tags:
                     if DEBUG_RESOLVER:
                         logger.debug(f"{project}: ignoring {filename} with tags {tags}")
@@ -272,6 +293,7 @@ class BaseProvider(ExtrasProvider):
         sdist_server_url: str = "https://pypi.org/simple/",
         constraints: Constraints | None = None,
         req_type: RequirementType | None = None,
+        ignore_platform: bool = False,
     ):
         super().__init__()
         self.include_sdists = include_sdists
@@ -279,6 +301,7 @@ class BaseProvider(ExtrasProvider):
         self.sdist_server_url = sdist_server_url
         self.constraints = constraints or Constraints()
         self.req_type = req_type
+        self.ignore_platform = ignore_platform
 
     def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
@@ -405,6 +428,7 @@ class PyPIProvider(BaseProvider):
         sdist_server_url: str = "https://pypi.org/simple/",
         constraints: Constraints | None = None,
         req_type: RequirementType | None = None,
+        ignore_platform: bool = False,
     ):
         super().__init__(
             include_sdists=include_sdists,
@@ -412,6 +436,7 @@ class PyPIProvider(BaseProvider):
             sdist_server_url=sdist_server_url,
             constraints=constraints,
             req_type=req_type,
+            ignore_platform=ignore_platform,
         )
 
     def get_cache(self) -> dict[str, list[Candidate]]:
@@ -456,7 +481,10 @@ class PyPIProvider(BaseProvider):
             # are added to the candidate at creation - we
             # treat candidates as immutable once created.
             for candidate in get_project_from_pypi(
-                identifier, set(), self.sdist_server_url
+                identifier,
+                set(),
+                self.sdist_server_url,
+                self.ignore_platform,
             ):
                 if self.validate_candidate(
                     identifier, requirements, incompatibilities, candidate

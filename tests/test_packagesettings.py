@@ -15,6 +15,7 @@ from fromager.packagesettings import (
     GitOptions,
     Package,
     PackageSettings,
+    ResolverDist,
     SettingsFile,
     Variant,
     substitute_template,
@@ -67,8 +68,9 @@ FULL_EXPECTED: dict[str, typing.Any] = {
     },
     "resolver_dist": {
         "include_sdists": True,
-        "include_wheels": False,
+        "include_wheels": True,
         "sdist_server_url": "https://sdist.test/egg",
+        "ignore_platform": True,
     },
     "variants": {
         "cpu": {
@@ -119,6 +121,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "sdist_server_url": None,
         "include_sdists": True,
         "include_wheels": False,
+        "ignore_platform": False,
     },
     "variants": {},
 }
@@ -266,7 +269,8 @@ def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
         == "test-pkg-1.0.2.tar.gz"
     )
     assert pbi.resolver_include_sdists is True
-    assert pbi.resolver_include_wheels is False
+    assert pbi.resolver_include_wheels is True
+    assert pbi.resolver_ignore_platform is True
     assert (
         pbi.resolver_sdist_server_url("https://pypi.org/simple")
         == "https://sdist.test/egg"
@@ -630,3 +634,8 @@ build_options:
 
     custom_pbi = settings.package_build_info("exclusive-pkg")
     assert custom_pbi.exclusive_build is True
+
+
+def test_resolver_dist_validator():
+    with pytest.raises(pydantic.ValidationError):
+        ResolverDist(include_wheels=False, ignore_platform=True)

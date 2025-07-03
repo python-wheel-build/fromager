@@ -40,8 +40,9 @@ def test_default_download_source_from_settings(
         req=req,
         sdist_server_url=sdist_server_url,
         include_sdists=True,
-        include_wheels=False,
+        include_wheels=True,
         req_type=None,
+        ignore_platform=True,
     )
 
     sources.default_download_source(
@@ -86,6 +87,7 @@ def test_default_download_source_with_predefined_resolve_dist(
         include_sdists=False,
         include_wheels=True,
         req_type=None,
+        ignore_platform=False,
     )
 
 

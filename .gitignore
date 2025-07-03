@@ -5,6 +5,7 @@ __pycache__/
 /work-dir*/
 /test-venv/
 /venv*/
+/.venv/
 /build/
 **/*.egg-info/
 /src/fromager/version.py

@@ -165,6 +165,7 @@ def default_resolve_source(
         include_sdists=pbi.resolver_include_sdists,
         include_wheels=pbi.resolver_include_wheels,
         req_type=req_type,
+        ignore_platform=pbi.resolver_ignore_platform,
     )
     return url, version
 
