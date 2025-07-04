@@ -1,11 +1,14 @@
 import functools
 import itertools
+import os
 import pathlib
 import shutil
 import textwrap
 import typing
+import zipfile
 from unittest.mock import Mock, patch
 
+import hatchling.build
 import pytest
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
@@ -13,6 +16,77 @@ from packaging.utils import NormalizedName
 from packaging.version import Version
 
 from fromager import build_environment, context, dependencies
+
+
+def build_test_wheel(
+    tmp_path: pathlib.Path,
+    name: str,
+    version: str,
+    pkg_deps: list[str] | None = None,
+    optional_deps: dict[str, list[str]] | None = None,
+) -> pathlib.Path:
+    """Build a real wheel using hatchling for testing.
+
+    Args:
+        tmp_path: Temporary directory for building
+        name: Package name
+        version: Package version
+        pkg_deps: List of dependencies (e.g., ["requests>=2.0", "urllib3"])
+        optional_deps: Dict of extras (e.g., {"test": ["pytest"]})
+
+    Returns:
+        Path to the built wheel file
+    """
+    # Create package directory structure
+    pkg_dir = tmp_path / "pkg_source"
+    pkg_dir.mkdir()
+    src_dir = pkg_dir / "src" / name.replace("-", "_")
+    src_dir.mkdir(parents=True)
+    (src_dir / "__init__.py").write_text('"""Test package."""\n')
+
+    # Build pyproject.toml
+    deps_str = ""
+    if pkg_deps:
+        deps_list = ", ".join(f'"{d}"' for d in pkg_deps)
+        deps_str = f"dependencies = [{deps_list}]"
+
+    optional_deps_str = ""
+    if optional_deps:
+        optional_deps_str = "[project.optional-dependencies]\n"
+        for extra, extra_deps in optional_deps.items():
+            extra_deps_list = ", ".join(f'"{d}"' for d in extra_deps)
+            optional_deps_str += f"{extra} = [{extra_deps_list}]\n"
+
+    pyproject_content = textwrap.dedent(f"""\
+        [build-system]
+        requires = ["hatchling"]
+        build-backend = "hatchling.build"
+
+        [project]
+        name = "{name}"
+        version = "{version}"
+        {deps_str}
+
+        {optional_deps_str}
+
+        [tool.hatch.build.targets.wheel]
+        packages = ["src/{name.replace("-", "_")}"]
+    """)
+    (pkg_dir / "pyproject.toml").write_text(pyproject_content)
+
+    # Build the wheel using hatchling directly
+    wheel_dir = tmp_path / "wheels"
+    wheel_dir.mkdir()
+
+    original_cwd = pathlib.Path.cwd()
+    try:
+        os.chdir(pkg_dir)
+        wheel_filename: str = hatchling.build.build_wheel(str(wheel_dir))
+    finally:
+        os.chdir(original_cwd)
+
+    return wheel_dir / wheel_filename
+
 
 _fromager_root = pathlib.Path(__file__).parent.parent
 
@@ -308,3 +382,117 @@ def test_validate_dist_name_version(
     else:
         with pytest.raises(exc):
             validate()
+
+
+def test_get_install_dependencies_of_wheel(tmp_path: pathlib.Path) -> None:
+    """Test extracting install dependencies from a wheel file built with real tools."""
+    # Arrange: Build a real wheel with dependencies
+    wheel_file = build_test_wheel(
+        tmp_path,
+        name="test-pkg",
+        version="1.0.0",
+        pkg_deps=["requests>=2.0", "urllib3"],
+        optional_deps={"test": ["pytest"]},
+    )
+
+    req = Requirement("test-pkg")
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    # Act
+    result = dependencies.get_install_dependencies_of_wheel(req, wheel_file, output_dir)
+
+    # Assert: Should get requests and urllib3, but not pytest (extra not requested)
+    result_names = {r.name for r in result}
+    assert result_names == {"requests", "urllib3"}
+
+
+def test_get_install_dependencies_of_wheel_no_deps(tmp_path: pathlib.Path) -> None:
+    """Test extracting dependencies from a wheel with no dependencies."""
+    # Arrange: Build a real wheel without dependencies
+    wheel_file = build_test_wheel(
+        tmp_path,
+        name="simple-pkg",
+        version="1.0.0",
+    )
+
+    req = Requirement("simple-pkg")
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    # Act
+    result = dependencies.get_install_dependencies_of_wheel(req, wheel_file, output_dir)
+
+    # Assert
+    assert result == set()
+
+
+def test_get_metadata_from_wheel_missing_metadata(tmp_path: pathlib.Path) -> None:
+    """Test that missing METADATA file raises ValueError."""
+    # Arrange: Create a wheel file without METADATA
+    wheel_file = tmp_path / "broken_pkg-1.0.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel_file, "w") as zf:
+        zf.writestr("broken_pkg/__init__.py", "")
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="Could not find METADATA file"):
+        dependencies._get_metadata_from_wheel(wheel_file)
+
+
+def test_get_metadata_from_wheel_with_build_tag(tmp_path: pathlib.Path) -> None:
+    """Test extracting metadata from a wheel with a build tag in the filename.
+
+    Wheel format: {distribution}-{version}-{build}-{python}-{abi}-{platform}.whl
+    The build tag is optional. parse_wheel_filename correctly separates the version
+    from the build tag, so the dist-info path is computed correctly.
+    """
+    # Arrange: Create a wheel with a build tag (123)
+    wheel_file = tmp_path / "mypkg-1.0.0-123-py3-none-any.whl"
+    metadata_content = textwrap.dedent("""\
+        Metadata-Version: 2.1
+        Name: mypkg
+        Version: 1.0.0
+        Requires-Dist: requests
+    """)
+    with zipfile.ZipFile(wheel_file, "w") as zf:
+        # dist-info directory is {name}-{version}.dist-info (no build tag)
+        zf.writestr("mypkg-1.0.0.dist-info/METADATA", metadata_content)
+        zf.writestr("mypkg-1.0.0.dist-info/WHEEL", "Wheel-Version: 1.0")
+        zf.writestr("mypkg/__init__.py", "")
+
+    # Act: parse_wheel_filename correctly extracts version=1.0.0 (not 123)
+    metadata = dependencies._get_metadata_from_wheel(wheel_file)
+
+    # Assert
+    assert metadata.name == "mypkg"
+    assert str(metadata.version) == "1.0.0"
+    assert metadata.requires_dist is not None
+    assert len(metadata.requires_dist) == 1
+    assert str(metadata.requires_dist[0]) == "requests"
+
+
+def test_get_metadata_from_wheel_validation_disabled(tmp_path: pathlib.Path) -> None:
+    """Test that validation can be disabled when parsing wheel metadata.
+
+    Some wheels may have metadata that doesn't strictly conform to PEP standards
+    but is still usable. The validate=False option allows parsing such metadata.
+    """
+    # Arrange: Create a wheel with slightly non-conformant metadata
+    # (missing Metadata-Version which is technically required)
+    wheel_file = tmp_path / "testpkg-1.0.0-py3-none-any.whl"
+    metadata_content = textwrap.dedent("""\
+        Name: testpkg
+        Version: 1.0.0
+        Requires-Dist: urllib3
+    """)
+    with zipfile.ZipFile(wheel_file, "w") as zf:
+        zf.writestr("testpkg-1.0.0.dist-info/METADATA", metadata_content)
+        zf.writestr("testpkg-1.0.0.dist-info/WHEEL", "Wheel-Version: 1.0")
+        zf.writestr("testpkg/__init__.py", "")
+
+    # Act: Parse with validation disabled
+    metadata = dependencies._get_metadata_from_wheel(wheel_file, validate=False)
+
+    # Assert: Should still parse the basic fields
+    assert metadata.name == "testpkg"
+    assert str(metadata.version) == "1.0.0"
