@@ -19,6 +19,7 @@ env:
     SPAM: "alot $EXTRA"
     QUOTES: "A\"BC'$$EGG"
     DEF: "${DEF:-default}"
+    EXTRA_MAX_JOBS: "${MAX_JOBS}"
 download_source:
     url: https://egg.test/${canonicalized_name}/v${version}.tar.gz
     destination_filename: ${canonicalized_name}-${version}.tar.gz
