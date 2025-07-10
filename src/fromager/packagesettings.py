@@ -773,6 +773,9 @@ class PackageBuildInfo:
             "MAX_JOBS": str(jobs),
         }
 
+        # make MAX_JOBS available to substitution
+        template_env.update(extra_environ)
+
         # add VIRTUAL_ENV and update PATH, so templates can use the values
         if build_env is not None:
             venv_environ = build_env.get_venv_environ(template_env=template_env)

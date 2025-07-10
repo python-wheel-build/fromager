@@ -54,6 +54,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "SPAM": "alot $EXTRA",
         "QUOTES": "A\"BC'$$EGG",
         "DEF": "${DEF:-default}",
+        "EXTRA_MAX_JOBS": "${MAX_JOBS}",
     },
     "git_options": {
         "submodules": False,
@@ -166,6 +167,7 @@ def test_pbi_test_pkg_extra_environ(
         "CMAKE_BUILD_PARALLEL_LEVEL": "1",
         "MAKEFLAGS": "-j1",
         "MAX_JOBS": "1",
+        "EXTRA_MAX_JOBS": "1",
     }
 
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
