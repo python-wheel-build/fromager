@@ -205,8 +205,7 @@ def why(
     if version:
         package_nodes = [node for node in package_nodes if node.version in version]
     for node in package_nodes:
-        print(f"\n{node.key}")
-        find_why(graph, node, depth, 1, requirement_type)
+        find_why(graph, node, depth, 0, requirement_type)
 
 
 def find_why(
@@ -215,22 +214,50 @@ def find_why(
     max_depth: int,
     depth: int,
     req_type: list[RequirementType],
-):
+    seen: set[str] | None = None,
+) -> None:
+    if seen is None:
+        seen = set()
+
+    if node.key in seen:
+        print(f"{'  ' * depth} * {node.key} has a cycle")
+        return
+
+    # Print the name of the package we are asking about. We do this here because
+    # we might be invoked for multiple packages and we want the format to be
+    # consistent.
+    if depth == 0:
+        print(f"\n{node.key}")
+
+    seen = set([node.key]).union(seen)
     all_skipped = True
     is_toplevel = False
     for parent in node.parents:
+        # Show the toplevel dependencies regardless of the req_type because they
+        # are the ones that are actually installed and may influence other
+        # dependencies.
         if parent.destination_node.key == ROOT:
             is_toplevel = True
-            print(f" * {node.key} is a toplevel dependency")
+            print(
+                f"{'  ' * depth} * {node.key} is a toplevel dependency with req {parent.req}"
+            )
             continue
+        # Skip dependencies that don't match the req_type.
         if req_type and parent.req_type not in req_type:
             continue
         all_skipped = False
         print(
-            f"{'  ' * depth} * is an {parent.req_type} dependency of {parent.destination_node.key} with req {parent.req}"
+            f"{'  ' * depth} * {node.key} is an {parent.req_type} dependency of {parent.destination_node.key} with req {parent.req}"
         )
         if max_depth and (max_depth == -1 or depth <= max_depth):
-            find_why(graph, parent.destination_node, max_depth, depth + 1, [])
+            find_why(
+                graph=graph,
+                node=parent.destination_node,
+                max_depth=max_depth,
+                depth=depth + 1,
+                req_type=req_type,
+                seen=seen,
+            )
 
     if all_skipped and not is_toplevel:
         print(
