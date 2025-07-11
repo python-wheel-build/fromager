@@ -374,9 +374,14 @@ def write_constraints_file(
             output.write(f"{dep_name}=={node.version}\n")
 
     for dep_name in conflicting_deps:
-        logger.error("finding why %s was being used", dep_name)
         for node in graph.get_nodes_by_name(dep_name):
-            find_why(graph, node, -1, 1, [])
+            find_why(
+                graph=graph,
+                node=node,
+                max_depth=-1,
+                depth=0,
+                req_type=[],
+            )
 
     return ret
 
