@@ -239,7 +239,7 @@ def test_provider_constraint_mismatch():
         reporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
-        with pytest.raises(resolvelib.resolvers.exceptions.ResolverException):
+        with pytest.raises(resolvelib.resolvers.ResolverException):
             rslvr.resolve([Requirement("hydra-core")])
 
 
@@ -296,7 +296,7 @@ def test_provider_platform_mismatch():
         reporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
-        with pytest.raises(resolvelib.resolvers.exceptions.ResolverException):
+        with pytest.raises(resolvelib.resolvers.ResolverException):
             rslvr.resolve([Requirement("fromager")])
 
 
