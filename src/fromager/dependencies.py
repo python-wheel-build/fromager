@@ -10,7 +10,7 @@ import typing
 import pkginfo
 import pyproject_hooks
 import tomlkit
-from packaging.metadata import Metadata
+from packaging.metadata import Metadata, parse_email
 from packaging.requirements import Requirement
 
 from . import build_environment, external_commands, overrides, requirements_file
@@ -265,7 +265,8 @@ def parse_metadata(metadata_file: pathlib.Path, *, validate: bool = True) -> Met
     and core metadata version, e.g. a package with metadata 2.2 and
     license-expression field (added in 2.4).
     """
-    return Metadata.from_email(metadata_file.read_bytes(), validate=validate)
+    raw_metadata, _ = parse_email(metadata_file.read_bytes())
+    return Metadata.from_raw(raw_metadata, validate=validate)
 
 
 def get_install_dependencies_of_wheel(

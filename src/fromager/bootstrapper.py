@@ -9,9 +9,9 @@ import shutil
 import tempfile
 import typing
 import zipfile
-from email.parser import BytesParser
 from urllib.parse import urlparse
 
+from packaging.metadata import Metadata, parse_email
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
@@ -784,9 +784,9 @@ class Bootstrapper:
         )
         metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
         with open(metadata_filename, "rb") as f:
-            p = BytesParser()
-            metadata = p.parse(f, headersonly=True)
-        return Version(metadata["Version"])
+            raw_metadata, _ = parse_email(f.read())
+            metadata = Metadata.from_raw(raw_metadata)
+        return metadata.version
 
     def _resolve_prebuilt_with_history(
         self,

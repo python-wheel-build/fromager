@@ -1,22 +1,13 @@
 import typing
-from email.message import EmailMessage, Message
-from email.parser import BytesParser
 from io import BytesIO
-from typing import TYPE_CHECKING
 from zipfile import ZipFile
 
+from packaging.metadata import Metadata, parse_email
 from packaging.requirements import Requirement
 from packaging.utils import BuildTag, canonicalize_name
 from packaging.version import Version
 
 from .request_session import session
-
-# fix for runtime errors caused by inheriting classes that are generic in stubs but not runtime
-# https://mypy.readthedocs.io/en/latest/runtime_troubles.html#using-classes-that-are-generic-in-stubs-but-not-at-runtime
-if TYPE_CHECKING:
-    Metadata = Message[str, str]
-else:
-    Metadata = Message
 
 
 class Candidate:
@@ -51,11 +42,10 @@ class Candidate:
         return self._metadata
 
     def _get_dependencies(self) -> typing.Iterable[Requirement]:
-        deps = self.metadata.get_all("Requires-Dist", [])
+        deps = self.metadata.requires_dist or []
         extras = self.extras if self.extras else [""]
 
-        for d in deps:
-            r = Requirement(d)
+        for r in deps:
             if r.marker is None:
                 yield r
             else:
@@ -71,7 +61,8 @@ class Candidate:
 
     @property
     def requires_python(self) -> str | None:
-        return self.metadata.get("Requires-Python")
+        spec = self.metadata.requires_python
+        return str(spec) if spec is not None else None
 
 
 def get_metadata_for_wheel(url: str) -> Metadata:
@@ -79,8 +70,11 @@ def get_metadata_for_wheel(url: str) -> Metadata:
     with ZipFile(BytesIO(data)) as z:
         for n in z.namelist():
             if n.endswith(".dist-info/METADATA"):
-                p = BytesParser()
-                return p.parse(z.open(n), headersonly=True)
+                metadata_content = z.read(n)
+                raw_metadata, _ = parse_email(metadata_content)
+                metadata = Metadata.from_raw(raw_metadata)
+                return metadata
 
-    # If we didn't find the metadata, return an empty dict
-    return EmailMessage()
+    # If we didn't find the metadata, return an empty metadata object
+    raw_metadata, _ = parse_email(b"")
+    return Metadata.from_raw(raw_metadata)
