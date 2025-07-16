@@ -107,6 +107,7 @@ jobs:
           - elfdeps
           - prebuilt_wheel_hook
           - lint_requirements
+          - check_requirements_resolve
         os:
           - ubuntu-latest
           - macos-latest
