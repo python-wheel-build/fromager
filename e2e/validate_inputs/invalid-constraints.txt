@@ -1,0 +1,3 @@
+# This constraints file is invalid on purpose to test the lint-requirements 
+# command of fromager. Do not attempt to fix this file
+vllm[tensorizer]==0.9.4
