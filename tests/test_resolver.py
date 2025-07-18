@@ -1,9 +1,11 @@
 import collections
+import re
 
 import pytest
 import requests_mock
 import resolvelib
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from fromager import constraints, resolver
 from fromager.requirements_file import RequirementType
@@ -765,6 +767,17 @@ _gitlab_submodlib_repo_response = """
 """
 
 
+def tag_match(identifier: str, item: str) -> Version | None:
+    """Extract version from v-prefixed tags"""
+    mo = re.match("^v(.*)$", item)
+    if mo:
+        try:
+            return Version(mo.group(1))
+        except Exception:
+            pass
+    return None
+
+
 def test_resolve_gitlab():
     with requests_mock.Mocker() as r:
         r.get(
@@ -775,7 +788,7 @@ def test_resolve_gitlab():
         provider = resolver.GitLabTagProvider(
             project_path="mirrors/github/decile-team/submodlib",
             server_url="https://gitlab.com",
-            tag_regex="v(.*)",  # Extract version from v-prefixed tags
+            matcher=re.compile("v(.*)"),  # with match object
         )
         reporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
@@ -804,7 +817,7 @@ def test_gitlab_constraint_mismatch():
         provider = resolver.GitLabTagProvider(
             project_path="mirrors/github/decile-team/submodlib",
             server_url="https://gitlab.com",
-            tag_regex="v(.*)",  # Extract version from v-prefixed tags
+            matcher=tag_match,  # match function
             constraints=constraint,
         )
         reporter = resolvelib.BaseReporter()
@@ -826,7 +839,7 @@ def test_gitlab_constraint_match():
         provider = resolver.GitLabTagProvider(
             project_path="mirrors/github/decile-team/submodlib",
             server_url="https://gitlab.com",
-            tag_regex="v(.*)",  # Extract version from v-prefixed tags
+            matcher=None,  # default, Version() also ignores leading 'v'
             constraints=constraint,
         )
         reporter = resolvelib.BaseReporter()
