@@ -5,6 +5,7 @@
 #
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
@@ -13,7 +14,6 @@ from collections import defaultdict
 from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
-from re import Match
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import html5lib
@@ -526,6 +526,11 @@ class PyPIProvider(BaseProvider):
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
 
+class MatchFunction(typing.Protocol):
+    def __call__(self, identifier: str, item: str) -> Version | None:
+        pass
+
+
 class GenericProvider(BaseProvider):
     """Lookup package and version by using a callback"""
 
@@ -538,9 +543,41 @@ class GenericProvider(BaseProvider):
         version_source: VersionSource,
         constraints: Constraints | None = None,
         req_type: RequirementType | None = None,
+        matcher: MatchFunction | re.Pattern | None = None,
     ):
         super().__init__(constraints=constraints, req_type=req_type)
         self._version_source = version_source
+        if matcher is None:
+            self._match_function = self._default_match_function
+        elif isinstance(matcher, re.Pattern):
+            self._match_function = functools.partial(
+                self._re_match_function, regex=matcher
+            )
+        else:
+            self._match_function = matcher
+
+    def _default_match_function(self, identifier: str, item: str) -> Version | None:
+        try:
+            return Version(item)
+        except Exception as err:
+            logger.debug(f"{identifier}: could not parse version from {item}: {err}")
+            return None
+
+    def _re_match_function(
+        self, identifier: str, item: str, *, regex: re.Pattern
+    ) -> Version | None:
+        mo = regex.match(item)
+        if mo is None:
+            logger.debug(
+                f"{identifier}: tag {item} does not match pattern {regex.pattern}"
+            )
+            return None
+        value = mo.group(1)
+        try:
+            return Version(value)
+        except Exception as err:
+            logger.debug(f"{identifier}: could not parse version from {value}: {err}")
+            return None
 
     def get_cache(self) -> dict[str, list[Candidate]]:
         return GenericProvider.generic_resolver_cache
@@ -552,6 +589,7 @@ class GenericProvider(BaseProvider):
         incompatibilities: CandidatesMap,
     ) -> typing.Iterable[Candidate]:
         candidates = self.get_from_cache(identifier, requirements, incompatibilities)
+        version: Version | None
 
         if not candidates:
             # Need to pass the extras to the search, so they
@@ -563,13 +601,12 @@ class GenericProvider(BaseProvider):
                 if isinstance(item, Version):
                     version = item
                 else:
-                    try:
-                        version = Version(item)
-                    except Exception as err:
-                        logger.debug(
-                            f"{identifier}: could not parse version from {item}: {err}"
-                        )
+                    version = self._match_function(identifier, item)
+                    if version is None:
+                        logger.debug(f"{identifier}: match function ignores {item}")
                         continue
+                    assert isinstance(version, Version)
+                    version = version
                 candidate = Candidate(identifier, version, url=url)
                 if self.validate_candidate(
                     identifier, requirements, incompatibilities, candidate
@@ -593,9 +630,17 @@ class GitHubTagProvider(GenericProvider):
     )
 
     def __init__(
-        self, organization: str, repo: str, constraints: Constraints | None = None
+        self,
+        organization: str,
+        repo: str,
+        constraints: Constraints | None = None,
+        matcher: MatchFunction | re.Pattern | None = None,
     ):
-        super().__init__(version_source=self._find_tags, constraints=constraints)
+        super().__init__(
+            version_source=self._find_tags,
+            constraints=constraints,
+            matcher=matcher,
+        )
         self.organization = organization
         self.repo = repo
 
@@ -631,26 +676,19 @@ class GitHubTagProvider(GenericProvider):
 
             for entry in resp.json():
                 name = entry["name"]
-                try:
-                    version = Version(name)
-                except Exception as err:
-                    logger.debug(
-                        f"{identifier}: could not parse version from {name}: {err}"
-                    )
+                result = self._match_function(identifier, name)
+                if result is None:
+                    logger.debug(f"{identifier}: match function ignores {name}")
                     continue
+                assert isinstance(result, Version)
+                yield entry["tarball_url"], result
 
-                yield entry["tarball_url"], version
             # pagination links
             nexturl = resp.links.get("next", {}).get("url")
 
 
 class GitLabTagProvider(GenericProvider):
-    """Lookup tarball and version from GitLab git tags
-
-    Uses a regular expression to extract version numbers from tag names.
-    The default regex matches everything, but can be customized to match
-    specific tag patterns like 'v1.2.3' or 'release-1.2.3'.
-    """
+    """Lookup tarball and version from GitLab git tags"""
 
     gitlab_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(
         list
@@ -660,13 +698,16 @@ class GitLabTagProvider(GenericProvider):
         self,
         project_path: str,
         server_url: str = "https://gitlab.com",
-        tag_regex: str = "(.*)",
         constraints: Constraints | None = None,
+        matcher: MatchFunction | re.Pattern | None = None,
     ) -> None:
-        super().__init__(version_source=self._find_tags, constraints=constraints)
+        super().__init__(
+            version_source=self._find_tags,
+            constraints=constraints,
+            matcher=matcher,
+        )
         self.server_url = server_url.rstrip("/")
         self.project_path = project_path.lstrip("/")
-        self.tag_regex = re.compile(tag_regex)
         # URL-encode the project path as required by GitLab API.
         # The safe="" parameter tells quote() to encode ALL characters,
         # including forward slashes (/), which would otherwise be left
@@ -701,28 +742,18 @@ class GitLabTagProvider(GenericProvider):
                 raise
             for entry in resp.json():
                 name = entry["name"]
-                match: Match[str] | None = self.tag_regex.match(name)
-                if not match:
-                    logger.debug(
-                        f"{identifier}: tag {name} does not match pattern {self.tag_regex}"
-                    )
+                version = self._match_function(identifier, name)
+                if version is None:
+                    logger.debug(f"{identifier}: match function ignores {name}")
                     continue
-                try:
-                    # Use the entire match as the version string
-                    version_str: str = match.group(1)
-                    version: Version = Version(version_str)
-                except Exception as err:
-                    logger.debug(
-                        f"{identifier}: could not parse version from {name}: {err}"
-                    )
-                    continue
+                assert isinstance(version, Version)
 
                 # GitLab provides a download URL for the archive, so return it
                 # in case prepare_source wants to download it instead of cloning
                 # the repository.
                 archive_path: str = f"{self.project_path}/-/archive/{name}/{self.project_path.split('/')[-1]}-{name}.tar.gz"
                 archive_url: str = urljoin(self.server_url, archive_path)
-                yield (archive_url, version)
+                yield archive_url, version
 
             # GitLab API uses Link headers for pagination
             nexturl = resp.links.get("next", {}).get("url")
