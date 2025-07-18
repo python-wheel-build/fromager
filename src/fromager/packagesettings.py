@@ -621,6 +621,8 @@ class PackageBuildInfo:
 
     def get_patches(self, version: Version) -> list[pathlib.Path]:
         """Get patches for a version (and unversioned patches)"""
+        # ignore local version for patches
+        version = Version(version.public)
         patchfiles: list[pathlib.Path] = []
         patchmap = self.get_all_patches()
         # unversioned patches
@@ -729,13 +731,22 @@ class PackageBuildInfo:
         return sdist_root_dir
 
     def get_changelog(self, version: Version) -> list[str]:
+        # ignore local version for changelog entries
+        version = Version(version.public)
         pv = typing.cast(PackageVersion, version)
         variant_changelog = self._variant_changelog
         package_changelog = self._ps.changelog.get(pv, [])
         return variant_changelog + package_changelog
 
     def build_tag(self, version: Version) -> BuildTag:
-        """Build tag for version's changelog and this variant"""
+        """Build tag for version's changelog and this variant
+
+        .. versionchanged 0.54.0::
+
+           Fromager ignores local version suffix of a package to determinate
+           the build tag from changelog, e.g. version `1.0.3+local.suffix`
+           uses `1.0.3`.
+        """
         pv = typing.cast(PackageVersion, version)
         release = len(self.get_changelog(pv))
         if release == 0:

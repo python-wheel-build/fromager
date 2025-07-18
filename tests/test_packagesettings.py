@@ -309,6 +309,7 @@ def test_pbi_test_pkg_patches(testdata_context: context.WorkContext) -> None:
         patch005,
         patch010,
     ]
+    assert pbi.get_patches(Version("1.0.2+local")) == pbi.get_patches(Version("1.0.2"))
     assert pbi.get_patches(Version("1.0.1")) == [
         patch004,
         patch010,
@@ -407,6 +408,7 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
     assert pbi.build_tag(Version("0.99")) == ()
     assert pbi.build_tag(Version("1.0.1")) == (1, "")
     assert pbi.build_tag(Version("1.0.2")) == (2, "")
+    assert pbi.build_tag(Version("1.0.2+local")) == pbi.build_tag(Version("1.0.2"))
     assert pbi.build_tag(Version("2.0.0")) == ()
 
     testdata_context.settings.variant = Variant("rocm")
@@ -415,6 +417,7 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
     assert pbi.build_tag(Version("0.99")) == (1, "")
     assert pbi.build_tag(Version("1.0.1")) == (2, "")
     assert pbi.build_tag(Version("1.0.2")) == (3, "")
+    assert pbi.build_tag(Version("1.0.2+local")) == pbi.build_tag(Version("1.0.2"))
     assert pbi.build_tag(Version("2.0.0")) == (1, "")
 
 

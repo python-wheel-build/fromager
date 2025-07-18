@@ -276,6 +276,13 @@ For version `1.0.3` and variant `rocm`, Fromager would only apply
 Added support for variant-specific patches.
 ```
 
+```{versionchanged} 0.54.0
+
+Fromager ignores local version suffix of a package to determinate the
+version-specific patch directories, e.g. version `1.0.3+local.suffix`
+becomes `1.0.3`.
+```
+
 ## `project_override` section
 
 The `project_override` configures the `pyproject.toml` auto-fixer. It can
