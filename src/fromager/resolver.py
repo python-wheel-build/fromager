@@ -138,9 +138,9 @@ def resolve_from_provider(
     rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
     try:
         result = rslvr.resolve([req])
-    except resolvelib.resolvers.exceptions.ResolverException as err:
+    except resolvelib.resolvers.ResolverException as err:
         constraint = provider.constraints.get_constraint(req.name)
-        raise resolvelib.resolvers.exceptions.ResolverException(
+        raise resolvelib.resolvers.ResolverException(
             f"Unable to resolve requirement specifier {req} with constraint {constraint}"
         ) from err
     # resolvelib actually just returns one candidate per requirement.
@@ -180,12 +180,26 @@ def get_project_from_pypi(
     for i in doc.findall(".//a"):
         candidate_url = urljoin(simple_index_url, i.attrib["href"])
         py_req = i.attrib.get("data-requires-python")
+        # PEP 658: Check for metadata availability (PEP 714 data-core-metadata first)
+        dist_info_metadata = i.attrib.get("data-core-metadata") or i.attrib.get(
+            "data-dist-info-metadata"
+        )
         path = urlparse(candidate_url).path
         # file names are URL quoted, "1.0%2Blocal" -> "1.0+local"
         filename = unquote(path.rsplit("/", 1)[-1])
         found_candidates.add(filename)
         if DEBUG_RESOLVER:
             logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
+
+        # Construct metadata URL if PEP 658 metadata is available
+        metadata_url = None
+        if dist_info_metadata:
+            # PEP 658: metadata is available at {file_url}.metadata
+            metadata_url = candidate_url + ".metadata"
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    "%s: PEP 658 metadata available at %s", project, metadata_url
+                )
         # Skip items that need a different Python version
         if py_req:
             try:
@@ -264,6 +278,7 @@ def get_project_from_pypi(
             extras=extras,
             is_sdist=is_sdist,
             build_tag=build_tag,
+            metadata_url=metadata_url,
         )
         if DEBUG_RESOLVER:
             logger.debug(
@@ -498,14 +513,14 @@ class PyPIProvider(BaseProvider):
             # resolve.
             r = next(iter(requirements[identifier]))
             if self.include_sdists and self.include_wheels:
-                raise resolvelib.resolvers.exceptions.ResolverException(
+                raise resolvelib.resolvers.ResolverException(
                     f"found no match for {r}, any file type, in cache or at {self.sdist_server_url}"
                 )
             elif self.include_sdists:
-                raise resolvelib.resolvers.exceptions.ResolverException(
+                raise resolvelib.resolvers.ResolverException(
                     f"found no match for {r}, limiting search to sdists, in cache or at {self.sdist_server_url}"
                 )
-            raise resolvelib.resolvers.exceptions.ResolverException(
+            raise resolvelib.resolvers.ResolverException(
                 f"found no match for {r}, limiting search to wheels, in cache or at {self.sdist_server_url}"
             )
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
