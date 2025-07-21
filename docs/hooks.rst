@@ -111,8 +111,8 @@ Resolver hooks
     hook unless they are building versions of packages not released to
     https://pypi.org.
 
-    For examples, refer to ``fromager.resolver.PyPIProvider`` and
-    ``fromager.resolver.GitHubTagProvider``.
+    For examples, refer to ``fromager.resolver.PyPIProvider``,
+    ``fromager.resolver.GitHubTagProvider``, and ``fromager.resolver.GitLabTagProvider``.
 
     The arguments are the ``WorkContext``, the ``Requirement`` being
     evaluated, a boolean indicating whether source distributions should be
@@ -149,6 +149,22 @@ Resolver hooks
 
         def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
             return resolver.GenericProvider(version_source=_version_source, constraints=ctx.constraints)
+
+    ``GenericProvider``, ``GitHubTagProvider``, and ``GitHubTagProvider`` take
+    an optional ``matcher`` argument. The matcher can be a
+    ``Callable[[str, str], Version | None]`` or a regular expression pattern
+    object from ``re.compile``  The default match function attempts to convert
+    a tag into a ``Version`` and ignores all errors.
+
+    .. code-block:: python
+
+       def custom_tag_match(identifier: str, item: str) -> Version | None:
+           # project-1_2_3 -> 1.2.3
+           if item.startswith("project-"):
+               return Version(item[8:].replace("_", "."))
+           # ignore other tags
+           return None
+
 
 Source hooks
 ------------
@@ -253,5 +269,7 @@ Additional types
 .. autoclass:: fromager.resolver.GenericProvider
 
 .. autoclass:: fromager.resolver.GitHubTagProvider
+
+.. autoclass:: fromager.resolver.GitLabTagProvider
 
 .. autofunction:: fromager.sources.prepare_new_source
