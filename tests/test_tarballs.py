@@ -93,3 +93,19 @@ def test_vcs_exclude(tmp_path: pathlib.Path) -> None:
     with tarfile.open(t1, "r") as tf:
         names = tf.getnames()
     assert names == [str(p).lstrip(os.sep) for p in [root, root / "a"]]
+
+
+def test_tar_reproducible_with_prefix(tmp_path: pathlib.Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    subdir = root / "subdir"
+    subdir.mkdir()
+    a = subdir / "a"
+    a.write_text("this is file a")
+
+    t1 = tmp_path / "out1.tar"
+    with tarfile.open(t1, "w") as tf:
+        tarballs.tar_reproducible_with_prefix(tar=tf, basedir=root, prefix="someprefix")
+    with tarfile.open(t1, "r") as tf:
+        names = tf.getnames()
+    assert names == ["someprefix", "someprefix/subdir", "someprefix/subdir/a"]
