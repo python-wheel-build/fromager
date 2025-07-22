@@ -217,7 +217,6 @@ def write_constraints_file(
         graph.get_install_dependency_versions()
     )
     ret = True
-    conflicting_deps: set[NormalizedName] = set()
 
     # Map for already resolved versions for a given dependency Eg: {"a": "0.4"}
     resolved: dict[NormalizedName, Version] = {}
@@ -258,6 +257,9 @@ def write_constraints_file(
     # Flag to see if something is resolved
     resolved_something: bool = True
 
+    # Track packages that cannot be resolved due to conflicting constraints
+    conflicting_deps: set[NormalizedName] = set()
+
     # Outer while loop to resolve remaining dependencies with multiple versions
     while unresolved_dependencies and resolved_something:
         logger.debug(
@@ -267,6 +269,9 @@ def write_constraints_file(
         resolved_something = False
         # Make copy of the original list and loop over unresolved dependencies
         for dep_name, nodes in unresolved_dependencies[:]:
+            # Skip packages we've already determined are unresolvable
+            if dep_name in conflicting_deps:
+                continue
             # Track which versions can be used by which parent requirement.
             usable_versions: dict[Version, list[Version]] = {}
             # Track how many total users of a requirement (by name) there are so we
@@ -300,6 +305,11 @@ def write_constraints_file(
                         != parent_edge.destination_node.version
                     ):
                         continue
+
+                    # NOTE: We don't re-evaluate markers here because if a dependency
+                    # is in the graph, it means the markers were already properly
+                    # evaluated during graph construction with the correct extras context.
+                    # Re-evaluating markers without that context would be incorrect.
                     # Loop to find the usable versions
                     for matching_version in parent_edge.req.specifier.filter(  # type: ignore
                         dep_versions
@@ -350,6 +360,14 @@ def write_constraints_file(
                         (dep_name, nodes),
                     )
                 break
+            else:
+                # No version could satisfy all users - mark as unresolvable
+                conflicting_deps.add(dep_name)
+                logger.debug(
+                    "%s: marking as unresolvable - no version satisfies all %d users",
+                    dep_name,
+                    user_counter,
+                )
 
     # Write resolved versions to constraints file
     for dep_name, resolved_version in sorted(resolved.items()):  # type: ignore
@@ -363,25 +381,33 @@ def write_constraints_file(
             )
         output.write(f"{dep_name}=={resolved_version}\n")
 
-    # No single version could be used, so go ahead and print all the
-    # versions with a warning message
-    for dep_name, nodes in unresolved_dependencies:  # type: ignore
+    # Check if there are any unresolved dependencies (conflicts)
+    if unresolved_dependencies or conflicting_deps:
+        # We have conflicts - don't write anything to constraints file
+        # and return False to indicate failure
         ret = False
-        logger.error("%s: no single version meets all requirements", dep_name)
-        output.write(f"# ERROR: no single version of {dep_name} met all requirements\n")
-        conflicting_deps.add(dep_name)
-        for node in sorted(nodes, key=lambda n: n.version):
-            output.write(f"{dep_name}=={node.version}\n")
 
-    for dep_name in conflicting_deps:
-        for node in graph.get_nodes_by_name(dep_name):
-            find_why(
-                graph=graph,
-                node=node,
-                max_depth=-1,
-                depth=0,
-                req_type=[],
-            )
+        # Compute all conflicting packages (avoid duplicates)
+        all_conflicting_deps: set[NormalizedName] = (
+            set(dep_name for dep_name, _ in unresolved_dependencies) | conflicting_deps
+        )
+
+        # Report all conflicting packages
+        for dep_name in sorted(all_conflicting_deps):
+            logger.error("%s: no single version meets all requirements", dep_name)
+
+        # Show detailed information about why these packages conflict
+        for dep_name in all_conflicting_deps:
+            for node in graph.get_nodes_by_name(dep_name):
+                find_why(
+                    graph=graph,
+                    node=node,
+                    max_depth=-1,
+                    depth=0,
+                    req_type=[],
+                )
+
+        return ret
 
     return ret
 
