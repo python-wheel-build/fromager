@@ -61,7 +61,7 @@ def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.
         ret = bootstrap.write_constraints_file(graph, sys.stdout)
         if not ret:
             raise ValueError(
-                "Failed to write constraints file - no valid set of installation dependencies could be generated"
+                "Failed to generate constraints - no single version set satisfies all requirements"
             )
 
 
