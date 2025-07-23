@@ -22,10 +22,24 @@ if fromager lint-requirements; then
     pass=false
 fi;
 
-# Test to demonstrate that command reports error for invalid / bad input files
+# Test to demonstrate that command reports error for invalid / bad requirements
 
 if fromager lint-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/invalid-requirements.txt"; then
     echo "invalid input files should have been recognized by the command" 1>&2
+    pass=false
+fi;
+
+# Test to demonstrate that command reports error for invalid / bad constraints
+
+if fromager lint-requirements "$SCRIPTDIR/validate_inputs/invalid-constraints.txt" "$SCRIPTDIR/validate_inputs/requirements.txt"; then
+    echo "invalid input files should have been recognized by the command" 1>&2
+    pass=false
+fi;
+
+# Test to demonstrate that command reports error for duplicate entries in files
+
+if fromager lint-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/duplicate-requirements.txt"; then
+    echo "duplicate entries in files should have been recognized by the command" 1>&2
     pass=false
 fi;
 

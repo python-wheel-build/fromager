@@ -1,0 +1,5 @@
+# This requirements file contains duplicates entries on purpose 
+# to test the lint-requirements. Do not attempt to fix this file
+stevedore==5.2.0
+kfp==2.11.0
+stevedore==5.2.1
