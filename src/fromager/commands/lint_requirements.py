@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 @click.command()
 @click.argument(
-    "input_files_path", nargs=-1, required=True, type=click.Path(exists=False, path_type=pathlib.Path)
+    "input_files_path",
+    nargs=-1,
+    required=True,
+    type=click.Path(exists=False, path_type=pathlib.Path),
 )
 def lint_requirements(input_files_path: list[pathlib.Path]) -> None:
     """
@@ -36,10 +39,14 @@ def lint_requirements(input_files_path: list[pathlib.Path]) -> None:
             try:
                 requirement = Requirement(line)
                 if requirement.name in unique_entries:
-                    raise InvalidRequirement(f"Duplicate entry, first found: {unique_entries[requirement.name]}")
+                    raise InvalidRequirement(
+                        f"Duplicate entry, first found: {unique_entries[requirement.name]}"
+                    )
                 unique_entries[requirement.name] = requirement
                 if requirement.extras and path.name.endswith("constraints.txt"):
-                    raise InvalidRequirement("Constraints files cannot contain extra dependencies")
+                    raise InvalidRequirement(
+                        "Constraints files cannot contain extra dependencies"
+                    )
             except InvalidRequirement as err:
                 logger.error(f"{path}: {line}: {err}")
                 flag = False
