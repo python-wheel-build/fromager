@@ -1,3 +1,4 @@
+import io
 import itertools
 import json
 import logging
@@ -42,17 +43,26 @@ def graph():
 def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.Path):
     "Convert a graph file to a constraints file."
     graph: DependencyGraph = DependencyGraph.from_file(graph_file)
-    ret: bool = True
+
     if output:
+        # Use a temporary buffer first to avoid creating the file if there are conflicts
+        buffer = io.StringIO()
+        ret = bootstrap.write_constraints_file(graph, buffer)
+
+        if not ret:
+            raise ValueError(
+                "Failed to write constraints file - no valid set of installation dependencies could be generated"
+            )
+
+        # Only create the output file if constraint resolution succeeded
         with open(output, "w") as f:
-            ret = bootstrap.write_constraints_file(graph, f)
+            f.write(buffer.getvalue())
     else:
         ret = bootstrap.write_constraints_file(graph, sys.stdout)
-
-    if not ret:
-        raise ValueError(
-            "Failed to write constraints file - no valid set of installation dependencies could be generated"
-        )
+        if not ret:
+            raise ValueError(
+                "Failed to write constraints file - no valid set of installation dependencies could be generated"
+            )
 
 
 @graph.command()

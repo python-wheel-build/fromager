@@ -37,16 +37,31 @@ fi
 
 $pass
 
+# With the corrected constraint resolution algorithm, only non-conflicting
+# packages should be written to the constraints file. Conflicting packages
+# (stevedore versions) should be excluded entirely.
 EXPECTED_LINES="
 pbr==6.1.1
-# ERROR
-stevedore==4.0.0
-stevedore==5.2.0
 "
 
+SHOULD_NOT_BE_PRESENT="
+stevedore==4.0.0
+stevedore==5.2.0
+ERROR
+"
+
+# Check that non-conflicting packages are present
 for pattern in $EXPECTED_LINES; do
   if ! grep -q "${pattern}" "$OUTDIR/work-dir/constraints.txt"; then
     echo "Did not find $pattern in constraints file" 1>&2
+    pass=false
+  fi
+done
+
+# Check that conflicting packages are NOT present
+for pattern in $SHOULD_NOT_BE_PRESENT; do
+  if grep -q "${pattern}" "$OUTDIR/work-dir/constraints.txt"; then
+    echo "Found $pattern in constraints file (should not be present)" 1>&2
     pass=false
   fi
 done
