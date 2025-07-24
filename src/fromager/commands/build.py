@@ -359,9 +359,7 @@ def _build(
     per_wheel_logger = logging.getLogger("")
 
     module_name = overrides.pkgname_to_override_module(req.name)
-    log_filename = module_name + "_current.log"
-
-    wheel_log = wkctx.logs_dir / log_filename
+    wheel_log = wkctx.logs_dir / f"{module_name}_{resolved_version}.log"
 
     file_handler = logging.FileHandler(str(wheel_log), mode="w")
     per_wheel_logger.addHandler(file_handler)
