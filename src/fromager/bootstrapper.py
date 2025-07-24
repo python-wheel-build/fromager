@@ -28,7 +28,7 @@ from . import (
     wheels,
 )
 from .dependency_graph import DependencyGraph
-from .log import requirement_ctxvar
+from .log import req_ctxvar_context
 from .requirements_file import RequirementType, SourceType
 
 if typing.TYPE_CHECKING:
@@ -300,13 +300,11 @@ class Bootstrapper:
 
         self.progressbar.update_total(len(install_dependencies))
         for dep in self._sort_requirements(install_dependencies):
-            token = requirement_ctxvar.set(dep)
-            try:
-                self.bootstrap(req=dep, req_type=child_req_type)
-            except Exception as err:
-                raise ValueError(f"could not handle {self._explain}") from err
-            finally:
-                requirement_ctxvar.reset(token)
+            with req_ctxvar_context(dep):
+                try:
+                    self.bootstrap(req=dep, req_type=child_req_type)
+                except Exception as err:
+                    raise ValueError(f"could not handle {self._explain}") from err
             self.progressbar.update()
 
         # we are done processing this req, so lets remove it from the why chain
@@ -448,14 +446,12 @@ class Bootstrapper:
         self.progressbar.update_total(len(build_dependencies))
 
         for dep in self._sort_requirements(build_dependencies):
-            token = requirement_ctxvar.set(dep)
-            try:
-                self.bootstrap(req=dep, req_type=build_type)
-            except Exception as err:
-                requirement_ctxvar.reset(token)
-                raise ValueError(f"could not handle {self._explain}") from err
+            with req_ctxvar_context(dep):
+                try:
+                    self.bootstrap(req=dep, req_type=build_type)
+                except Exception as err:
+                    raise ValueError(f"could not handle {self._explain}") from err
             self.progressbar.update()
-            requirement_ctxvar.reset(token)
 
     def _download_prebuilt(
         self,
