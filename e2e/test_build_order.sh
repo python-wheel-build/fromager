@@ -12,6 +12,7 @@ VERSION="5.2.0"
 
 # Bootstrap the test project
 fromager \
+    --debug \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \
@@ -24,6 +25,7 @@ cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
 # Rebuild everything even if it already exists
 log="$OUTDIR/build-logs/${DIST}-build.log"
 fromager \
+    --debug \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -69,6 +71,7 @@ $pass
 # Rebuild everything while reusing existing local wheels
 log="$OUTDIR/build-logs/${DIST}-build-skip.log"
 fromager \
+    --debug \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -82,7 +85,7 @@ if ! grep -q "skipping builds for versions of packages available" "$log"; then
   echo "Did not find message indicating builds would be skipped" 1>&2
   pass=false
 fi
-if ! grep -q "skipping building wheel for stevedore" "$log"; then
+if ! grep -q "${DIST}-${VERSION}: found existing wheel" "$log"; then
   echo "Did not find message indicating build of stevedore was skipped" 1>&2
   pass=false
 fi
@@ -90,9 +93,10 @@ fi
 $pass
 
 # Rebuild everything while reusing wheels from external server
-rm -rf $OUTDIR/wheels-repo
+rm -rf "$OUTDIR"/wheels-repo
 log="$OUTDIR/build-logs/${DIST}-build-skip-env.log"
 fromager \
+    --debug \
     --log-file "$log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
@@ -105,7 +109,7 @@ if ! grep -q "skipping builds for versions of packages available" "$log"; then
   echo "Did not find message indicating builds would be skipped" 1>&2
   pass=false
 fi
-if ! grep -q "skipping building wheel for stevedore" "$log"; then
+if ! grep -q "${DIST}-${VERSION}: found existing wheel" "$log"; then
   echo "Did not find message indicating build of stevedore was skipped" 1>&2
   pass=false
 fi
