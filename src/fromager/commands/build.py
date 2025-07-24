@@ -606,13 +606,13 @@ def build_parallel(
                         if edge.req_type.is_build_requirement
                     ]
                     # A node can be built when all of its build dependencies are built
-                    unbuilt_deps = [
+                    unbuilt_deps: set[str] = set(
                         dep.key for dep in build_deps if dep.key not in built_node_keys
-                    ]
+                    )
                     if not unbuilt_deps:
                         logger.info(
                             "ready to build, have all build dependencies: %s",
-                            sorted(dep.key for dep in build_deps),
+                            sorted(set(dep.key for dep in build_deps)),
                         )
                         buildable_nodes.append(node)
                     else:
