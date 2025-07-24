@@ -436,7 +436,7 @@ def _is_wheel_built(
     dist_name: str,
     resolved_version: Version,
     wheel_server_urls: list[str],
-) -> tuple[True, pathlib.Path] | tuple[False, None]:
+) -> tuple[bool, pathlib.Path | None]:
     req = Requirement(f"{dist_name}=={resolved_version}")
 
     try:
@@ -548,7 +548,7 @@ def build_parallel(
         if node.key == dependency_graph.ROOT or node.pre_built:
             continue
         if not force:
-            is_built, wheel_filename = _is_wheel_built(
+            is_built, _ = _is_wheel_built(
                 wkctx, node.canonicalized_name, node.version, wheel_server_urls
             )
             if is_built:
@@ -561,6 +561,10 @@ def build_parallel(
                 continue
         nodes_to_build.append(node)
     logger.info("found %d packages to build", len(nodes_to_build))
+
+    # Sort the nodes to build by their canonicalized name one time to avoid
+    # redoing the sort every iteration and to make the output deterministic.
+    nodes_to_build = sorted(nodes_to_build, key=lambda n: n.key)
 
     # Sort nodes by their dependencies to ensure we build in the right order
     # A node can be built when all of its build dependencies are built
@@ -579,17 +583,31 @@ def build_parallel(
                     if edge.req_type.is_build_requirement
                 ]
                 # A node can be built when all of its build dependencies are built
-                if all(dep.key in built_node_keys for dep in build_deps):
+                unbuilt_deps = [
+                    dep.key for dep in build_deps if dep.key not in built_node_keys
+                ]
+                if not unbuilt_deps:
+                    logger.info(
+                        "%s: ready to build, have all build dependencies: %s",
+                        node.key,
+                        sorted(dep.key for dep in build_deps),
+                    )
                     buildable_nodes.append(node)
+                else:
+                    logger.info(
+                        "%s: waiting for build dependencies: %s",
+                        node.key,
+                        sorted(unbuilt_deps),
+                    )
 
             if not buildable_nodes:
                 # If we can't build anything but still have nodes, we have a cycle
                 remaining: list[str] = [n.key for n in nodes_to_build]
-                logger.info("Built nodes: %s", sorted(built_node_keys))
+                logger.info("have already built: %s", sorted(built_node_keys))
                 raise ValueError(f"Circular dependency detected among: {remaining}")
             logger.info(
                 "ready to build: %s",
-                ", ".join(n.canonicalized_name for n in buildable_nodes),
+                sorted(n.canonicalized_name for n in buildable_nodes),
             )
 
             # Check if any buildable node requires exclusive build (exclusive_build == True)
@@ -611,7 +629,7 @@ def build_parallel(
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=max_workers
             ) as executor:
-                futures: list[concurrent.futures.Future] = []
+                futures: list[concurrent.futures.Future[pathlib.Path]] = []
                 logger.info(
                     "starting to build: %s", sorted(n.key for n in buildable_nodes)
                 )
@@ -630,7 +648,7 @@ def build_parallel(
                 # Wait for all builds to complete
                 for node, future in zip(buildable_nodes, futures, strict=True):
                     try:
-                        wheel_filename: str = future.result()
+                        wheel_filename: pathlib.Path = future.result()
                         entries.append(
                             BuildSequenceEntry(
                                 node.canonicalized_name,
