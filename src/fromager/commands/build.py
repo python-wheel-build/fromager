@@ -33,7 +33,7 @@ from fromager import (
     wheels,
 )
 
-from ..log import requirement_ctxvar
+from ..log import req_ctxvar_context, requirement_ctxvar
 
 logger = logging.getLogger(__name__)
 
@@ -103,14 +103,13 @@ def build(
     wkctx.wheel_server_url = wheel_server_url
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
-    token = requirement_ctxvar.set(req)
-    source_url, version = sources.resolve_source(
-        ctx=wkctx,
-        req=req,
-        sdist_server_url=sdist_server_url,
-    )
-    wheel_filename = _build(wkctx, version, req, source_url)
-    requirement_ctxvar.reset(token)
+    with req_ctxvar_context(req, dist_version):
+        source_url, version = sources.resolve_source(
+            ctx=wkctx,
+            req=req,
+            sdist_server_url=sdist_server_url,
+        )
+        wheel_filename = _build(wkctx, version, req, source_url)
     print(wheel_filename)
 
 
@@ -476,11 +475,8 @@ def _build_parallel(
     req: Requirement,
     source_download_url: str,
 ) -> pathlib.Path:
-    try:
-        token = requirement_ctxvar.set(req)
+    with req_ctxvar_context(req, resolved_version):
         return _build(wkctx, resolved_version, req, source_download_url)
-    finally:
-        requirement_ctxvar.reset(token)
 
 
 @click.command()
