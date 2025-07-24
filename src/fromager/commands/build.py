@@ -440,7 +440,7 @@ def _is_wheel_built(
     req = Requirement(f"{dist_name}=={resolved_version}")
 
     try:
-        logger.info(f"checking if {req} was already built")
+        logger.info("checking if a suitable wheel was already built")
         url, _ = wheels.resolve_prebuilt_wheel(
             ctx=wkctx,
             req=req,
@@ -467,7 +467,7 @@ def _is_wheel_built(
 
         return is_built, pathlib.Path(wheel_filename)
     except Exception:
-        logger.info(f"could not locate prebuilt wheel. Will build {req}")
+        logger.info("could not locate prebuilt wheel")
         return False, None
 
 
@@ -476,8 +476,25 @@ def _build_parallel(
     resolved_version: Version,
     req: Requirement,
     source_download_url: str,
+    force: bool,
+    wheel_server_urls: list[str],
 ) -> pathlib.Path:
+    """
+    This function runs in a thread to manage the build of a single package.
+    """
     with req_ctxvar_context(req, resolved_version):
+        if not force:
+            is_built, wheel_filename = _is_wheel_built(
+                wkctx,
+                req.name,
+                resolved_version,
+                wheel_server_urls,
+            )
+            if is_built:
+                logger.info("found existing wheel, not rebuilding")
+                return wheel_filename
+            else:
+                logger.info("did not find existing wheel, building")
         return _build(wkctx, resolved_version, req, source_download_url)
 
 
@@ -541,34 +558,19 @@ def build_parallel(
     graph: dependency_graph.DependencyGraph
     graph = dependency_graph.DependencyGraph.from_file(graph_file)
 
+    # Track what has been built
+    built_node_keys: set[str] = set()
+
     # Get all nodes that need to be built (excluding prebuilt ones and the root node)
-    nodes_to_build: DependencyNodeList = []
-    for node in graph.nodes.values():
-        # Skip the root node and prebuilt nodes
-        if node.key == dependency_graph.ROOT or node.pre_built:
-            continue
-        if not force:
-            is_built, _ = _is_wheel_built(
-                wkctx, node.canonicalized_name, node.version, wheel_server_urls
-            )
-            if is_built:
-                logger.info(
-                    "%s: skipping building wheel for %s==%s since it already exists",
-                    node.canonicalized_name,
-                    node.canonicalized_name,
-                    node.version,
-                )
-                continue
-        nodes_to_build.append(node)
+    # Sort the nodes to build by their key one time to avoid
+    # redoing the sort every iteration and to make the output deterministic.
+    nodes_to_build: DependencyNodeList = sorted(
+        (n for n in graph.nodes.values() if n.key != dependency_graph.ROOT),
+        key=lambda n: n.key,
+    )
     logger.info("found %d packages to build", len(nodes_to_build))
 
-    # Sort the nodes to build by their canonicalized name one time to avoid
-    # redoing the sort every iteration and to make the output deterministic.
-    nodes_to_build = sorted(nodes_to_build, key=lambda n: n.key)
-
-    # Sort nodes by their dependencies to ensure we build in the right order
     # A node can be built when all of its build dependencies are built
-    built_node_keys: set[str] = set()
     entries: list[BuildSequenceEntry] = []
 
     with progress.progress_context(total=len(nodes_to_build)) as progressbar:
@@ -605,9 +607,10 @@ def build_parallel(
                 remaining: list[str] = [n.key for n in nodes_to_build]
                 logger.info("have already built: %s", sorted(built_node_keys))
                 raise ValueError(f"Circular dependency detected among: {remaining}")
+
             logger.info(
                 "ready to build: %s",
-                sorted(n.canonicalized_name for n in buildable_nodes),
+                sorted(n.key for n in buildable_nodes),
             )
 
             # Check if any buildable node requires exclusive build (exclusive_build == True)
@@ -638,10 +641,12 @@ def build_parallel(
                     futures.append(
                         executor.submit(
                             _build_parallel,
-                            wkctx,
-                            node.version,
-                            req,
-                            node.download_url,
+                            wkctx=wkctx,
+                            resolved_version=node.version,
+                            req=req,
+                            source_download_url=node.download_url,
+                            force=force,
+                            wheel_server_urls=wheel_server_urls,
                         )
                     )
 
