@@ -38,7 +38,6 @@ from ..log import req_ctxvar_context, requirement_ctxvar
 logger = logging.getLogger(__name__)
 
 DependencyNodeList = list[dependency_graph.DependencyNode]
-DependencyNodeSet = set[dependency_graph.DependencyNode]
 
 
 @dataclasses.dataclass()
@@ -565,7 +564,7 @@ def build_parallel(
 
     # Sort nodes by their dependencies to ensure we build in the right order
     # A node can be built when all of its build dependencies are built
-    built_nodes: DependencyNodeSet = set()
+    built_node_keys: set[str] = set()
     entries: list[BuildSequenceEntry] = []
 
     with progress.progress_context(total=len(nodes_to_build)) as progressbar:
@@ -580,13 +579,13 @@ def build_parallel(
                     if edge.req_type.is_build_requirement
                 ]
                 # A node can be built when all of its build dependencies are built
-                if all(dep.key in built_nodes for dep in build_deps):
+                if all(dep.key in built_node_keys for dep in build_deps):
                     buildable_nodes.append(node)
 
             if not buildable_nodes:
                 # If we can't build anything but still have nodes, we have a cycle
                 remaining: list[str] = [n.key for n in nodes_to_build]
-                logger.info("Built nodes: %s", sorted(n.key for n in built_nodes))
+                logger.info("Built nodes: %s", sorted(built_node_keys))
                 raise ValueError(f"Circular dependency detected among: {remaining}")
             logger.info(
                 "ready to build: %s",
@@ -641,7 +640,7 @@ def build_parallel(
                                 wheel_filename=wheel_filename,
                             )
                         )
-                        built_nodes.add(node.key)
+                        built_node_keys.add(node.key)
                         nodes_to_build.remove(node)
                         progressbar.update()
                     except Exception as e:
