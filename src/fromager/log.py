@@ -1,6 +1,7 @@
 import contextlib
 import contextvars
 import logging
+import threading
 import typing
 
 from packaging.requirements import Requirement
@@ -59,3 +60,13 @@ class FromagerLogRecord(logging.LogRecord):
                 return f"{req.name}: {msg}"
             else:
                 return f"{req.name}-{version}: {msg}"
+
+
+class ThreadLogFilter(logging.Filter):
+    """Filter that only emits records for the given thread name"""
+
+    def __init__(self, thread_name: str):
+        self._thread_name = thread_name
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return threading.current_thread().name == self._thread_name

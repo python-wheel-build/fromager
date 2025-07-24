@@ -6,6 +6,7 @@ import json
 import logging
 import pathlib
 import sys
+import threading
 import typing
 from urllib.parse import urlparse
 
@@ -33,7 +34,7 @@ from fromager import (
     wheels,
 )
 
-from ..log import req_ctxvar_context
+from ..log import ThreadLogFilter, req_ctxvar_context
 
 logger = logging.getLogger(__name__)
 
@@ -334,16 +335,23 @@ def _build(
     2. Download a pre-built wheel.
     3. Build the wheel from source.
     """
-    per_wheel_logger = logging.getLogger("")
 
     wheel_server_urls = wheel_server_urls or []
     wheel_filename = None
 
+    # Set up a log file for all of the details of the build for this one wheel.
+    # We attach a handler to the root logger so that all messages are logged to
+    # the file, and we add a filter to the handler so that only messages from
+    # the current thread are logged for when we build in parallel.
+    root_logger = logging.getLogger(None)
     module_name = overrides.pkgname_to_override_module(req.name)
-    wheel_log = wkctx.logs_dir / f"{module_name}_{resolved_version}.log"
+    wheel_log = wkctx.logs_dir / f"{module_name}-{resolved_version}.log"
+    file_handler = logging.FileHandler(filename=str(wheel_log))
+    logging.info(f"adding filter {threading.current_thread().name}")
+    file_handler.addFilter(ThreadLogFilter(threading.current_thread().name))
+    root_logger.addHandler(file_handler)
 
-    file_handler = logging.FileHandler(str(wheel_log), mode="w")
-    per_wheel_logger.addHandler(file_handler)
+    logger.info("starting processing")
 
     if not force:
         is_built, wheel_filename = _is_wheel_built(
@@ -432,11 +440,8 @@ def _build(
             wheel_filename=wheel_filename,
         )
 
-    per_wheel_logger.removeHandler(file_handler)
+    root_logger.removeHandler(file_handler)
     file_handler.close()
-
-    new_filename = wheel_log.with_name(wheel_filename.stem + ".log")
-    wheel_log.rename(new_filename)
 
     server.update_wheel_mirror(wkctx)
 
