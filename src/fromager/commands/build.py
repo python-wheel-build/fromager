@@ -596,29 +596,30 @@ def build_parallel(
             # Find nodes that can be built (all build dependencies are built)
             buildable_nodes: DependencyNodeList = []
             for node in nodes_to_build:
-                # Get all build dependencies (build-system, build-backend, build-sdist)
-                build_deps: DependencyNodeList = [
-                    edge.destination_node
-                    for edge in node.children
-                    if edge.req_type.is_build_requirement
-                ]
-                # A node can be built when all of its build dependencies are built
-                unbuilt_deps = [
-                    dep.key for dep in build_deps if dep.key not in built_node_keys
-                ]
-                if not unbuilt_deps:
-                    logger.info(
-                        "%s: ready to build, have all build dependencies: %s",
-                        node.key,
-                        sorted(dep.key for dep in build_deps),
-                    )
-                    buildable_nodes.append(node)
-                else:
-                    logger.info(
-                        "%s: waiting for build dependencies: %s",
-                        node.key,
-                        sorted(unbuilt_deps),
-                    )
+                with req_ctxvar_context(
+                    Requirement(node.canonicalized_name), node.version
+                ):
+                    # Get all build dependencies (build-system, build-backend, build-sdist)
+                    build_deps: DependencyNodeList = [
+                        edge.destination_node
+                        for edge in node.children
+                        if edge.req_type.is_build_requirement
+                    ]
+                    # A node can be built when all of its build dependencies are built
+                    unbuilt_deps = [
+                        dep.key for dep in build_deps if dep.key not in built_node_keys
+                    ]
+                    if not unbuilt_deps:
+                        logger.info(
+                            "ready to build, have all build dependencies: %s",
+                            sorted(dep.key for dep in build_deps),
+                        )
+                        buildable_nodes.append(node)
+                    else:
+                        logger.info(
+                            "waiting for build dependencies: %s",
+                            sorted(unbuilt_deps),
+                        )
 
             if not buildable_nodes:
                 # If we can't build anything but still have nodes, we have a cycle
