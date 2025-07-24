@@ -33,7 +33,7 @@ from fromager import (
     wheels,
 )
 
-from ..log import req_ctxvar_context, requirement_ctxvar
+from ..log import req_ctxvar_context
 
 logger = logging.getLogger(__name__)
 
@@ -106,12 +106,23 @@ def build(
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
     with req_ctxvar_context(req, dist_version):
+        # We have to resolve the source here to get a
+        # source_url. Other build modes use data computed from a
+        # bootstrap job where that URL is saved in the build
+        # instruction file passed to build-sequence or build-parallel.
         source_url, version = sources.resolve_source(
             ctx=wkctx,
             req=req,
             sdist_server_url=sdist_server_url,
         )
-        wheel_filename = _build(wkctx, version, req, source_url)
+        wheel_filename = _build(
+            wkctx=wkctx,
+            resolved_version=version,
+            req=req,
+            source_download_url=source_url,
+            force=True,
+            wheel_server_urls=[wkctx.wheel_server_url],
+        )
     print(wheel_filename)
 
 
@@ -170,7 +181,6 @@ def build_sequence(
         for entry in progress.progress(json.load(f)):
             dist_name = entry["dist"]
             resolved_version = Version(entry["version"])
-            prebuilt = entry["prebuilt"]
             source_download_url = entry["source_url"]
 
             # If we are building from git, use the requirement as specified so
@@ -181,74 +191,32 @@ def build_sequence(
                 req = Requirement(entry["req"])
             else:
                 req = Requirement(f"{dist_name}=={resolved_version}")
-            token = requirement_ctxvar.set(req)
 
-            if not force:
-                is_built, wheel_filename = _is_wheel_built(
-                    wkctx, dist_name, resolved_version, wheel_server_urls
+            with req_ctxvar_context(req, resolved_version):
+                logger.info("building %s", resolved_version)
+                wheel_filename, prebuilt = _build(
+                    wkctx=wkctx,
+                    resolved_version=resolved_version,
+                    req=req,
+                    source_download_url=source_download_url,
+                    force=force,
+                    wheel_server_urls=wheel_server_urls,
                 )
-                if is_built:
-                    logger.info(
-                        "%s: skipping building wheel for %s==%s since it already exists",
-                        dist_name,
+                if prebuilt:
+                    logger.info("downloaded prebuilt wheel %s", wheel_filename)
+                else:
+                    logger.info("built %s", wheel_filename)
+
+                entries.append(
+                    BuildSequenceEntry(
                         dist_name,
                         resolved_version,
+                        prebuilt,
+                        source_download_url,
+                        wheel_filename=wheel_filename,
                     )
-                    entries.append(
-                        BuildSequenceEntry(
-                            dist_name,
-                            resolved_version,
-                            prebuilt,
-                            source_download_url,
-                            wheel_filename=wheel_filename,
-                            skipped=True,
-                        )
-                    )
-                    continue
-
-            if prebuilt:
-                logger.info(
-                    "%s: downloading prebuilt wheel %s==%s",
-                    dist_name,
-                    dist_name,
-                    resolved_version,
-                )
-                wheel_filename = wheels.download_wheel(
-                    req=req,
-                    wheel_url=source_download_url,
-                    output_directory=wkctx.wheels_build,
-                )
-                hooks.run_prebuilt_wheel_hooks(
-                    ctx=wkctx,
-                    req=req,
-                    dist_name=dist_name,
-                    dist_version=str(resolved_version),
-                    wheel_filename=wheel_filename,
-                )
-                server.update_wheel_mirror(wkctx)
-                # After we update the wheel mirror, the built file has
-                # moved to a new directory.
-                wheel_filename = wkctx.wheels_downloads / wheel_filename.name
-
-            else:
-                logger.info(
-                    "%s: building %s==%s", dist_name, dist_name, resolved_version
-                )
-                wheel_filename = _build(
-                    wkctx, resolved_version, req, source_download_url
                 )
 
-            entries.append(
-                BuildSequenceEntry(
-                    dist_name,
-                    resolved_version,
-                    prebuilt,
-                    source_download_url,
-                    wheel_filename=wheel_filename,
-                )
-            )
-            print(wheel_filename)
-            requirement_ctxvar.reset(token)
     metrics.summarize(wkctx, "Building")
 
     _summary(wkctx, entries)
@@ -356,8 +324,20 @@ def _build(
     resolved_version: Version,
     req: Requirement,
     source_download_url: str,
-) -> pathlib.Path:
+    force: bool,
+    wheel_server_urls: list[str] | None = None,
+) -> tuple[pathlib.Path, bool]:
+    """Handle one version of one wheel.
+
+    Either:
+    1. Reuse an existing wheel we have locally.
+    2. Download a pre-built wheel.
+    3. Build the wheel from source.
+    """
     per_wheel_logger = logging.getLogger("")
+
+    wheel_server_urls = wheel_server_urls or []
+    wheel_filename = None
 
     module_name = overrides.pkgname_to_override_module(req.name)
     wheel_log = wkctx.logs_dir / f"{module_name}_{resolved_version}.log"
@@ -365,47 +345,92 @@ def _build(
     file_handler = logging.FileHandler(str(wheel_log), mode="w")
     per_wheel_logger.addHandler(file_handler)
 
-    source_filename = sources.download_source(
-        ctx=wkctx,
-        req=req,
-        version=resolved_version,
-        download_url=source_download_url,
-    )
-    logger.debug(
-        "%s: saved sdist of version %s from %s to %s",
-        req.name,
-        resolved_version,
-        source_download_url,
-        source_filename,
-    )
+    if not force:
+        is_built, wheel_filename = _is_wheel_built(
+            wkctx,
+            req.name,
+            resolved_version,
+            wheel_server_urls,
+        )
+        if is_built:
+            logger.info("found existing wheel %s", wheel_filename)
 
-    # Prepare source
-    source_root_dir = sources.prepare_source(
-        ctx=wkctx, req=req, source_filename=source_filename, version=resolved_version
-    )
+    pbi = wkctx.package_build_info(req)
+    prebuilt = pbi.pre_built
+    if prebuilt:
+        logger.info("downloading prebuilt wheel")
+        wheel_filename = wheels.download_wheel(
+            req=req,
+            wheel_url=source_download_url,
+            output_directory=wkctx.wheels_build,
+        )
+        hooks.run_prebuilt_wheel_hooks(
+            ctx=wkctx,
+            req=req,
+            dist_name=req.name,
+            dist_version=str(resolved_version),
+            wheel_filename=wheel_filename,
+        )
+        server.update_wheel_mirror(wkctx)
+        # After we update the wheel mirror, the built file has
+        # moved to a new directory.
+        wheel_filename = wkctx.wheels_downloads / wheel_filename.name
 
-    # Build environment
-    build_env = build_environment.prepare_build_environment(
-        ctx=wkctx, req=req, sdist_root_dir=source_root_dir
-    )
+    # If we get here and still don't have a wheel filename, then we need to
+    # build the wheel.
+    if not wheel_filename:
+        source_filename = sources.download_source(
+            ctx=wkctx,
+            req=req,
+            version=resolved_version,
+            download_url=source_download_url,
+        )
+        logger.debug(
+            "saved sdist of version %s from %s to %s",
+            resolved_version,
+            source_download_url,
+            source_filename,
+        )
 
-    # Make a new source distribution, in case we patched the code.
-    sdist_filename = sources.build_sdist(
-        ctx=wkctx,
-        req=req,
-        version=resolved_version,
-        sdist_root_dir=source_root_dir,
-        build_env=build_env,
-    )
+        # Prepare source
+        source_root_dir = sources.prepare_source(
+            ctx=wkctx,
+            req=req,
+            source_filename=source_filename,
+            version=resolved_version,
+        )
 
-    # Build
-    wheel_filename = wheels.build_wheel(
-        ctx=wkctx,
-        req=req,
-        sdist_root_dir=source_root_dir,
-        version=resolved_version,
-        build_env=build_env,
-    )
+        # Build environment
+        build_env = build_environment.prepare_build_environment(
+            ctx=wkctx, req=req, sdist_root_dir=source_root_dir
+        )
+
+        # Make a new source distribution, in case we patched the code.
+        sdist_filename = sources.build_sdist(
+            ctx=wkctx,
+            req=req,
+            version=resolved_version,
+            sdist_root_dir=source_root_dir,
+            build_env=build_env,
+        )
+
+        # Build
+        wheel_filename = wheels.build_wheel(
+            ctx=wkctx,
+            req=req,
+            sdist_root_dir=source_root_dir,
+            version=resolved_version,
+            build_env=build_env,
+        )
+
+        hooks.run_post_build_hooks(
+            ctx=wkctx,
+            req=req,
+            dist_name=canonicalize_name(req.name),
+            dist_version=str(resolved_version),
+            sdist_filename=sdist_filename,
+            wheel_filename=wheel_filename,
+        )
 
     per_wheel_logger.removeHandler(file_handler)
     file_handler.close()
@@ -413,22 +438,13 @@ def _build(
     new_filename = wheel_log.with_name(wheel_filename.stem + ".log")
     wheel_log.rename(new_filename)
 
-    hooks.run_post_build_hooks(
-        ctx=wkctx,
-        req=req,
-        dist_name=canonicalize_name(req.name),
-        dist_version=str(resolved_version),
-        sdist_filename=sdist_filename,
-        wheel_filename=wheel_filename,
-    )
-
     server.update_wheel_mirror(wkctx)
 
     # After we update the wheel mirror, the built file has
     # moved to a new directory.
     wheel_filename = wkctx.wheels_downloads / wheel_filename.name
 
-    return wheel_filename
+    return wheel_filename, prebuilt
 
 
 def _is_wheel_built(
@@ -440,7 +456,9 @@ def _is_wheel_built(
     req = Requirement(f"{dist_name}=={resolved_version}")
 
     try:
-        logger.info(f"checking if {req} was already built")
+        logger.info(
+            "checking if a suitable wheel was already built on %s", wheel_server_urls
+        )
         url, _ = wheels.resolve_prebuilt_wheel(
             ctx=wkctx,
             req=req,
@@ -467,7 +485,7 @@ def _is_wheel_built(
 
         return is_built, pathlib.Path(wheel_filename)
     except Exception:
-        logger.info(f"could not locate prebuilt wheel. Will build {req}")
+        logger.info("could not locate prebuilt wheel")
         return False, None
 
 
@@ -476,9 +494,21 @@ def _build_parallel(
     resolved_version: Version,
     req: Requirement,
     source_download_url: str,
-) -> pathlib.Path:
+    force: bool,
+    wheel_server_urls: list[str],
+) -> tuple[pathlib.Path, bool]:
+    """
+    This function runs in a thread to manage the build of a single package.
+    """
     with req_ctxvar_context(req, resolved_version):
-        return _build(wkctx, resolved_version, req, source_download_url)
+        return _build(
+            wkctx=wkctx,
+            resolved_version=resolved_version,
+            req=req,
+            source_download_url=source_download_url,
+            force=force,
+            wheel_server_urls=wheel_server_urls,
+        )
 
 
 @click.command()
@@ -541,34 +571,19 @@ def build_parallel(
     graph: dependency_graph.DependencyGraph
     graph = dependency_graph.DependencyGraph.from_file(graph_file)
 
+    # Track what has been built
+    built_node_keys: set[str] = set()
+
     # Get all nodes that need to be built (excluding prebuilt ones and the root node)
-    nodes_to_build: DependencyNodeList = []
-    for node in graph.nodes.values():
-        # Skip the root node and prebuilt nodes
-        if node.key == dependency_graph.ROOT or node.pre_built:
-            continue
-        if not force:
-            is_built, _ = _is_wheel_built(
-                wkctx, node.canonicalized_name, node.version, wheel_server_urls
-            )
-            if is_built:
-                logger.info(
-                    "%s: skipping building wheel for %s==%s since it already exists",
-                    node.canonicalized_name,
-                    node.canonicalized_name,
-                    node.version,
-                )
-                continue
-        nodes_to_build.append(node)
+    # Sort the nodes to build by their key one time to avoid
+    # redoing the sort every iteration and to make the output deterministic.
+    nodes_to_build: DependencyNodeList = sorted(
+        (n for n in graph.nodes.values() if n.key != dependency_graph.ROOT),
+        key=lambda n: n.key,
+    )
     logger.info("found %d packages to build", len(nodes_to_build))
 
-    # Sort the nodes to build by their canonicalized name one time to avoid
-    # redoing the sort every iteration and to make the output deterministic.
-    nodes_to_build = sorted(nodes_to_build, key=lambda n: n.key)
-
-    # Sort nodes by their dependencies to ensure we build in the right order
     # A node can be built when all of its build dependencies are built
-    built_node_keys: set[str] = set()
     entries: list[BuildSequenceEntry] = []
 
     with progress.progress_context(total=len(nodes_to_build)) as progressbar:
@@ -605,9 +620,10 @@ def build_parallel(
                 remaining: list[str] = [n.key for n in nodes_to_build]
                 logger.info("have already built: %s", sorted(built_node_keys))
                 raise ValueError(f"Circular dependency detected among: {remaining}")
+
             logger.info(
                 "ready to build: %s",
-                sorted(n.canonicalized_name for n in buildable_nodes),
+                sorted(n.key for n in buildable_nodes),
             )
 
             # Check if any buildable node requires exclusive build (exclusive_build == True)
@@ -629,7 +645,7 @@ def build_parallel(
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=max_workers
             ) as executor:
-                futures: list[concurrent.futures.Future[pathlib.Path]] = []
+                futures: list[concurrent.futures.Future[tuple[pathlib.Path, bool]]] = []
                 logger.info(
                     "starting to build: %s", sorted(n.key for n in buildable_nodes)
                 )
@@ -638,22 +654,24 @@ def build_parallel(
                     futures.append(
                         executor.submit(
                             _build_parallel,
-                            wkctx,
-                            node.version,
-                            req,
-                            node.download_url,
+                            wkctx=wkctx,
+                            resolved_version=node.version,
+                            req=req,
+                            source_download_url=node.download_url,
+                            force=force,
+                            wheel_server_urls=wheel_server_urls,
                         )
                     )
 
                 # Wait for all builds to complete
                 for node, future in zip(buildable_nodes, futures, strict=True):
                     try:
-                        wheel_filename: pathlib.Path = future.result()
+                        wheel_filename, prebuilt = future.result()
                         entries.append(
                             BuildSequenceEntry(
                                 node.canonicalized_name,
                                 node.version,
-                                False,  # not prebuilt
+                                prebuilt,
                                 node.download_url,
                                 wheel_filename=wheel_filename,
                             )
