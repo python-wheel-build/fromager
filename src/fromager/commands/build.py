@@ -37,6 +37,9 @@ from ..log import req_ctxvar_context, requirement_ctxvar
 
 logger = logging.getLogger(__name__)
 
+DependencyNodeList = list[dependency_graph.DependencyNode]
+DependencyNodeSet = set[dependency_graph.DependencyNode]
+
 
 @dataclasses.dataclass()
 @functools.total_ordering
@@ -522,7 +525,7 @@ def build_parallel(
     wkctx.enable_parallel_builds()
 
     server.start_wheel_server(wkctx)
-    wheel_server_urls = [wkctx.wheel_server_url]
+    wheel_server_urls: list[str] = [wkctx.wheel_server_url]
     if cache_wheel_server_url:
         # put after local server so we always check local server first
         wheel_server_urls.append(cache_wheel_server_url)
@@ -536,10 +539,11 @@ def build_parallel(
 
     # Load the dependency graph
     logger.info("reading dependency graph from %s", graph_file)
+    graph: dependency_graph.DependencyGraph
     graph = dependency_graph.DependencyGraph.from_file(graph_file)
 
     # Get all nodes that need to be built (excluding prebuilt ones and the root node)
-    nodes_to_build = []
+    nodes_to_build: DependencyNodeList = []
     for node in graph.nodes.values():
         # Skip the root node and prebuilt nodes
         if node.key == dependency_graph.ROOT or node.pre_built:
@@ -561,16 +565,16 @@ def build_parallel(
 
     # Sort nodes by their dependencies to ensure we build in the right order
     # A node can be built when all of its build dependencies are built
-    built_nodes = set()
+    built_nodes: DependencyNodeSet = set()
     entries: list[BuildSequenceEntry] = []
 
     with progress.progress_context(total=len(nodes_to_build)) as progressbar:
         while nodes_to_build:
             # Find nodes that can be built (all build dependencies are built)
-            buildable_nodes = []
+            buildable_nodes: DependencyNodeList = []
             for node in nodes_to_build:
                 # Get all build dependencies (build-system, build-backend, build-sdist)
-                build_deps = [
+                build_deps: DependencyNodeList = [
                     edge.destination_node
                     for edge in node.children
                     if edge.req_type.is_build_requirement
@@ -581,7 +585,8 @@ def build_parallel(
 
             if not buildable_nodes:
                 # If we can't build anything but still have nodes, we have a cycle
-                remaining = [n.key for n in nodes_to_build]
+                remaining: list[str] = [n.key for n in nodes_to_build]
+                logger.info("Built nodes: %s", sorted(n.key for n in built_nodes))
                 raise ValueError(f"Circular dependency detected among: {remaining}")
             logger.info(
                 "ready to build: %s",
@@ -589,7 +594,7 @@ def build_parallel(
             )
 
             # Check if any buildable node requires exclusive build (exclusive_build == True)
-            exclusive_nodes = [
+            exclusive_nodes: DependencyNodeList = [
                 node
                 for node in buildable_nodes
                 if wkctx.settings.package_build_info(
@@ -607,7 +612,10 @@ def build_parallel(
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=max_workers
             ) as executor:
-                futures = []
+                futures: list[concurrent.futures.Future] = []
+                logger.info(
+                    "starting to build: %s", sorted(n.key for n in buildable_nodes)
+                )
                 for node in buildable_nodes:
                     req = Requirement(f"{node.canonicalized_name}=={node.version}")
                     futures.append(
@@ -623,7 +631,7 @@ def build_parallel(
                 # Wait for all builds to complete
                 for node, future in zip(buildable_nodes, futures, strict=True):
                     try:
-                        wheel_filename = future.result()
+                        wheel_filename: str = future.result()
                         entries.append(
                             BuildSequenceEntry(
                                 node.canonicalized_name,
