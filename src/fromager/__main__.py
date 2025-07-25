@@ -18,9 +18,6 @@ from . import (
 
 logger = logging.getLogger(__name__)
 
-TERSE_LOG_FMT = "%(asctime)s %(levelname)s %(message)s"
-TERSE_DATE_FMT = "%H:%M:%S"
-VERBOSE_LOG_FMT = "%(asctime)s %(levelname)s:%(name)s:%(lineno)d: %(message)s"
 _DEBUG = False
 
 try:
@@ -170,8 +167,8 @@ def main(
     # level.
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
-    log_format = log_format or (VERBOSE_LOG_FMT if verbose else TERSE_LOG_FMT)
-    date_format: str | None = None if verbose else TERSE_DATE_FMT
+    log_format = log_format or (log.VERBOSE_LOG_FMT if verbose else log.TERSE_LOG_FMT)
+    date_format: str | None = None if verbose else log.TERSE_DATE_FMT
     stream_formatter = logging.Formatter(
         log_format,
         datefmt=date_format,
@@ -184,7 +181,7 @@ def main(
     if error_log_file:
         error_handler = logging.FileHandler(error_log_file)
         error_handler.setLevel(logging.ERROR)
-        error_formatter = logging.Formatter(VERBOSE_LOG_FMT)
+        error_formatter = logging.Formatter(log.VERBOSE_LOG_FMT)
         error_handler.setFormatter(error_formatter)
         logging.getLogger().addHandler(error_handler)
     # If we're given a debug log filename, configure the file handler.
@@ -192,7 +189,7 @@ def main(
         # Always log to the file at debug level
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter(VERBOSE_LOG_FMT)
+        file_formatter = logging.Formatter(log.VERBOSE_LOG_FMT)
         file_handler.setFormatter(file_formatter)
         logging.getLogger().addHandler(file_handler)
         logger.info("logging debug information to %s", log_file)

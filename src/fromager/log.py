@@ -1,10 +1,15 @@
 import contextlib
 import contextvars
 import logging
+import threading
 import typing
 
 from packaging.requirements import Requirement
 from packaging.version import Version
+
+TERSE_LOG_FMT = "%(asctime)s %(levelname)s %(message)s"
+TERSE_DATE_FMT = "%H:%M:%S"
+VERBOSE_LOG_FMT = "%(asctime)s %(levelname)s:%(name)s:%(lineno)d: %(message)s"
 
 requirement_ctxvar: contextvars.ContextVar[Requirement] = contextvars.ContextVar(
     "requirement"
@@ -59,3 +64,13 @@ class FromagerLogRecord(logging.LogRecord):
                 return f"{req.name}: {msg}"
             else:
                 return f"{req.name}-{version}: {msg}"
+
+
+class ThreadLogFilter(logging.Filter):
+    """Filter that only emits records for the given thread name"""
+
+    def __init__(self, thread_name: str):
+        self._thread_name = thread_name
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return threading.current_thread().name == self._thread_name

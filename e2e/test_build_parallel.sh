@@ -40,7 +40,7 @@ fromager \
     --settings-dir="$SCRIPTDIR/build-parallel" \
     build-parallel "$OUTDIR/graph.json"
 
-if ! grep -q "cython==3.1.1: ready to build" "$log"; then
+if ! grep -q "cython-3.1.1: ready to build" "$log"; then
   echo "Did not find message indicating build of cython would start" 1>&2
   pass=false
 fi
@@ -151,6 +151,7 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
+    --settings-dir="$SCRIPTDIR/build-parallel" \
     build-parallel --cache-wheel-server-url="https://pypi.org/simple" "$OUTDIR/graph.json"
 
 find "$OUTDIR/wheels-repo/"
