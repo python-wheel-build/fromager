@@ -7,6 +7,10 @@ import typing
 from packaging.requirements import Requirement
 from packaging.version import Version
 
+TERSE_LOG_FMT = "%(asctime)s %(levelname)s %(message)s"
+TERSE_DATE_FMT = "%H:%M:%S"
+VERBOSE_LOG_FMT = "%(asctime)s %(levelname)s:%(name)s:%(lineno)d: %(message)s"
+
 requirement_ctxvar: contextvars.ContextVar[Requirement] = contextvars.ContextVar(
     "requirement"
 )

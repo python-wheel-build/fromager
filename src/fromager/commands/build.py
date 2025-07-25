@@ -34,7 +34,7 @@ from fromager import (
     wheels,
 )
 
-from ..log import ThreadLogFilter, req_ctxvar_context
+from ..log import VERBOSE_LOG_FMT, ThreadLogFilter, req_ctxvar_context
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +347,7 @@ def _build(
     module_name = overrides.pkgname_to_override_module(req.name)
     wheel_log = wkctx.logs_dir / f"{module_name}-{resolved_version}.log"
     file_handler = logging.FileHandler(filename=str(wheel_log))
-    logging.info(f"adding filter {threading.current_thread().name}")
+    file_handler.setFormatter(logging.Formatter(VERBOSE_LOG_FMT))
     file_handler.addFilter(ThreadLogFilter(threading.current_thread().name))
     root_logger.addHandler(file_handler)
 
