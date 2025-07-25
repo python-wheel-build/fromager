@@ -587,6 +587,11 @@ def build_parallel(
     entries: list[BuildSequenceEntry] = []
 
     with progress.progress_context(total=len(nodes_to_build)) as progressbar:
+
+        def update_progressbar_cb(future: concurrent.futures.Future) -> None:
+            """Immediately update the progress when when a task is done"""
+            progressbar.update()
+
         while nodes_to_build:
             # Find nodes that can be built (all build dependencies are built)
             buildable_nodes: DependencyNodeList = []
@@ -651,17 +656,17 @@ def build_parallel(
                 )
                 for node in buildable_nodes:
                     req = Requirement(f"{node.canonicalized_name}=={node.version}")
-                    futures.append(
-                        executor.submit(
-                            _build_parallel,
-                            wkctx=wkctx,
-                            resolved_version=node.version,
-                            req=req,
-                            source_download_url=node.download_url,
-                            force=force,
-                            wheel_server_urls=wheel_server_urls,
-                        )
+                    future = executor.submit(
+                        _build_parallel,
+                        wkctx=wkctx,
+                        resolved_version=node.version,
+                        req=req,
+                        source_download_url=node.download_url,
+                        force=force,
+                        wheel_server_urls=wheel_server_urls,
                     )
+                    future.add_done_callback(update_progressbar_cb)
+                    futures.append(future)
 
                 # Wait for all builds to complete
                 for node, future in zip(buildable_nodes, futures, strict=True):
@@ -678,7 +683,7 @@ def build_parallel(
                         )
                         built_node_keys.add(node.key)
                         nodes_to_build.remove(node)
-                        progressbar.update()
+                        # progress bar is updated in callback
                     except Exception as e:
                         logger.error(f"Failed to build {node.key}: {e}")
                         raise
