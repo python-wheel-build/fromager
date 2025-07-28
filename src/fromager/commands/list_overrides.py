@@ -29,7 +29,10 @@ def list_overrides(
     table.add_column("Patches", justify="center", no_wrap=True)
     table.add_column("Plugin", justify="center", no_wrap=True)
     table.add_column("Pre-built", justify="center", no_wrap=True)
-    table.add_column("Variants", justify="left")
+
+    variants = sorted(wkctx.settings.all_variants())
+    for v in variants:
+        table.add_column(v, justify="center", no_wrap=True)
 
     for name in overridden_packages:
         pbi = wkctx.settings.package_build_info(name)
@@ -58,13 +61,15 @@ def list_overrides(
                 if hasattr(pbi.plugin, hook):
                     plugin_hooks.append(hook)
         is_prebuilt = "yes" if pbi.pre_built else ""
-        variants = ", ".join(pbi.variants.keys()) if pbi.variants else ""
-        table.add_row(
+
+        row = [
             name,
             has_patches,
             ", ".join(plugin_hooks),
             is_prebuilt,
-            variants,
-        )
+        ]
+        for v in variants:
+            row.append("yes" if v in pbi.variants else "")
+        table.add_row(*row)
 
     rich.get_console().print(table)
