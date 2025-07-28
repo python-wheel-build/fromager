@@ -29,7 +29,6 @@ def list_overrides(
     table.add_column("Version", justify="left", no_wrap=True)
     table.add_column("Patches", justify="left", no_wrap=True)
     table.add_column("Plugin", justify="left")
-    table.add_column("Pre-built", justify="left", no_wrap=True)
 
     variants = sorted(wkctx.settings.all_variants())
     for v in variants:
@@ -63,8 +62,17 @@ def list_overrides(
                 if hasattr(pbi.plugin, hook):
                     plugin_hooks.append(hook)
         plugin_hooks_str = ", ".join(plugin_hooks)
-        is_prebuilt = "yes" if pbi.pre_built else ""
-        variant_info = ["yes" if v in pbi.variants else "" for v in variants]
+
+        variant_info = []
+        for v in variants:
+            v_info = ps.variants.get(v)
+            if v_info:
+                if v_info.pre_built:
+                    variant_info.append("pre-built")
+                else:
+                    variant_info.append("yes")
+            else:
+                variant_info.append("")
 
         all_patches = pbi.get_all_patches()
         global_patches = all_patches.get(None, [])
@@ -80,7 +88,6 @@ def list_overrides(
                 "",  # Version
                 patches_str,
                 plugin_hooks_str,
-                is_prebuilt,
             ] + variant_info
             table.add_row(*row)
         else:
@@ -95,7 +102,6 @@ def list_overrides(
                     str(version),
                     patches_str,
                     plugin_hooks_str,
-                    is_prebuilt,
                 ] + variant_info
                 table.add_row(*row)
 
