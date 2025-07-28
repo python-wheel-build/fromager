@@ -858,6 +858,11 @@ class PackageBuildInfo:
     def exclusive_build(self) -> bool:
         return self._ps.build_options.exclusive_build
 
+    @property
+    def variants(self) -> Mapping[Variant, VariantInfo]:
+        """Get the variant configuration for the current package"""
+        return self._ps.variants
+
     def serialize(self, **kwargs) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)
 
