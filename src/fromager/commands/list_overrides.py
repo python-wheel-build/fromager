@@ -26,6 +26,7 @@ def list_overrides(
 
     table = Table(title="Package Overrides")
     table.add_column("Package", justify="left", no_wrap=True)
+    table.add_column("Version", justify="left", no_wrap=True)
     table.add_column("Patches", justify="left", no_wrap=True)
     table.add_column("Plugin", justify="left")
     table.add_column("Pre-built", justify="left", no_wrap=True)
@@ -36,7 +37,8 @@ def list_overrides(
 
     for name in overridden_packages:
         pbi = wkctx.settings.package_build_info(name)
-        has_patches = "yes" if pbi.get_all_patches() else ""
+        ps = wkctx.settings.package_setting(name)
+
         plugin_hooks = []
         if pbi.plugin:
             for hook in [
@@ -60,16 +62,41 @@ def list_overrides(
             ]:
                 if hasattr(pbi.plugin, hook):
                     plugin_hooks.append(hook)
+        plugin_hooks_str = ", ".join(plugin_hooks)
         is_prebuilt = "yes" if pbi.pre_built else ""
+        variant_info = ["yes" if v in pbi.variants else "" for v in variants]
 
-        row = [
-            name,
-            has_patches,
-            ", ".join(plugin_hooks),
-            is_prebuilt,
-        ]
-        for v in variants:
-            row.append("yes" if v in pbi.variants else "")
-        table.add_row(*row)
+        all_patches = pbi.get_all_patches()
+        global_patches = all_patches.get(None, [])
+        num_global_patches = len(global_patches)
+
+        all_pkg_versions = sorted([v for v in all_patches.keys() if v is not None])
+
+        if not all_pkg_versions:
+            # This package has overrides, but none are version-specific.
+            patches_str = str(num_global_patches) if num_global_patches else ""
+            row = [
+                name,
+                "",  # Version
+                patches_str,
+                plugin_hooks_str,
+                is_prebuilt,
+            ] + variant_info
+            table.add_row(*row)
+        else:
+            # This package has version-specific overrides.
+            for version in all_pkg_versions:
+                version_patches = all_patches.get(version, [])
+                total_patches = num_global_patches + len(version_patches)
+                patches_str = str(total_patches) if total_patches else ""
+
+                row = [
+                    name,
+                    str(version),
+                    patches_str,
+                    plugin_hooks_str,
+                    is_prebuilt,
+                ] + variant_info
+                table.add_row(*row)
 
     rich.get_console().print(table)
