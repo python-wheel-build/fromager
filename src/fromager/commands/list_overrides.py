@@ -26,13 +26,13 @@ def list_overrides(
 
     table = Table(title="Package Overrides")
     table.add_column("Package", justify="left", no_wrap=True)
-    table.add_column("Patches", justify="center", no_wrap=True)
-    table.add_column("Plugin", justify="center", no_wrap=True)
-    table.add_column("Pre-built", justify="center", no_wrap=True)
+    table.add_column("Patches", justify="left", no_wrap=True)
+    table.add_column("Plugin", justify="left")
+    table.add_column("Pre-built", justify="left", no_wrap=True)
 
     variants = sorted(wkctx.settings.all_variants())
     for v in variants:
-        table.add_column(v, justify="center", no_wrap=True)
+        table.add_column(v, justify="left", no_wrap=True)
 
     for name in overridden_packages:
         pbi = wkctx.settings.package_build_info(name)
