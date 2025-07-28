@@ -28,11 +28,12 @@ def list_overrides(
     table.add_column("Package", justify="left", no_wrap=True)
     table.add_column("Version", justify="left", no_wrap=True)
     table.add_column("Patches", justify="left", no_wrap=True)
-    table.add_column("Plugin", justify="left")
 
     variants = sorted(wkctx.settings.all_variants())
     for v in variants:
         table.add_column(v, justify="left", no_wrap=True)
+
+    table.add_column("Plugin", justify="left")
 
     for name in overridden_packages:
         pbi = wkctx.settings.package_build_info(name)
@@ -83,12 +84,15 @@ def list_overrides(
         if not all_pkg_versions:
             # This package has overrides, but none are version-specific.
             patches_str = str(num_global_patches) if num_global_patches else ""
-            row = [
-                name,
-                "",  # Version
-                patches_str,
-                plugin_hooks_str,
-            ] + variant_info
+            row = (
+                [
+                    name,
+                    "",  # Version
+                    patches_str,
+                ]
+                + variant_info
+                + [plugin_hooks_str]
+            )
             table.add_row(*row)
         else:
             # This package has version-specific overrides.
@@ -97,12 +101,15 @@ def list_overrides(
                 total_patches = num_global_patches + len(version_patches)
                 patches_str = str(total_patches) if total_patches else ""
 
-                row = [
-                    name,
-                    str(version),
-                    patches_str,
-                    plugin_hooks_str,
-                ] + variant_info
+                row = (
+                    [
+                        name,
+                        str(version),
+                        patches_str,
+                    ]
+                    + variant_info
+                    + [plugin_hooks_str]
+                )
                 table.add_row(*row)
 
     rich.get_console().print(table)
