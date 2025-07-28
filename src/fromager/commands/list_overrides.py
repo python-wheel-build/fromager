@@ -1,8 +1,12 @@
+import pathlib
+
 import click
 import rich
+from packaging.version import Version
 from rich.table import Table
 
 from fromager import context
+from fromager.packagesettings import PatchMap
 
 
 @click.command()
@@ -39,7 +43,7 @@ def list_overrides(
         pbi = wkctx.settings.package_build_info(name)
         ps = wkctx.settings.package_setting(name)
 
-        plugin_hooks = []
+        plugin_hooks: list[str] = []
         if pbi.plugin:
             for hook in [
                 # from hooks.py
@@ -64,7 +68,7 @@ def list_overrides(
                     plugin_hooks.append(hook)
         plugin_hooks_str = ", ".join(plugin_hooks)
 
-        variant_info = []
+        variant_info: list[str] = []
         for v in variants:
             v_info = ps.variants.get(v)
             if v_info:
@@ -75,11 +79,16 @@ def list_overrides(
             else:
                 variant_info.append("")
 
-        all_patches = pbi.get_all_patches()
-        global_patches = all_patches.get(None, [])
-        num_global_patches = len(global_patches)
+        all_patches: PatchMap = pbi.get_all_patches()
+        global_patches: list[pathlib.Path] = all_patches.get(None, [])
+        num_global_patches: int = len(global_patches)
 
-        all_pkg_versions = sorted([v for v in all_patches.keys() if v is not None])
+        all_pkg_versions: list[Version] = sorted(
+            [v for v in all_patches.keys() if v is not None]
+        )
+
+        row: list[str] = []
+        patches_str: str = ""
 
         if not all_pkg_versions:
             # This package has overrides, but none are version-specific.
@@ -97,8 +106,8 @@ def list_overrides(
         else:
             # This package has version-specific overrides.
             for version in all_pkg_versions:
-                version_patches = all_patches.get(version, [])
-                total_patches = num_global_patches + len(version_patches)
+                version_patches: list[pathlib.Path] = all_patches.get(version, [])
+                total_patches: int = num_global_patches + len(version_patches)
                 patches_str = str(total_patches) if total_patches else ""
 
                 row = (
