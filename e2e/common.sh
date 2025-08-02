@@ -29,7 +29,11 @@ mkdir -p "$OUTDIR/build-logs"
 # source .tox/e2e/bin/activate
 hatch env remove e2e || true # Remove the e2e env if it exists, ignore error if it doesn't
 hatch env create e2e # Ensures the environment exists and dependencies are installed
-hatch run e2e:setup-cov # Run the coverage setup script
+if [ ! -f .skip-coverage ]; then
+    hatch run e2e:setup-cov # Run the coverage setup script
+else
+    echo "Skipping coverage setup"
+fi
 source "$(hatch env find e2e)/bin/activate"
 
 # Set a variable to constrain packages used in the tests
