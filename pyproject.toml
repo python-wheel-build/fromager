@@ -192,6 +192,7 @@ reportUnusedParameter = false
 reportAny = false
 reportImplicitOverride = false
 reportAttributeAccessIssue = false  # adding our own private property on click commands
+reportImplicitStringConcatenation = false
 
 [tool.hatch.envs.default]
 # No specific python version here, so it uses the active Python by default.
