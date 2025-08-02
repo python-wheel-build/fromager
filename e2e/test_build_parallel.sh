@@ -69,7 +69,7 @@ if ! fromager \
   pass=false
 fi
 
-if ! grep -q "setuptools-80.8.0: found existing wheel" "$log"; then
+if ! grep -q "setuptools-80.8.0: using existing wheel" "$log"; then
   echo "Did not find message indicating build of setuptools was skipped" 1>&2
   pass=false
 fi
@@ -91,7 +91,7 @@ fi
 
 find "$OUTDIR/wheels-repo/"
 
-if grep -q "${DIST}-${VERSION}: found existing wheel" "$log"; then
+if grep -q "${DIST}-${VERSION}: using existing wheel" "$log"; then
   echo "Found message indicating build of $DIST was skipped" 1>&2
   pass=false
 fi
@@ -136,7 +136,7 @@ if ! grep -q "skipping builds for versions of packages available" "$log"; then
   echo "Did not find message indicating builds would be skipped" 1>&2
   pass=false
 fi
-if ! grep -q "${DIST}-${VERSION}: found existing wheel" "$log"; then
+if ! grep -q "${DIST}-${VERSION}: using existing wheel" "$log"; then
   echo "Did not find message indicating build of $DIST was skipped" 1>&2
   pass=false
 fi
@@ -160,7 +160,7 @@ if ! grep -q "skipping builds for versions of packages available" "$log"; then
   echo "Did not find message indicating builds would be skipped" 1>&2
   pass=false
 fi
-if ! grep -q "${DIST}-${VERSION}: found existing wheel" "$log"; then
+if ! grep -q "${DIST}-${VERSION}: using existing wheel" "$log"; then
   echo "Did not find message indicating build of $DIST was skipped" 1>&2
   pass=false
 fi
