@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import collections
 import logging
 import os
 import pathlib
+import shutil
 import threading
+import typing
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
@@ -10,6 +14,9 @@ from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import constraints, dependency_graph, packagesettings, request_session
+
+if typing.TYPE_CHECKING:
+    from . import build_environment
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +69,8 @@ class WorkContext:
         self.wheel_server_url = ""
         self.logs_dir = self.work_dir / "logs"
         self.cleanup = cleanup
+        # separate value so bootstrap-parallel can keep build envs
+        self.cleanup_buildenv = cleanup
         self.variant = variant
         self.network_isolation = network_isolation
         self.settings_dir = settings_dir
@@ -147,3 +156,31 @@ class WorkContext:
             if not p.exists():
                 logger.debug("creating %s", p)
                 p.mkdir(parents=True)
+
+    def clean_build_dirs(
+        self,
+        sdist_root_dir: pathlib.Path | None,
+        build_env: build_environment.BuildEnvironment | None,
+    ) -> None:
+        """Cleanup the source tree and build environment
+
+        Leaving any other artifacts that were created.
+        """
+        if sdist_root_dir and build_env and build_env.path.parent == sdist_root_dir:
+            raise ValueError(f"Invalud {sdist_root_dir}, parent of {build_env}")
+
+        if sdist_root_dir and sdist_root_dir.exists():
+            if self.cleanup:
+                logger.debug(f"cleaning up source tree {sdist_root_dir}")
+                shutil.rmtree(sdist_root_dir)
+                logger.debug(f"cleaned up source tree {sdist_root_dir}")
+            else:
+                logger.debug(f"keeping source tree {sdist_root_dir}")
+
+        if build_env and build_env.path.exists():
+            if self.cleanup_buildenv:
+                logger.debug(f"cleaning up build environment {build_env.path}")
+                shutil.rmtree(build_env.path)
+                logger.debug(f"cleaned up build environment {build_env.path}")
+            else:
+                logger.debug(f"keeping build environment {build_env.path}")

@@ -472,6 +472,11 @@ def bootstrap_parallel(
     and builds build-time dependency in serial. The build-parallel step
     builds the remaining wheels in parallel.
     """
+    # Do not remove build environments in bootstrap phase to speed up the
+    # parallel build phase.
+    logger.info("keep build env for build-parallel phase")
+    wkctx.cleanup_buildenv = False
+
     start = time.perf_counter()
     logger.info("*** starting bootstrap in sdist-only mode ***")
     ctx.invoke(
@@ -497,6 +502,9 @@ def bootstrap_parallel(
 
     # reset dependency graph
     wkctx.dependency_graph.clear()
+
+    # cleanup build envs in build-parallel step
+    wkctx.cleanup_buildenv = wkctx.cleanup
 
     start_build = time.perf_counter()
     logger.info("*** starting build-parallel with %s ***", wkctx.graph_file)
