@@ -58,6 +58,7 @@ class WorkContext:
         self.wheels_prebuilt = self.wheels_repo / "prebuilt"
         self.wheel_server_dir = self.wheels_repo / "simple"
         self.work_dir = pathlib.Path(work_dir).absolute()
+        self.graph_file = self.work_dir / "graph.json"
         self.wheel_server_url = ""
         self.logs_dir = self.work_dir / "logs"
         self.cleanup = cleanup
@@ -116,7 +117,7 @@ class WorkContext:
         return ["--constraint", os.fspath(path_to_constraints_file)]
 
     def write_to_graph_to_file(self):
-        with open(self.work_dir / "graph.json", "w") as f:
+        with self.graph_file.open("w", encoding="utf-8") as f:
             self.dependency_graph.serialize(f)
 
     def package_build_info(

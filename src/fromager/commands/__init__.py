@@ -17,6 +17,7 @@ from . import (
 
 commands = [
     bootstrap.bootstrap,
+    bootstrap.bootstrap_parallel,
     build.build,
     build.build_sequence,
     build.build_parallel,

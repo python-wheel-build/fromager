@@ -1,5 +1,7 @@
 import logging
+import time
 import typing
+from datetime import timedelta
 
 import click
 from packaging.requirements import Requirement
@@ -19,6 +21,7 @@ from .. import (
 )
 from ..log import requirement_ctxvar
 from ..requirements_file import RequirementType
+from .build import build_parallel
 from .graph import find_why
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
@@ -402,3 +405,110 @@ def write_constraints_file(
 
 
 bootstrap._fromager_show_build_settings = True  # type: ignore
+
+
+@click.command()
+@click.option(
+    "-r",
+    "--requirements-file",
+    "requirements_files",
+    multiple=True,
+    type=str,
+    help="pip requirements file",
+)
+@click.option(
+    "-p",
+    "--previous-bootstrap-file",
+    "previous_bootstrap_file",
+    type=str,
+    help="graph file produced from a previous bootstrap",
+)
+@click.option(
+    "-c",
+    "--cache-wheel-server-url",
+    "cache_wheel_server_url",
+    help="url to a wheel server from where fromager can download the wheels that it has built before",
+)
+@click.option(
+    "--skip-constraints",
+    "skip_constraints",
+    is_flag=True,
+    default=False,
+    help="Skip generating constraints.txt file to allow building collections with conflicting versions",
+)
+@click.option(
+    "-f",
+    "--force",
+    is_flag=True,
+    default=False,
+    help="rebuild wheels even if they have already been built",
+)
+@click.option(
+    "-m",
+    "--max-workers",
+    type=int,
+    default=None,
+    help="maximum number of parallel workers to run (default: unlimited)",
+)
+@click.argument("toplevel", nargs=-1)
+@click.pass_obj
+@click.pass_context
+def bootstrap_parallel(
+    ctx: click.Context,
+    wkctx: context.WorkContext,
+    *,
+    requirements_files: list[str],
+    previous_bootstrap_file: str | None,
+    cache_wheel_server_url: str | None,
+    skip_constraints: bool,
+    force: bool,
+    max_workers: int | None,
+    toplevel: list[str],
+) -> None:
+    """Bootstrap and build-parallel
+
+    Bootstraps all dependencies in sdist-only mode, then builds the
+    remaining wheels in parallel. The bootstrap step downloads sdists
+    and builds build-time dependency in serial. The build-parallel step
+    builds the remaining wheels in parallel.
+    """
+    start = time.perf_counter()
+    logger.info("*** starting bootstrap in sdist-only mode ***")
+    ctx.invoke(
+        bootstrap,
+        requirements_files=requirements_files,
+        previous_bootstrap_file=previous_bootstrap_file,
+        cache_wheel_server_url=cache_wheel_server_url,
+        sdist_only=True,
+        skip_constraints=skip_constraints,
+        toplevel=toplevel,
+    )
+
+    # statistics
+    wheels = sorted(f.name for f in wkctx.wheels_downloads.glob("*.whl"))
+    sdists = sorted(f.name for f in wkctx.sdists_downloads.glob("*.tar.gz"))
+    logger.debug("wheels: %s", ", ".join(wheels))
+    logger.debug("sdists: %s", ", ".join(sdists))
+    logger.info("bootstrap: %i wheels, %i sdists", len(wheels), len(sdists))
+    logger.info(
+        "*** finished bootstrap in %s ***\n",
+        timedelta(seconds=round(time.perf_counter() - start, 0)),
+    )
+
+    # reset dependency graph
+    wkctx.dependency_graph.clear()
+
+    start_build = time.perf_counter()
+    logger.info("*** starting build-parallel with %s ***", wkctx.graph_file)
+    ctx.invoke(
+        build_parallel,
+        cache_wheel_server_url=cache_wheel_server_url,
+        max_workers=max_workers,
+        force=force,
+        graph_file=wkctx.graph_file,
+    )
+    logger.info(
+        "*** finished build-parallel in %s, total %s ***\n",
+        timedelta(seconds=round(time.perf_counter() - start_build, 0)),
+        timedelta(seconds=round(time.perf_counter() - start, 0)),
+    )
