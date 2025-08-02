@@ -30,6 +30,14 @@ recent version of Python (as defined in `pyproject.toml` under `project.requires
 - `hatch run e2e:run [command]` - Run any command in e2e environment
   - Example: `hatch run e2e:run ./e2e/test_build.sh`
 
+**Note:** To skip coverage setup during local development (useful to avoid cluttering the working directory with coverage files), create a `.skip-coverage` file in the project root:
+
+```bash
+touch .skip-coverage
+```
+
+When this file exists, the e2e test scripts will skip coverage setup and display "Skipping coverage setup".
+
 ## Logging
 
 Log messages should be all lower case.
