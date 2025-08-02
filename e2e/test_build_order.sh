@@ -85,7 +85,7 @@ if ! grep -q "skipping builds for versions of packages available" "$log"; then
   echo "Did not find message indicating builds would be skipped" 1>&2
   pass=false
 fi
-if ! grep -q "${DIST}-${VERSION}: found existing wheel" "$log"; then
+if ! grep -q "${DIST}-${VERSION}: using existing wheel" "$log"; then
   echo "Did not find message indicating build of stevedore was skipped" 1>&2
   pass=false
 fi
@@ -109,7 +109,7 @@ if ! grep -q "skipping builds for versions of packages available" "$log"; then
   echo "Did not find message indicating builds would be skipped" 1>&2
   pass=false
 fi
-if ! grep -q "${DIST}-${VERSION}: found existing wheel" "$log"; then
+if ! grep -q "${DIST}-${VERSION}: using existing wheel" "$log"; then
   echo "Did not find message indicating build of stevedore was skipped" 1>&2
   pass=false
 fi
