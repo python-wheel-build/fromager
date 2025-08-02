@@ -379,10 +379,6 @@ def _build(
             dist_version=str(resolved_version),
             wheel_filename=wheel_filename,
         )
-        server.update_wheel_mirror(wkctx)
-        # After we update the wheel mirror, the built file has
-        # moved to a new directory.
-        wheel_filename = wkctx.wheels_downloads / wheel_filename.name
 
     # If we get here and still don't have a wheel filename, then we need to
     # build the wheel.
