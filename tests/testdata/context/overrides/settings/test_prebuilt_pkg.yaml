@@ -1,0 +1,6 @@
+changelog:
+    "1.0.1":
+        - onboard
+variants:
+    cpu:
+      pre_built: true

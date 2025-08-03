@@ -25,6 +25,7 @@ TEST_PKG = "test-pkg"
 TEST_EMPTY_PKG = "test-empty-pkg"
 TEST_OTHER_PKG = "test-other-pkg"
 TEST_RELATED_PKG = "test-pkg-library"
+TEST_PREBUILT_PKG = "test-prebuilt-pkg"
 
 FULL_EXPECTED: dict[str, typing.Any] = {
     "build_dir": pathlib.Path("python"),
@@ -127,6 +128,49 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
     "variants": {},
 }
 
+PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
+    "name": "test-prebuilt-pkg",
+    "build_dir": None,
+    "build_options": {
+        "build_ext_parallel": False,
+        "cpu_cores_per_job": 1,
+        "memory_per_job_gb": 1.0,
+        "exclusive_build": False,
+    },
+    "changelog": {
+        Version("1.0.1"): ["onboard"],
+    },
+    "config_settings": {},
+    "env": {},
+    "download_source": {
+        "url": None,
+        "destination_filename": None,
+    },
+    "git_options": {
+        "submodules": False,
+        "submodule_paths": [],
+    },
+    "has_config": True,
+    "project_override": {
+        "remove_build_requires": [],
+        "update_build_requires": [],
+        "requires_external": [],
+    },
+    "resolver_dist": {
+        "sdist_server_url": None,
+        "include_sdists": True,
+        "include_wheels": False,
+        "ignore_platform": False,
+    },
+    "variants": {
+        "cpu": {
+            "env": {},
+            "pre_built": True,
+            "wheel_server_url": None,
+        },
+    },
+}
+
 
 def test_parse_full(testdata_path: pathlib.Path) -> None:
     filename = testdata_path / "context/overrides/settings/test_pkg.yaml"
@@ -150,6 +194,12 @@ def test_parse_minimal_file(testdata_path: pathlib.Path) -> None:
     filename = testdata_path / "context/overrides/settings/test_empty_pkg.yaml"
     p = PackageSettings.from_file(filename)
     assert p.model_dump() == EMPTY_EXPECTED
+
+
+def test_parse_prebuilt_file(testdata_path: pathlib.Path) -> None:
+    filename = testdata_path / "context/overrides/settings/test_prebuilt_pkg.yaml"
+    p = PackageSettings.from_file(filename)
+    assert p.model_dump() == PREBUILT_PKG_EXPECTED
 
 
 def test_default_settings() -> None:
@@ -399,11 +449,14 @@ def test_settings_overrides(testdata_context: context.WorkContext) -> None:
         TEST_EMPTY_PKG,
         TEST_OTHER_PKG,
         TEST_RELATED_PKG,
+        TEST_PREBUILT_PKG,
     }
 
 
 def test_global_changelog(testdata_context: context.WorkContext) -> None:
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.package == TEST_PKG
+    assert not pbi.pre_built
     assert pbi.variant == "cpu"
     assert pbi.build_tag(Version("0.99")) == ()
     assert pbi.build_tag(Version("1.0.1")) == (1, "")
@@ -411,14 +464,33 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
     assert pbi.build_tag(Version("1.0.2+local")) == pbi.build_tag(Version("1.0.2"))
     assert pbi.build_tag(Version("2.0.0")) == ()
 
+    # CUDA variant has no global changelog
+    testdata_context.settings.variant = Variant("cuda")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.package == TEST_PKG
+    assert not pbi.pre_built
+    assert pbi.variant == "cuda"
+    assert pbi.build_tag(Version("0.99")) == ()
+    assert pbi.build_tag(Version("1.0.1")) == (1, "")
+    assert pbi.build_tag(Version("1.0.2")) == (2, "")
+    assert pbi.build_tag(Version("1.0.2+local")) == pbi.build_tag(Version("1.0.2"))
+    assert pbi.build_tag(Version("2.0.0")) == ()
+
+    # ROCm variant has pre-built flag
     testdata_context.settings.variant = Variant("rocm")
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.package == TEST_PKG
+    assert pbi.pre_built
     assert pbi.variant == "rocm"
-    assert pbi.build_tag(Version("0.99")) == (1, "")
-    assert pbi.build_tag(Version("1.0.1")) == (2, "")
-    assert pbi.build_tag(Version("1.0.2")) == (3, "")
-    assert pbi.build_tag(Version("1.0.2+local")) == pbi.build_tag(Version("1.0.2"))
-    assert pbi.build_tag(Version("2.0.0")) == (1, "")
+    assert pbi.build_tag(Version("0.99")) == ()
+
+    testdata_context.settings.variant = Variant("cpu")
+    pbi = testdata_context.settings.package_build_info(TEST_PREBUILT_PKG)
+    assert pbi.package == TEST_PREBUILT_PKG
+    assert pbi.pre_built
+    assert pbi.variant == "cpu"
+    assert pbi.get_changelog(Version("1.0.1")) == ["onboard"]
+    assert pbi.build_tag(Version("1.0.1")) == ()
 
 
 def test_settings_list(testdata_context: context.WorkContext) -> None:
@@ -427,8 +499,9 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
         TEST_OTHER_PKG,
         TEST_PKG,
         TEST_RELATED_PKG,
+        TEST_PREBUILT_PKG,
     }
-    assert testdata_context.settings.list_pre_built() == set()
+    assert testdata_context.settings.list_pre_built() == {TEST_PREBUILT_PKG}
     assert testdata_context.settings.variant_changelog() == []
     testdata_context.settings.variant = Variant("rocm")
     assert testdata_context.settings.list_pre_built() == {TEST_PKG}
