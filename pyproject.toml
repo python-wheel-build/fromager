@@ -47,7 +47,7 @@ dependencies = [
     "stevedore",
     "tomlkit",
     "tqdm",
-    "virtualenv",
+    "virtualenv!=20.33.0",
     "wheel",
 ]
 

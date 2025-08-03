@@ -164,6 +164,7 @@ class BuildEnvironment:
                 sys.executable,
                 "-m",
                 "virtualenv",
+                "--verbose",
                 "--python",
                 sys.executable,
                 "--pip=bundle",
