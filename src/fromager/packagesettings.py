@@ -731,6 +731,7 @@ class PackageBuildInfo:
         return sdist_root_dir
 
     def get_changelog(self, version: Version) -> list[str]:
+        """Get changelog for a version"""
         # ignore local version for changelog entries
         version = Version(version.public)
         pv = typing.cast(PackageVersion, version)
@@ -747,6 +748,9 @@ class PackageBuildInfo:
            the build tag from changelog, e.g. version `1.0.3+local.suffix`
            uses `1.0.3`.
         """
+        if self.pre_built:
+            # pre-built wheels have no built tag
+            return ()
         pv = typing.cast(PackageVersion, version)
         release = len(self.get_changelog(pv))
         if release == 0:
