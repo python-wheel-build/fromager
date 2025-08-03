@@ -3,6 +3,8 @@ from __future__ import annotations
 import functools
 import http.server
 import logging
+import os
+import pathlib
 import shutil
 import threading
 import typing
@@ -71,14 +73,24 @@ def update_wheel_mirror(ctx: context.WorkContext) -> None:
         # directory.
         shutil.move(wheel, downloads_dest_filename)
 
-    for wheel in ctx.wheels_downloads.glob("*.whl"):
+    wheels: list[pathlib.Path] = []
+    wheels.extend(ctx.wheels_downloads.glob("*.whl"))
+    wheels.extend(ctx.wheels_prebuilt.glob("*.whl"))
+
+    for wheel in wheels:
         # Now also symlink the files into the simple hierarchy. We always
         # process all files to be safe.
         (normalized_name, _, _, _) = parse_wheel_filename(wheel.name)
         simple_dest_filename = ctx.wheel_server_dir / normalized_name / wheel.name
-        if simple_dest_filename.exists():
+
+        if simple_dest_filename.is_symlink() and not simple_dest_filename.is_file():
+            logger.debug("remove dangling symlink %s", simple_dest_filename)
+            simple_dest_filename.unlink()
+
+        if not simple_dest_filename.is_file():
+            relpath = os.path.relpath(wheel, simple_dest_filename.parent)
+            logger.debug("linking %s -> %s into local index", wheel.name, relpath)
+            simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
+            simple_dest_filename.symlink_to(relpath)
+        else:
             logger.debug("already have %s", simple_dest_filename)
-            continue
-        logger.debug("linking %s into local index", wheel.name)
-        simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
-        simple_dest_filename.symlink_to(wheel)

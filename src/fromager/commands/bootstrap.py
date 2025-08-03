@@ -182,17 +182,6 @@ def bootstrap(
             progressbar.update()
             requirement_ctxvar.reset(token)
 
-    # If we put pre-built wheels in the downloads directory, we should
-    # remove them so we can treat that directory as a source of wheels
-    # to upload to an index.
-    for prebuilt_wheel in wkctx.wheels_prebuilt.glob("*.whl"):
-        filename = wkctx.wheels_downloads / prebuilt_wheel.name
-        if filename.exists():
-            logger.info(
-                f"removing prebuilt wheel {prebuilt_wheel.name} from download cache"
-            )
-            filename.unlink()
-
     constraints_filename = wkctx.work_dir / "constraints.txt"
     if skip_constraints:
         logger.info("skipping constraints.txt generation as requested")
