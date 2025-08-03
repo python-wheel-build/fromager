@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# trigger tests
+
 import logging
 import pathlib
 import sys
