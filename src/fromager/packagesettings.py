@@ -862,6 +862,11 @@ class PackageBuildInfo:
     def exclusive_build(self) -> bool:
         return self._ps.build_options.exclusive_build
 
+    @property
+    def variants(self) -> Mapping[Variant, VariantInfo]:
+        """Get the variant configuration for the current package"""
+        return self._ps.variants
+
     def serialize(self, **kwargs) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)
 
@@ -1067,3 +1072,13 @@ class Settings:
             packages.add(Package(canonicalize_name(name, validate=True)))
 
         return packages
+
+    def all_variants(self) -> set[Variant]:
+        """List all variants with overrides"""
+        variants: set[Variant] = set()
+        # from global settings
+        variants.update(self._settings.changelog.keys())
+        # from package settings
+        for ps in self._package_settings.values():
+            variants.update(ps.variants.keys())
+        return variants
