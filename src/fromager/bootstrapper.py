@@ -463,17 +463,6 @@ class Bootstrapper:
         logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
 
         wheel_filename = wheels.download_wheel(req, wheel_url, self.ctx.wheels_prebuilt)
-
-        # Add the wheel to the mirror so it is available to anything
-        # that needs to install it. We leave a copy in the prebuilt
-        # directory to make it easy to remove the wheel from the
-        # downloads directory before uploading to a proper package
-        # index.
-        dest_name = self.ctx.wheels_downloads / wheel_filename.name
-        if not dest_name.exists():
-            logger.info("updating temporary mirror with pre-built wheel")
-            shutil.copy(wheel_filename, dest_name)
-            server.update_wheel_mirror(self.ctx)
         unpack_dir = self._create_unpack_dir(req, resolved_version)
         return (wheel_filename, unpack_dir)
 
