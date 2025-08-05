@@ -855,3 +855,58 @@ def test_gitlab_constraint_match():
             str(candidate.url)
             == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/archive/v0.0.2/submodlib-v0.0.2.tar.gz"
         )
+
+
+_response_with_data_yanked = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="pypi:repository-version" content="1.1">
+    <title>Links for setuptools-scm</title>
+</head>
+<body>
+    <h1>Links for setuptools-scm</h1>
+    <a href="https://files.pythonhosted.org/packages/ab/ac/8f96ba9b4cfe3e4ea201f23f4f97165862395e9331a424ed325ae37024a8/setuptools_scm-8.3.1-py3-none-any.whl#sha256=332ca0d43791b818b841213e76b1971b7711a960761c5bea5fc5cdb5196fbce3">setuptools_scm-8.3.1-py3-none-any.whl</a>
+    <br/>
+    <a href="https://files.pythonhosted.org/packages/b9/19/7ae64b70b2429c48c3a7a4ed36f50f94687d3bfcd0ae2f152367b6410dff/setuptools_scm-8.3.1.tar.gz#sha256=3d555e92b75dacd037d32bafdf94f97af51ea29ae8c7b234cf94b7a5bd242a63">setuptools_scm-8.3.1.tar.gz</a>
+    <br/>
+    <a href="https://files.pythonhosted.org/packages/0c/c2/d5c5722178eb4f8d449d96dd7d6ea894fd0cb3313a24efb8bfef65fcc411/setuptools_scm-9.0.0-py3-none-any.whl#sha256=6768003ef91d3343b3f7194f911c22bcbd82ee7844e8907c5e4b35158f128b2e" data-yanked="2 unplanned regressions in config parsing and downstream api usage">setuptools_scm-9.0.0-py3-none-any.whl</a>
+    <br/>
+    <a href="https://files.pythonhosted.org/packages/c8/b7/7d94697d2192be602497ac82c9465496d215de7228ab4fe5c3bf641e54fb/setuptools_scm-9.0.0.tar.gz#sha256=a237477abd152e707b739fc082c9b45e1cebf3a14249de8ed4d15ee01e72c5e6" data-yanked="2 unplanned regressions in config parsing and downstream api usage">setuptools_scm-9.0.0.tar.gz</a>
+</body>
+</html>
+"""
+
+
+def test_pep592_support_latest_version_yanked():
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/setuptools-scm/", text=_response_with_data_yanked
+        )
+
+        provider = resolver.PyPIProvider()
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("setuptools-scm")])
+
+        assert "setuptools-scm" in result.mapping
+
+        candidate = result.mapping["setuptools-scm"]
+        assert str(candidate.version) == "8.3.1"
+
+
+def test_pep592_support_constraint_mismatch():
+    constraint = constraints.Constraints()
+    constraint.add_constraint("setuptools-scm>=9.0.0")
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/setuptools-scm/", text=_response_with_data_yanked
+        )
+
+        provider = resolver.PyPIProvider(constraints=constraint)
+        reporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        with pytest.raises(resolvelib.resolvers.ResolverException):
+            rslvr.resolve([Requirement("setuptools-scm")])

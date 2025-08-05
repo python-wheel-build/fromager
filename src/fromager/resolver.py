@@ -184,12 +184,26 @@ def get_project_from_pypi(
         dist_info_metadata = i.attrib.get("data-core-metadata") or i.attrib.get(
             "data-dist-info-metadata"
         )
+        # PEP 592: Check if package was yanked
+        reason_data_yanked = i.attrib.get("data-yanked")
         path = urlparse(candidate_url).path
         # file names are URL quoted, "1.0%2Blocal" -> "1.0+local"
         filename = unquote(path.rsplit("/", 1)[-1])
         found_candidates.add(filename)
         if DEBUG_RESOLVER:
             logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
+
+        # PEP 592: Skip items that were yanked
+        if reason_data_yanked is not None:
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    "%s: skipping %s because it was yanked (%s)",
+                    project,
+                    filename,
+                    reason_data_yanked if reason_data_yanked else "no reason found",
+                )
+            ignored_candidates.add(filename)
+            continue
 
         # Construct metadata URL if PEP 658 metadata is available
         metadata_url = None
