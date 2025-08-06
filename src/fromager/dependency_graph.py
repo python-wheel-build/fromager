@@ -117,8 +117,7 @@ class DependencyEdge:
 class DependencyGraph:
     def __init__(self) -> None:
         self.nodes: dict[str, DependencyNode] = {}
-        root = DependencyNode.construct_root_node()
-        self.nodes[ROOT] = root
+        self.clear()
 
     @classmethod
     def from_file(
@@ -164,6 +163,10 @@ class DependencyGraph:
                 stack.append(edge_dict["key"])
             visited.add(curr_key)
         return graph
+
+    def clear(self) -> None:
+        self.nodes.clear()
+        self.nodes[ROOT] = DependencyNode.construct_root_node()
 
     def _to_dict(self):
         raw_graph = {}

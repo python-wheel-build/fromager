@@ -438,6 +438,8 @@ def _build(
             wheel_filename=wheel_filename,
         )
 
+        wkctx.clean_build_dirs(source_root_dir, build_env)
+
     root_logger.removeHandler(file_handler)
     file_handler.close()
 

@@ -85,6 +85,7 @@ jobs:
           - bootstrap_sdist_only
           - bootstrap_git_url
           - bootstrap_git_url_tag
+          - bootstrap_parallel
           - bootstrap_skip_constraints
           - build
           - build_order

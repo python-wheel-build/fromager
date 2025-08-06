@@ -309,7 +309,7 @@ class Bootstrapper:
 
         # we are done processing this req, so lets remove it from the why chain
         self.why.pop()
-        self._cleanup(req, sdist_root_dir, build_env)
+        self.ctx.clean_build_dirs(sdist_root_dir, build_env)
         return resolved_version
 
     @property
@@ -876,26 +876,6 @@ class Bootstrapper:
         unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
         unpack_dir.mkdir(parents=True, exist_ok=True)
         return unpack_dir
-
-    def _cleanup(
-        self,
-        req: Requirement,
-        sdist_root_dir: pathlib.Path | None,
-        build_env: build_environment.BuildEnvironment | None,
-    ) -> None:
-        if not self.ctx.cleanup:
-            return
-
-        # Cleanup the source tree and build environment, leaving any other
-        # artifacts that were created.
-        if sdist_root_dir and sdist_root_dir.exists():
-            logger.debug(f"cleaning up source tree {sdist_root_dir}")
-            shutil.rmtree(sdist_root_dir)
-            logger.debug(f"cleaned up source tree {sdist_root_dir}")
-        if build_env and build_env.path.exists():
-            logger.debug(f"cleaning up build environment {build_env.path}")
-            shutil.rmtree(build_env.path)
-            logger.debug(f"cleaned up build environment {build_env.path}")
 
     def _add_to_graph(
         self,
