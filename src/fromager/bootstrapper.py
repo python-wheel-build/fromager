@@ -93,6 +93,7 @@ class Bootstrapper:
         return source_url, resolved_version
 
     def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
+        logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
         constraint = self.ctx.constraints.get_constraint(req.name)
         if constraint:
             logger.info(
@@ -303,19 +304,12 @@ class Bootstrapper:
             prebuilt=pbi.pre_built,
             constraint=constraint,
         )
-        if req_type.is_build_requirement:
-            # install dependencies of build requirements are also build
-            # system requirements.
-            child_req_type = RequirementType.BUILD_SYSTEM
-        else:
-            # top-level and install requirements
-            child_req_type = RequirementType.INSTALL
 
         self.progressbar.update_total(len(install_dependencies))
         for dep in self._sort_requirements(install_dependencies):
             with req_ctxvar_context(dep):
                 try:
-                    self.bootstrap(req=dep, req_type=child_req_type)
+                    self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
                 except Exception as err:
                     raise ValueError(f"could not handle {self._explain}") from err
             self.progressbar.update()
