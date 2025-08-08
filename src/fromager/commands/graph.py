@@ -18,6 +18,7 @@ from fromager.dependency_graph import (
     DependencyGraph,
     DependencyNode,
 )
+from fromager.packagesettings import PatchMap
 from fromager.requirements_file import RequirementType
 
 logger = logging.getLogger(__name__)
@@ -70,57 +71,143 @@ def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.
     "-o",
     "--output",
     type=clickext.ClickPath(),
+    default=None,
+)
+@click.option(
+    "--install-only",
+    is_flag=True,
+    help="Only show installation dependencies, excluding build dependencies",
 )
 @click.argument(
     "graph-file",
     type=str,
 )
 @click.pass_obj
-def to_dot(wkctx: context.WorkContext, graph_file: str, output: pathlib.Path):
+def to_dot(
+    wkctx: context.WorkContext,
+    graph_file: str,
+    output: pathlib.Path | None,
+    install_only: bool,
+):
     "Convert a graph file to a DOT file suitable to pass to graphviz."
     graph = DependencyGraph.from_file(graph_file)
     if output:
         with open(output, "w") as f:
-            write_dot(graph, f)
+            write_dot(wkctx, graph, f, install_only=install_only)
     else:
-        write_dot(graph, sys.stdout)
+        write_dot(wkctx, graph, sys.stdout, install_only=install_only)
 
 
-def write_dot(graph: DependencyGraph, output: typing.TextIO) -> None:
+def write_dot(
+    wkctx: context.WorkContext,
+    graph: DependencyGraph,
+    output: typing.TextIO,
+    install_only: bool = False,
+) -> None:
     install_constraints = set(node.key for node in graph.get_install_dependencies())
+    overridden_packages: set[str] = set(wkctx.settings.list_overrides())
 
     output.write("digraph {\n")
     output.write("\n")
 
-    seen_nodes = {}
+    seen_nodes: dict[str, str] = {}
     id_generator = itertools.count(1)
 
-    def get_node_id(node):
+    def get_node_id(node: str) -> str:
         if node not in seen_nodes:
             seen_nodes[node] = f"node{next(id_generator)}"
         return seen_nodes[node]
 
-    for node in graph.get_all_nodes():
+    _node_shape_properties = {
+        "build_settings": "shape=box",
+        "build": "shape=oval",
+        "default": "shape=oval",
+        "patches": "shape=note",
+        "plugin_and_patches": "shape=tripleoctagon",
+        "plugin": "shape=trapezium",
+        "pre_built": "shape=parallelogram",
+        "toplevel": "shape=circle",
+    }
+
+    # Determine which nodes to include
+    if install_only:
+        nodes_to_include = [graph.nodes[ROOT]]
+        nodes_to_include.extend(graph.get_install_dependencies())
+    else:
+        nodes_to_include = list(graph.get_all_nodes())
+
+    for node in sorted(nodes_to_include, key=lambda x: x.key):
         node_id = get_node_id(node.key)
-        properties = f'label="{node.key}"'
+
         if not node:
-            properties = 'label="*"'
-        if node.key in install_constraints:
-            properties += " style=filled fillcolor=red color=red fontcolor=white"
+            label = "*"
         else:
-            properties += " style=filled fillcolor=lightgrey color=lightgrey"
+            label = node.key
+
+        node_type: list[str] = []
+        name = node.canonicalized_name
+        if not name:
+            node_type.append("toplevel")
+        else:
+            pbi = wkctx.settings.package_build_info(name)
+            all_patches: PatchMap = pbi.get_all_patches()
+
+            if node.pre_built:
+                node_type.append("pre_built")
+            elif pbi.plugin and all_patches:
+                node_type.append("plugin_and_patches")
+            elif pbi.plugin:
+                node_type.append("plugin")
+            elif all_patches:
+                node_type.append("patches")
+            elif name in overridden_packages:
+                node_type.append("build_settings")
+            else:
+                node_type.append("default")
+
+        style = "filled"
+        if not install_only:
+            if node.key in install_constraints or node.key == ROOT:
+                style += ",bold"
+            else:
+                style += ",dashed"
+
+        properties = f'label="{label}" style="{style}" color=black fillcolor=white fontcolor=black '
+        properties += " ".join(_node_shape_properties[t] for t in node_type)
+
         output.write(f"  {node_id} [{properties}]\n")
 
     output.write("\n")
 
-    for node in graph.get_all_nodes():
+    # Create a set of included node keys for efficient lookup
+    included_node_keys = {node.key for node in nodes_to_include}
+
+    known_edges: set[tuple[str, str]] = set()
+    for node in nodes_to_include:
         node_id = get_node_id(node.key)
         for edge in node.children:
+            # Skip edges if we're in install-only mode and the edge is a build dependency
+            if install_only and edge.req_type not in [
+                RequirementType.INSTALL,
+                RequirementType.TOP_LEVEL,
+            ]:
+                continue
+
+            # Skip duplicate edges
+            if (node.key, edge.destination_node.key) in known_edges:
+                continue
+            known_edges.add((node.key, edge.destination_node.key))
+
+            # Skip edges to nodes that aren't included
+            if edge.destination_node.key not in included_node_keys:
+                continue
+
             child_id = get_node_id(edge.destination_node.key)
             sreq = str(edge.req).replace('"', "'")
             properties = f'labeltooltip="{sreq}"'
-            if edge.req_type != "install":
+            if edge.req_type != RequirementType.INSTALL:
                 properties += " style=dotted"
+
             output.write(f"  {node_id} -> {child_id} [{properties}]\n")
     output.write("}\n")
 
