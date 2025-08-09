@@ -108,11 +108,14 @@ class Bootstrapper:
         self._add_to_graph(req, req_type, resolved_version, source_url)
 
         # Is bootstrap going to create a wheel or just an sdist?
-        # Use fast sdist-only if flag is set, requirement is not a build
-        # requirement, and wheel is not pre-built.
-        build_sdist_only = (
-            self.sdist_only and req_type.is_install_requirement and not pbi.pre_built
-        )
+        # Use fast sdist-only if flag is set and requirement is not a build
+        # requirement.
+        # An install requirement on a pre-built wheel treats the
+        # wheel as sdist-only in order to build its installation requirements
+        # sdist-only. When bootstrap encounters another package with a
+        # *build* requirement on a pre-built wheel, its installation
+        # dependencies are materialized.
+        build_sdist_only = self.sdist_only and req_type.is_install_requirement
 
         # Avoid cyclic dependencies and redundant processing.
         if self._has_been_seen(req, resolved_version, build_sdist_only):
@@ -259,12 +262,24 @@ class Bootstrapper:
             wheel_filename=wheel_filename,
         )
 
-        if build_sdist_only:
-            if typing.TYPE_CHECKING:
-                assert build_env is not None
-                assert sdist_root_dir is not None
-                assert wheel_filename is None
-
+        if wheel_filename is not None:
+            assert unpack_dir is not None
+            logger.debug(
+                "get install dependencies of wheel %s",
+                wheel_filename.name,
+            )
+            install_dependencies = dependencies.get_install_dependencies_of_wheel(
+                req=req,
+                wheel_filename=wheel_filename,
+                requirements_file_dir=unpack_dir,
+            )
+        elif sdist_filename is not None:
+            assert sdist_root_dir is not None
+            assert build_env is not None
+            logger.debug(
+                "get install dependencies of sdist from directory %s",
+                sdist_root_dir,
+            )
             install_dependencies = dependencies.get_install_dependencies_of_sdist(
                 ctx=self.ctx,
                 req=req,
@@ -272,15 +287,13 @@ class Bootstrapper:
                 build_env=build_env,
             )
         else:
-            if typing.TYPE_CHECKING:
-                assert wheel_filename is not None
-                assert unpack_dir is not None
+            # unreachable
+            raise RuntimeError("wheel_filename and sdist_filename are None")
 
-            install_dependencies = dependencies.get_install_dependencies_of_wheel(
-                req=req,
-                wheel_filename=wheel_filename,
-                requirements_file_dir=unpack_dir,
-            )
+        logger.debug(
+            "install dependencies: %s",
+            ", ".join(sorted(str(req) for req in install_dependencies)),
+        )
 
         self._add_to_build_order(
             req=req,
