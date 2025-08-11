@@ -403,3 +403,28 @@ def test_explain(tmp_context: WorkContext):
         bt._explain
         == f"{RequirementType.BUILD_SYSTEM} dependency bar==4.0.0 (4.0.0) for {RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
     )
+
+
+def test_is_build_requirement(tmp_context: WorkContext):
+    bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
+    bt.why = []
+    assert not bt._processing_build_requirement(RequirementType.TOP_LEVEL)
+    assert bt._processing_build_requirement(RequirementType.BUILD_SYSTEM)
+    assert bt._processing_build_requirement(RequirementType.BUILD_BACKEND)
+    assert bt._processing_build_requirement(RequirementType.BUILD_SDIST)
+    assert not bt._processing_build_requirement(RequirementType.INSTALL)
+
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
+    assert not bt._processing_build_requirement(RequirementType.INSTALL)
+    assert bt._processing_build_requirement(RequirementType.BUILD_SYSTEM)
+    assert bt._processing_build_requirement(RequirementType.BUILD_BACKEND)
+    assert bt._processing_build_requirement(RequirementType.BUILD_SDIST)
+
+    bt.why = [
+        (RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0")),
+        (RequirementType.BUILD_SYSTEM, Requirement("bar==4.0.0"), Version("4.0.0")),
+    ]
+    assert bt._processing_build_requirement(RequirementType.INSTALL)
+    assert bt._processing_build_requirement(RequirementType.BUILD_SYSTEM)
+    assert bt._processing_build_requirement(RequirementType.BUILD_BACKEND)
+    assert bt._processing_build_requirement(RequirementType.BUILD_SDIST)

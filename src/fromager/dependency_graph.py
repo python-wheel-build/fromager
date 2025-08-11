@@ -215,7 +215,7 @@ class DependencyGraph:
         pre_built: bool = False,
     ) -> None:
         logger.debug(
-            "recording %s %s dependency %s -> %s %s",
+            "recording %s dependency %s%s -> %s==%s",
             req_type,
             parent_name if parent_name else f"({RequirementType.TOP_LEVEL})",
             f"=={parent_version}" if parent_version else "",

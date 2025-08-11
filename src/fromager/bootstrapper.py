@@ -92,7 +92,34 @@ class Bootstrapper:
             )
         return source_url, resolved_version
 
+    def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
+        """Are we currently processing a build requirement?
+
+        We determine that a package is a build dependency if its requirement
+        type is build_system, build_backend, or build_sdist OR if it is an
+        installation requirement of something that is a build dependency. We
+        use a verbose loop to determine the status so we can log the reason
+        something is treated as a build dependency.
+        """
+        if current_req_type.is_build_requirement:
+            logger.debug(f"is itself a build requirement: {current_req_type}")
+            return True
+        if not current_req_type.is_install_requirement:
+            logger.debug(
+                "is not an install requirement, not checking dependency chain for a build requirement"
+            )
+            return False
+        for req_type, req, resolved_version in reversed(self.why):
+            if req_type.is_build_requirement:
+                logger.debug(
+                    f"is a build requirement because {req_type} dependency {req} ({resolved_version}) depends on it"
+                )
+                return True
+        logger.debug("is not a build requirement")
+        return False
+
     def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
+        logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
         constraint = self.ctx.constraints.get_constraint(req.name)
         if constraint:
             logger.info(
@@ -108,14 +135,18 @@ class Bootstrapper:
         self._add_to_graph(req, req_type, resolved_version, source_url)
 
         # Is bootstrap going to create a wheel or just an sdist?
+        #
         # Use fast sdist-only if flag is set and requirement is not a build
         # requirement.
-        # An install requirement on a pre-built wheel treats the
-        # wheel as sdist-only in order to build its installation requirements
-        # sdist-only. When bootstrap encounters another package with a
-        # *build* requirement on a pre-built wheel, its installation
-        # dependencies are materialized.
-        build_sdist_only = self.sdist_only and req_type.is_install_requirement
+        #
+        # An install requirement on a pre-built wheel treats the wheel as
+        # sdist-only in order to build its installation requirements sdist-only.
+        #
+        # When bootstrap encounters another package with a *build* requirement
+        # on a pre-built wheel, its installation dependencies are materialized.
+        build_sdist_only = self.sdist_only and not self._processing_build_requirement(
+            req_type
+        )
 
         # Avoid cyclic dependencies and redundant processing.
         if self._has_been_seen(req, resolved_version, build_sdist_only):
@@ -303,19 +334,12 @@ class Bootstrapper:
             prebuilt=pbi.pre_built,
             constraint=constraint,
         )
-        if req_type.is_build_requirement:
-            # install dependencies of build requirements are also build
-            # system requirements.
-            child_req_type = RequirementType.BUILD_SYSTEM
-        else:
-            # top-level and install requirements
-            child_req_type = RequirementType.INSTALL
 
         self.progressbar.update_total(len(install_dependencies))
         for dep in self._sort_requirements(install_dependencies):
             with req_ctxvar_context(dep):
                 try:
-                    self.bootstrap(req=dep, req_type=child_req_type)
+                    self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
                 except Exception as err:
                     raise ValueError(f"could not handle {self._explain}") from err
             self.progressbar.update()
