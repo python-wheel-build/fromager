@@ -92,5 +92,3 @@ def update_wheel_mirror(ctx: context.WorkContext) -> None:
             logger.debug("linking %s -> %s into local index", wheel.name, relpath)
             simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
             simple_dest_filename.symlink_to(relpath)
-        else:
-            logger.debug("already have %s", simple_dest_filename)
