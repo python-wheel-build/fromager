@@ -464,7 +464,9 @@ def _is_wheel_built(
 
     try:
         logger.info(
-            "checking if a suitable wheel was already built on %s", wheel_server_urls
+            "checking if a suitable wheel for %s was already built on %s",
+            req,
+            wheel_server_urls,
         )
         url, _ = wheels.resolve_prebuilt_wheel(
             ctx=wkctx,

@@ -427,6 +427,7 @@ def resolve_prebuilt_wheel(
     req_type: requirements_file.RequirementType | None = None,
 ) -> tuple[str, Version]:
     "Return URL to wheel and its version."
+    excs: list[Exception] = []
     for url in wheel_server_urls:
         try:
             wheel_url, resolved_version = resolver.resolve(
@@ -439,10 +440,18 @@ def resolve_prebuilt_wheel(
                 # pre-built wheels must match platform
                 ignore_platform=False,
             )
-        except Exception:
-            continue
-        if wheel_url and resolved_version:
-            return (wheel_url, resolved_version)
-    raise ValueError(
-        f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}"
+        except Exception as e:
+            excs.append(e)
+        else:
+            if wheel_url and resolved_version:
+                return (wheel_url, resolved_version)
+            else:
+                excs.append(
+                    ValueError(
+                        f"no result for {url}: {wheel_url=}, {resolved_version=}"
+                    )
+                )
+    raise ExceptionGroup(
+        f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}",
+        excs,
     )
