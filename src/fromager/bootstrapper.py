@@ -825,7 +825,9 @@ class Bootstrapper:
             wheel_url, resolved_version = cached_resolution
             logger.debug(f"resolved from previous bootstrap to {resolved_version}")
         else:
-            servers = wheels.get_wheel_server_urls(self.ctx, req)
+            servers = wheels.get_wheel_server_urls(
+                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
+            )
             wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
                 ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
             )

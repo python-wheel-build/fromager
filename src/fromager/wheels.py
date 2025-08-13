@@ -398,16 +398,24 @@ def _download_wheel_check(
     return wheel_filename
 
 
-def get_wheel_server_urls(ctx: context.WorkContext, req: Requirement) -> list[str]:
+def get_wheel_server_urls(
+    ctx: context.WorkContext, req: Requirement, *, cache_wheel_server_url: str | None
+) -> list[str]:
     pbi = ctx.package_build_info(req)
+    wheel_server_urls: list[str] = []
     if pbi.wheel_server_url:
         # use only the wheel server from settings if it is defined. Do not fallback to other URLs
-        servers = [pbi.wheel_server_url]
+        wheel_server_urls.append(pbi.wheel_server_url)
     else:
-        servers = [resolver.PYPI_SERVER_URL]
         if ctx.wheel_server_url:
-            servers.insert(0, ctx.wheel_server_url)
-    return servers
+            # local wheel server
+            wheel_server_urls.append(ctx.wheel_server_url)
+        if cache_wheel_server_url:
+            # put cache after local server so we always check local server first
+            wheel_server_urls.append(cache_wheel_server_url)
+        if not wheel_server_urls:
+            raise ValueError("no wheel server urls configured")
+    return wheel_server_urls
 
 
 @metrics.timeit(description="resolve wheel")
