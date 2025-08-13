@@ -10,6 +10,11 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
+# expected pbr version
+constraints_file=$(mktemp)
+trap "rm -f $constraints_file" EXIT
+echo "pbr==6.1.1" > "$constraints_file"
+
 # passing settings to bootstrap but should have 0 effect on it
 fromager \
   --log-file="$OUTDIR/bootstrap.log" \
@@ -18,6 +23,7 @@ fromager \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
   --settings-dir="$SCRIPTDIR/changelog_settings" \
+  --constraints-file="$constraints_file" \
   bootstrap 'stevedore==5.2.0' 'stevedore==4.0.0' || true
 
 pass=true
