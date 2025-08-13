@@ -3,13 +3,11 @@ from __future__ import annotations
 import inspect
 import json
 import logging
-import os.path
 import pathlib
 import shutil
 import tarfile
 import typing
 import zipfile
-from urllib.parse import unquote, urlparse
 
 import resolvelib
 from packaging.requirements import Requirement
@@ -272,7 +270,7 @@ def download_url(
     basename = (
         destination_filename
         if destination_filename
-        else unquote(os.path.basename(urlparse(url).path))
+        else resolver.extract_filename_from_url(url)
     )
     outfile = pathlib.Path(destination_dir) / basename
     logger.debug(

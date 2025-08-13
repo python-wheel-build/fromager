@@ -910,3 +910,18 @@ def test_pep592_support_constraint_mismatch():
 
         with pytest.raises(resolvelib.resolvers.ResolverException):
             rslvr.resolve([Requirement("setuptools-scm")])
+
+
+@pytest.mark.parametrize(
+    "url,filename",
+    [
+        ("http://example.com/path/to/file.txt", "file.txt"),
+        (
+            "http://localhost:8080/simple/vllm/vllm-0.10.0%2Brhai1-15-cp312-cp312-linux_x86_64.whl",
+            "vllm-0.10.0+rhai1-15-cp312-cp312-linux_x86_64.whl",
+        ),
+    ],
+)
+def test_extract_filename_from_url(url, filename):
+    result = resolver.extract_filename_from_url(url)
+    assert result == filename
