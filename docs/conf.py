@@ -44,8 +44,9 @@ language = "English"
 # references to Python stdlib and packaging
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
-    "packaging": ("https://packaging.pypa.io/en/stable/", None),
-    "pyproject-hooks": ("https://pyproject-hooks.readthedocs.io/en/latest/", None),
+    # disabled, we are running into rate limiting.
+    # "packaging": ("https://packaging.pypa.io/en/stable/", None),
+    # "pyproject-hooks": ("https://pyproject-hooks.readthedocs.io/en/latest/", None),
 }
 
 # -- Options for HTML output -------------------------------------------------
