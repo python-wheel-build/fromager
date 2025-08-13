@@ -122,7 +122,7 @@ def build(
             req=req,
             source_download_url=source_url,
             force=True,
-            wheel_server_urls=[wkctx.wheel_server_url],
+            cache_wheel_server_url=None,
         )
     print(wheel_filename)
 
@@ -163,16 +163,16 @@ def build_sequence(
 
     """
     server.start_wheel_server(wkctx)
-    wheel_server_urls = [wkctx.wheel_server_url]
-    if cache_wheel_server_url:
-        # put after local server so we always check local server first
-        wheel_server_urls.append(cache_wheel_server_url)
 
     if force:
-        logger.info(f"rebuilding all wheels even if they exist in {wheel_server_urls}")
+        logger.info(
+            "rebuilding all wheels even if they exist in "
+            f"{wkctx.wheel_server_url=}, {cache_wheel_server_url=}"
+        )
     else:
         logger.info(
-            f"skipping builds for versions of packages available at {wheel_server_urls}"
+            "skipping builds for versions of packages available at "
+            f"{wkctx.wheel_server_url=}, {cache_wheel_server_url=}"
         )
 
     entries: list[BuildSequenceEntry] = []
@@ -201,7 +201,7 @@ def build_sequence(
                     req=req,
                     source_download_url=source_download_url,
                     force=force,
-                    wheel_server_urls=wheel_server_urls,
+                    cache_wheel_server_url=cache_wheel_server_url,
                 )
                 if prebuilt:
                     logger.info("downloaded prebuilt wheel %s", wheel_filename)
@@ -326,7 +326,7 @@ def _build(
     req: Requirement,
     source_download_url: str,
     force: bool,
-    wheel_server_urls: list[str] | None = None,
+    cache_wheel_server_url: str | None,
 ) -> tuple[pathlib.Path, bool]:
     """Handle one version of one wheel.
 
@@ -335,8 +335,6 @@ def _build(
     2. Download a pre-built wheel.
     3. Build the wheel from source.
     """
-
-    wheel_server_urls = wheel_server_urls or []
     wheel_filename: pathlib.Path | None = None
 
     # Set up a log file for all of the details of the build for this one wheel.
@@ -354,6 +352,10 @@ def _build(
     logger.info("starting processing")
     pbi = wkctx.package_build_info(req)
     prebuilt = pbi.pre_built
+
+    wheel_server_urls = wheels.get_wheel_server_urls(
+        wkctx, req, cache_wheel_server_url=cache_wheel_server_url
+    )
 
     # See if we can reuse an existing wheel.
     if not force:
@@ -521,7 +523,7 @@ def _build_parallel(
     req: Requirement,
     source_download_url: str,
     force: bool,
-    wheel_server_urls: list[str],
+    cache_wheel_server_url: str | None,
 ) -> tuple[pathlib.Path, bool]:
     """
     This function runs in a thread to manage the build of a single package.
@@ -533,7 +535,7 @@ def _build_parallel(
             req=req,
             source_download_url=source_download_url,
             force=force,
-            wheel_server_urls=wheel_server_urls,
+            cache_wheel_server_url=cache_wheel_server_url,
         )
 
 
@@ -690,7 +692,7 @@ def build_parallel(
                         req=req,
                         source_download_url=node.download_url,
                         force=force,
-                        wheel_server_urls=wheel_server_urls,
+                        cache_wheel_server_url=cache_wheel_server_url,
                     )
                     future.add_done_callback(update_progressbar_cb)
                     futures.append(future)
