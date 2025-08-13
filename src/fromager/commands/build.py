@@ -34,6 +34,7 @@ from fromager import (
     wheels,
 )
 
+from .. import resolver
 from ..log import VERBOSE_LOG_FMT, ThreadLogFilter, req_ctxvar_context
 
 logger = logging.getLogger(__name__)
@@ -477,7 +478,7 @@ def _is_wheel_built(
         pbi = wkctx.package_build_info(req)
         build_tag_from_settings = pbi.build_tag(resolved_version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
-        wheel_basename = urlparse(url).path.rsplit("/", 1)[-1]
+        wheel_basename = resolver.extract_filename_from_url(url)
         _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_basename)
         existing_build_tag = build_tag_from_name if build_tag_from_name else (0, "")
         if (

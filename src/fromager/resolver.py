@@ -103,6 +103,13 @@ def default_resolver_provider(
     )
 
 
+def extract_filename_from_url(url: str) -> str:
+    """Extract filename from URL and decode it."""
+    path = urlparse(url).path
+    filename = os.path.basename(path)
+    return unquote(filename)
+
+
 class LogReporter(resolvelib.BaseReporter):
     """Report resolution events
 
@@ -186,9 +193,8 @@ def get_project_from_pypi(
         )
         # PEP 592: Check if package was yanked
         reason_data_yanked = i.attrib.get("data-yanked")
-        path = urlparse(candidate_url).path
         # file names are URL quoted, "1.0%2Blocal" -> "1.0+local"
-        filename = unquote(path.rsplit("/", 1)[-1])
+        filename = extract_filename_from_url(candidate_url)
         found_candidates.add(filename)
         if DEBUG_RESOLVER:
             logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
