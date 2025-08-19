@@ -68,6 +68,9 @@ class Bootstrapper:
         # package.
         self._seen_requirements: set[SeenKey] = set()
 
+        # Track requirements we have already resolved so we don't resolve them again.
+        self._resolved_requirements: dict[str, tuple[str, Version]] = {}
+
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
     def resolve_version(
@@ -79,6 +82,11 @@ class Bootstrapper:
 
         Returns the source URL and the version of the requirement.
         """
+        req_str = str(req)
+        if req_str in self._resolved_requirements:
+            logger.debug(f"resolved {req_str} from cache")
+            return self._resolved_requirements[req_str]
+
         pbi = self.ctx.package_build_info(req)
         if pbi.pre_built:
             source_url, resolved_version = self._resolve_prebuilt_with_history(
@@ -90,6 +98,8 @@ class Bootstrapper:
                 req=req,
                 req_type=req_type,
             )
+
+        self._resolved_requirements[req_str] = (source_url, resolved_version)
         return source_url, resolved_version
 
     def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
