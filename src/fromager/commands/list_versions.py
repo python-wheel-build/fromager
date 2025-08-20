@@ -129,7 +129,7 @@ def list_versions(
         else:
             raise click.ClickException(f"No versions found for {req.name}")
 
-    versions: list[Version] = sorted(candidate.version for candidate in candidates)
+    versions: list[Version] = sorted(set(candidate.version for candidate in candidates))
     logger.info(f"Found {len(versions)} version(s)")
 
     for version in versions:
