@@ -3,6 +3,7 @@
 import logging
 import pathlib
 import sys
+from importlib.metadata import version as get_version
 
 import click
 
@@ -31,6 +32,7 @@ else:
 
 
 @click.group()
+@click.version_option(version=get_version("fromager"), prog_name="fromager")
 @click.option(
     "-v",
     "--verbose",
