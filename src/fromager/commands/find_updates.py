@@ -64,13 +64,16 @@ def find_updates(
     """Find available updates for packages with specific version constraints.
 
     This command reads a constraints file and for each package that has a
-    supported constraint (==, <, <=), it lists newer versions available.
+    supported constraint (==, <, <=, ~=, !=, ===), it lists newer versions available.
     Constraints with lower bounds (>=) are ignored as they don't pin to specific versions.
 
     The CONSTRAINTS_FILE should be a pip-style constraints file with entries like:
     - "package_name==1.0.0" (will look for versions > 1.0.0)
     - "package_name<2.0.0" (will look for versions >= 2.0.0)
     - "package_name<=1.5.0" (will look for versions > 1.5.0)
+    - "package_name~=1.4.0" (will look for versions outside compatible range)
+    - "package_name!=1.0.0" (will look for versions other than 1.0.0)
+    - "package_name===1.0.0" (will look for versions other than exactly 1.0.0)
     - "package_name>=1.0.0" (ignored - not a specific constraint)
 
     Distribution types:
@@ -159,14 +162,17 @@ def find_updates(
             output_file.close()
 
 
+CONSTRAINT_OPERATORS = ("==", "<", "<=", "~=", "!=", "===")
+
+
 def _get_constraint_version(constraint: Requirement) -> Version | None:
-    """Extract version from supported constraint types (==, <, <=), return None if not supported."""
+    """Extract version from supported constraint types (==, <, <=, ~=, !=, ===), return None if not supported."""
     if not constraint.specifier:
         return None
 
     # Look for supported constraint operators
     supported_specs = [
-        spec for spec in constraint.specifier if spec.operator in ("==", "<", "<=")
+        spec for spec in constraint.specifier if spec.operator in CONSTRAINT_OPERATORS
     ]
     if len(supported_specs) != 1:
         return None
@@ -240,12 +246,12 @@ def _find_newer_versions(
 
     # Get the constraint operator to determine what "update" means
     constraint_spec = next(
-        spec for spec in constraint.specifier if spec.operator in ("==", "<", "<=")
+        spec for spec in constraint.specifier if spec.operator in CONSTRAINT_OPERATORS
     )
-    if constraint_spec.operator == "==":
+    if constraint_spec.operator in ("==", "==="):
         # For equality constraints, find versions newer than the pinned version
         newer_versions = [v for v in all_versions if v > constraint_version]
-    elif constraint_spec.operator in ("<", "<="):
+    elif constraint_spec.operator in ("<", "<=", "~=", "!="):
         # For upper bound constraints, find versions that exceed the constraint
         # (these would be versions that violate the current constraint)
         newer_versions = [v for v in all_versions if v >= constraint_version]
