@@ -65,7 +65,7 @@ def list_overrides(
     export_data = []
 
     for name in overridden_packages:
-        pbi = wkctx.settings.package_build_info(name)
+        pbi = wkctx.package_build_info(name)
         ps = wkctx.settings.package_setting(name)
 
         plugin_hooks: list[str] = []

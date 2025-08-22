@@ -17,5 +17,7 @@ def test_bootstrap_parallel_options() -> None:
     # graph_file internally.
     expected.discard("sdist_only")
     expected.discard("graph_file")
+    # test_mode is not supported in bootstrap-parallel (serial mode only)
+    expected.discard("test_mode")
 
     assert set(get_option_names(bootstrap.bootstrap_parallel)) == expected

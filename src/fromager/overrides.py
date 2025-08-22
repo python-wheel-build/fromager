@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _mgr = None
 
 
-def _get_extensions() -> extension.ExtensionManager:
+def _get_extensions() -> extension.ExtensionManager[typing.Any]:
     global _mgr
     if _mgr is None:
         _mgr = extension.ExtensionManager(
@@ -30,9 +30,9 @@ def _get_extensions() -> extension.ExtensionManager:
 
 
 def _die_on_plugin_load_failure(
-    mgr: extension.ExtensionManager,
-    ep: extension.Extension,
-    err: Exception,
+    mgr: extension.ExtensionManager[typing.Any],
+    ep: metadata.EntryPoint,
+    err: BaseException,
 ) -> None:
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 

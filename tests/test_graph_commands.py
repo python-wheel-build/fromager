@@ -273,15 +273,13 @@ def test_find_transitive_customized_dependency() -> None:
 
     # Mock context: only package-c is customized
     mock_ctx = Mock()
-    mock_settings = Mock()
 
     def mock_pbi(name: str) -> Mock:
         pbi = Mock()
         pbi.has_customizations = name == "package-c"
         return pbi
 
-    mock_settings.package_build_info = mock_pbi
-    mock_ctx.settings = mock_settings
+    mock_ctx.package_build_info = mock_pbi
 
     # Test
     node_a = graph.nodes["package-a==1.0.0"]
@@ -376,15 +374,13 @@ def test_cycle_prevention_no_infinite_loop() -> None:
 
     # Mock context: only package-c is customized
     mock_ctx = Mock()
-    mock_settings = Mock()
 
     def mock_pbi(name: str) -> Mock:
         pbi = Mock()
         pbi.has_customizations = name == "package-c"
         return pbi
 
-    mock_settings.package_build_info = mock_pbi
-    mock_ctx.settings = mock_settings
+    mock_ctx.package_build_info = mock_pbi
 
     # Test: Should not hang or raise error
     node_a = graph.nodes["package-a==1.0.0"]
@@ -431,15 +427,13 @@ def test_requirement_preservation_through_chain() -> None:
 
     # Mock context: only package-c is customized
     mock_ctx = Mock()
-    mock_settings = Mock()
 
     def mock_pbi(name: str) -> Mock:
         pbi = Mock()
         pbi.has_customizations = name == "package-c"
         return pbi
 
-    mock_settings.package_build_info = mock_pbi
-    mock_ctx.settings = mock_settings
+    mock_ctx.package_build_info = mock_pbi
 
     # Test
     node_a = graph.nodes["package-a==1.0.0"]

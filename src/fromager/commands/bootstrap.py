@@ -97,6 +97,13 @@ def _get_requirements_from_args(
     default=False,
     help="Skip generating constraints.txt file to allow building collections with conflicting versions",
 )
+@click.option(
+    "--test-mode",
+    "test_mode",
+    is_flag=True,
+    default=False,
+    help="Test mode: mark failed packages as pre-built and continue, report failures at end",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -106,6 +113,7 @@ def bootstrap(
     cache_wheel_server_url: str | None,
     sdist_only: bool,
     skip_constraints: bool,
+    test_mode: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -115,6 +123,11 @@ def bootstrap(
 
     """
     logger.info(f"cache wheel server url: {cache_wheel_server_url}")
+
+    if test_mode:
+        logger.info(
+            "test mode enabled: will mark failed packages as pre-built and continue"
+        )
 
     to_build = _get_requirements_from_args(toplevel, requirements_files)
     if not to_build:
@@ -148,6 +161,7 @@ def bootstrap(
             prev_graph,
             cache_wheel_server_url,
             sdist_only=sdist_only,
+            test_mode=test_mode,
         )
 
         # we need to resolve all the top level dependencies before we start bootstrapping.
@@ -183,9 +197,29 @@ def bootstrap(
 
         for req in to_build:
             token = requirement_ctxvar.set(req)
-            bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
-            progressbar.update()
-            requirement_ctxvar.reset(token)
+            try:
+                bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
+                progressbar.update()
+                if test_mode:
+                    logger.info("Successfully processed: %s", req)
+            except Exception as err:
+                if test_mode:
+                    # Test mode: record error, log, and continue processing
+                    logger.error(
+                        "test mode: failed to process %s: %s",
+                        req,
+                        err,
+                        exc_info=True,  # Full traceback to debug log
+                    )
+                    bt.failed_builds.append(
+                        bootstrapper.BuildResult.failure(req=req, exception=err)
+                    )
+                    progressbar.update()  # Update progress even on failure
+                else:
+                    # Normal mode: re-raise the exception (fail-fast)
+                    raise
+            finally:
+                requirement_ctxvar.reset(token)
 
     constraints_filename = wkctx.work_dir / "constraints.txt"
     if skip_constraints:
@@ -200,7 +234,57 @@ def bootstrap(
 
     logger.debug("match_py_req LRU cache: %r", resolver.match_py_req.cache_info())
 
-    metrics.summarize(wkctx, "Bootstrapping")
+    # Test mode summary reporting
+    if test_mode:
+        if bt.failed_builds:
+            # Use repository's logging pattern for error reporting
+            logger.error("test mode: the following packages failed to build:")
+            for failure in sorted(
+                bt.failed_builds, key=lambda f: str(f.req) if f.req else ""
+            ):
+                if failure.req and failure.resolved_version:
+                    logger.error(
+                        "  - %s==%s",
+                        failure.req,
+                        failure.resolved_version,
+                    )
+                    if failure.exception_type:
+                        logger.error(
+                            "    Error: %s: %s",
+                            failure.exception_type,
+                            failure.exception_message,
+                        )
+                else:
+                    logger.error("  - unknown package (missing context)")
+
+            # Categorize failures by exception type for better analysis
+            failure_types: dict[str, list[str]] = {}
+            for failure in bt.failed_builds:
+                exc_type = failure.exception_type or "Unknown"
+                pkg_name = (
+                    f"{failure.req}=={failure.resolved_version}"
+                    if failure.req and failure.resolved_version
+                    else "unknown"
+                )
+                failure_types.setdefault(exc_type, []).append(pkg_name)
+
+            logger.error("")
+            logger.error("test mode: failure breakdown by type:")
+            for exc_type, packages in sorted(failure_types.items()):
+                logger.error("  %s: %d package(s)", exc_type, len(packages))
+
+            logger.error(
+                "test mode: %d package(s) failed to build", len(bt.failed_builds)
+            )
+            # Follow repository's error exit pattern like __main__.py and lint.py
+            raise SystemExit(
+                f"Test mode completed with {len(bt.failed_builds)} build failures"
+            )
+        else:
+            logger.info("test mode: all packages built successfully")
+        metrics.summarize(wkctx, "Test Mode Bootstrapping")
+    else:
+        metrics.summarize(wkctx, "Bootstrapping")
 
 
 def write_constraints_file(
@@ -480,6 +564,9 @@ def bootstrap_parallel(
     remaining wheels in parallel. The bootstrap step downloads sdists
     and builds build-time dependency in serial. The build-parallel step
     builds the remaining wheels in parallel.
+
+    Note: --test-mode is not supported with bootstrap-parallel. Use
+    'bootstrap --test-mode' for comprehensive failure testing.
     """
     # Do not remove build environments in bootstrap phase to speed up the
     # parallel build phase.
@@ -495,6 +582,7 @@ def bootstrap_parallel(
         cache_wheel_server_url=cache_wheel_server_url,
         sdist_only=True,
         skip_constraints=skip_constraints,
+        test_mode=False,
         toplevel=toplevel,
     )
 
