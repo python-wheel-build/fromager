@@ -96,6 +96,13 @@ def _get_requirements_from_args(
     default=False,
     help="Skip generating constraints.txt file to allow building collections with conflicting versions",
 )
+@click.option(
+    "--test-mode",
+    "test_mode",
+    is_flag=True,
+    default=False,
+    help="Test mode: mark failed packages as pre-built and continue, report failures at end",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -105,6 +112,7 @@ def bootstrap(
     cache_wheel_server_url: str | None,
     sdist_only: bool,
     skip_constraints: bool,
+    test_mode: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -114,6 +122,20 @@ def bootstrap(
 
     """
     logger.info(f"cache wheel server url: {cache_wheel_server_url}")
+
+    if test_mode:
+        logger.info(
+            "test mode enabled: will mark failed packages as pre-built and continue"
+        )
+        return _bootstrap_test_mode(
+            wkctx=wkctx,
+            requirements_files=requirements_files,
+            previous_bootstrap_file=previous_bootstrap_file,
+            cache_wheel_server_url=cache_wheel_server_url,
+            sdist_only=sdist_only,
+            skip_constraints=skip_constraints,
+            toplevel=toplevel,
+        )
 
     to_build = _get_requirements_from_args(toplevel, requirements_files)
     if not to_build:
@@ -450,6 +472,13 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     default=None,
     help="maximum number of parallel workers to run (default: unlimited)",
 )
+@click.option(
+    "--test-mode",
+    "test_mode",
+    is_flag=True,
+    default=False,
+    help="Test mode: mark failed packages as pre-built and continue, report failures at end",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 @click.pass_context
@@ -463,6 +492,7 @@ def bootstrap_parallel(
     skip_constraints: bool,
     force: bool,
     max_workers: int | None,
+    test_mode: bool,
     toplevel: list[str],
 ) -> None:
     """Bootstrap and build-parallel
@@ -486,6 +516,7 @@ def bootstrap_parallel(
         cache_wheel_server_url=cache_wheel_server_url,
         sdist_only=True,
         skip_constraints=skip_constraints,
+        test_mode=test_mode,
         toplevel=toplevel,
     )
 
@@ -520,3 +551,216 @@ def bootstrap_parallel(
         timedelta(seconds=round(time.perf_counter() - start_build, 0)),
         timedelta(seconds=round(time.perf_counter() - start, 0)),
     )
+
+
+def _bootstrap_test_mode(
+    wkctx: context.WorkContext,
+    requirements_files: list[str],
+    previous_bootstrap_file: str | None,
+    cache_wheel_server_url: str | None,
+    sdist_only: bool,
+    skip_constraints: bool,
+    toplevel: list[str],
+) -> None:
+    """Bootstrap in test mode: mark failed packages as pre-built and continue."""
+    import sys
+
+    from packaging.utils import canonicalize_name
+
+    to_build = _get_requirements_from_args(toplevel, requirements_files)
+    if not to_build:
+        raise RuntimeError(
+            "Pass a requirement specificiation or use -r to pass a requirements file"
+        )
+
+    logger.info("bootstrapping %r variant of %s in test mode", wkctx.variant, to_build)
+
+    failed_packages: list[str] = []
+    attempt_count = 0
+    max_attempts = len(to_build) + 1  # n failures + 1 success attempt
+
+    while attempt_count < max_attempts:
+        attempt_count += 1
+        logger.info(f"test mode: bootstrap attempt {attempt_count}")
+
+        try:
+            wkctx.dependency_graph.clear()
+            if previous_bootstrap_file:
+                logger.info(
+                    "reading previous bootstrap data from %s", previous_bootstrap_file
+                )
+                prev_graph = dependency_graph.DependencyGraph.from_file(
+                    previous_bootstrap_file
+                )
+            else:
+                logger.info("no previous bootstrap data")
+                prev_graph = None
+
+            if sdist_only:
+                logger.info("sdist-only (fast mode), getting metadata from sdists")
+            else:
+                logger.info("build all missing wheels")
+
+            pre_built = wkctx.settings.list_pre_built()
+            if pre_built:
+                logger.info("treating %s as pre-built wheels", sorted(pre_built))
+
+            server.start_wheel_server(wkctx)
+
+            with progress.progress_context(total=len(to_build * 2)) as progressbar:
+                bt = bootstrapper.Bootstrapper(
+                    wkctx,
+                    progressbar,
+                    prev_graph,
+                    cache_wheel_server_url,
+                    sdist_only=sdist_only,
+                )
+
+                logger.info("resolving top-level dependencies before building")
+                for req in to_build:
+                    token = requirement_ctxvar.set(req)
+                    pbi = wkctx.package_build_info(req)
+                    source_url, version = bt.resolve_version(
+                        req=req,
+                        req_type=RequirementType.TOP_LEVEL,
+                    )
+                    logger.info("%s resolves to %s", req, version)
+                    wkctx.dependency_graph.add_dependency(
+                        parent_name=None,
+                        parent_version=None,
+                        req_type=requirements_file.RequirementType.TOP_LEVEL,
+                        req=req,
+                        req_version=version,
+                        download_url=source_url,
+                        pre_built=pbi.pre_built,
+                    )
+                    requirement_ctxvar.reset(token)
+
+                for req in to_build:
+                    token = requirement_ctxvar.set(req)
+                    bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
+                    progressbar.update()
+                    requirement_ctxvar.reset(token)
+
+            logger.info("test mode: bootstrap completed successfully")
+            break
+
+        except Exception as err:
+            logger.warning(
+                f"test mode: bootstrap failed on attempt {attempt_count}: {err}"
+            )
+
+            failed_package = _extract_failed_package_from_error(err, wkctx)
+
+            if failed_package:
+                canonical_name = str(canonicalize_name(failed_package))
+                if canonical_name not in failed_packages:
+                    failed_packages.append(canonical_name)
+                    logger.info(
+                        f"test mode: marking {canonical_name} as pre-built due to failure"
+                    )
+
+                    _mark_package_as_pre_built(wkctx, canonical_name)
+                    continue
+                else:
+                    logger.warning(
+                        f"test mode: {canonical_name} already marked as pre-built, still failing"
+                    )
+                    logger.error(
+                        "test mode: pre-built package still failing, stopping attempts"
+                    )
+                    break
+            else:
+                logger.error(
+                    f"test mode: unable to identify failed package from error: {err}"
+                )
+                break
+    if attempt_count >= max_attempts:
+        logger.warning(
+            f"test mode: reached maximum attempt limit ({max_attempts}) - "
+            f"stopping to prevent infinite loops"
+        )
+
+    constraints_filename = wkctx.work_dir / "constraints.txt"
+    if skip_constraints:
+        logger.info("skipping constraints.txt generation as requested")
+    else:
+        logger.info(f"writing installation dependencies to {constraints_filename}")
+        try:
+            with open(constraints_filename, "w") as f:
+                if not write_constraints_file(graph=wkctx.dependency_graph, output=f):
+                    logger.warning(
+                        f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
+                    )
+        except Exception as err:
+            logger.warning(f"Failed to write constraints file: {err}")
+
+    metrics.summarize(wkctx, "Test Mode Bootstrapping")
+
+    if failed_packages:
+        logger.error("test mode: the following packages failed to build:")
+        for package in sorted(failed_packages):
+            logger.error(f"  - {package}")
+        logger.error(f"test mode: {len(failed_packages)} package(s) failed to build")
+        sys.exit(1)
+    else:
+        logger.info("test mode: all packages built successfully")
+
+
+def _extract_failed_package_from_error(
+    error: Exception, wkctx: context.WorkContext
+) -> str | None:
+    """Extract the package name that caused the build failure from the error."""
+    current_req = requirement_ctxvar.get(None)
+    if current_req:
+        return current_req.name
+
+    error_str = str(error)
+    import re
+
+    # Pattern: "package_name-version" in error messages
+    version_pattern = r"([a-zA-Z0-9_-]+)-\d+(?:\.\d+)*(?:[a-zA-Z0-9._-]*)"
+    match = re.search(version_pattern, error_str)
+    if match:
+        return match.group(1)
+
+    # Pattern: package names in quotes
+    quoted_pattern = r"'([a-zA-Z0-9_-]+)'"
+    match = re.search(quoted_pattern, error_str)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def _mark_package_as_pre_built(wkctx: context.WorkContext, package_name: str) -> None:
+    """Mark a package as pre-built in the settings."""
+    from packaging.utils import canonicalize_name
+
+    from fromager.packagesettings import Package, PackageSettings, Variant, VariantInfo
+
+    canonical_name = Package(canonicalize_name(package_name, validate=True))
+    package_settings = wkctx.settings.package_setting(canonical_name)
+    variant_info = VariantInfo(pre_built=True)
+
+    new_variants = dict(package_settings.variants)
+    new_variants[Variant(wkctx.variant)] = variant_info
+
+    # Pydantic models are immutable, so create new instance
+    new_package_settings = PackageSettings(
+        name=package_settings.name,
+        has_config=package_settings.has_config,
+        build_dir=package_settings.build_dir,
+        changelog=package_settings.changelog,
+        config_settings=package_settings.config_settings,
+        env=package_settings.env,
+        download_source=package_settings.download_source,
+        resolver_dist=package_settings.resolver_dist,
+        build_options=package_settings.build_options,
+        git_options=package_settings.git_options,
+        project_override=package_settings.project_override,
+        variants=new_variants,
+    )
+
+    wkctx.settings._package_settings[canonical_name] = new_package_settings
+    wkctx.settings._pbi_cache.clear()
