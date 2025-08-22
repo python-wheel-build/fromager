@@ -624,12 +624,26 @@ def get_available_memory_gib() -> float:
 
 
 class PackageBuildInfo:
-    """Package build information
+    """Variant-aware package build configuration and metadata.
 
-    Public API for PackageSettings with i
+    Primary public API for accessing package-specific settings during the build
+    process. Combines static configuration from YAML files with runtime context
+    to provide variant-specific (cpu, cuda, etc.) build information.
+
+    Key responsibilities:
+    - Determine if package should be built or use pre-built wheels
+    - Provide patches to apply for specific versions
+    - Configure build environment (parallel jobs, environment variables)
+    - Manage package customizations (plugins, custom download URLs)
+    - Calculate build tags from changelogs for wheel versioning
+
+    Instances are cached per package and accessed via ``WorkContext.package_build_info()``.
     """
 
-    def __init__(self, settings: Settings, ps: PackageSettings) -> None:
+    def __init__(
+        self, settings: Settings, ps: PackageSettings, ctx: context.WorkContext
+    ) -> None:
+        self._ctx = ctx
         self._variant = typing.cast(Variant, settings.variant)
         self._patches_dir = settings.patches_dir
         self._variant_changelog = settings.variant_changelog()
@@ -744,7 +758,7 @@ class PackageBuildInfo:
 
     @property
     def pre_built(self) -> bool:
-        """Does the variant use pre-build wheels?"""
+        """Does the variant use pre-built wheels?"""
         vi = self._ps.variants.get(self.variant)
         if vi is not None:
             return vi.pre_built
@@ -1146,23 +1160,27 @@ class Settings:
             self._package_settings[package] = ps
         return ps
 
-    def package_build_info(self, package: str | Package) -> PackageBuildInfo:
+    def package_build_info(
+        self, package: str | Package, ctx: context.WorkContext
+    ) -> PackageBuildInfo:
         """Get (cached) PackageBuildInfo for package and current variant"""
         package = Package(canonicalize_name(package, validate=True))
         pbi = self._pbi_cache.get(package)
         if pbi is None:
             ps = self.package_setting(package)
-            pbi = PackageBuildInfo(self, ps)
+            pbi = PackageBuildInfo(self, ps, ctx)
             self._pbi_cache[package] = pbi
         return pbi
 
     def list_pre_built(self) -> set[Package]:
-        """List packages marked as pre-built"""
-        return set(
-            name
-            for name in self._package_settings
-            if self.package_build_info(name).pre_built
-        )
+        """List packages marked as pre-built by configuration"""
+        result = set()
+        for name in self._package_settings:
+            ps = self._package_settings[name]
+            vi = ps.variants.get(self._variant)
+            if vi is not None and vi.pre_built:
+                result.add(name)
+        return result
 
     def list_overrides(self) -> set[Package]:
         """List packages with overrides
