@@ -96,6 +96,13 @@ def _get_requirements_from_args(
     default=False,
     help="Skip generating constraints.txt file to allow building collections with conflicting versions",
 )
+@click.option(
+    "--test-mode",
+    "test_mode",
+    is_flag=True,
+    default=False,
+    help="Test mode: mark failed packages as pre-built and continue, report failures at end",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -105,6 +112,7 @@ def bootstrap(
     cache_wheel_server_url: str | None,
     sdist_only: bool,
     skip_constraints: bool,
+    test_mode: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -114,6 +122,20 @@ def bootstrap(
 
     """
     logger.info(f"cache wheel server url: {cache_wheel_server_url}")
+
+    if test_mode:
+        logger.info(
+            "test mode enabled: will mark failed packages as pre-built and continue"
+        )
+        return _bootstrap_test_mode(
+            wkctx=wkctx,
+            requirements_files=requirements_files,
+            previous_bootstrap_file=previous_bootstrap_file,
+            cache_wheel_server_url=cache_wheel_server_url,
+            sdist_only=sdist_only,
+            skip_constraints=skip_constraints,
+            toplevel=toplevel,
+        )
 
     to_build = _get_requirements_from_args(toplevel, requirements_files)
     if not to_build:
@@ -450,6 +472,13 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     default=None,
     help="maximum number of parallel workers to run (default: unlimited)",
 )
+@click.option(
+    "--test-mode",
+    "test_mode",
+    is_flag=True,
+    default=False,
+    help="Test mode: mark failed packages as pre-built and continue, report failures at end",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 @click.pass_context
@@ -463,6 +492,7 @@ def bootstrap_parallel(
     skip_constraints: bool,
     force: bool,
     max_workers: int | None,
+    test_mode: bool,
     toplevel: list[str],
 ) -> None:
     """Bootstrap and build-parallel
@@ -486,6 +516,7 @@ def bootstrap_parallel(
         cache_wheel_server_url=cache_wheel_server_url,
         sdist_only=True,
         skip_constraints=skip_constraints,
+        test_mode=test_mode,
         toplevel=toplevel,
     )
 
@@ -520,3 +551,121 @@ def bootstrap_parallel(
         timedelta(seconds=round(time.perf_counter() - start_build, 0)),
         timedelta(seconds=round(time.perf_counter() - start, 0)),
     )
+
+
+def _bootstrap_test_mode(
+    wkctx: context.WorkContext,
+    requirements_files: list[str],
+    previous_bootstrap_file: str | None,
+    cache_wheel_server_url: str | None,
+    sdist_only: bool,
+    skip_constraints: bool,
+    toplevel: list[str],
+) -> None:
+    """Bootstrap in test mode using enhanced Bootstrapper with inline failure handling."""
+
+    to_build = _get_requirements_from_args(toplevel, requirements_files)
+    if not to_build:
+        raise RuntimeError(
+            "Pass a requirement specification or use -r to pass a requirements file"
+        )
+
+    logger.info("bootstrapping %r variant of %s in test mode", wkctx.variant, to_build)
+
+    if previous_bootstrap_file:
+        logger.info("reading previous bootstrap data from %s", previous_bootstrap_file)
+        prev_graph = dependency_graph.DependencyGraph.from_file(previous_bootstrap_file)
+    else:
+        logger.info("no previous bootstrap data")
+        prev_graph = None
+
+    if sdist_only:
+        logger.info("sdist-only (fast mode), getting metadata from sdists")
+    else:
+        logger.info("build all missing wheels")
+
+    pre_built = wkctx.settings.list_pre_built()
+    if pre_built:
+        logger.info("treating %s as pre-built wheels", sorted(pre_built))
+
+    server.start_wheel_server(wkctx)
+
+    with progress.progress_context(total=len(to_build * 2)) as progressbar:
+        bt = bootstrapper.Bootstrapper(
+            wkctx,
+            progressbar,
+            prev_graph,
+            cache_wheel_server_url,
+            sdist_only=sdist_only,
+            test_mode=True,
+        )
+
+        logger.info("resolving top-level dependencies before building")
+        for req in to_build:
+            token = requirement_ctxvar.set(req)
+            try:
+                pbi = wkctx.package_build_info(req)
+                source_url, version = bt.resolve_version(
+                    req=req, req_type=RequirementType.TOP_LEVEL
+                )
+                logger.info("%s resolves to %s", req, version)
+                wkctx.dependency_graph.add_dependency(
+                    parent_name=None,
+                    parent_version=None,
+                    req_type=requirements_file.RequirementType.TOP_LEVEL,
+                    req=req,
+                    req_version=version,
+                    download_url=source_url,
+                    pre_built=pbi.pre_built,
+                )
+            finally:
+                requirement_ctxvar.reset(token)
+
+        logger.info("starting bootstrap process with test mode enabled")
+        for req in to_build:
+            token = requirement_ctxvar.set(req)
+            try:
+                bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
+                progressbar.update()
+                logger.info(f"Successfully processed: {req}")
+            except Exception as err:
+                # Follow repository's exception logging pattern like __main__.py
+                logger.error(
+                    "test mode: failed to process %s: %s",
+                    req,
+                    err,
+                    exc_info=True,  # Full traceback to debug log
+                )
+            finally:
+                requirement_ctxvar.reset(token)
+
+    constraints_filename = wkctx.work_dir / "constraints.txt"
+    if skip_constraints:
+        logger.info("skipping constraints.txt generation as requested")
+    else:
+        logger.info(f"writing installation dependencies to {constraints_filename}")
+        try:
+            with open(constraints_filename, "w") as f:
+                if not write_constraints_file(graph=wkctx.dependency_graph, output=f):
+                    logger.warning(
+                        f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
+                    )
+        except Exception as err:
+            logger.warning(f"Failed to write constraints file: {err}")
+
+    metrics.summarize(wkctx, "Test Mode Bootstrapping")
+
+    if bt.failed_packages:
+        # Use repository's logging pattern for error reporting
+        logger.error("test mode: the following packages failed to build:")
+        for package in sorted(bt.failed_packages):
+            logger.error("  - %s", package)
+        logger.error(
+            "test mode: %d package(s) failed to build", len(bt.failed_packages)
+        )
+        # Follow repository's error exit pattern like __main__.py and lint.py
+        raise SystemExit(
+            f"Test mode completed with {len(bt.failed_packages)} build failures"
+        )
+    else:
+        logger.info("test mode: all packages built successfully")
