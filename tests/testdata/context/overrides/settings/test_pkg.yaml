@@ -1,3 +1,6 @@
+annotations:
+    fromager.test.value: somevalue
+    fromager.test.override: variant override
 build_dir: python
 build_options:
     build_ext_parallel: true
@@ -38,11 +41,15 @@ resolver_dist:
     ignore_platform: true
 variants:
     cpu:
+        annotations:
+            fromager.test.override: cpu override
         env:
             EGG: "spam ${EGG}"
             EGG_AGAIN: "$EGG"
         wheel_server_url: https://wheel.test/simple
     rocm:
+        annotations:
+            fromager.test.override: amd override
         env:
             SPAM: ""
         pre_built: True
