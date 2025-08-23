@@ -355,6 +355,7 @@ def get_build_backend_hook_caller(
     build_dir: pathlib.Path,
     override_environ: dict[str, typing.Any],
     build_env: build_environment.BuildEnvironment,
+    log_filename: str | None = None,
 ) -> pyproject_hooks.BuildBackendHookCaller:
     """Create pyproject_hooks build backend caller"""
 
@@ -376,6 +377,7 @@ def get_build_backend_hook_caller(
             cwd=cwd,
             extra_environ=extra_environ,
             network_isolation=ctx.network_isolation,
+            log_filename=log_filename,
         )
 
     pyproject_toml = get_pyproject_contents(build_dir)
