@@ -14,23 +14,22 @@ from packaging.requirements import Requirement
 
 from . import dependencies, external_commands, metrics, resolver
 from .requirements_file import RequirementType
-from .threading_utils import with_thread_lock
 
 if typing.TYPE_CHECKING:
     from . import context
 
 logger = logging.getLogger(__name__)
 
-# Pip has no API, so parse its output looking for what it couldn't install.
+# uv has no API, so parse its output looking for what it couldn't install.
 # Verbose regular expressions ignore blank spaces, so we have to escape those to
 # have them recognized as being part of the pattern.
-_pip_missing_dependency_pattern = re.compile(
+_uv_missing_dependency_pattern = re.compile(
     r"""(
-    Could\ not\ find\ a\ version\ that\ satisfies\ the\ requirement\ (\w+)
+    Because\ there\ is\ no\ version\ of\ (\w+)
     |
-    No\ matching\ distribution\ found\ for\ (\w+)
+    Because\ you\ require\ (\w+)
     |
-    ResolutionImpossible  # usually when constraints prevent a match
+    Because\ (\w+)\ was\ not\ found\ in\ the\ package\ registry
     )""",
     flags=re.VERBOSE,
 )
@@ -73,7 +72,7 @@ class MissingDependency(Exception):  # noqa: N818
 
 
 class BuildEnvironment:
-    "Wrapper for a virtualenv used for build isolation."
+    """Wrapper for a virtualenv used for build isolation"""
 
     def __init__(
         self,
@@ -101,6 +100,7 @@ class BuildEnvironment:
            versions. If the caller has already set a path, start there.
         2. Set :envvar:`VIRTUAL_ENV` so tools looking for that (for example,
            maturin) find it.
+        3. Set ``uv`` env vars.
         """
         venv_environ: dict[str, str] = {
             "VIRTUAL_ENV": str(self.path),
@@ -118,6 +118,17 @@ class BuildEnvironment:
         if envpath_list[0] != venv_bin:
             envpath_list.insert(0, venv_bin)
         venv_environ["PATH"] = os.pathsep.join(envpath_list)
+
+        # uv env vars, https://docs.astral.sh/uv/reference/environment
+        # custom cache for hard links and isolation from user's cache.
+        venv_environ["UV_CACHE_DIR"] = str(self._ctx.uv_cache)
+        # use system's trust store
+        venv_environ["UV_NATIVE_TLS"] = "true"
+        # don't use managed Python interpreters
+        venv_environ["UV_NO_MANAGED_PYTHON"] = "true"
+        venv_environ["UV_PYTHON_DOWNLOADS"] = "never"
+        venv_environ["UV_PYTHON"] = str(self.python)
+
         return venv_environ
 
     def run(
@@ -159,47 +170,40 @@ class BuildEnvironment:
             return
 
         logger.debug("creating build environment in %s", self.path)
+
+        cmd = [
+            "uv",
+            "venv",
+            "--verbose",
+            "--python",
+            sys.executable,
+            "--no-project",
+            str(self.path),
+        ]
         external_commands.run(
-            [
-                sys.executable,
-                "-m",
-                "virtualenv",
-                "--verbose",
-                "--python",
-                sys.executable,
-                "--pip=bundle",
-                "--setuptools=none",
-                "--no-periodic-update",
-                "--no-download",
-                str(self.path),
-            ],
+            cmd,
             network_isolation=self._ctx.network_isolation,
         )
         logger.info("created build environment in %s", self.path)
 
-    @property
-    def _pip_install_cmd(self) -> list[str]:
+    def install(self, reqs: typing.Iterable[Requirement]) -> None:
+        if not reqs:
+            return
+
+        # UV does not compile byte code by default
         cmd = [
-            str(self.python),
-            "-m",
+            "uv",
             "pip",
-            "-vvv",
             "install",
-            "--disable-pip-version-check",
-            "--no-compile",  # don't compile byte code
+            "--verbose",
             "--upgrade",
             "--only-binary",
             ":all:",
         ]
         cmd.extend(self._ctx.pip_constraint_args)
         cmd.extend(self._ctx.pip_wheel_server_args)
-        return cmd
-
-    def install(self, reqs: typing.Iterable[Requirement]) -> None:
-        if not reqs:
-            return
-        cmd = self._pip_install_cmd
         cmd.extend(str(req) for req in reqs)
+
         self.run(
             cmd,
             cwd=str(self.path.parent),
@@ -210,6 +214,17 @@ class BuildEnvironment:
             reqs,
             self.path,
         )
+
+    def clean_cache(self, req: Requirement) -> None:
+        """Invalidate and clean uv cache for requirement
+
+        uv caches package metadata and unpacked wheels for faster dependency
+        resolution and installation. ``uv pip install`` hardlinks files from
+        cache location. This function removes a package from all caches, so
+        subsequent installations use a new built.
+        """
+        logger.debug("invalidate uv cache for %s", req.name)
+        self.run(["uv", "cache", "clean", req.name])
 
 
 @metrics.timeit(description="prepare build environment")
@@ -270,7 +285,6 @@ def prepare_build_environment(
     return build_env
 
 
-@with_thread_lock()
 def _safe_install(
     ctx: context.WorkContext,
     req: Requirement,
@@ -287,7 +301,7 @@ def _safe_install(
         logger.error(
             f"{req.name}: failed to install {dep_req_type} dependencies {deps}: {err}"
         )
-        match = _pip_missing_dependency_pattern.search(err.output)
+        match = _uv_missing_dependency_pattern.search(err.output)
         if match is not None:
             req_info = match.groups()[0]
         else:
