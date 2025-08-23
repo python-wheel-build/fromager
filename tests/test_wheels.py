@@ -26,9 +26,11 @@ def test_invalid_wheel_file_exception(
         wheels._download_wheel_check(req, fake_dir, fake_url)
 
 
-@patch("fromager.build_environment.BuildEnvironment.run")
+@patch("pyproject_hooks.BuildBackendHookCaller.build_wheel")
 def test_default_build_wheel(
-    mock_run: Mock, tmp_path: pathlib.Path, testdata_context: context.WorkContext
+    mock_build_wheel: Mock,
+    tmp_path: pathlib.Path,
+    testdata_context: context.WorkContext,
 ) -> None:
     req = Requirement("test_pkg")
     build_env = build_environment.BuildEnvironment(
@@ -48,9 +50,12 @@ def test_default_build_wheel(
         build_dir=tmp_path,
     )
 
-    mock_run.assert_called_once()
-    cmd = mock_run.call_args[0][0]
-    assert "--config-settings=setup-args=-Dsystem-freetype=true" in cmd
+    mock_build_wheel.assert_called_once_with(
+        str(testdata_context.wheels_build),
+        config_settings={
+            "setup-args": ["-Dsystem-freetype=true", "-Dsystem-qhull=true"]
+        },
+    )
 
 
 @patch("fromager.external_commands.run")
