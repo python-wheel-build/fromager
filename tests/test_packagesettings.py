@@ -289,6 +289,11 @@ def test_pbi_test_pkg_extra_environ(
             "DEF": "default",
             "PATH": f"{build_env.path / 'bin'}:/sbin:/bin",
             "VIRTUAL_ENV": str(build_env.path),
+            "UV_CACHE_DIR": str(testdata_context.uv_cache),
+            "UV_NATIVE_TLS": "true",
+            "UV_NO_MANAGED_PYTHON": "true",
+            "UV_PYTHON": str(build_env.python),
+            "UV_PYTHON_DOWNLOADS": "never",
         }
         | parallel
     )

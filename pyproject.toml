@@ -47,8 +47,8 @@ dependencies = [
     "stevedore",
     "tomlkit",
     "tqdm",
-    "virtualenv!=20.33.0",
     "wheel",
+    "uv",
 ]
 
 [project.optional-dependencies]

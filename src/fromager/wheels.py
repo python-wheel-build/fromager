@@ -309,6 +309,9 @@ def build_wheel(
             f"Expected 1 built wheel in {ctx.wheels_build}, got {len(wheels)}"
         )
 
+    # invalidate uv's cache
+    build_env.clean_cache(req)
+
     wheel = add_extra_metadata_to_wheels(
         ctx=ctx,
         req=req,
