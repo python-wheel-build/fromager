@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 BUILD_SYSTEM_REQ_FILE_NAME = "build-system-requirements.txt"
 BUILD_BACKEND_REQ_FILE_NAME = "build-backend-requirements.txt"
 BUILD_SDIST_REQ_FILE_NAME = "build-sdist-requirements.txt"
+INSTALL_REQ_FILE_NAME = "requirements.txt"
 
 
 def get_build_system_dependencies(
@@ -208,6 +209,7 @@ def default_get_build_sdist_dependencies(
     Defaults to result of hook call
     :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
     """
+    logger.info(f"looking for build sdist dependencies in {build_dir}")
     pbi = ctx.package_build_info(req)
     hook_caller = get_build_backend_hook_caller(
         ctx=ctx,
@@ -232,10 +234,46 @@ def get_install_dependencies_of_sdist(
 
     Uses PEP 517 prepare_metadata_for_build_wheel() API.
     """
+    logger.info(
+        f"getting install requirements for {req} from sdist in {sdist_root_dir}"
+    )
     pbi = ctx.package_build_info(req)
     build_dir = pbi.build_dir(sdist_root_dir)
-    logger.info(f"getting install requirements for {req} from sdist in {build_dir}")
     extra_environ = pbi.get_extra_environ(build_env=build_env)
+    orig_deps = overrides.find_and_invoke(
+        req.name,
+        "get_install_dependencies_of_sdist",
+        default_get_install_dependencies_of_sdist,
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+        extra_environ=extra_environ,
+        build_dir=build_dir,
+        config_settings=pbi.config_settings,
+    )
+    deps = _filter_requirements(req, orig_deps)
+    _write_requirements_file(
+        deps,
+        sdist_root_dir.parent / INSTALL_REQ_FILE_NAME,
+    )
+    return deps
+
+
+def default_get_install_dependencies_of_sdist(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    build_env: build_environment.BuildEnvironment,
+    extra_environ: dict[str, str],
+    build_dir: pathlib.Path,
+    config_settings: dict[str, str],
+) -> set[Requirement]:
+    """Get install requirements (Requires-Dist) from sources
+
+    Uses PEP 517 prepare_metadata_for_build_wheel() API.
+    """
     hook_caller = get_build_backend_hook_caller(
         ctx=ctx,
         req=req,
@@ -246,16 +284,14 @@ def get_install_dependencies_of_sdist(
     with tempfile.TemporaryDirectory() as tmp_dir:
         distinfo_name = hook_caller.prepare_metadata_for_build_wheel(
             tmp_dir,
-            config_settings=pbi.config_settings,
+            config_settings=config_settings,
         )
         metadata_file = pathlib.Path(tmp_dir) / distinfo_name / "METADATA"
         # ignore minor metadata issues
         metadata = parse_metadata(metadata_file, validate=False)
-
-    if metadata.requires_dist is None:
+    if not metadata.requires_dist:
         return set()
-    else:
-        return _filter_requirements(req, metadata.requires_dist)
+    return set(metadata.requires_dist)
 
 
 def parse_metadata(metadata_file: pathlib.Path, *, validate: bool = True) -> Metadata:
@@ -276,7 +312,7 @@ def get_install_dependencies_of_wheel(
     deps = _filter_requirements(req, wheel.requires_dist)
     _write_requirements_file(
         deps,
-        requirements_file_dir / "requirements.txt",
+        requirements_file_dir / INSTALL_REQ_FILE_NAME,
     )
     return deps
 
