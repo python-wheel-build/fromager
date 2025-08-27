@@ -20,6 +20,7 @@ from packaging.utils import BuildTag, canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 from . import (
+    dependencies,
     external_commands,
     metrics,
     overrides,
@@ -308,6 +309,9 @@ def build_wheel(
             f"Expected 1 built wheel in {ctx.wheels_build}, got {len(wheels)}"
         )
 
+    # invalidate uv's cache
+    build_env.clean_cache(req)
+
     wheel = add_extra_metadata_to_wheels(
         ctx=ctx,
         req=req,
@@ -319,6 +323,37 @@ def build_wheel(
     return wheel
 
 
+def pep517_build_wheel(
+    ctx: context.WorkContext,
+    build_env: build_environment.BuildEnvironment,
+    extra_environ: dict[str, str],
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    version: Version,
+    build_dir: pathlib.Path,
+) -> pathlib.Path:
+    """Use the PEP 517 API to build a wheel distribution"""
+    logger.debug(f"building wheel in {build_dir} with {extra_environ}")
+
+    hook_caller = dependencies.get_build_backend_hook_caller(
+        ctx=ctx,
+        req=req,
+        build_dir=build_dir,
+        override_environ=extra_environ,
+        build_env=build_env,
+        log_filename=str(sdist_root_dir.parent / "build.log"),
+    )
+
+    pbi = ctx.package_build_info(req)
+    wheel_filename = hook_caller.build_wheel(
+        str(ctx.wheels_build),
+        config_settings=pbi.config_settings,
+    )
+    logger.debug("built wheel %s", wheel_filename)
+
+    return ctx.wheels_build / wheel_filename
+
+
 def default_build_wheel(
     ctx: context.WorkContext,
     build_env: build_environment.BuildEnvironment,
@@ -328,42 +363,15 @@ def default_build_wheel(
     version: Version,
     build_dir: pathlib.Path,
 ) -> None:
-    logger.debug(f"building wheel in {build_dir} with {extra_environ}")
-    pbi = ctx.package_build_info(req)
-
-    cmd = [
-        os.fspath(build_env.python),
-        "-m",
-        "pip",
-        "-vvv",
-        "--disable-pip-version-check",
-        "wheel",
-        "--no-build-isolation",
-        "--only-binary",
-        ":all:",
-        "--wheel-dir",
-        os.fspath(ctx.wheels_build),
-        "--no-deps",
-        "--index-url",
-        ctx.wheel_server_url,  # probably redundant, but just in case
-        "--log",
-        os.fspath(build_dir.parent / "build.log"),
-    ]
-    # config settings needs pip >= 24.0 to work. Fromager uses `virtualenv``
-    # package to create virtual envs, which comes with recent pip. Stdlib's
-    # `venv` comes with rather old pip.
-    for key, values in pbi.config_settings.items():
-        for value in values:
-            cmd.append(f"--config-settings={key}={value}")
-    cmd.append(os.fspath(build_dir))
-
-    with tempfile.TemporaryDirectory() as dir_name:
-        build_env.run(
-            cmd,
-            cwd=dir_name,
-            extra_environ=extra_environ,
-            network_isolation=ctx.network_isolation,
-        )
+    pep517_build_wheel(
+        ctx=ctx,
+        build_env=build_env,
+        extra_environ=extra_environ,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+        version=version,
+        build_dir=build_dir,
+    )
 
 
 def download_wheel(

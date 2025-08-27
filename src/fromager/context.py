@@ -66,6 +66,7 @@ class WorkContext:
         self.wheel_server_dir = self.wheels_repo / "simple"
         self.work_dir = pathlib.Path(work_dir).absolute()
         self.graph_file = self.work_dir / "graph.json"
+        self.uv_cache = self.work_dir / "uv-cache"
         self.wheel_server_url = ""
         self.logs_dir = self.work_dir / "logs"
         self.cleanup = cleanup
@@ -151,6 +152,7 @@ class WorkContext:
             self.wheels_downloads,
             self.wheels_prebuilt,
             self.wheels_build,
+            self.uv_cache,
             self.logs_dir,
         ]:
             if not p.exists():
