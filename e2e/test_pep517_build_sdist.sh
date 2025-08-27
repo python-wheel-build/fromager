@@ -49,6 +49,7 @@ fromager \
 
 EXPECTED_FILES="
 $OUTDIR/sdists-repo/builds/stevedore-*.tar.gz
+$OUTDIR/work-dir/update_extra_environ.txt
 "
 
 pass=true

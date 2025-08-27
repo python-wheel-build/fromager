@@ -324,6 +324,7 @@ class Bootstrapper:
             install_dependencies = dependencies.get_install_dependencies_of_sdist(
                 ctx=self.ctx,
                 req=req,
+                version=resolved_version,
                 sdist_root_dir=sdist_root_dir,
                 build_env=build_env,
             )

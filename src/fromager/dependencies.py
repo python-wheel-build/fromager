@@ -12,8 +12,15 @@ import pyproject_hooks
 import tomlkit
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
+from packaging.version import Version
 
-from . import build_environment, external_commands, overrides, requirements_file
+from . import (
+    build_environment,
+    external_commands,
+    overrides,
+    packagesettings,
+    requirements_file,
+)
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -110,7 +117,13 @@ def get_build_backend_dependencies(
     logger.debug(
         f"file {build_backend_req_file} does not exist, getting dependencies from hook"
     )
-    extra_environ = pbi.get_extra_environ(build_env=build_env)
+    extra_environ = packagesettings.get_extra_environ(
+        ctx=ctx,
+        req=req,
+        version=None,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
     orig_deps = overrides.find_and_invoke(
         req.name,
         "get_build_backend_dependencies",
@@ -175,7 +188,13 @@ def get_build_sdist_dependencies(
     logger.debug(
         f"file {build_sdist_req_file} does not exist, getting dependencies from hook"
     )
-    extra_environ = pbi.get_extra_environ(build_env=build_env)
+    extra_environ = packagesettings.get_extra_environ(
+        ctx=ctx,
+        req=req,
+        version=None,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
     orig_deps = overrides.find_and_invoke(
         req.name,
         "get_build_sdist_dependencies",
@@ -227,6 +246,7 @@ def get_install_dependencies_of_sdist(
     *,
     ctx: context.WorkContext,
     req: Requirement,
+    version: Version,
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
 ) -> set[Requirement]:
@@ -238,14 +258,21 @@ def get_install_dependencies_of_sdist(
         f"getting install requirements for {req} from sdist in {sdist_root_dir}"
     )
     pbi = ctx.package_build_info(req)
+    extra_environ = packagesettings.get_extra_environ(
+        ctx=ctx,
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
     build_dir = pbi.build_dir(sdist_root_dir)
-    extra_environ = pbi.get_extra_environ(build_env=build_env)
     orig_deps = overrides.find_and_invoke(
         req.name,
         "get_install_dependencies_of_sdist",
         default_get_install_dependencies_of_sdist,
         ctx=ctx,
         req=req,
+        version=version,
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
         extra_environ=extra_environ,
@@ -264,6 +291,7 @@ def default_get_install_dependencies_of_sdist(
     *,
     ctx: context.WorkContext,
     req: Requirement,
+    version: Version,
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
     extra_environ: dict[str, str],

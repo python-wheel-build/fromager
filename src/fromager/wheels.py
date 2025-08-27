@@ -23,6 +23,7 @@ from . import (
     external_commands,
     metrics,
     overrides,
+    packagesettings,
     requirements_file,
     resolver,
     sources,
@@ -269,7 +270,13 @@ def build_wheel(
 
     # add package and variant env vars, package's parallel job vars, and
     # build_env's virtual env vars.
-    extra_environ = pbi.get_extra_environ(build_env=build_env)
+    extra_environ = packagesettings.get_extra_environ(
+        ctx=ctx,
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
 
     if (
         pbi.build_ext_parallel
