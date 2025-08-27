@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import pathlib
@@ -19,7 +21,7 @@ from pydantic_core import CoreSchema, core_schema
 from . import overrides
 
 if typing.TYPE_CHECKING:
-    from . import build_environment
+    from . import build_environment, context
 
 logger = logging.getLogger(__name__)
 
@@ -419,7 +421,7 @@ class PackageSettings(pydantic.BaseModel):
         *,
         source: pathlib.Path | str | None,
         has_config: bool,
-    ) -> "PackageSettings":
+    ) -> PackageSettings:
         """Load from a dict"""
         package = Package(canonicalize_name(package, validate=True))
         try:
@@ -436,7 +438,7 @@ class PackageSettings(pydantic.BaseModel):
         raw_yaml: str,
         *,
         source: pathlib.Path | str | None = None,
-    ) -> "PackageSettings":
+    ) -> PackageSettings:
         """Load from raw yaml string"""
         parsed: typing.Any = yaml.safe_load(raw_yaml)
         if parsed is None:
@@ -449,7 +451,7 @@ class PackageSettings(pydantic.BaseModel):
         return cls.from_mapping(package, parsed, source=source, has_config=True)
 
     @classmethod
-    def from_file(cls, filename: pathlib.Path) -> "PackageSettings":
+    def from_file(cls, filename: pathlib.Path) -> PackageSettings:
         """Load from file
 
         Raises :exc:`FileNotFound` when the file is not found.
@@ -461,7 +463,7 @@ class PackageSettings(pydantic.BaseModel):
         return cls.from_string(filename.stem, raw_yaml, source=filename)
 
     @classmethod
-    def from_default(cls, package: str | Package) -> "PackageSettings":
+    def from_default(cls, package: str | Package) -> PackageSettings:
         """Create a default package setting"""
         return cls.from_mapping(package, {}, source="default", has_config=False)
 
@@ -558,7 +560,7 @@ class PackageBuildInfo:
     Public API for PackageSettings with i
     """
 
-    def __init__(self, settings: "Settings", ps: PackageSettings) -> None:
+    def __init__(self, settings: Settings, ps: PackageSettings) -> None:
         self._variant = typing.cast(Variant, settings.variant)
         self._patches_dir = settings.patches_dir
         self._variant_changelog = settings.variant_changelog()
@@ -763,7 +765,7 @@ class PackageBuildInfo:
         self,
         *,
         template_env: dict[str, str] | None = None,
-        build_env: "build_environment.BuildEnvironment | None" = None,
+        build_env: build_environment.BuildEnvironment | None = None,
     ) -> dict[str, str]:
         """Get extra environment variables for a variant
 
@@ -894,7 +896,7 @@ class SettingsFile(pydantic.BaseModel):
         raw_yaml: str,
         *,
         source: pathlib.Path | str | None = None,
-    ) -> "SettingsFile":
+    ) -> SettingsFile:
         """Load from raw yaml string"""
         parsed: typing.Any = yaml.safe_load(raw_yaml)
         if parsed is None:
@@ -916,7 +918,7 @@ class SettingsFile(pydantic.BaseModel):
             ) from err
 
     @classmethod
-    def from_file(cls, filename: pathlib.Path) -> "SettingsFile":
+    def from_file(cls, filename: pathlib.Path) -> SettingsFile:
         """Load from file
 
         Raises :exc:`FileNotFound` when the file is not found.
@@ -958,7 +960,7 @@ class Settings:
         variant: Variant | str,
         patches_dir: pathlib.Path,
         max_jobs: int | None,
-    ) -> "Settings":
+    ) -> Settings:
         """Create Settings from settings.yaml and directory"""
         if settings_file.is_file():
             settings = SettingsFile.from_file(settings_file)
@@ -1082,3 +1084,41 @@ class Settings:
         for ps in self._package_settings.values():
             variants.update(ps.variants.keys())
         return variants
+
+
+def default_update_extra_environ(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version | None,
+    sdist_root_dir: pathlib.Path,
+    extra_environ: dict[str, str],
+    build_env: build_environment.BuildEnvironment,
+) -> None:
+    """Update extra_environ in-place"""
+    return None
+
+
+def get_extra_environ(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version | None,
+    sdist_root_dir: pathlib.Path,
+    build_env: build_environment.BuildEnvironment,
+) -> dict[str, str]:
+    """Get extra environment variables from settings and update hook"""
+    pbi = ctx.package_build_info(req)
+    extra_environ = pbi.get_extra_environ(build_env=build_env)
+    overrides.find_and_invoke(
+        req.name,
+        "update_extra_environ",
+        default_update_extra_environ,
+        ctx=ctx,
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        extra_environ=extra_environ,
+        build_env=build_env,
+    )
+    return extra_environ

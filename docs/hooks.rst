@@ -26,6 +26,25 @@ functions with default implementations, so it is only necessary to
 implement the functions needed to make it possible to build the
 package.
 
+Package settings hooks
+----------------------
+
+.. py:currentmodule:: fromager.packagesettings
+
+.. autofromagerhook:: default_update_extra_environ
+
+    The ``update_extra_environ`` can modify the extra environment variables
+    from settings file with dynamic values. The hook must update the
+    ``extra_environ`` dict in-place.
+
+    The hook is called multiple times during a build. The ``version``
+    argument is *None* for ``get_build_backend_dependencies`` and
+    ``get_build_sdist_dependencies``. For ``get_install_dependencies_of_sdist``,
+    ``build_sdist``, and ``build_wheel``, the ``version`` argument
+    contains the resolved version.
+
+    .. versionadded:: 0.60
+
 Dependency hooks
 ----------------
 

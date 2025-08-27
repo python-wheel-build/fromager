@@ -22,6 +22,7 @@ from . import (
     gitutils,
     metrics,
     overrides,
+    packagesettings,
     pyproject,
     requirements_file,
     resolver,
@@ -568,7 +569,13 @@ def build_sdist(
     build_dir = pbi.build_dir(sdist_root_dir)
 
     logger.info(f"building {ctx.variant} source distribution for {req} in {build_dir}")
-    extra_environ = pbi.get_extra_environ(build_env=build_env)
+    extra_environ = packagesettings.get_extra_environ(
+        ctx=ctx,
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
     if req.url:
         # The default approach to making an sdist is to make a tarball from the
         # source directory, since most of the time we got the source directory
