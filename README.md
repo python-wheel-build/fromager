@@ -1,26 +1,33 @@
 # fromager
 
-Fromager is a tool for completely re-building a dependency tree of
-Python wheels from source.
+Fromager is a tool for rebuilding complete dependency trees of Python
+wheels from source.
 
-The goals are to support guaranteeing
+## Goals
 
-1. The [binary
-   package](https://packaging.python.org/en/latest/glossary/#term-Built-Distribution)
-   someone is installing was built from source in a known build
-   environment compatible with their own environment
-1. All of the package’s dependencies were also built from source -- any
-   binary package installed will have been built from source
-1. All of the build tools used to build these binary packages will
-   also have been built from source
-1. The build can be customized for the packager's needs, including
-   patching out bugs, passing different compilation options to support
-   build "variants", etc.
+Fromager is designed to guarantee that:
 
-The basic design tenet is to automate everything with a default
-behavior that works for most PEP-517 compatible packages, but support
-overriding all of the actions for special cases, without encoding
-those special cases directly into fromager.
+* Every binary package you install was built from source in a reproducible environment compatible with your own.
+
+* All dependencies are also built from source, no prebuilt binaries.
+
+* The build tools themselves are built from source, ensuring a fully transparent toolchain.
+
+* Builds can be customized for your needs: applying patches, adjusting compiler options, or producing build variants.
+
+## Design Principles
+
+Fromager automates the build process with sensible defaults that work for most PEP-517–compatible packages. At the same time, every step can be overridden for special cases, without baking those exceptions into Fromager itself.
+
+## Build Collections of Wheels
+
+Fromager can also build wheels in collections, rather than individually. Managing dependencies as a unified group ensures that:
+
+* Packages built against one another remain ABI-compatible.
+
+* All versions are resolved consistently, so the resulting wheels can be installed together without conflicts.
+
+This approach makes Fromager especially useful in Python-heavy domains like AI, where reproducibility and compatibility across complex dependency trees are essential.
 
 ## Using private registries
 
