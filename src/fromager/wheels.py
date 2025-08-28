@@ -55,6 +55,7 @@ def _extra_metadata_elfdeps(
     # mapping of required libraries to list of versions
     requires: set[elfdeps.SOInfo] = set()
     provides: set[elfdeps.SOInfo] = set()
+    runpaths: set[str] = set()
     elfinfos: list[elfdeps.ELFInfo] = []
 
     settings = elfdeps.ELFAnalyzeSettings(filter_soname=True)
@@ -70,6 +71,8 @@ def _extra_metadata_elfdeps(
         )
         provides.update(info.provides)
         requires.update(info.requires)
+        if info.runpath is not None:
+            runpaths.update(info.runpath)
         elfinfos.append(info)
 
     # Don't list provided names as requirements
@@ -104,6 +107,9 @@ def _extra_metadata_elfdeps(
         with provides_file.open("w", encoding="utf-8") as f:
             for soinfo in sorted(provides):
                 f.write(f"{soinfo}\n")
+
+    if runpaths:
+        logger.info("Libraries have runpath: %s", " ".join(sorted(runpaths)))
 
     return elfinfos
 
