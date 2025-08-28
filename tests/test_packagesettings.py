@@ -10,6 +10,7 @@ from packaging.version import Version
 
 from fromager import build_environment, context
 from fromager.packagesettings import (
+    Annotations,
     BuildDirectory,
     EnvVars,
     GitOptions,
@@ -28,6 +29,10 @@ TEST_RELATED_PKG = "test-pkg-library"
 TEST_PREBUILT_PKG = "test-prebuilt-pkg"
 
 FULL_EXPECTED: dict[str, typing.Any] = {
+    "annotations": {
+        "fromager.test.value": "somevalue",
+        "fromager.test.override": "variant override",
+    },
     "build_dir": pathlib.Path("python"),
     "build_options": {
         "build_ext_parallel": True,
@@ -76,16 +81,23 @@ FULL_EXPECTED: dict[str, typing.Any] = {
     },
     "variants": {
         "cpu": {
+            "annotations": {
+                "fromager.test.override": "cpu override",
+            },
             "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
         },
         "rocm": {
+            "annotations": {
+                "fromager.test.override": "amd override",
+            },
             "env": {"SPAM": ""},
             "wheel_server_url": None,
             "pre_built": True,
         },
         "cuda": {
+            "annotations": None,
             "env": {},
             "wheel_server_url": None,
             "pre_built": False,
@@ -95,6 +107,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
 
 EMPTY_EXPECTED: dict[str, typing.Any] = {
     "name": "test-empty-pkg",
+    "annotations": None,
     "build_dir": None,
     "build_options": {
         "build_ext_parallel": False,
@@ -130,6 +143,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
 
 PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
     "name": "test-prebuilt-pkg",
+    "annotations": None,
     "build_dir": None,
     "build_options": {
         "build_ext_parallel": False,
@@ -164,6 +178,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
     },
     "variants": {
         "cpu": {
+            "annotations": None,
             "env": {},
             "pre_built": True,
             "wheel_server_url": None,
@@ -722,3 +737,50 @@ build_options:
 def test_resolver_dist_validator():
     with pytest.raises(pydantic.ValidationError):
         ResolverDist(include_wheels=False, ignore_platform=True)
+
+
+def test_annotation_type() -> None:
+    ann = Annotations(None, None)
+    assert not ann
+    assert len(ann) == 0
+    assert ann == {}
+    with pytest.raises(TypeError):
+        ann["key"] = "value"  # type: ignore
+
+    ann = Annotations({"ka": "va", "kb": "vb"}, {"kb": "otherb", "kc": "vc"})
+    assert ann
+    assert len(ann) == 3
+    assert ann == {"ka": "va", "kb": "otherb", "kc": "vc"}
+
+    ann = Annotations({"t": "yes", "f": "no", "invalid": "invalid"}, {})
+    assert ann.getbool("t") is True
+    assert ann.getbool("f") is False
+    with pytest.raises(ValueError):
+        ann.getbool("invalid")
+    with pytest.raises(KeyError):
+        ann.getbool("missing")
+
+
+def test_pbi_annotations(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.annotations == {
+        "fromager.test.value": "somevalue",
+        "fromager.test.override": "cpu override",
+    }
+
+    testdata_context.settings.variant = Variant("cuda")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.annotations == {
+        "fromager.test.value": "somevalue",
+        "fromager.test.override": "variant override",
+    }
+
+    testdata_context.settings.variant = Variant("rocm")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.annotations == {
+        "fromager.test.value": "somevalue",
+        "fromager.test.override": "amd override",
+    }
+
+    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    assert pbi.annotations == {}

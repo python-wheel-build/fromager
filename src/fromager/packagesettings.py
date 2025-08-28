@@ -102,6 +102,54 @@ Variant = typing.NewType("Variant", str)
 GlobalChangelog = Mapping[Variant, list[str]]
 VariantChangelog = Mapping[PackageVersion, list[str]]
 
+# Annotations
+RawAnnotations = Mapping[str, str]
+
+
+class Annotations(Mapping):
+    """Read-only mapping for package annotations"""
+
+    __slots__ = "_mapping"
+
+    def __init__(
+        self,
+        package: RawAnnotations | None = None,
+        variant: RawAnnotations | None = None,
+    ) -> None:
+        self._mapping: RawAnnotations = {}
+        if package:
+            self._mapping.update(package)
+        if variant:
+            self._mapping.update(variant)
+
+    def __getitem__(self, key: str) -> str:
+        return self._mapping[key]
+
+    def __iter__(self) -> typing.Iterator[str]:
+        return iter(self._mapping)
+
+    def __len__(self) -> int:
+        return len(self._mapping)
+
+    def __repr__(self):
+        return repr(self._mapping)
+
+    def getbool(self, key: str) -> bool:
+        """Get bool from string value
+
+        raises :exc:`KeyError` when key is missing and :exc`ValueError` when
+        the value is not 1, true, on, yes, 0, false, off, no.
+        """
+        value = self[key]
+        match value.lower():
+            case "1" | "true" | "on" | "yes":
+                return True
+            case "0" | "false" | "off" | "no":
+                return False
+            case _:
+                raise ValueError(value)
+
+
 # common settings
 MODEL_CONFIG = pydantic.ConfigDict(
     # don't accept unknown keys
@@ -279,6 +327,13 @@ class VariantInfo(pydantic.BaseModel):
 
     model_config = MODEL_CONFIG
 
+    annotations: RawAnnotations | None = None
+    """Arbitrary metadata for variants
+
+    Variant annotation keys have a higher precedence than package
+    annotation keys.
+    """
+
     env: EnvVars = Field(default_factory=dict)
     """Additional env vars (overrides package env vars)"""
 
@@ -361,6 +416,9 @@ class PackageSettings(pydantic.BaseModel):
 
     has_config: bool
     """package has override setting"""
+
+    annotations: RawAnnotations | None = None
+    """Arbitrary metadata for a package"""
 
     build_dir: BuildDirectory | None = None
     """sub-directory with setup.py or pyproject.toml"""
@@ -568,6 +626,7 @@ class PackageBuildInfo:
         self._ps = ps
         self._plugin_module: types.ModuleType | None | typing.Literal[False] = False
         self._patches: PatchMap | None = None
+        self._annotations: Annotations | None = None
 
     @property
     def package(self) -> NormalizedName:
@@ -578,6 +637,31 @@ class PackageBuildInfo:
     def variant(self) -> Variant:
         """Variant name"""
         return self._variant
+
+    @property
+    def annotations(self) -> Annotations:
+        """Get Package and variant annotations
+
+        Annotations can be used to attach arbitrary metadata to packages and
+        package variants. The feature is inspired by Kubernetes's
+        annotations. Variant keys have a higher precedence than package keys.
+
+        The prefix ``fromager.`` is reserved for future use by Fromager.
+
+        ::
+
+           annotations:
+             "downstream.maintainer": "Platform Team"
+           variants:
+             cuda:
+               annotations:
+                 "downstream.maintainer": "CUDA Accelerator Team"
+        """
+        if self._annotations is None:
+            vi = self._ps.variants.get(self.variant)
+            va = vi.annotations if vi is not None else None
+            self._annotations = Annotations(self._ps.annotations, va)
+        return self._annotations
 
     @property
     def plugin(self) -> types.ModuleType | None:
