@@ -33,3 +33,9 @@ def test_migrate_config(
         expected_txt = expected.joinpath(filename).read_text()
         output_txt = output.joinpath(filename).read_text()
         assert output_txt == expected_txt
+
+
+def test_fromager_version(cli_runner: CliRunner) -> None:
+    result = cli_runner.invoke(fromager, ["--version"])
+    assert result.exit_code == 0
+    assert result.stdout.startswith("fromager, version")
