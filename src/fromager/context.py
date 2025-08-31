@@ -56,15 +56,15 @@ class WorkContext:
             self.constraints.load_constraints_file(constraints_file)
         else:
             self.input_constraints_uri = None
-        self.sdists_repo = pathlib.Path(sdists_repo).absolute()
+        self.sdists_repo = pathlib.Path(sdists_repo).resolve()
         self.sdists_downloads = self.sdists_repo / "downloads"
         self.sdists_builds = self.sdists_repo / "builds"
-        self.wheels_repo = pathlib.Path(wheels_repo).absolute()
+        self.wheels_repo = pathlib.Path(wheels_repo).resolve()
         self.wheels_build_base = self.wheels_repo / "build"
         self.wheels_downloads = self.wheels_repo / "downloads"
         self.wheels_prebuilt = self.wheels_repo / "prebuilt"
         self.wheel_server_dir = self.wheels_repo / "simple"
-        self.work_dir = pathlib.Path(work_dir).absolute()
+        self.work_dir = pathlib.Path(work_dir).resolve()
         self.graph_file = self.work_dir / "graph.json"
         self.uv_cache = self.work_dir / "uv-cache"
         self.wheel_server_url = ""
