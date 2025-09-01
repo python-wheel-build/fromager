@@ -179,11 +179,15 @@ def bootstrap(
             )
             requirement_ctxvar.reset(token)
 
-        for req in to_build:
-            token = requirement_ctxvar.set(req)
-            bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
-            progressbar.update()
-            requirement_ctxvar.reset(token)
+        try:
+            for req in to_build:
+                token = requirement_ctxvar.set(req)
+                bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
+                progressbar.update()
+                requirement_ctxvar.reset(token)
+
+        finally:
+            wkctx.write_to_graph_to_file()
 
     constraints_filename = wkctx.work_dir / "constraints.txt"
     if skip_constraints:
