@@ -17,6 +17,7 @@ from .. import (
     metrics,
     progress,
     requirements_file,
+    resolver,
     server,
 )
 from ..log import requirement_ctxvar
@@ -195,6 +196,8 @@ def bootstrap(
                 raise ValueError(
                     f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
                 )
+
+    logger.info("match_py_req LRU cache: %r", resolver.match_py_req.cache_info())
 
     metrics.summarize(wkctx, "Bootstrapping")
 
