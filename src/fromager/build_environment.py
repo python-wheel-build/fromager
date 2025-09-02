@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import pathlib
@@ -11,6 +12,7 @@ import typing
 from io import TextIOWrapper
 
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from . import dependencies, external_commands, metrics, resolver
 from .requirements_file import RequirementType
@@ -215,6 +217,29 @@ class BuildEnvironment:
             self.path,
         )
 
+    def get_sysconfig_path(self, name: str) -> str:
+        """Get ``sysconfig.get_path(name)`` in environment"""
+        if not name.isidentifier():
+            raise ValueError(f"{name!r} is not an identifier")
+        return self.run(
+            [
+                str(self.python),
+                "-c",
+                f"import sysconfig; print(sysconfig.get_path('{name}'), end='')",
+            ]
+        )
+
+    def get_distributions(self) -> typing.Mapping[str, Version]:
+        """Get a mapping of installed package names and their versions in the build env"""
+        lines = [
+            "import sys,json",
+            "from importlib.metadata import distributions",
+            "json.dump({d.name: d.version for d in distributions()}, sys.stdout)",
+        ]
+        result = self.run([str(self.python), "-c", "; ".join(lines)])
+        mapping = json.loads(result.strip())
+        return {name: Version(version) for name, version in sorted(mapping.items())}
+
     def clean_cache(self, req: Requirement) -> None:
         """Invalidate and clean uv cache for requirement
 
@@ -280,6 +305,10 @@ def prepare_build_environment(
         build_env=build_env,
         deps=build_sdist_dependencies,
         dep_req_type=RequirementType.BUILD_SDIST,
+    )
+
+    logger.debug(
+        "build env %r has packages %r", build_env.path, build_env.get_distributions()
     )
 
     return build_env
