@@ -57,6 +57,23 @@ SUPPORTED_TAGS_IGNORE_PLATFORM: frozenset[Tag] = frozenset(
 )
 
 
+@functools.lru_cache(maxsize=200)
+def match_py_req(py_req: str, *, python_version: Version = PYTHON_VERSION) -> bool:
+    """Python version requirement lookup with LRU cache
+
+    Raises InvalidSpecifier on error
+
+    SpecifierSet parsing and matching takes a non-trivial amount of time. A
+    bootstrap run can spend over 10% of its time in parsing and matching
+    Python version requirements.
+
+    This function caches the result of SpecifierSet parsing and contains
+    operation for Python version requirement. Most packages share similar
+    constraints, e.g. ``>= 3.10``.
+    """
+    return python_version in SpecifierSet(py_req)
+
+
 def resolve(
     *,
     ctx: context.WorkContext,
@@ -223,7 +240,7 @@ def get_project_from_pypi(
         # Skip items that need a different Python version
         if py_req:
             try:
-                spec = SpecifierSet(py_req)
+                matched_py: bool = match_py_req(py_req)
             except InvalidSpecifier as err:
                 # Ignore files with invalid python specifiers
                 # e.g. shellingham has files with ">= '2.7'"
@@ -233,7 +250,7 @@ def get_project_from_pypi(
                     )
                 ignored_candidates.add(filename)
                 continue
-            if PYTHON_VERSION not in spec:
+            if not matched_py:
                 if DEBUG_RESOLVER:
                     logger.debug(
                         f"{project}: skipping {filename} because of python version {py_req}"
