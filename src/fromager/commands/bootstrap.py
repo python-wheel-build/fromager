@@ -24,7 +24,7 @@ from .. import (
 from ..log import requirement_ctxvar
 from ..requirements_file import RequirementType
 from .build import build_parallel
-from .graph import find_why
+from .graph import find_why, show_explain_duplicates
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
 ReverseRequirements = dict[str, list[tuple[str, Requirement]]]
@@ -389,42 +389,34 @@ def write_constraints_file(
             f"resolution terminated before resolving {sorted(n for n, _ in unresolved_dependencies)}"
         )
 
-    # No single version could be used, so go ahead and print all the
-    # versions with a warning message
-    for dep_name in failed_to_resolve:  # type: ignore
+    if failed_to_resolve:
         # Make sure we return a failure.
         ret = False
 
-        nodes = graph.get_nodes_by_name(dep_name)
-        msg = f"# ERROR: no single version of {dep_name} met all requirements\n"
-        output.write(msg)
-        for node in sorted(nodes, key=lambda n: n.version):
-            output.write(f"{dep_name}=={node.version}\n")
+        # No single version could be used, so go ahead and print all
+        # the versions with a warning message.
+        for dep_name in failed_to_resolve:  # type: ignore
+            nodes = graph.get_nodes_by_name(dep_name)
+            msg = f"# ERROR: no single version of {dep_name} met all requirements\n"
+            output.write(msg)
+            for node in sorted(nodes, key=lambda n: n.version):
+                output.write(f"{dep_name}=={node.version}\n")
 
-        for node in graph.get_nodes_by_name(dep_name):
-            find_why(
-                graph=graph,
-                node=node,
-                max_depth=-1,
-                depth=0,
-                req_type=[
-                    RequirementType.TOP_LEVEL,
-                    RequirementType.INSTALL,
-                ],
-            )
+            for node in graph.get_nodes_by_name(dep_name):
+                find_why(
+                    graph=graph,
+                    node=node,
+                    max_depth=-1,
+                    depth=0,
+                    req_type=[
+                        RequirementType.TOP_LEVEL,
+                        RequirementType.INSTALL,
+                    ],
+                )
 
-        unique_requirements: set[str] = set()
-        for node in graph.get_nodes_by_name(dep_name):
-            for parent in node.parents:
-                if parent.req_type not in [
-                    RequirementType.TOP_LEVEL,
-                    RequirementType.INSTALL,
-                ]:
-                    continue
-                unique_requirements.add(str(parent.req))
-        print(f"\nunique requirements specifiers for {dep_name}:")
-        for req in sorted(unique_requirements):
-            output.write(f"  {req}\n")
+        # Show the report that explains which rules match which versions
+        # of any duplicates.
+        show_explain_duplicates(graph)
 
     return ret
 

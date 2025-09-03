@@ -211,7 +211,10 @@ def write_dot(
 def explain_duplicates(wkctx, graph_file):
     "Report on duplicate installation requirements, and where they come from."
     graph = DependencyGraph.from_file(graph_file)
+    show_explain_duplicates(graph)
 
+
+def show_explain_duplicates(graph):
     # Look for potential conflicts by tracking how many different versions of
     # each package are needed.
     conflicts = graph.get_install_dependency_versions()
