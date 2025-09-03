@@ -395,7 +395,6 @@ def write_constraints_file(
         for node in sorted(nodes, key=lambda n: n.version):
             output.write(f"{dep_name}=={node.version}\n")
 
-        print(f"finding why {dep_name} was being used")
         for node in graph.get_nodes_by_name(dep_name):
             find_why(
                 graph=graph,
@@ -407,6 +406,19 @@ def write_constraints_file(
                     RequirementType.INSTALL,
                 ],
             )
+
+        unique_requirements: set[str] = set()
+        for node in graph.get_nodes_by_name(dep_name):
+            for parent in node.parents:
+                if parent.req_type not in [
+                    RequirementType.TOP_LEVEL,
+                    RequirementType.INSTALL,
+                ]:
+                    continue
+                unique_requirements.add(str(parent.req))
+        print(f"\nunique requirements specifiers for {dep_name}:")
+        for req in sorted(unique_requirements):
+            output.write(f"  {req}\n")
 
     return ret
 
