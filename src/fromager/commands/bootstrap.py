@@ -397,7 +397,16 @@ def write_constraints_file(
 
         print(f"finding why {dep_name} was being used")
         for node in graph.get_nodes_by_name(dep_name):
-            find_why(graph, node, 0, 0, [])
+            find_why(
+                graph=graph,
+                node=node,
+                max_depth=-1,
+                depth=0,
+                req_type=[
+                    RequirementType.TOP_LEVEL,
+                    RequirementType.INSTALL,
+                ],
+            )
 
     return ret
 
