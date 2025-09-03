@@ -215,7 +215,10 @@ def write_constraints_file(
     ret = True
 
     # Map for already resolved versions for a given dependency Eg: {"a": "0.4"}
-    resolved: dict[NormalizedName, Version] = {}
+    # Treat the root node as resolved so that all toplevel requirements are processed.
+    resolved: dict[NormalizedName, Version] = {
+        typing.cast(NormalizedName, dependency_graph.ROOT): Version("0"),
+    }
 
     nodes_by_key: dict[str, DependencyNode] = {
         node.key: node for node in graph.get_all_nodes()
@@ -365,6 +368,9 @@ def write_constraints_file(
     # what did work and that's useful when the output  is saved as part of a job
     # log.
     for dep_name, resolved_version in sorted(resolved.items()):  # type: ignore
+        if dep_name == dependency_graph.ROOT:
+            # Skip the fake root node
+            continue
         if dep_name in multiple_versions:
             version_strs = [
                 str(node.version)

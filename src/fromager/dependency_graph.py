@@ -66,9 +66,7 @@ class DependencyNode:
         child.parents.append(child_to_current_edge)
 
     def get_incoming_install_edges(self) -> list["DependencyEdge"]:
-        return [
-            edge for edge in self.parents if edge.req_type == RequirementType.INSTALL
-        ]
+        return [edge for edge in self.parents if edge.req_type.is_install_requirement]
 
     def to_dict(self) -> DependencyNodeDict:
         return {
