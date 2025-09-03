@@ -141,14 +141,6 @@ def test_write_constraints_file_resolvable_duplicate():
 
 
 def test_write_constraints_file_unresolvable_duplicate():
-    """Test that unresolvable duplicates cause the function to return False and not write conflicting constraints.
-
-    This test has conflicting requirements for package 'c':
-    - a==1.0 requires c==3.0 (exact version 3.0)
-    - b==2.0 requires c>3.0 (greater than 3.0)
-    These cannot be satisfied simultaneously, so the function should return False
-    and only write the packages that CAN be resolved.
-    """
     buffer = io.StringIO()
     raw_graph = {
         "": {
@@ -191,16 +183,15 @@ def test_write_constraints_file_unresolvable_duplicate():
         },
     }
     graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
-
-    # Should return False due to impossible constraints for package 'c'
-    result = bootstrap.write_constraints_file(graph, buffer)
-    assert result is False
-
-    # Should only write packages that CAN be resolved (no conflicting 'c' versions)
-    output = buffer.getvalue()
-    assert "a==1.0" in output
-    assert "b==2.0" in output
-    assert "c==" not in output  # No conflicting c versions should be written
+    bootstrap.write_constraints_file(graph, buffer)
+    expected = textwrap.dedent("""
+        a==1.0
+        b==2.0
+        # ERROR: no single version of c met all requirements
+        c==3.0
+        c==3.1
+        """).lstrip()
+    assert expected == buffer.getvalue()
 
 
 def test_write_constraints_file_duplicates():
@@ -264,23 +255,16 @@ def test_write_constraints_file_duplicates():
         },
     }
     graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
-
-    # This should return False because there's a genuine constraint conflict:
-    # c==3.0 requires b<2.1,>=2.0 (only b==2.0 satisfies this)
-    # c==3.1 requires b<2.2,>=2.1 (only b==2.1 satisfies this)
-    # No single version of b can satisfy both constraints
-    result = bootstrap.write_constraints_file(graph, buffer)
-    assert result is False
-
-    # When there are conflicts, no constraints should be written to the output
-    output_content = buffer.getvalue()
-    # Should contain resolved packages that don't have conflicts
-    assert "a==1.0" in output_content
-    assert "d==1.0" in output_content
-    # c gets resolved to 3.0 before the conflict with b is detected
-    assert "c==3.0" in output_content
-    # Should NOT contain conflicted packages
-    assert "b==" not in output_content
+    assert bootstrap.write_constraints_file(graph, buffer)
+    expected = textwrap.dedent("""
+        a==1.0
+        # NOTE: fromager selected b==2.0 from: ['2.0', '2.1']
+        b==2.0
+        # NOTE: fromager selected c==3.0 from: ['3.0', '3.1']
+        c==3.0
+        d==1.0
+        """).lstrip()
+    assert expected == buffer.getvalue()
 
 
 def test_write_constraints_file_multiples():
@@ -340,195 +324,6 @@ def test_write_constraints_file_multiples():
         b==0.26.2
         """).lstrip()
     assert expected == buffer.getvalue()
-
-
-def test_write_constraints_file_prevents_false_resolution():
-    """Test that packages marked as unresolvable in early iterations stay unresolvable.
-
-    This test validates the fix for the bug where a package could appear unresolvable
-    in iteration 1 (due to constraints from multiple versions), but then appear
-    resolvable in iteration 2+ when user counts change after other packages resolve.
-
-    Without the fix, 'conflicted' would be incorrectly resolved in a later iteration.
-    With the fix, it should remain unresolvable throughout all iterations.
-    """
-    buffer = io.StringIO()
-    raw_graph = {
-        "": {
-            "download_url": "",
-            "pre_built": False,
-            "version": "0",
-            "canonicalized_name": "",
-            "edges": [
-                {"key": "easy==1.0", "req_type": "toplevel", "req": "easy==1.0"},
-                {"key": "pkg-a==1.0", "req_type": "toplevel", "req": "pkg-a==1.0"},
-                {"key": "pkg-b==1.0", "req_type": "toplevel", "req": "pkg-b==1.0"},
-            ],
-        },
-        "easy==1.0": {
-            "download_url": "url",
-            "pre_built": False,
-            "version": "1.0",
-            "canonicalized_name": "easy",
-            "edges": [],  # No dependencies, resolves immediately
-        },
-        "pkg-a==1.0": {
-            "download_url": "url",
-            "pre_built": False,
-            "version": "1.0",
-            "canonicalized_name": "pkg-a",
-            "edges": [
-                {
-                    "key": "conflicted==1.0",
-                    "req_type": "install",
-                    "req": "conflicted<1.5",
-                },
-                {
-                    "key": "intermediate==1.0",
-                    "req_type": "install",
-                    "req": "intermediate",
-                },
-            ],
-        },
-        "pkg-b==1.0": {
-            "download_url": "url",
-            "pre_built": False,
-            "version": "1.0",
-            "canonicalized_name": "pkg-b",
-            "edges": [
-                {
-                    "key": "conflicted==2.0",
-                    "req_type": "install",
-                    "req": "conflicted>=2.0",
-                },
-            ],
-        },
-        "intermediate==1.0": {
-            "download_url": "url",
-            "pre_built": False,
-            "version": "1.0",
-            "canonicalized_name": "intermediate",
-            "edges": [
-                {
-                    "key": "conflicted==1.0",
-                    "req_type": "install",
-                    "req": "conflicted<1.5",
-                },
-            ],
-        },
-        "conflicted==1.0": {
-            "download_url": "url",
-            "pre_built": False,
-            "version": "1.0",
-            "canonicalized_name": "conflicted",
-            "edges": [],
-        },
-        "conflicted==2.0": {
-            "download_url": "url",
-            "pre_built": False,
-            "version": "2.0",
-            "canonicalized_name": "conflicted",
-            "edges": [],
-        },
-    }
-
-    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
-    result = bootstrap.write_constraints_file(graph, buffer)
-
-    # Should return False because 'conflicted' has impossible constraints:
-    # - pkg-a and intermediate need conflicted<1.5 (only 1.0 satisfies)
-    # - pkg-b needs conflicted>=2.0 (only 2.0 satisfies)
-    # - No version satisfies both <1.5 AND >=2.0
-    assert result is False
-
-    # Verify that packages that CAN be resolved are written
-    output_content = buffer.getvalue()
-    assert "easy==1.0" in output_content
-    assert "pkg-a==1.0" in output_content
-    assert "pkg-b==1.0" in output_content
-    assert "intermediate==1.0" in output_content
-
-    # Verify that the conflicted package is NOT written
-    assert "conflicted==" not in output_content
-
-
-def test_to_constraints_command_no_file_on_failure(tmp_path):
-    """Test that the to-constraints logic doesn't create output files when there are constraint conflicts.
-
-    This is a regression test for the bug where constraint resolution would write partial
-    output even when it ultimately failed.
-    """
-    import io
-
-    from fromager import dependency_graph
-
-    # Create a graph with conflicts (same as test_write_constraints_file_unresolvable_duplicate)
-    raw_graph = {
-        "": {
-            "download_url": "",
-            "pre_built": False,
-            "version": "0",
-            "canonicalized_name": "",
-            "edges": [{"key": "a==1.0", "req_type": "install", "req": "a"}],
-        },
-        "a==1.0": {
-            "download_url": "url for a",
-            "pre_built": False,
-            "version": "1.0",
-            "canonicalized_name": "a",
-            "edges": [
-                {"key": "b==2.0", "req_type": "install", "req": "b>=2.0"},
-                {"key": "c==3.0", "req_type": "install", "req": "c==3.0"},
-            ],
-        },
-        "b==2.0": {
-            "download_url": "url for b",
-            "pre_built": False,
-            "version": "2.0",
-            "canonicalized_name": "b",
-            "edges": [{"key": "c==3.1", "req_type": "install", "req": "c>3.0"}],
-        },
-        "c==3.0": {
-            "download_url": "url for c",
-            "pre_built": False,
-            "version": "3.0",
-            "canonicalized_name": "c",
-            "edges": [],
-        },
-        "c==3.1": {
-            "download_url": "url for c",
-            "pre_built": False,
-            "version": "3.1",
-            "canonicalized_name": "c",
-            "edges": [],
-        },
-    }
-
-    graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
-
-    # Test the new to-constraints logic: use buffer first, only create file on success
-    output_file = tmp_path / "constraints.txt"
-
-    # Simulate the fixed to-constraints behavior
-    buffer = io.StringIO()
-    result = bootstrap.write_constraints_file(graph, buffer)
-
-    # Should return False due to conflicts
-    assert result is False
-
-    # Because result is False, the output file should NOT be created
-    # (In the old buggy behavior, the file would have been created with partial content)
-
-    # Since result is False, we shouldn't write to the actual file
-    # This simulates the fix where we check the result before creating the output file
-    if result:
-        with open(output_file, "w") as f:
-            f.write(buffer.getvalue())
-
-    # Verify the output file was NOT created
-    assert not output_file.exists(), (
-        f"Output file {output_file} should not have been created when constraint resolution failed"
-    )
 
 
 def test_skip_constraints_cli_option():
