@@ -7,6 +7,7 @@ import typing
 from packaging.requirements import Requirement
 from stevedore import extension, hook
 
+from . import overrides
 from .threading_utils import with_thread_lock
 
 if typing.TYPE_CHECKING:
@@ -33,6 +34,25 @@ def _get_hooks(name: str) -> hook.HookManager:
     if not mgr.names():
         logger.debug(f"hook {name} has no entry points")
     return mgr
+
+
+def log_hooks() -> None:
+    # We load the hooks differently here because we want all of them when
+    # normally we would load them by name.
+    _mgr = extension.ExtensionManager(
+        namespace="fromager.hooks",
+        invoke_on_load=False,
+        on_load_failure_callback=_die_on_plugin_load_failure,
+    )
+    for ext in _mgr:
+        dist_name, dist_version = overrides._get_dist_info(ext.module_name)
+        logger.debug(
+            "loaded hook %r: from %s (%s %s)",
+            ext.name,
+            ext.module_name,
+            dist_name,
+            dist_version,
+        )
 
 
 def _die_on_plugin_load_failure(
