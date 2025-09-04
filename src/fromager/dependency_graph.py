@@ -45,6 +45,9 @@ class DependencyNode:
         self.download_url = download_url
         self.pre_built = pre_built
 
+    def __repr__(self) -> str:
+        return f"{self.canonicalized_name}=={self.version}"
+
     def add_child(
         self,
         child: "DependencyNode",
@@ -63,9 +66,7 @@ class DependencyNode:
         child.parents.append(child_to_current_edge)
 
     def get_incoming_install_edges(self) -> list["DependencyEdge"]:
-        return [
-            edge for edge in self.parents if edge.req_type == RequirementType.INSTALL
-        ]
+        return [edge for edge in self.parents if edge.req_type.is_install_requirement]
 
     def to_dict(self) -> DependencyNodeDict:
         return {
@@ -112,6 +113,9 @@ class DependencyEdge:
             "req_type": str(self.req_type),
             "req": str(self.req),
         }
+
+    def __repr__(self) -> str:
+        return f"{self.destination_node} ({self.req})"
 
 
 class DependencyGraph:
