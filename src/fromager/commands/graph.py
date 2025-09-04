@@ -221,7 +221,10 @@ def write_dot(
 def explain_duplicates(wkctx, graph_file):
     "Report on duplicate installation requirements, and where they come from."
     graph = DependencyGraph.from_file(graph_file)
+    show_explain_duplicates(graph)
 
+
+def show_explain_duplicates(graph: DependencyGraph) -> None:
     # Look for potential conflicts by tracking how many different versions of
     # each package are needed.
     conflicts = graph.get_install_dependency_versions()
@@ -231,8 +234,8 @@ def explain_duplicates(wkctx, graph_file):
         if len(versions) == 1:
             continue
 
-        usable_versions = {}
-        user_counter = 0
+        usable_versions: dict[str, list[str]] = {}
+        user_counter: int = 0
 
         print(f"\n{dep_name}")
         for node in sorted(nodes, key=lambda x: x.version):
@@ -240,7 +243,7 @@ def explain_duplicates(wkctx, graph_file):
 
             # Determine which parents can use which versions of this dependency,
             # grouping the output by the requirement specifier.
-            parents_by_req = {}
+            parents_by_req: dict[Requirement, set[str]] = {}
             for parent_edge in node.get_incoming_install_edges():
                 parents_by_req.setdefault(parent_edge.req, set()).add(
                     parent_edge.destination_node.key
