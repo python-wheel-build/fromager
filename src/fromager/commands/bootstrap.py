@@ -23,7 +23,7 @@ from .. import (
 from ..log import requirement_ctxvar
 from ..requirements_file import RequirementType
 from .build import build_parallel
-from .graph import find_why
+from .graph import find_why, show_explain_duplicates
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
 ReverseRequirements = dict[str, list[tuple[str, Requirement]]]
@@ -401,6 +401,11 @@ def write_constraints_file(
                     depth=0,
                     req_type=[],
                 )
+
+        # Show the report that explains which rules match which versions
+        # of any duplicates.
+        print("\nSome packages have multiple version based on different requirements:")
+        show_explain_duplicates(graph)
 
         return ret
 
