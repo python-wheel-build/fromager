@@ -36,10 +36,18 @@ fromager \
     --settings-dir="$SCRIPTDIR/prebuilt_settings" \
     build-sequence "$OUTDIR/build-order.json"
 
-if ! grep -q "downloading prebuilt wheel ${DIST}==${VERSION}" "$log"; then
-  echo "Lack of message indicating download of prebuilt wheel" 1>&2
-  pass=false
-fi
+PATTERNS=(
+  "downloading prebuilt wheel ${DIST}==${VERSION}"
+  "loaded hook 'post_bootstrap': from package_plugins.hooks"
+  "loaded hook 'post_build': from package_plugins.hooks"
+  "loaded hook 'prebuilt_wheel': from package_plugins.hooks"
+)
+for pattern in $PATTERNS; do
+  if ! grep -q "$pattern" "$log"; then
+    echo "Lack of message indicating $pattern" 1>&2
+    pass=false
+  fi
+done
 
 
 EXPECTED_FILES="
@@ -56,7 +64,7 @@ for f in $EXPECTED_FILES; do
 done
 
 if $pass; then
-  if ! grep -q "${DIST}==${VERSION}" $OUTDIR/work-dir/test-prebuilt.txt; then
+  if ! grep -q "${DIST}==${VERSION}" "$OUTDIR"/work-dir/test-prebuilt.txt; then
     echo "FAIL: Did not find content in post-build hook output file" 1>&2
     pass=false
   fi

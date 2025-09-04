@@ -11,6 +11,7 @@ from . import (
     commands,
     context,
     external_commands,
+    hooks,
     log,
     overrides,
     packagesettings,
@@ -215,6 +216,7 @@ def main(
             logger.info(f"constraints file: {constraints_file}")
             logger.info(f"network isolation: {network_isolation}")
             overrides.log_overrides()
+            hooks.log_hooks()
 
     if network_isolation and not SUPPORTS_NETWORK_ISOLATION:
         ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
