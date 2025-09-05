@@ -377,6 +377,10 @@ def _build(
             wheel_url=source_download_url,
             output_directory=wkctx.wheels_build,
         )
+    # We may have downloaded the prebuilt wheel in _is_wheel_built or
+    # via download_wheel(). Regardless, if it was a prebuilt wheel,
+    # run the hooks.
+    if prebuilt and wheel_filename:
         hooks.run_prebuilt_wheel_hooks(
             ctx=wkctx,
             req=req,
