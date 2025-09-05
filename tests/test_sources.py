@@ -187,3 +187,31 @@ def test_patch_sources_apply_only_unversioned(
         version=Version("0.6.0"),
     )
     apply_patch.assert_called_once_with(req, unversioned_patch_file, source_root_dir)
+
+
+@pytest.mark.parametrize(
+    "dist_name,version_string,sdist_filename,okay",
+    [
+        ("mypkg", "1.2", "mypkg-1.2.tar.gz", True),
+        ("mypkg", "1.2", "unknown-1.2.tar.gz", False),
+        ("mypkg", "1.2", "mypkg-1.2.1.tar.gz", False),
+        ("oslo.messaging", "14.7.0", "oslo.messaging-14.7.0.tar.gz", True),
+        ("cython", "3.0.10", "Cython-3.0.10.tar.gz", True),
+        # parse_sdist_filename() accepts a dash in the name
+        ("fromage_test", "9.9.9", "fromage-test-9.9.9.tar.gz", True),
+        ("fromage-test", "9.9.9", "fromage-test-9.9.9.tar.gz", True),
+        ("fromage_test", "9.9.9", "fromage_test-9.9.9.tar.gz", True),
+        ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6.tar.gz", True),
+    ],
+)
+def test_validate_sdist_file(
+    dist_name: str, version_string: str, sdist_filename: pathlib.Path, okay: bool
+) -> None:
+    req = Requirement(dist_name)
+    version = Version(version_string)
+    sdist_file = pathlib.Path(sdist_filename)
+    if okay:
+        sources.validate_sdist_filename(req, version, sdist_file)
+    else:
+        with pytest.raises(ValueError):
+            sources.validate_sdist_filename(req, version, sdist_file)

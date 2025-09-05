@@ -12,6 +12,7 @@ import pyproject_hooks
 import tomlkit
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from . import (
@@ -302,21 +303,24 @@ def default_get_install_dependencies_of_sdist(
 
     Uses PEP 517 prepare_metadata_for_build_wheel() API.
     """
-    hook_caller = get_build_backend_hook_caller(
+    metadata = pep517_metadata_of_sdist(
         ctx=ctx,
         req=req,
-        build_dir=build_dir,
-        override_environ=extra_environ,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
         build_env=build_env,
+        extra_environ=extra_environ,
+        build_dir=build_dir,
+        config_settings=config_settings,
+        validate=True,
     )
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        distinfo_name = hook_caller.prepare_metadata_for_build_wheel(
-            tmp_dir,
-            config_settings=config_settings,
-        )
-        metadata_file = pathlib.Path(tmp_dir) / distinfo_name / "METADATA"
-        # ignore minor metadata issues
-        metadata = parse_metadata(metadata_file, validate=False)
+    validate_dist_name_version(
+        req=req,
+        version=version,
+        what="sdist metadata",
+        dist_name=metadata.name,
+        dist_version=metadata.version,
+    )
     if not metadata.requires_dist:
         return set()
     return set(metadata.requires_dist)
@@ -330,6 +334,54 @@ def parse_metadata(metadata_file: pathlib.Path, *, validate: bool = True) -> Met
     license-expression field (added in 2.4).
     """
     return Metadata.from_email(metadata_file.read_bytes(), validate=validate)
+
+
+def pep517_metadata_of_sdist(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    sdist_root_dir: pathlib.Path,
+    build_env: build_environment.BuildEnvironment,
+    extra_environ: dict[str, str],
+    build_dir: pathlib.Path,
+    config_settings: dict[str, str],
+    validate: bool = True,
+) -> Metadata:
+    """Get wheel metadata from a source distribution
+
+    Uses PEP 517 prepare_metadata_for_build_wheel() API.
+    """
+    hook_caller = get_build_backend_hook_caller(
+        ctx=ctx,
+        req=req,
+        build_dir=build_dir,
+        override_environ=extra_environ,
+        build_env=build_env,
+    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        distinfo_name = hook_caller.prepare_metadata_for_build_wheel(
+            tmp_dir,
+            config_settings=config_settings,
+        )
+        metadata_file = pathlib.Path(tmp_dir) / distinfo_name / "METADATA"
+        metadata = parse_metadata(metadata_file, validate=validate)
+
+    return metadata
+
+
+def validate_dist_name_version(
+    req: Requirement, version: Version, what: str, dist_name: str, dist_version: Version
+) -> None:
+    """Validate that dist name and version matches expected values"""
+    req_name = canonicalize_name(req.name)
+    if dist_name != req_name:
+        raise ValueError(f"{what} does not match requirement {req_name!r}")
+    if dist_version != version:
+        if dist_version.public != version.public:
+            raise ValueError(f"{what} does not match public version {version!r}")
+        else:
+            logger.warning(f"{what} has different local version than {version!r}")
 
 
 def get_install_dependencies_of_wheel(

@@ -11,6 +11,9 @@ import zipfile
 
 import resolvelib
 from packaging.requirements import Requirement
+from packaging.utils import (
+    parse_sdist_filename,
+)
 from packaging.version import Version
 from requests.exceptions import ChunkedEncodingError, ConnectionError
 from urllib3.exceptions import IncompleteRead, ProtocolError
@@ -584,7 +587,7 @@ def build_sdist(
         # NOT produce a valid sdist, so we can use the PEP-517 approach
         # instead.
         logger.info("using PEP-517 sdist build, ignoring any plugins")
-        sdist_filename = pep517_build_sdist(
+        sdist_file = pep517_build_sdist(
             ctx=ctx,
             extra_environ=extra_environ,
             req=req,
@@ -593,7 +596,7 @@ def build_sdist(
             build_env=build_env,
         )
     else:
-        sdist_filename = overrides.find_and_invoke(
+        sdist_file = overrides.find_and_invoke(
             req.name,
             "build_sdist",
             default_build_sdist,
@@ -605,8 +608,19 @@ def build_sdist(
             build_dir=build_dir,
             build_env=build_env,
         )
-    logger.info(f"built source distribution {sdist_filename}")
-    return sdist_filename
+    logger.info(f"built source distribution {sdist_file}")
+
+    # validate location and file name
+    if not sdist_file.is_file():
+        raise FileNotFoundError(sdist_file)
+    sdist_file = sdist_file.resolve()
+    if sdist_file.parent != ctx.sdists_builds:
+        raise ValueError(
+            f"{sdist_file!r} is not in sdists build directory {ctx.sdists_builds!r}"
+        )
+    validate_sdist_filename(req=req, version=version, sdist_file=sdist_file)
+
+    return sdist_file
 
 
 def default_build_sdist(
@@ -716,3 +730,19 @@ def ensure_pkg_info(
             )
             had_pkg_info = False
     return had_pkg_info
+
+
+def validate_sdist_filename(
+    req: Requirement,
+    version: Version,
+    sdist_file: pathlib.Path,
+) -> None:
+    """Check that sdist matches requirement name and version"""
+    sdist_name, sdist_version = parse_sdist_filename(sdist_file.name)
+    dependencies.validate_dist_name_version(
+        req=req,
+        version=version,
+        what=sdist_file.name,
+        dist_name=sdist_name,
+        dist_version=sdist_version,
+    )

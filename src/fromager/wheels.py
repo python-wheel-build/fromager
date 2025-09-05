@@ -16,7 +16,11 @@ import tomlkit
 import wheel.wheelfile  # type: ignore
 from packaging.requirements import Requirement
 from packaging.tags import Tag
-from packaging.utils import BuildTag, canonicalize_name, parse_wheel_filename
+from packaging.utils import (
+    BuildTag,
+    canonicalize_name,
+    parse_wheel_filename,
+)
 from packaging.version import Version
 
 from . import (
@@ -260,6 +264,22 @@ def add_extra_metadata_to_wheels(
     raise FileNotFoundError("Could not locate new wheels file")
 
 
+def validate_wheel_filename(
+    req: Requirement,
+    version: Version,
+    wheel_file: pathlib.Path,
+) -> None:
+    """Check that wheel matches requirement name and version"""
+    wheel_name, wheel_version, _, _ = parse_wheel_filename(wheel_file.name)
+    dependencies.validate_dist_name_version(
+        req=req,
+        version=version,
+        what=wheel_file.name,
+        dist_name=wheel_name,
+        dist_version=wheel_version,
+    )
+
+
 @metrics.timeit(description="build wheels")
 def build_wheel(
     *,
@@ -280,8 +300,8 @@ def build_wheel(
     extra_environ = packagesettings.get_extra_environ(
         ctx=ctx,
         req=req,
-        version=version,
         sdist_root_dir=sdist_root_dir,
+        version=version,
         build_env=build_env,
     )
 
@@ -311,29 +331,40 @@ def build_wheel(
         build_env=build_env,
         extra_environ=extra_environ,
         req=req,
+        version=version,
         sdist_root_dir=sdist_root_dir,
         build_dir=pbi.build_dir(sdist_root_dir),
-        version=version,
     )
-    # End the timer
+
+    # invalidate uv's cache
+    build_env.clean_cache(req)
+
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if len(wheels) != 1:
         raise FileNotFoundError(
             f"Expected 1 built wheel in {ctx.wheels_build}, got {len(wheels)}"
         )
+    tmp_wheel_file = wheels[0]
 
-    # invalidate uv's cache
-    build_env.clean_cache(req)
+    # validate location and file name
+    if tmp_wheel_file.parent != ctx.wheels_build:
+        raise ValueError(
+            f"{tmp_wheel_file!r} is not in wheels build directory {ctx.wheels_build!r}"
+        )
+    validate_wheel_filename(req=req, version=version, wheel_file=tmp_wheel_file)
 
-    wheel = add_extra_metadata_to_wheels(
+    # add extra metadata and validate again
+    new_wheel_file = add_extra_metadata_to_wheels(
         ctx=ctx,
         req=req,
         version=version,
         extra_environ=extra_environ,
         sdist_root_dir=sdist_root_dir,
-        wheel_file=wheels[0],
+        wheel_file=tmp_wheel_file,
     )
-    return wheel
+    validate_wheel_filename(req=req, version=version, wheel_file=new_wheel_file)
+
+    return new_wheel_file
 
 
 def pep517_build_wheel(
@@ -375,8 +406,8 @@ def default_build_wheel(
     sdist_root_dir: pathlib.Path,
     version: Version,
     build_dir: pathlib.Path,
-) -> None:
-    pep517_build_wheel(
+) -> pathlib.Path:
+    return pep517_build_wheel(
         ctx=ctx,
         build_env=build_env,
         extra_environ=extra_environ,
