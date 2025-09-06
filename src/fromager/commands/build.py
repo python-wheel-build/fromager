@@ -125,6 +125,8 @@ def build(
             force=True,
             cache_wheel_server_url=None,
         )
+        # invalidate uv cache
+        wkctx.uv_clean_cache(req)
     print(wheel_filename)
 
 
@@ -435,6 +437,8 @@ def _build(
             version=resolved_version,
             build_env=build_env,
         )
+        # uv cache is cleaned in build / build_parallel commands
+        # wkctx.uv_clean_cache(req)
 
         hooks.run_post_build_hooks(
             ctx=wkctx,
@@ -687,11 +691,13 @@ def build_parallel(
                 max_workers=max_workers
             ) as executor:
                 futures: list[concurrent.futures.Future[tuple[pathlib.Path, bool]]] = []
+                reqs: list[Requirement] = []
                 logger.info(
                     "starting to build: %s", sorted(n.key for n in buildable_nodes)
                 )
                 for node in buildable_nodes:
                     req = Requirement(f"{node.canonicalized_name}=={node.version}")
+                    reqs.append(req)
                     future = executor.submit(
                         _build_parallel,
                         wkctx=wkctx,
@@ -723,6 +729,9 @@ def build_parallel(
                     except Exception as e:
                         logger.error(f"Failed to build {node.key}: {e}")
                         raise
+
+                # invalidate uv cache
+                wkctx.uv_clean_cache(*reqs)
 
     metrics.summarize(wkctx, "Building in parallel")
     _summary(wkctx, entries)

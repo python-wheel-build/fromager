@@ -422,6 +422,8 @@ class Bootstrapper:
             version=resolved_version,
             build_env=build_env,
         )
+        # invalidate uv cache
+        self.ctx.uv_clean_cache(req)
         server.update_wheel_mirror(self.ctx)
         # When we update the mirror, the built file moves to the
         # downloads directory.

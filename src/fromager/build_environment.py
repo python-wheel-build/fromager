@@ -240,17 +240,6 @@ class BuildEnvironment:
         mapping = json.loads(result.strip())
         return {name: Version(version) for name, version in sorted(mapping.items())}
 
-    def clean_cache(self, req: Requirement) -> None:
-        """Invalidate and clean uv cache for requirement
-
-        uv caches package metadata and unpacked wheels for faster dependency
-        resolution and installation. ``uv pip install`` hardlinks files from
-        cache location. This function removes a package from all caches, so
-        subsequent installations use a new built.
-        """
-        logger.debug("invalidate uv cache for %s", req.name)
-        self.run(["uv", "cache", "clean", req.name])
-
 
 @metrics.timeit(description="prepare build environment")
 def prepare_build_environment(
