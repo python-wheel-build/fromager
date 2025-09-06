@@ -78,6 +78,11 @@ def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.
     is_flag=True,
     help="Only show installation dependencies, excluding build dependencies",
 )
+@click.option(
+    "--reduce",
+    is_flag=True,
+    help="Only include nodes with fromager customizations (overrides, settings, patches, or plugins)",
+)
 @click.argument(
     "graph-file",
     type=str,
@@ -88,14 +93,113 @@ def to_dot(
     graph_file: str,
     output: pathlib.Path | None,
     install_only: bool,
+    reduce: bool,
 ):
     "Convert a graph file to a DOT file suitable to pass to graphviz."
     graph = DependencyGraph.from_file(graph_file)
     if output:
         with open(output, "w") as f:
-            write_dot(wkctx, graph, f, install_only=install_only)
+            write_dot(wkctx, graph, f, install_only=install_only, reduce=reduce)
     else:
-        write_dot(wkctx, graph, sys.stdout, install_only=install_only)
+        write_dot(wkctx, graph, sys.stdout, install_only=install_only, reduce=reduce)
+
+
+def has_customizations(
+    wkctx: context.WorkContext, node: DependencyNode, overridden_packages: set[str]
+) -> bool:
+    """Check if a node has any fromager customizations (overrides, settings, patches, or plugins)."""
+    if not node.canonicalized_name:
+        # This is the root node
+        return True
+
+    name = node.canonicalized_name
+    pbi = wkctx.settings.package_build_info(name)
+
+    # Check for patches
+    all_patches: PatchMap = pbi.get_all_patches()
+    if all_patches:
+        return True
+
+    # Check for plugins
+    if pbi.plugin:
+        return True
+
+    # Check for overrides/settings
+    if name in overridden_packages:
+        return True
+
+    # Check for pre-built wheels (these are also customizations)
+    if node.pre_built:
+        return True
+
+    return False
+
+
+def reduce_graph(
+    wkctx: context.WorkContext,
+    graph: DependencyGraph,
+    overridden_packages: set[str],
+    install_only: bool = False,
+) -> tuple[list[DependencyNode], dict[str, dict[str, str]]]:
+    """
+    Reduce the graph to only include nodes with customizations.
+
+    Returns:
+        - List of nodes to include in the reduced graph
+        - Dictionary mapping each included node to its direct dependencies with requirement info
+          Format: {parent_key: {child_key: requirement_string}}
+    """
+    # Start with all nodes or just install dependencies
+    if install_only:
+        all_nodes: list[DependencyNode] = [graph.nodes[ROOT]]
+        all_nodes.extend(graph.get_install_dependencies())
+    else:
+        all_nodes = list(graph.get_all_nodes())
+
+    # Find nodes with customizations
+    customized_nodes: list[DependencyNode] = []
+    for node in all_nodes:
+        if has_customizations(wkctx, node, overridden_packages):
+            customized_nodes.append(node)
+
+    # Build reduced dependency relationships with requirement tracking
+    reduced_dependencies: dict[str, dict[str, str]] = {}
+
+    for node in customized_nodes:
+        reduced_dependencies[node.key] = {}
+
+        # Find all reachable customized nodes from this node
+        visited: set[str] = set()
+        # Stack now includes: (current_node, path_from_start, original_requirement)
+        stack: list[tuple[DependencyNode, list[str], str | None]] = [(node, [], None)]
+
+        while stack:
+            current_node, path, original_req = stack.pop()
+
+            if current_node.key in visited:
+                continue
+            visited.add(current_node.key)
+
+            for edge in current_node.children:
+                # Skip build dependencies if install_only is True
+                if install_only and edge.req_type.is_build_requirement:
+                    continue
+
+                child = edge.destination_node
+                new_path = path + [current_node.key]
+
+                # Use the first requirement we encounter in the path
+                current_req = original_req if original_req else str(edge.req)
+
+                # If the child has customizations, add it as a direct dependency
+                if has_customizations(wkctx, child, overridden_packages):
+                    # Store the requirement string for this dependency
+                    reduced_dependencies[node.key][child.key] = current_req
+                else:
+                    # If the child doesn't have customizations, continue traversing
+                    stack.append((child, new_path, current_req))
+
+    return customized_nodes, reduced_dependencies
 
 
 def write_dot(
@@ -103,6 +207,7 @@ def write_dot(
     graph: DependencyGraph,
     output: typing.TextIO,
     install_only: bool = False,
+    reduce: bool = False,
 ) -> None:
     install_constraints = set(node.key for node in graph.get_install_dependencies())
     overridden_packages: set[str] = set(wkctx.settings.list_overrides())
@@ -130,11 +235,17 @@ def write_dot(
     }
 
     # Determine which nodes to include
-    if install_only:
+    if reduce:
+        nodes_to_include, reduced_dependencies = reduce_graph(
+            wkctx, graph, overridden_packages, install_only
+        )
+    elif install_only:
         nodes_to_include = [graph.nodes[ROOT]]
         nodes_to_include.extend(graph.get_install_dependencies())
+        reduced_dependencies = None
     else:
         nodes_to_include = list(graph.get_all_nodes())
+        reduced_dependencies = None
 
     for node in sorted(nodes_to_include, key=lambda x: x.key):
         node_id = get_node_id(node.key)
@@ -183,32 +294,49 @@ def write_dot(
     included_node_keys = {node.key for node in nodes_to_include}
 
     known_edges: set[tuple[str, str]] = set()
-    for node in nodes_to_include:
-        node_id = get_node_id(node.key)
-        for edge in node.children:
-            # Skip edges if we're in install-only mode and the edge is a build dependency
-            if install_only and edge.req_type not in [
-                RequirementType.INSTALL,
-                RequirementType.TOP_LEVEL,
-            ]:
-                continue
 
-            # Skip duplicate edges
-            if (node.key, edge.destination_node.key) in known_edges:
-                continue
-            known_edges.add((node.key, edge.destination_node.key))
+    if reduce and reduced_dependencies:
+        # Use the reduced dependency relationships
+        for node_key, child_deps in reduced_dependencies.items():
+            node_id = get_node_id(node_key)
+            for child_key, req_str in child_deps.items():
+                # Skip duplicate edges
+                if (node_key, child_key) in known_edges:
+                    continue
+                known_edges.add((node_key, child_key))
 
-            # Skip edges to nodes that aren't included
-            if edge.destination_node.key not in included_node_keys:
-                continue
+                child_id = get_node_id(child_key)
+                # Use the actual requirement string from the reduced graph
+                sreq = req_str.replace('"', "'")
+                properties = f'labeltooltip="{sreq}"'
+                # For reduced graphs, we assume these are install dependencies (solid lines)
 
-            child_id = get_node_id(edge.destination_node.key)
-            sreq = str(edge.req).replace('"', "'")
-            properties = f'labeltooltip="{sreq}"'
-            if edge.req_type != RequirementType.INSTALL:
-                properties += " style=dotted"
+                output.write(f"  {node_id} -> {child_id} [{properties}]\n")
+    else:
+        # Use the original edge generation logic
+        for node in nodes_to_include:
+            node_id = get_node_id(node.key)
+            for edge in node.children:
+                # Skip edges if we're in install-only mode and the edge is a build dependency
+                if install_only and edge.req_type.is_build_requirement:
+                    continue
 
-            output.write(f"  {node_id} -> {child_id} [{properties}]\n")
+                # Skip duplicate edges
+                if (node.key, edge.destination_node.key) in known_edges:
+                    continue
+                known_edges.add((node.key, edge.destination_node.key))
+
+                # Skip edges to nodes that aren't included
+                if edge.destination_node.key not in included_node_keys:
+                    continue
+
+                child_id = get_node_id(edge.destination_node.key)
+                sreq = str(edge.req).replace('"', "'")
+                properties = f'labeltooltip="{sreq}"'
+                if edge.req_type.is_build_requirement:
+                    properties += " style=dotted"
+
+                output.write(f"  {node_id} -> {child_id} [{properties}]\n")
     output.write("}\n")
 
 
