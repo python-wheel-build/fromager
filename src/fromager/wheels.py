@@ -336,9 +336,6 @@ def build_wheel(
         build_dir=pbi.build_dir(sdist_root_dir),
     )
 
-    # invalidate uv's cache
-    build_env.clean_cache(req)
-
     wheels = list(ctx.wheels_build.glob("*.whl"))
     if len(wheels) != 1:
         raise FileNotFoundError(

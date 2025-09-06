@@ -13,7 +13,13 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import constraints, dependency_graph, packagesettings, request_session
+from . import (
+    constraints,
+    dependency_graph,
+    external_commands,
+    packagesettings,
+    request_session,
+)
 
 if typing.TYPE_CHECKING:
     from . import build_environment
@@ -125,6 +131,26 @@ class WorkContext:
 
         path_to_constraints_file = path_to_constraints_file.absolute()
         return ["--constraint", os.fspath(path_to_constraints_file)]
+
+    def uv_clean_cache(self, *reqs: Requirement) -> None:
+        """Invalidate and clean uv cache for requirements
+
+        uv caches package metadata and unpacked wheels for faster dependency
+        resolution and installation. ``uv pip install`` hardlinks files from
+        cache location. This function removes a package from all caches, so
+        subsequent installations use a new built.
+
+        WARNING: 'uv clean cache' is not concurrency safe with 'uv pip install'.
+        """
+        if not reqs:
+            raise ValueError("no requirements")
+
+        extra_environ: dict[str, str] = {"UV_CACHE_DIR": str(self.uv_cache)}
+        cmd = ["uv", "clean", "cache"]
+        req_list: list[str] = sorted(set(req.name for req in reqs))
+        logger.debug("invalidate uv cache for %s", req_list)
+        cmd.extend(req_list)
+        external_commands.run(cmd, extra_environ=extra_environ)
 
     def write_to_graph_to_file(self):
         with self.graph_file.open("w", encoding="utf-8") as f:
