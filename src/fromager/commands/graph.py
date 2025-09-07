@@ -79,9 +79,9 @@ def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.
     help="Only show installation dependencies, excluding build dependencies",
 )
 @click.option(
-    "--reduce",
+    "--overrides-only",
     is_flag=True,
-    help="Only include nodes with fromager customizations (overrides, settings, patches, or plugins)",
+    help="Only include nodes with fromager overrides (settings, patches, or plugins)",
 )
 @click.argument(
     "graph-file",
@@ -93,15 +93,17 @@ def to_dot(
     graph_file: str,
     output: pathlib.Path | None,
     install_only: bool,
-    reduce: bool,
+    overrides_only: bool,
 ):
     "Convert a graph file to a DOT file suitable to pass to graphviz."
     graph = DependencyGraph.from_file(graph_file)
     if output:
         with open(output, "w") as f:
-            write_dot(wkctx, graph, f, install_only=install_only, reduce=reduce)
+            write_dot(wkctx, graph, f, install_only=install_only, reduce=overrides_only)
     else:
-        write_dot(wkctx, graph, sys.stdout, install_only=install_only, reduce=reduce)
+        write_dot(
+            wkctx, graph, sys.stdout, install_only=install_only, reduce=overrides_only
+        )
 
 
 def has_customizations(
