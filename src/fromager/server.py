@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import http.server
+import io
 import logging
 import os
 import pathlib
@@ -22,6 +23,19 @@ logger = logging.getLogger(__name__)
 class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: typing.Any) -> None:
         logger.debug(format, *args)
+
+    def list_directory(self, path: str | os.PathLike[str]) -> io.BytesIO | None:
+        # default list_directory() function appends an "@" to every symbolic
+        # link. pypi_simple does not understand the "@". Rewrite the body
+        # while keeping the same content length.
+        old: io.BytesIO | None = super().list_directory(path)
+        if old is None:
+            return None
+        new = io.BytesIO()
+        for oldline in old:
+            new.write(oldline.replace(b"@</a>", b"</a> "))
+        new.seek(0)
+        return new
 
 
 def start_wheel_server(ctx: context.WorkContext) -> None:
