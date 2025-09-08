@@ -130,6 +130,11 @@ class BuildEnvironment:
         venv_environ["UV_NO_MANAGED_PYTHON"] = "true"
         venv_environ["UV_PYTHON_DOWNLOADS"] = "never"
         venv_environ["UV_PYTHON"] = str(self.python)
+        # Set the maximum number of concurrent builds
+        # for testing an issue with pyzmq
+        venv_environ["UV_CONCURRENT_BUILDS"] = "1"
+        venv_environ["UV_CONCURRENT_DOWNLOADS"] = "1"
+        venv_environ["UV_CONCURRENT_INSTALLS"] = "1"
 
         return venv_environ
 
