@@ -34,3 +34,6 @@ __pycache__/
 
 /.mypy_cache/
 .skip-coverage
+
+.vscode/
+.idea/
