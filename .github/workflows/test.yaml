@@ -78,6 +78,8 @@ jobs:
           - bootstrap
           - bootstrap_extras
           - bootstrap_build_tags
+          - bootstrap_parallel_git_url
+          - bootstrap_parallel_git_url_tag
           - bootstrap_prerelease
           - bootstrap_conflicting_requirements
           - bootstrap_constraints
