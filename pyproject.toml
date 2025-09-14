@@ -57,7 +57,7 @@ build = [
     "twine",
 ]
 mypy = [
-    "mypy",
+    "mypy==1.18.1",
     "pytest",
     "types-html5lib",
     "types-psutil",
