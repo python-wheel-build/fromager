@@ -185,7 +185,7 @@ def get_project_from_pypi(
     found_candidates: set[str] = set()
     ignored_candidates: set[str] = set()
     simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
-    logger.debug("%s: getting available versions from %s", project, simple_index_url)
+    logger.debug("getting available versions from %s", simple_index_url)
 
     try:
         response = session.get(simple_index_url)
@@ -193,8 +193,7 @@ def get_project_from_pypi(
         data = response.content
     except Exception as e:
         logger.debug(
-            "%s: failed to fetch package index from %s: %s",
-            project,
+            "failed to fetch package index from %s: %s",
             simple_index_url,
             e,
         )
@@ -214,17 +213,15 @@ def get_project_from_pypi(
         filename = extract_filename_from_url(candidate_url)
         found_candidates.add(filename)
         if DEBUG_RESOLVER:
-            logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
+            logger.debug("candidate %r -> %r", candidate_url, filename)
 
         # PEP 592: Skip items that were yanked
         if reason_data_yanked is not None:
-            if DEBUG_RESOLVER:
-                logger.debug(
-                    "%s: skipping %s because it was yanked (%s)",
-                    project,
-                    filename,
-                    reason_data_yanked if reason_data_yanked else "no reason found",
-                )
+            logger.debug(
+                "skipping %s because it was yanked (%s)",
+                filename,
+                reason_data_yanked if reason_data_yanked else "no reason found",
+            )
             ignored_candidates.add(filename)
             continue
 
@@ -234,9 +231,7 @@ def get_project_from_pypi(
             # PEP 658: metadata is available at {file_url}.metadata
             metadata_url = candidate_url + ".metadata"
             if DEBUG_RESOLVER:
-                logger.debug(
-                    "%s: PEP 658 metadata available at %s", project, metadata_url
-                )
+                logger.debug("PEP 658 metadata available at %s", metadata_url)
         # Skip items that need a different Python version
         if py_req:
             try:
@@ -244,17 +239,20 @@ def get_project_from_pypi(
             except InvalidSpecifier as err:
                 # Ignore files with invalid python specifiers
                 # e.g. shellingham has files with ">= '2.7'"
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{project}: skipping {filename} because of an invalid python version specifier {py_req}: {err}"
-                    )
+                logger.debug(
+                    "skipping %s because of an invalid python version specifier %s: %s",
+                    filename,
+                    py_req,
+                    err,
+                )
                 ignored_candidates.add(filename)
                 continue
             if not matched_py:
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        f"{project}: skipping {filename} because of python version {py_req}"
-                    )
+                logger.debug(
+                    "skipping %s because of python version %s",
+                    filename,
+                    py_req,
+                )
                 ignored_candidates.add(filename)
                 continue
 
@@ -275,7 +273,7 @@ def get_project_from_pypi(
                 matching_tags = SUPPORTED_TAGS.intersection(tags)
                 if not matching_tags and ignore_platform:
                     if DEBUG_RESOLVER:
-                        logger.debug(f"{project}: ignoring platform for {filename}")
+                        logger.debug("ignoring platform for %s", filename)
                     ignore_platform_tags: frozenset[Tag] = frozenset(
                         Tag(t.interpreter, t.abi, IGNORE_PLATFORM) for t in tags
                     )
@@ -283,16 +281,16 @@ def get_project_from_pypi(
                         ignore_platform_tags
                     )
                 if not matching_tags:
-                    if DEBUG_RESOLVER:
-                        logger.debug(f"{project}: ignoring {filename} with tags {tags}")
+                    logger.debug("ignoring %s with tags %s", filename, tags)
                     ignored_candidates.add(filename)
                     continue
         except Exception as err:
             # Ignore files with invalid versions
-            if DEBUG_RESOLVER:
-                logger.debug(
-                    f'{project}: could not determine version for "{filename}": {err}'
-                )
+            logger.debug(
+                'could not determine version for "%s": %s',
+                filename,
+                err,
+            )
             ignored_candidates.add(filename)
             continue
         # Look for and ignore cases like `cffi-1.0.2-2.tar.gz` which
@@ -303,8 +301,7 @@ def get_project_from_pypi(
         # filenames consistently, so we compare the length for this
         # case.
         if len(name) != len(project):
-            if DEBUG_RESOLVER:
-                logger.debug(f'{project}: skipping invalid filename "{filename}"')
+            logger.debug('skipping invalid filename "%s"', filename)
             ignored_candidates.add(filename)
             continue
 
@@ -317,16 +314,13 @@ def get_project_from_pypi(
             build_tag=build_tag,
             metadata_url=metadata_url,
         )
-        if DEBUG_RESOLVER:
-            logger.debug(
-                "%s: candidate %s (%s) %s", project, filename, c, candidate_url
-            )
+        logger.debug("candidate %s (%s) %s", filename, c, candidate_url)
         yield c
 
     if not found_candidates:
-        logger.info(f"{project}: found no candidate files at {simple_index_url}")
+        logger.info("found no candidate files at %s", simple_index_url)
     elif ignored_candidates == found_candidates:
-        logger.info(f"{project}: ignored all candidate files at {simple_index_url}")
+        logger.info("ignored all candidate files at %s", simple_index_url)
 
 
 RequirementsMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Requirement]]
@@ -381,10 +375,11 @@ class BaseProvider(ExtrasProvider):
         bad_versions = {c.version for c in incompatibilities[identifier]}
         # Skip versions that are known bad
         if candidate.version in bad_versions:
-            if DEBUG_RESOLVER:
-                logger.debug(
-                    f"{identifier}: skipping bad version {candidate.version} from {bad_versions}"
-                )
+            logger.debug(
+                "skipping bad version %s from %s",
+                candidate.version,
+                bad_versions,
+            )
             return False
         for r in identifier_reqs:
             if self.is_satisfied_by(requirement=r, candidate=candidate):
@@ -439,18 +434,20 @@ class BaseProvider(ExtrasProvider):
         if not requirement.specifier.contains(
             candidate.version, prereleases=allow_prerelease
         ):
-            if DEBUG_RESOLVER:
-                logger.debug(
-                    f"{requirement.name}: skipping candidate version {candidate.version} because it does not match {requirement.specifier}"
-                )
+            logger.debug(
+                "skipping candidate version %s because it does not match %s",
+                candidate.version,
+                requirement.specifier,
+            )
             return False
 
         if not self.constraints.is_satisfied_by(requirement.name, candidate.version):
-            if DEBUG_RESOLVER:
-                c = self.constraints.get_constraint(requirement.name)
-                logger.debug(
-                    f"{requirement.name}: skipping {candidate.version} due to constraint {c}"
-                )
+            c = self.constraints.get_constraint(requirement.name)
+            logger.debug(
+                "skipping %s due to constraint %s",
+                candidate.version,
+                c,
+            )
             return False
 
         return True
@@ -507,17 +504,11 @@ class PyPIProvider(BaseProvider):
             return False
         # Only include sdists if we're asked to
         if candidate.is_sdist and not self.include_sdists:
-            if DEBUG_RESOLVER:
-                logger.debug(
-                    f"{identifier}: skipping {candidate} because it is an sdist"
-                )
+            logger.debug("ignoring sdist %s", candidate)
             return False
         # Only include wheels if we're asked to
         if not candidate.is_sdist and not self.include_wheels:
-            if DEBUG_RESOLVER:
-                logger.debug(
-                    f"{identifier}: skipping {candidate} because it is a wheel"
-                )
+            logger.debug("ignoring wheel %s", candidate)
             return False
         return True
 
@@ -597,7 +588,7 @@ class GenericProvider(BaseProvider):
         try:
             return Version(item)
         except Exception as err:
-            logger.debug(f"{identifier}: could not parse version from {item}: {err}")
+            logger.debug("could not parse version from %s: %s", item, err)
             return None
 
     def _re_match_function(
@@ -606,14 +597,16 @@ class GenericProvider(BaseProvider):
         mo = regex.match(item)
         if mo is None:
             logger.debug(
-                f"{identifier}: tag {item} does not match pattern {regex.pattern}"
+                "tag %s does not match pattern %s",
+                item,
+                regex.pattern,
             )
             return None
         value = mo.group(1)
         try:
             return Version(value)
         except Exception as err:
-            logger.debug(f"{identifier}: could not parse version from {value}: {err}")
+            logger.debug("could not parse version from %s: %s", value, err)
             return None
 
     def get_cache(self) -> dict[str, list[Candidate]]:
@@ -640,7 +633,7 @@ class GenericProvider(BaseProvider):
                 else:
                     version = self._match_function(identifier, item)
                     if version is None:
-                        logger.debug(f"{identifier}: match function ignores {item}")
+                        logger.debug("match function ignores %s", item)
                         continue
                     assert isinstance(version, Version)
                     version = version
@@ -704,8 +697,7 @@ class GitHubTagProvider(GenericProvider):
                 resp.raise_for_status()
             except Exception as e:
                 logger.error(
-                    "%s: Failed to fetch GitHub tags from %s: %s",
-                    identifier,
+                    "Failed to fetch GitHub tags from %s: %s",
                     nexturl,
                     e,
                 )
@@ -715,7 +707,7 @@ class GitHubTagProvider(GenericProvider):
                 name = entry["name"]
                 result = self._match_function(identifier, name)
                 if result is None:
-                    logger.debug(f"{identifier}: match function ignores {name}")
+                    logger.debug("match function ignores %s", name)
                     continue
                 assert isinstance(result, Version)
                 yield entry["tarball_url"], result
@@ -771,8 +763,7 @@ class GitLabTagProvider(GenericProvider):
                 resp.raise_for_status()
             except Exception as e:
                 logger.error(
-                    "%s: Failed to fetch GitLab tags from %s: %s",
-                    identifier,
+                    "Failed to fetch GitLab tags from %s: %s",
                     nexturl,
                     e,
                 )
@@ -781,7 +772,7 @@ class GitLabTagProvider(GenericProvider):
                 name = entry["name"]
                 version = self._match_function(identifier, name)
                 if version is None:
-                    logger.debug(f"{identifier}: match function ignores {name}")
+                    logger.debug("match function ignores %s", name)
                     continue
                 assert isinstance(version, Version)
 
