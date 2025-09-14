@@ -211,7 +211,7 @@ description = "Run linters."
 skip-install = true # Corresponds to skipping project installation for linting
 features = ["build"]
 dependencies = [
-  "ruff",
+  "ruff==0.12.0",
   "packaging",
   "check-python-versions"
 ]
