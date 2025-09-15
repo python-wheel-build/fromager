@@ -40,7 +40,7 @@ fromager \
     --settings-dir="$SCRIPTDIR/build-parallel" \
     build-parallel "$OUTDIR/graph.json"
 
-if ! grep -q "cython-3.1.1: ready to build" "$log"; then
+if ! grep -q "ready to build: cython==3.1.1" "$log"; then
   echo "Did not find message indicating build of cython would start" 1>&2
   pass=false
 fi
