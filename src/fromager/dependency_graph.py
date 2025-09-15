@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import graphlib
 import json
 import logging
 import pathlib
@@ -358,3 +359,16 @@ class DependencyGraph:
             yield from self._depth_first_traversal(
                 edge.destination_node.children, visited, match_dep_types
             )
+
+    def get_build_topology(self) -> graphlib.TopologicalSorter[DependencyNode]:
+        """Construct a topology graph of packages and their build dependencies
+
+        See :class:`graphlib.TopologicalSorter`
+        """
+        topo: graphlib.TopologicalSorter[DependencyNode] = graphlib.TopologicalSorter()
+        for node in self.get_all_nodes():
+            if node.key == ROOT:
+                continue
+            topo.add(node, *node.iter_build_requirements())
+        topo.prepare()
+        return topo

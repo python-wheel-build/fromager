@@ -1,11 +1,19 @@
 import graphlib
 
+import pathlib
+
+import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from fromager.dependency_graph import DependencyNode
+from fromager.dependency_graph import DependencyGraph, DependencyNode
 from fromager.requirements_file import RequirementType
+
+
+@pytest.fixture
+def depgraph(testdata_path: pathlib.Path) -> DependencyGraph:
+    return DependencyGraph.from_file(testdata_path / "graph.json")
 
 
 def mknode(name: str, version: str = "1.0", **kwargs) -> DependencyNode:
@@ -146,3 +154,86 @@ def test_pr759_discussion() -> None:
     assert sorted(d.iter_install_requirements()) == [e]
     assert sorted(e.iter_install_requirements()) == []
     assert sorted(f.iter_install_requirements()) == []
+
+
+def test_dependency_graph(depgraph: DependencyGraph) -> None:
+    assert set(depgraph.nodes) == {
+        "",
+        "cython==3.1.1",
+        "flit-core==3.12.0",
+        "imapautofiler==1.14.0",
+        "imapclient==3.0.1",
+        "jaraco-classes==3.4.0",
+        "jaraco-context==6.0.1",
+        "jaraco-functools==4.1.0",
+        "jinja2==3.1.6",
+        "keyring==25.6.0",
+        "markupsafe==3.0.2",
+        "more-itertools==10.7.0",
+        "packaging==25.0",
+        "pyyaml==6.0.2",
+        "setuptools-scm==8.3.1",
+        "setuptools==80.8.0",
+        "wheel==0.46.1",
+    }
+
+
+def test_dependency_graph_iter_requirements(depgraph: DependencyGraph) -> None:
+    nodes = depgraph.get_nodes_by_name("cython")
+    assert len(nodes) == 1
+    cython = nodes[0]
+    assert sorted(node.key for node in cython.iter_build_requirements()) == [
+        "setuptools==80.8.0"
+    ]
+    assert sorted(node.key for node in cython.iter_install_requirements()) == []
+
+    nodes = depgraph.get_nodes_by_name("pyyaml")
+    assert len(nodes) == 1
+    pyyaml = nodes[0]
+    assert sorted(node.key for node in pyyaml.iter_build_requirements()) == [
+        "cython==3.1.1",
+        "setuptools==80.8.0",
+        "wheel==0.46.1",
+    ]
+    assert sorted(node.key for node in pyyaml.iter_install_requirements()) == []
+
+
+def test_build_graph(depgraph: DependencyGraph) -> None:
+    steps: list[list[str]] = []
+
+    topo = depgraph.get_build_topology()
+    while topo.is_active():
+        nodes: tuple[DependencyNode, ...] = topo.get_ready()
+        steps.append(sorted(node.key for node in nodes))
+        topo.done(*nodes)
+
+    assert steps == [
+        [
+            # build systems can bootstrap without external dependencies
+            "flit-core==3.12.0",
+            "setuptools==80.8.0",
+        ],
+        [
+            # packages that just depend on 'flit-core' or 'setuptools'
+            "cython==3.1.1",
+            "imapclient==3.0.1",
+            "jinja2==3.1.6",
+            "markupsafe==3.0.2",
+            "more-itertools==10.7.0",
+            "packaging==25.0",
+        ],
+        [
+            # the two packages depend on 'packaging'
+            "setuptools-scm==8.3.1",
+            "wheel==0.46.1",
+        ],
+        [
+            # final set depends on 'setuptools-scm' or 'wheel'
+            "imapautofiler==1.14.0",
+            "jaraco-classes==3.4.0",
+            "jaraco-context==6.0.1",
+            "jaraco-functools==4.1.0",
+            "keyring==25.6.0",
+            "pyyaml==6.0.2",
+        ],
+    ]
