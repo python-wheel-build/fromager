@@ -574,7 +574,7 @@ class Bootstrapper:
             changelogs = pbi.get_changelog(resolved_version)
             logger.debug(f"{req.name} has change logs {changelogs}")
 
-            dist_name, dist_version, build_tag, _ = wheels.extract_info_from_wheel_file(
+            _, _, build_tag, _ = wheels.extract_info_from_wheel_file(
                 req, wheelfile_name
             )
             if expected_build_tag and expected_build_tag != build_tag:
@@ -604,7 +604,7 @@ class Bootstrapper:
     def _unpack_metadata_from_wheel(
         self, req: Requirement, resolved_version: Version, wheel_filename: pathlib.Path
     ) -> pathlib.Path | None:
-        dist_name, dist_version, build_tag, _ = wheels.extract_info_from_wheel_file(
+        dist_name, dist_version, _, _ = wheels.extract_info_from_wheel_file(
             req,
             wheel_filename,
         )

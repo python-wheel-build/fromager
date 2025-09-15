@@ -1,5 +1,4 @@
 import pathlib
-import tempfile
 import zipfile
 from unittest.mock import Mock, patch
 
@@ -116,7 +115,7 @@ def test_download_wheel_unquotes_url_encoded_filenames(tmp_path: pathlib.Path) -
     # URL with encoded plus sign (%2B)
     wheel_url = "https://example.test/test_pkg-1.0%2Blocal-py3-none-any.whl"
 
-    mock_wheel, mock_wheel_file = tempfile.mkstemp()
+    mock_wheel_file = tmp_path / "mockwheel.whl"
     with zipfile.ZipFile(mock_wheel_file, "w") as zf:
         # Add minimal legitimate files
         zf.writestr("test_pkg/__init__.py", "")
