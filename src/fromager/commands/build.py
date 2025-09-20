@@ -1,7 +1,6 @@
 import concurrent.futures
 import dataclasses
 import datetime
-import functools
 import json
 import logging
 import pathlib
@@ -42,27 +41,21 @@ logger = logging.getLogger(__name__)
 DependencyNodeList = list[dependency_graph.DependencyNode]
 
 
-@dataclasses.dataclass()
-@functools.total_ordering
+@dataclasses.dataclass(order=True, frozen=True)
 class BuildSequenceEntry:
+    # compare, hash, and sort by name and version
     name: str
     version: Version
-    prebuilt: bool
-    download_url: str
-    wheel_filename: pathlib.Path
-    skipped: bool = False
+    prebuilt: bool = dataclasses.field(compare=False)
+    download_url: str = dataclasses.field(compare=False)
+    wheel_filename: pathlib.Path = dataclasses.field(compare=False)
+    skipped: bool = dataclasses.field(default=False, compare=False)
 
     @staticmethod
     def dict_factory(x):
         return {
             k: str(v) if isinstance(v, pathlib.Path | Version) else v for (k, v) in x
         }
-
-    def __lt__(self, other):
-        if not isinstance(other, BuildSequenceEntry):
-            return NotImplemented
-        # sort by lower name and version
-        return (self.name.lower(), self.version) < (other.name.lower(), other.version)
 
 
 @click.command()
@@ -117,7 +110,7 @@ def build(
             req=req,
             sdist_server_url=sdist_server_url,
         )
-        wheel_filename = _build(
+        entry = _build(
             wkctx=wkctx,
             resolved_version=version,
             req=req,
@@ -127,7 +120,7 @@ def build(
         )
         # invalidate uv cache
         wkctx.uv_clean_cache(req)
-    print(wheel_filename)
+    print(entry.wheel_filename)
 
 
 build._fromager_show_build_settings = True  # type: ignore
@@ -198,7 +191,7 @@ def build_sequence(
 
             with req_ctxvar_context(req, resolved_version):
                 logger.info("building %s", resolved_version)
-                wheel_filename, prebuilt = _build(
+                entry = _build(
                     wkctx=wkctx,
                     resolved_version=resolved_version,
                     req=req,
@@ -206,20 +199,19 @@ def build_sequence(
                     force=force,
                     cache_wheel_server_url=cache_wheel_server_url,
                 )
-                if prebuilt:
-                    logger.info("downloaded prebuilt wheel %s", wheel_filename)
-                else:
-                    logger.info("built %s", wheel_filename)
-
-                entries.append(
-                    BuildSequenceEntry(
-                        dist_name,
-                        resolved_version,
-                        prebuilt,
-                        source_download_url,
-                        wheel_filename=wheel_filename,
+                if entry.prebuilt:
+                    logger.info(
+                        "downloaded prebuilt wheel %s", entry.wheel_filename.name
                     )
-                )
+                elif entry.skipped:
+                    logger.info(
+                        "skipping building wheel since %s already exists",
+                        entry.wheel_filename.name,
+                    )
+                else:
+                    logger.info("built %s", entry.wheel_filename.name)
+
+                entries.append(entry)
 
     metrics.summarize(wkctx, "Building")
 
@@ -330,7 +322,7 @@ def _build(
     source_download_url: str,
     force: bool,
     cache_wheel_server_url: str | None,
-) -> tuple[pathlib.Path, bool]:
+) -> BuildSequenceEntry:
     """Handle one version of one wheel.
 
     Either:
@@ -339,6 +331,7 @@ def _build(
     3. Build the wheel from source.
     """
     wheel_filename: pathlib.Path | None = None
+    use_exiting_wheel: bool = False
 
     # Set up a log file for all of the details of the build for this one wheel.
     # We attach a handler to the root logger so that all messages are logged to
@@ -370,6 +363,7 @@ def _build(
         )
         if wheel_filename:
             logger.info("using existing wheel from %s", wheel_filename)
+            use_exiting_wheel = True
 
     # See if we can download a prebuilt wheel.
     if prebuilt and not wheel_filename:
@@ -379,6 +373,10 @@ def _build(
             wheel_url=source_download_url,
             output_directory=wkctx.wheels_build,
         )
+    else:
+        # already downloaded
+        use_exiting_wheel = True
+
     # We may have downloaded the prebuilt wheel in _is_wheel_built or
     # via download_wheel(). Regardless, if it was a prebuilt wheel,
     # run the hooks.
@@ -460,7 +458,14 @@ def _build(
     # moved to a new directory.
     wheel_filename = wkctx.wheels_downloads / wheel_filename.name
 
-    return wheel_filename, prebuilt
+    return BuildSequenceEntry(
+        name=canonicalize_name(req.name),
+        version=resolved_version,
+        prebuilt=prebuilt,
+        download_url=source_download_url,
+        wheel_filename=wheel_filename,
+        skipped=use_exiting_wheel,
+    )
 
 
 def _is_wheel_built(
@@ -535,7 +540,7 @@ def _build_parallel(
     source_download_url: str,
     force: bool,
     cache_wheel_server_url: str | None,
-) -> tuple[pathlib.Path, bool]:
+) -> BuildSequenceEntry:
     """
     This function runs in a thread to manage the build of a single package.
     """
@@ -713,16 +718,8 @@ def build_parallel(
                 # Wait for all builds to complete
                 for node, future in zip(buildable_nodes, futures, strict=True):
                     try:
-                        wheel_filename, prebuilt = future.result()
-                        entries.append(
-                            BuildSequenceEntry(
-                                node.canonicalized_name,
-                                node.version,
-                                prebuilt,
-                                node.download_url,
-                                wheel_filename=wheel_filename,
-                            )
-                        )
+                        entry = future.result()
+                        entries.append(entry)
                         built_node_keys.add(node.key)
                         nodes_to_build.remove(node)
                         # progress bar is updated in callback
