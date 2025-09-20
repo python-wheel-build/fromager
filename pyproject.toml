@@ -73,6 +73,7 @@ test = [
     "twine>=6.1.0",
     "hatchling",
     "hatch-vcs",
+    "click!=8.3.0",
 ]
 docs = [
     "sphinx",
