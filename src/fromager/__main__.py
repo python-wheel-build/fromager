@@ -80,6 +80,10 @@ else:
     help="location to manage wheel repository",
 )
 @click.option(
+    "--build-wheel-server-url",
+    help="An optional URL for external web server for building wheels, to replace the built-in server. Must be configured to serve the path specified for --wheels-repo.",
+)
+@click.option(
     "-t",
     "--work-dir",
     default=pathlib.Path("work-dir"),
@@ -149,6 +153,7 @@ def main(
     error_log_file: pathlib.Path,
     sdists_repo: pathlib.Path,
     wheels_repo: pathlib.Path,
+    build_wheel_server_url: str,
     work_dir: pathlib.Path,
     patches_dir: pathlib.Path,
     settings_file: pathlib.Path,
@@ -215,6 +220,10 @@ def main(
             logger.info(f"maximum concurrent jobs: {jobs}")
             logger.info(f"constraints file: {constraints_file}")
             logger.info(f"network isolation: {network_isolation}")
+            if build_wheel_server_url:
+                logger.info(f"external build wheel server: {build_wheel_server_url}")
+            else:
+                logger.info("using internal build wheel server")
             overrides.log_overrides()
             hooks.log_hooks()
 
@@ -233,6 +242,7 @@ def main(
         patches_dir=patches_dir,
         sdists_repo=sdists_repo,
         wheels_repo=wheels_repo,
+        wheel_server_url=build_wheel_server_url,
         work_dir=work_dir,
         cleanup=cleanup,
         variant=variant,
