@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import logging
 import pathlib
 import typing
@@ -94,22 +95,28 @@ class PyprojectFix:
     def _update_build_requires(self, build_system: TomlDict) -> None:
         old_requires = build_system[BUILD_REQUIRES]
         # always include setuptools
-        req_map: dict[NormalizedName, Requirement] = {
-            canonicalize_name("setuptools"): Requirement("setuptools"),
+        req_map: dict[NormalizedName, list[Requirement]] = {
+            canonicalize_name("setuptools"): [Requirement("setuptools")],
         }
         # parse original build reqirements (if available)
         for reqstr in old_requires:
             req = Requirement(reqstr)
-            req_map[canonicalize_name(req.name)] = req
+            req_map.setdefault(canonicalize_name(req.name), []).append(req)
         # remove unwanted requirements
         for name in self.remove_requirements:
             req_map.pop(canonicalize_name(name), None)
         # add / update requirements
+        update_req_map: dict[NormalizedName, list[Requirement]] = {}
         for reqstr in self.update_requirements:
             req = Requirement(reqstr)
-            req_map[canonicalize_name(req.name)] = req
+            update_req_map.setdefault(canonicalize_name(req.name), []).append(req)
+        req_map.update(update_req_map)
 
-        new_requires = sorted(str(req) for req in req_map.values())
+        new_requires = sorted(
+            itertools.chain.from_iterable(
+                [str(req) for req in reqs] for reqs in req_map.values()
+            )
+        )
         if set(new_requires) != set(old_requires):
             # ignore order of items
             build_system[BUILD_REQUIRES] = new_requires
