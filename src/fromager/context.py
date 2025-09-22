@@ -45,6 +45,7 @@ class WorkContext:
         network_isolation: bool = False,
         max_jobs: int | None = None,
         settings_dir: pathlib.Path | None = None,
+        wheel_server_url: str = "",
     ):
         if active_settings is None:
             active_settings = packagesettings.Settings(
@@ -73,7 +74,7 @@ class WorkContext:
         self.work_dir = pathlib.Path(work_dir).resolve()
         self.graph_file = self.work_dir / "graph.json"
         self.uv_cache = self.work_dir / "uv-cache"
-        self.wheel_server_url = ""
+        self.wheel_server_url = wheel_server_url
         self.logs_dir = self.work_dir / "logs"
         self.cleanup = cleanup
         # separate value so bootstrap-parallel can keep build envs
