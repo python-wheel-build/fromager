@@ -1,3 +1,4 @@
+import graphlib
 import json
 import logging
 import pathlib
@@ -296,3 +297,20 @@ class DependencyGraph:
             yield from self._depth_first_traversal(
                 edge.destination_node.children, visited, match_dep_types
             )
+
+    def get_topological_sorter(self) -> graphlib.TopologicalSorter[DependencyNode]:
+        """Returns a topological sorter for the build graph.
+
+        For simplicity, we treat all dependencies as build dependencies. This
+        ensures that the installation dependencies of actual build dependencies
+        are built before something tries to install the build dependency.
+        """
+        sorter: graphlib.TopologicalSorter[DependencyNode] = (
+            graphlib.TopologicalSorter()
+        )
+        for node in self.get_all_nodes():
+            if node.key == ROOT:
+                continue
+            sorter.add(node, *(edge.destination_node for edge in node.children))
+        sorter.prepare()
+        return sorter
