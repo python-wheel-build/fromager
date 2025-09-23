@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import dataclasses
+import graphlib
 import json
 import logging
 import pathlib
@@ -29,28 +33,42 @@ class DependencyNodeDict(typing.TypedDict):
     edges: list[DependencyEdgeDict]
 
 
+@dataclasses.dataclass(frozen=True, order=True, slots=True)
 class DependencyNode:
-    def __init__(
-        self,
-        req_name: NormalizedName,
-        version: Version,
-        download_url: str = "",
-        pre_built: bool = False,
-    ) -> None:
-        self.canonicalized_name = req_name
-        self.version = version
-        self.parents: list[DependencyEdge] = []
-        self.children: list[DependencyEdge] = []
-        self.key = f"{self.canonicalized_name}=={version}"
-        self.download_url = download_url
-        self.pre_built = pre_built
+    canonicalized_name: NormalizedName
+    version: Version
+    download_url: str = dataclasses.field(default="", compare=False)
+    pre_built: bool = dataclasses.field(default=False, compare=False)
+    # additional fields
+    key: str = dataclasses.field(init=False, compare=False, repr=False)
+    parents: list[DependencyEdge] = dataclasses.field(
+        default_factory=list,
+        init=False,
+        compare=False,
+        repr=False,
+    )
+    children: list[DependencyEdge] = dataclasses.field(
+        default_factory=list,
+        init=False,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self.canonicalized_name == ROOT:
+            # root has a special key
+            object.__setattr__(self, "key", ROOT)
+        else:
+            object.__setattr__(
+                self, "key", f"{self.canonicalized_name}=={self.version}"
+            )
 
     def add_child(
         self,
-        child: "DependencyNode",
+        child: DependencyNode,
         req: Requirement,
         req_type: RequirementType,
-    ):
+    ) -> None:
         current_to_child_edge = DependencyEdge(
             req=req, req_type=req_type, destination_node=child
         )
@@ -62,11 +80,6 @@ class DependencyNode:
         # not an issue for fromager since it is used as a short-lived process
         child.parents.append(child_to_current_edge)
 
-    def get_incoming_install_edges(self) -> list["DependencyEdge"]:
-        return [
-            edge for edge in self.parents if edge.req_type == RequirementType.INSTALL
-        ]
-
     def to_dict(self) -> DependencyNodeDict:
         return {
             "download_url": self.download_url,
@@ -76,9 +89,14 @@ class DependencyNode:
             "edges": [edge.to_dict() for edge in self.children],
         }
 
+    def get_incoming_install_edges(self) -> list[DependencyEdge]:
+        return [
+            edge for edge in self.parents if edge.req_type == RequirementType.INSTALL
+        ]
+
     def get_outgoing_edges(
         self, req_name: str, req_type: RequirementType
-    ) -> list["DependencyEdge"]:
+    ) -> list[DependencyEdge]:
         return [
             edge
             for edge in self.children
@@ -86,29 +104,74 @@ class DependencyNode:
             and edge.req_type == req_type
         ]
 
-    @classmethod
-    def construct_root_node(cls) -> "DependencyNode":
-        root = cls(
-            canonicalize_name(ROOT), Version("0")
-        )  # version doesn't really matter for root
-        root.key = ROOT  # root has a special key type
-        return root
+    def iter_build_requirements(self) -> typing.Iterable[DependencyNode]:
+        """Get all unique, recursive build requirements
 
+        Yield all direct and indirect requirements to build the dependency.
+        Includes direct build dependencies and their recursive **install**
+        requirements.
 
-class DependencyEdge:
-    def __init__(
+        The result is equivalent to the set of ``[build-system].requires``
+        plus all ``Requires-Dist`` of build system requirements -- all
+        packages in the build environment.
+        """
+        visited: set[str] = set()
+        # The outer loop iterates over all children and picks
+        # direct build requirements. For each build requirement, it traverses
+        # all children and recursively get their install requirements
+        # (depth first).
+        for edge in self.children:
+            if edge.key in visited:
+                # optimization: don't traverse visited nodes
+                continue
+            if not edge.req_type.is_build_requirement:
+                # not a build requirement
+                continue
+            visited.add(edge.key)
+            # it's a new ``[build-system].requires``.
+            yield edge.destination_node
+            # recursively get install dependencies of this build dep (depth first).
+            for install_edge in self._traverse_install_requirements(
+                edge.destination_node.children, visited
+            ):
+                yield install_edge.destination_node
+
+    def iter_install_requirements(self) -> typing.Iterable[DependencyNode]:
+        """Get all unique, recursive install requirements"""
+        visited: set[str] = set()
+        for edge in self._traverse_install_requirements(self.children, visited):
+            yield edge.destination_node
+
+    def _traverse_install_requirements(
         self,
-        destination_node: DependencyNode,
-        req_type: RequirementType,
-        req: Requirement,
-    ) -> None:
-        self.req_type = req_type
-        self.req = req
-        self.destination_node = destination_node
+        start_edges: list[DependencyEdge],
+        visited: set[str],
+    ) -> typing.Iterable[DependencyEdge]:
+        for edge in start_edges:
+            if edge.key in visited:
+                continue
+            if not edge.req_type.is_install_requirement:
+                continue
+            visited.add(edge.destination_node.key)
+            yield edge
+            yield from self._traverse_install_requirements(
+                edge.destination_node.children, visited
+            )
+
+
+@dataclasses.dataclass(frozen=True, order=True, slots=True)
+class DependencyEdge:
+    key: str = dataclasses.field(init=False, repr=True, compare=True)
+    destination_node: DependencyNode = dataclasses.field(repr=False, compare=False)
+    req: Requirement = dataclasses.field(repr=True, compare=True)
+    req_type: RequirementType = dataclasses.field(repr=True, compare=True)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "key", self.destination_node.key)
 
     def to_dict(self) -> DependencyEdgeDict:
         return {
-            "key": self.destination_node.key,
+            "key": self.key,
             "req_type": str(self.req_type),
             "req": str(self.req),
         }
@@ -123,7 +186,7 @@ class DependencyGraph:
     def from_file(
         cls,
         graph_file: pathlib.Path | str,
-    ) -> "DependencyGraph":
+    ) -> DependencyGraph:
         with open_file_or_url(graph_file) as f:
             # TODO: add JSON validation to ensure it is a parsable graph json
             raw_graph = typing.cast(dict[str, dict], json.load(f))
@@ -133,7 +196,7 @@ class DependencyGraph:
     def from_dict(
         cls,
         graph_dict: dict[str, dict[str, typing.Any]],
-    ) -> "DependencyGraph":
+    ) -> DependencyGraph:
         graph = cls()
         stack = [ROOT]
         visited = set()
@@ -166,7 +229,7 @@ class DependencyGraph:
 
     def clear(self) -> None:
         self.nodes.clear()
-        self.nodes[ROOT] = DependencyNode.construct_root_node()
+        self.nodes[ROOT] = DependencyNode(canonicalize_name(ROOT), Version("0"))
 
     def _to_dict(self):
         raw_graph = {}
@@ -193,7 +256,7 @@ class DependencyGraph:
         pre_built: bool,
     ):
         new_node = DependencyNode(
-            req_name=req_name,
+            canonicalized_name=req_name,
             version=version,
             download_url=download_url,
             pre_built=pre_built,
@@ -296,3 +359,16 @@ class DependencyGraph:
             yield from self._depth_first_traversal(
                 edge.destination_node.children, visited, match_dep_types
             )
+
+    def get_build_topology(self) -> graphlib.TopologicalSorter[DependencyNode]:
+        """Construct a topology graph of packages and their build dependencies
+
+        See :class:`graphlib.TopologicalSorter`
+        """
+        topo: graphlib.TopologicalSorter[DependencyNode] = graphlib.TopologicalSorter()
+        for node in self.get_all_nodes():
+            if node.key == ROOT:
+                continue
+            topo.add(node, *node.iter_build_requirements())
+        topo.prepare()
+        return topo
