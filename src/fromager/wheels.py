@@ -361,6 +361,11 @@ def build_wheel(
     )
     validate_wheel_filename(req=req, version=version, wheel_file=new_wheel_file)
 
+    # invalidate uv cache, so the new wheel is picked up. The step is only
+    # relevant for local development when a package is rebuilt multiple times
+    # without bumping the build tag.
+    ctx.uv_clean_cache(req)
+
     return new_wheel_file
 
 

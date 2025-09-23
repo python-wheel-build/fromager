@@ -141,7 +141,7 @@ class WorkContext:
         cache location. This function removes a package from all caches, so
         subsequent installations use a new built.
 
-        WARNING: 'uv clean cache' is not concurrency safe with 'uv pip install'.
+        'uv clean cache' is concurrency safe since 0.8.19.
         """
         if not reqs:
             raise ValueError("no requirements")
