@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from fromager import build_environment, context, dependencies
 
@@ -206,3 +207,49 @@ def test_get_build_sdist_dependencies_cached(
         build_env=build_env,
     )
     assert results == set([Requirement("foo==1.0")])
+
+
+def test_validate_dist_name_version_underscore() -> None:
+    req = Requirement("huggingface-hub")
+    ver = Version("0.35.1")
+    what = "sdist metadata"
+    dist_name = "huggingface_hub"
+    dist_version = Version("0.35.1")
+    try:
+        dependencies.validate_dist_name_version(req, ver, what, dist_name, dist_version)
+    except ValueError as err:
+        pytest.fail(f"Unexpected ValueError: {err}")
+
+
+def test_validate_dist_name_version_dash() -> None:
+    req = Requirement("huggingface-hub")
+    ver = Version("0.35.1")
+    what = "sdist metadata"
+    dist_name = "huggingface-hub"
+    dist_version = Version("0.35.1")
+    try:
+        dependencies.validate_dist_name_version(req, ver, what, dist_name, dist_version)
+    except ValueError as err:
+        pytest.fail(f"Unexpected ValueError: {err}")
+
+
+def test_validate_dist_name_version_case() -> None:
+    req = Requirement("huggingface-hub")
+    ver = Version("0.35.1")
+    what = "sdist metadata"
+    dist_name = "HuggingFace_Hub"
+    dist_version = Version("0.35.1")
+    try:
+        dependencies.validate_dist_name_version(req, ver, what, dist_name, dist_version)
+    except ValueError as err:
+        pytest.fail(f"Unexpected ValueError: {err}")
+
+
+def test_validate_dist_name_version_no_match() -> None:
+    req = Requirement("huggingface-hub")
+    ver = Version("0.35.1")
+    what = "sdist metadata"
+    dist_name = "huggingfacehub"
+    dist_version = Version("0.35.1")
+    with pytest.raises(ValueError):
+        dependencies.validate_dist_name_version(req, ver, what, dist_name, dist_version)

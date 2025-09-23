@@ -375,13 +375,20 @@ def validate_dist_name_version(
 ) -> None:
     """Validate that dist name and version matches expected values"""
     req_name = canonicalize_name(req.name)
-    if dist_name != req_name:
-        raise ValueError(f"{what} does not match requirement {req_name!r}")
+    c_dist_name = canonicalize_name(dist_name)
+    if c_dist_name != req_name:
+        raise ValueError(
+            f"{what} {c_dist_name!r} does not match requirement {req_name!r}"
+        )
     if dist_version != version:
         if dist_version.public != version.public:
-            raise ValueError(f"{what} does not match public version {version!r}")
+            raise ValueError(
+                f"{what} {dist_version.public!r} does not match public version {version!r}"
+            )
         else:
-            logger.warning(f"{what} has different local version than {version!r}")
+            logger.warning(
+                f"{what} {dist_version.public!r} has different local version than {version!r}"
+            )
 
 
 def get_install_dependencies_of_wheel(
