@@ -48,7 +48,7 @@ dependencies = [
     "tomlkit",
     "tqdm",
     "wheel",
-    "uv",
+    "uv>=0.8.19",
 ]
 
 [project.optional-dependencies]

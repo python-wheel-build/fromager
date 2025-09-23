@@ -224,6 +224,5 @@ def build_wheel(
         version=dist_version,
         build_env=build_env,
     )
-    wkctx.uv_clean_cache(req)
     requirement_ctxvar.reset(token)
     print(wheel_filename)
