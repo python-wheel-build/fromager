@@ -44,11 +44,13 @@ dependencies = [
     "requests",
     "resolvelib",
     "requests-mock",
+    "starlette",
     "stevedore",
     "tomlkit",
     "tqdm",
     "wheel",
     "uv>=0.8.19",
+    "uvicorn",
 ]
 
 [project.optional-dependencies]
