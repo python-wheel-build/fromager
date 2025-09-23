@@ -1,12 +1,13 @@
 import dataclasses
 import graphlib
+import typing
 
 import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from fromager.dependency_graph import DependencyNode
+from fromager.dependency_graph import DependencyNode, TrackingTopologicalSorter
 from fromager.requirements_file import RequirementType
 
 
@@ -172,3 +173,67 @@ def test_pr759_discussion() -> None:
     assert sorted(d.iter_install_requirements()) == [e]
     assert sorted(e.iter_install_requirements()) == []
     assert sorted(f.iter_install_requirements()) == []
+
+
+def test_tracking_topology_sorter() -> None:
+    a = mknode("a")
+    b = mknode("b")
+    c = mknode("c")
+    d = mknode("d")
+    e = mknode("e")
+    f = mknode("f")
+
+    graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+    graph = {
+        a: [b, c],
+        b: [c, d],
+        d: [e],
+        f: [d],
+    }
+
+    topo = TrackingTopologicalSorter(graph)
+    topo.prepare()
+
+    assert topo.dependency_nodes == {b, c, d, e}
+    assert topo.exclusive_nodes == set()
+    # properties return new objects
+    assert topo.dependency_nodes is not topo.dependency_nodes
+    assert topo.exclusive_nodes is not topo.exclusive_nodes
+
+    processed: list[DependencyNode] = []
+    while topo.is_active():
+        ready = sorted(topo.get_available())
+        r0 = ready[0]
+        processed.append(r0)
+        topo.done(r0)
+    # c and e have no dependency
+    # d depends on e
+    # b after d
+    # f after d, but sorting pushes it after a
+    # a on b
+    assert processed == [c, e, d, b, a, f]
+
+    topo = TrackingTopologicalSorter(graph)
+    assert topo.dependency_nodes == {b, c, d, e}
+    assert topo.exclusive_nodes == set()
+    batches = list(topo.static_batches())
+    assert batches == [
+        {c, e},
+        {d},
+        {b, f},
+        {a},
+    ]
+
+    topo = TrackingTopologicalSorter(graph)
+    # mark b as exclusive
+    topo.add(b, exclusive=True)
+    assert topo.dependency_nodes == {b, c, d, e}
+    assert topo.exclusive_nodes == {b}
+    batches = list(topo.static_batches())
+    assert batches == [
+        {c, e},
+        {d},
+        {f},
+        {b},
+        {a},
+    ]
