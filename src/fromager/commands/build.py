@@ -638,17 +638,13 @@ def build_parallel(
                 with req_ctxvar_context(
                     Requirement(node.canonicalized_name), node.version
                 ):
-                    # Get all dependencies. If package A needs package B to be
-                    # installed, package B should not have a build dependency on
-                    # package A. So, building the installation dependencies of a
-                    # package before we build that package should be possible,
-                    # and doing so ensures that when we mark a package as ready
-                    # to be used for building other packages, all of the
-                    # installation dependencies are also ready.
+                    # Get all build dependencies (build-system, build-backend, build-sdist)
                     build_deps: DependencyNodeList = [
-                        edge.destination_node for edge in node.children
+                        edge.destination_node
+                        for edge in node.children
+                        if edge.req_type.is_build_requirement
                     ]
-                    # A node can be built when all of its dependencies are built
+                    # A node can be built when all of its build dependencies are built
                     unbuilt_deps: set[str] = set(
                         dep.key for dep in build_deps if dep.key not in built_node_keys
                     )
