@@ -230,9 +230,7 @@ Source hooks
 .. autofromagerhook:: default_build_sdist
 
     The ``build_sdist()`` function is responsible for creating a new source
-    distribution from the prepared source tree and placing it in
-    ``ctx.sdists_build``.  The dist name and version of the sdist file must
-    match the ``Requirement`` and ``Version``.
+    distribution from the prepared source tree and placing it in ``ctx.sdists_build``.
 
     The arguments are the ``WorkContext``, the ``Requirement`` being evaluated, and the
     `Path` to the root of the source tree.
@@ -249,8 +247,8 @@ Wheel hooks
 
     The ``build_wheel()`` function is responsible for creating a wheel from
     the prepared source tree and placing it in ``ctx.wheels_build``. The
-    default implementation uses :pep:`517` pyproject hook.  The dist name
-    and version of the wheel must match the ``Requirement`` and ``Version``.
+    default implementation invokes ``pip wheel`` in a temporary directory
+    and passes the path to the source tree as argument.
 
     The arguments are the ``WorkContext``, the ``Path`` to a virtualenv
     prepared with the build dependencies, a ``dict`` with extra environment
