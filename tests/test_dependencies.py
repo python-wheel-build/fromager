@@ -2,15 +2,11 @@ import functools
 import itertools
 import pathlib
 import shutil
-import textwrap
 import typing
 from unittest.mock import Mock, patch
 
 import pytest
-from packaging.metadata import Metadata
 from packaging.requirements import Requirement
-from packaging.utils import NormalizedName
-from packaging.version import Version
 
 from fromager import build_environment, context, dependencies
 
@@ -210,72 +206,3 @@ def test_get_build_sdist_dependencies_cached(
         build_env=build_env,
     )
     assert results == set([Requirement("foo==1.0")])
-
-
-@patch("fromager.dependencies.pep517_metadata_of_sdist")
-def test_default_get_install_dependencies_of_sdist(
-    m_pep517_metadata_of_sdist: Mock,
-    tmp_context: context.WorkContext,
-    tmp_path: pathlib.Path,
-) -> None:
-    req = Requirement("huggingface-hub")
-    version = Version("1.2.3")
-    # sdist metadata name may not be normalized
-    metadata_txt = textwrap.dedent(
-        """\
-        Metadata-Version: 2.3
-        Name: HuggingFace_Hub
-        Version: 1.2.3
-        Requires-Dist: filelock
-        Requires-Dist: requests
-        """
-    )
-    metadata = Metadata.from_email(metadata_txt)
-    m_pep517_metadata_of_sdist.return_value = metadata
-
-    requirements = dependencies.default_get_install_dependencies_of_sdist(
-        ctx=tmp_context,
-        req=req,
-        version=version,
-        sdist_root_dir=tmp_path,
-        build_env=Mock(),
-        extra_environ={},
-        build_dir=tmp_path,
-        config_settings={},
-    )
-    assert requirements == {Requirement("filelock"), Requirement("requests")}
-
-
-@pytest.mark.parametrize(
-    "req_str,version_str,dist_name_str,dist_version_str,exc",
-    [
-        ("mypkg", "1.0", "mypkg", "1.0", None),
-        ("MyPKG", "1.0", "mypkg", "1.0", None),
-        ("mypkg", "1.0", "MyPKG", "1.0", RuntimeError),
-        ("mypkg", "1.0", "otherpkg", "1.0", ValueError),
-        ("mypkg", "1.0", "mypkg", "1.1", ValueError),
-        ("mypkg", "1.0+local", "mypkg", "1.0+local", None),
-        ("mypkg", "1.0", "mypkg", "1.0+local", None),
-        ("mypkg", "1.0+local", "mypkg", "1.0", None),
-    ],
-)
-def test_validate_dist_name_version(
-    req_str: str,
-    version_str: str,
-    dist_name_str: str,
-    dist_version_str: str,
-    exc: type[Exception] | None,
-) -> None:
-    validate = functools.partial(
-        dependencies.validate_dist_name_version,
-        req=Requirement(req_str),
-        version=Version(version_str),
-        what="test",
-        dist_name=typing.cast(NormalizedName, dist_name_str),
-        dist_version=Version(dist_version_str),
-    )
-    if exc is None:
-        validate()
-    else:
-        with pytest.raises(exc):
-            validate()

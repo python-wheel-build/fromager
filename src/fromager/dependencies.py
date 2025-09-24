@@ -12,7 +12,7 @@ import pyproject_hooks
 import tomlkit
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
-from packaging.utils import NormalizedName, canonicalize_name
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from . import (
@@ -318,8 +318,7 @@ def default_get_install_dependencies_of_sdist(
         req=req,
         version=version,
         what="sdist metadata",
-        # Metadata name is a non-normalized string
-        dist_name=canonicalize_name(metadata.name),
+        dist_name=metadata.name,
         dist_version=metadata.version,
     )
     if not metadata.requires_dist:
@@ -372,30 +371,17 @@ def pep517_metadata_of_sdist(
 
 
 def validate_dist_name_version(
-    req: Requirement,
-    version: Version,
-    what: str,
-    dist_name: NormalizedName,
-    dist_version: Version,
+    req: Requirement, version: Version, what: str, dist_name: str, dist_version: Version
 ) -> None:
     """Validate that dist name and version matches expected values"""
     req_name = canonicalize_name(req.name)
     if dist_name != req_name:
-        if dist_name != canonicalize_name(dist_name):
-            # API misuse
-            raise RuntimeError("dist_name argument {dist_name!r} is not normalized")
+        raise ValueError(f"{what} does not match requirement {req_name!r}")
+    if dist_version != version:
+        if dist_version.public != version.public:
+            raise ValueError(f"{what} does not match public version {version!r}")
         else:
-            raise ValueError(
-                f"{what} {dist_name!r} does not match requirement {req_name!r}"
-            )
-    if dist_version.public != version.public:
-        raise ValueError(
-            f"{what} {dist_version.public!r} does not match public version {version.public!r}"
-        )
-    if dist_version.local != version.local:
-        logger.warning(
-            f"{what} {dist_version.local!r} has different local version than {version.local!r}"
-        )
+            logger.warning(f"{what} has different local version than {version!r}")
 
 
 def get_install_dependencies_of_wheel(
