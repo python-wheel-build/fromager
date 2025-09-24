@@ -363,22 +363,21 @@ def _build(
             logger.info("using existing wheel from %s", wheel_filename)
             use_exiting_wheel = True
 
-    # See if we can download a prebuilt wheel.
-    if prebuilt and not wheel_filename:
-        logger.info("downloading prebuilt wheel")
-        wheel_filename = wheels.download_wheel(
-            req=req,
-            wheel_url=source_download_url,
-            output_directory=wkctx.wheels_build,
-        )
-    else:
-        # already downloaded
-        use_exiting_wheel = True
+    # Handle prebuilt wheels.
+    if prebuilt:
+        if not wheel_filename:
+            logger.info("downloading prebuilt wheel")
+            wheel_filename = wheels.download_wheel(
+                req=req,
+                wheel_url=source_download_url,
+                output_directory=wkctx.wheels_build,
+            )
+        else:
+            # already downloaded prebuilt wheel
+            use_exiting_wheel = True
 
-    # We may have downloaded the prebuilt wheel in _is_wheel_built or
-    # via download_wheel(). Regardless, if it was a prebuilt wheel,
-    # run the hooks.
-    if prebuilt and wheel_filename:
+        # Run hooks for prebuilt wheels. At this point wheel_filename should
+        # be set either from _is_wheel_built() or download_wheel().
         hooks.run_prebuilt_wheel_hooks(
             ctx=wkctx,
             req=req,

@@ -66,6 +66,23 @@ for pattern in $EXPECTED_FILES; do
   fi
 done
 
+# Verify that build-sequence-summary.json has correct skipped status for force builds
+# When using --force, all packages should be built (skipped: false)
+if [ -f "$OUTDIR/work-dir/build-sequence-summary.json" ]; then
+  # Check that all entries have skipped: false
+  not_skipped_count=$(jq '[.[] | select(.skipped == false)] | length' "$OUTDIR/work-dir/build-sequence-summary.json")
+  total_count=$(jq 'length' "$OUTDIR/work-dir/build-sequence-summary.json")
+  if [ "$not_skipped_count" != "$total_count" ]; then
+    echo "Expected all $total_count packages to be built (not skipped), but only $not_skipped_count were marked as not skipped" 1>&2
+    echo "Contents of build-sequence-summary.json:" 1>&2
+    jq '.' "$OUTDIR/work-dir/build-sequence-summary.json" 1>&2
+    pass=false
+  fi
+else
+  echo "build-sequence-summary.json file not found after force build" 1>&2
+  pass=false
+fi
+
 $pass
 
 # Rebuild everything while reusing existing local wheels
@@ -111,6 +128,23 @@ if ! grep -q "skipping builds for versions of packages available" "$log"; then
 fi
 if ! grep -q "skipping building wheel since ${DIST}-${VERSION}-" "$log"; then
   echo "Did not find message indicating build of stevedore was skipped" 1>&2
+  pass=false
+fi
+
+# Verify that build-sequence-summary.json has correct skipped status
+# When using --cache-wheel-server-url with PyPI, all packages should be skipped
+if [ -f "$OUTDIR/work-dir/build-sequence-summary.json" ]; then
+  # Check that all entries have skipped: true
+  skipped_count=$(jq '[.[] | select(.skipped == true)] | length' "$OUTDIR/work-dir/build-sequence-summary.json")
+  total_count=$(jq 'length' "$OUTDIR/work-dir/build-sequence-summary.json")
+  if [ "$skipped_count" != "$total_count" ]; then
+    echo "Expected all $total_count packages to be skipped, but only $skipped_count were marked as skipped" 1>&2
+    echo "Contents of build-sequence-summary.json:" 1>&2
+    jq '.' "$OUTDIR/work-dir/build-sequence-summary.json" 1>&2
+    pass=false
+  fi
+else
+  echo "build-sequence-summary.json file not found" 1>&2
   pass=false
 fi
 
