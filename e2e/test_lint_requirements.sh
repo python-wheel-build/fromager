@@ -10,7 +10,7 @@ pass=true
 
 # Test to demonstrate that command works as expected when input files are valid
 
-if ! fromager lint-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/requirements.txt"; then
+if ! fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/requirements.txt"; then
     echo "the input files should have been recognized as correctly formatted" 1>&2
     pass=false
 fi;
@@ -24,21 +24,21 @@ fi;
 
 # Test to demonstrate that command reports error for invalid / bad requirements
 
-if fromager lint-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/invalid-requirements.txt"; then
+if fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/invalid-requirements.txt"; then
     echo "invalid input files should have been recognized by the command" 1>&2
     pass=false
 fi;
 
 # Test to demonstrate that command reports error for invalid / bad constraints
 
-if fromager lint-requirements "$SCRIPTDIR/validate_inputs/invalid-constraints.txt" "$SCRIPTDIR/validate_inputs/requirements.txt"; then
+if fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/invalid-constraints.txt" "$SCRIPTDIR/validate_inputs/requirements.txt"; then
     echo "invalid input files should have been recognized by the command" 1>&2
     pass=false
 fi;
 
 # Test to demonstrate that command reports error for duplicate entries in files
 
-if fromager lint-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/duplicate-requirements.txt"; then
+if fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/duplicate-requirements.txt"; then
     echo "duplicate entries in files should have been recognized by the command" 1>&2
     pass=false
 fi;
