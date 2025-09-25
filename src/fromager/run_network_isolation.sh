@@ -32,8 +32,6 @@ fi
 # set hostname to "localhost"
 if command -v hostname 2>&1 >/dev/null; then
    hostname localhost
-else
-   echo "'hostname' command is missing, cannot set host name to 'localhost' for $@" >&2
 fi
 
 # replace with command
