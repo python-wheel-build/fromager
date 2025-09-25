@@ -39,7 +39,7 @@ def detect_network_isolation() -> None:
     cmd = network_isolation_cmd()
     if os.name == "posix":
         check = [*cmd, "true"]
-        subprocess.check_call(check, stderr=subprocess.STDOUT)
+        subprocess.check_output(check, stderr=subprocess.STDOUT)
 
 
 class NetworkIsolationError(subprocess.CalledProcessError):
