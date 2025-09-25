@@ -22,11 +22,18 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # bring loopback up
-ip link set lo up
+if command -v ip 2>&1 >/dev/null; then
+   ip link set lo up
+else
+   echo "'ip' command is missing, cannot bring up loopback device for $@" >&2
+   exit 2
+fi
 
 # set hostname to "localhost"
 if command -v hostname 2>&1 >/dev/null; then
    hostname localhost
+else
+   echo "'hostname' command is missing, cannot set host name to 'localhost' for $@" >&2
 fi
 
 # replace with command
