@@ -727,6 +727,11 @@ class PackageBuildInfo:
     @property
     def pre_built(self) -> bool:
         """Does the variant use pre-build wheels?"""
+        # Check if package is in pre_built_override set
+        if self.package in self._settings.pre_built_override:
+            return True
+
+        # Check variant configuration
         vi = self._ps.variants.get(self.variant)
         if vi is not None:
             return vi.pre_built
@@ -1034,6 +1039,7 @@ class Settings:
         self._patches_dir = patches_dir
         self._max_jobs = max_jobs
         self._pbi_cache: dict[Package, PackageBuildInfo] = {}
+        self.pre_built_override: set[NormalizedName] = set()
 
     @classmethod
     def from_files(
