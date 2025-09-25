@@ -33,6 +33,9 @@ BUILD_BACKEND_REQ_FILE_NAME = "build-backend-requirements.txt"
 BUILD_SDIST_REQ_FILE_NAME = "build-sdist-requirements.txt"
 INSTALL_REQ_FILE_NAME = "requirements.txt"
 
+# marker for Fromager's stub PKG-INFO
+STUB_PKG_INFO_SUMMARY = "Fromage stub PKG-INFO"
+
 
 def get_build_system_dependencies(
     *,
@@ -314,14 +317,28 @@ def default_get_install_dependencies_of_sdist(
         config_settings=config_settings,
         validate=True,
     )
-    validate_dist_name_version(
-        req=req,
-        version=version,
-        what="sdist metadata",
-        # Metadata name is a non-normalized string
-        dist_name=canonicalize_name(metadata.name),
-        dist_version=metadata.version,
-    )
+    if metadata.summary is None or STUB_PKG_INFO_SUMMARY not in metadata.summary:
+        # Do not attempt to validate stub metadata. Version may be incorrect.
+        # Treat other validation errors as non-fatal errors.
+        try:
+            validate_dist_name_version(
+                req=req,
+                version=version,
+                what="sdist metadata",
+                # Metadata name is a non-normalized string
+                dist_name=canonicalize_name(metadata.name),
+                dist_version=metadata.version,
+            )
+        except Exception as e:
+            logger.error(
+                "metadata for %s==%s in %r failed to validate: %s",
+                req.name,
+                version,
+                sdist_root_dir,
+                e,
+            )
+    else:
+        logger.debug("Fromager stub metadata detected, not validating name and version")
     if not metadata.requires_dist:
         return set()
     return set(metadata.requires_dist)

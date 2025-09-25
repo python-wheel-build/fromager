@@ -692,7 +692,7 @@ PKG_INFO_CONTENT = """\
 Metadata-Version: 1.0
 Name: {name}
 Version: {version}
-Summary: Fromage stub PKG-INFO
+Summary: {summary}
 """
 
 
@@ -726,6 +726,7 @@ def ensure_pkg_info(
                 PKG_INFO_CONTENT.format(
                     name=req.name,
                     version=str(version),
+                    summary=dependencies.STUB_PKG_INFO_SUMMARY,
                 )
             )
             had_pkg_info = False
