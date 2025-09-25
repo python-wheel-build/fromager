@@ -19,9 +19,17 @@ logger = logging.getLogger(__name__)
     required=True,
     type=click.Path(exists=False, path_type=pathlib.Path),
 )
+@click.option(
+    "--resolve-requirements/--no-resolve-requirements",
+    default=False,
+    help="Resolve requirement and fail if a package or version cannot be resolved",
+    show_default=True,
+)
 @click.pass_obj
 def lint_requirements(
-    wkctx: context.WorkContext, input_files_path: list[pathlib.Path]
+    wkctx: context.WorkContext,
+    resolve_requirements: bool,
+    input_files_path: list[pathlib.Path],
 ) -> None:
     """
     Command to lint the constraints.txt and requirements.txt files
@@ -36,7 +44,7 @@ def lint_requirements(
         logger.error("no constraints.txt or requirements.txt found in given paths")
         sys.exit(1)
 
-    flag = True
+    failures: list[str] = []
 
     # Create bootstrapper for requirement resolution
     bt = bootstrapper.Bootstrapper(
@@ -48,6 +56,7 @@ def lint_requirements(
     )
 
     for path in input_files_path:
+        is_constraints: bool = path.name.endswith("constraints.txt")
         parsed_lines = requirements_file.parse_requirements_file(path)
         unique_entries: dict[str, Requirement] = {}
         for line in parsed_lines:
@@ -58,31 +67,47 @@ def lint_requirements(
                         f"Duplicate entry, first found: {unique_entries[requirement.name]}"
                     )
                 unique_entries[requirement.name] = requirement
-                if requirement.extras and path.name.endswith("constraints.txt"):
-                    raise InvalidRequirement(
-                        "Constraints files cannot contain extra dependencies"
-                    )
-
-                # Resolve the requirement to ensure it can be found
-                # Skip resolution for constraints files as they should only specify versions
-                if not path.name.endswith("constraints.txt"):
-                    token = requirement_ctxvar.set(requirement)
-                    try:
-                        _, version = bt.resolve_version(
-                            req=requirement,
-                            req_type=RequirementType.TOP_LEVEL,
+                if is_constraints:
+                    if requirement.extras:
+                        raise InvalidRequirement(
+                            f"{requirement.name}: Constraints files cannot contain extra dependencies"
                         )
-                        logger.info(f"{requirement} resolves to {version}")
-                    except Exception as resolve_err:
-                        logger.error(
-                            f"{path}: {line}: Failed to resolve requirement: {resolve_err}"
+                    if not requirement.specifier:
+                        raise InvalidRequirement(
+                            f"{requirement.name}: Constraints must have a version specifier"
                         )
-                        flag = False
-                    finally:
-                        requirement_ctxvar.reset(token)
             except InvalidRequirement as err:
-                logger.error(f"{path}: {line}: {err}")
-                flag = False
+                msg = f"{path}: {line}: {err}"
+                logger.error(msg)
+                failures.append(msg)
 
-    if not flag:
+            # Resolve the requirement to ensure it can be found
+            # Skip resolution for constraints files as they should only specify versions
+            if resolve_requirements and not is_constraints:
+                token = requirement_ctxvar.set(requirement)
+                try:
+                    _, version = bt.resolve_version(
+                        req=requirement,
+                        req_type=RequirementType.TOP_LEVEL,
+                    )
+                    logger.info(f"{requirement} resolves to {version}")
+                except Exception as err:
+                    logger.error(
+                        f"{path}: {line}: Failed to resolve requirement: {err}"
+                    )
+                    failures.append(f"{path}: {line}: {err}")
+                finally:
+                    requirement_ctxvar.reset(token)
+
+    if failures:
+        click.echo("Validation error:", err=True)
+        for failure in failures:
+            click.echo(f" - {failure}", err=True)
+        click.echo(
+            f"ERROR: {len(failures)} failure(s) while validating {len(input_files_path)} file(s).",
+            err=True,
+        )
         sys.exit(1)
+    else:
+        click.echo(f"Resolve requirements: {resolve_requirements}")
+        click.echo(f"Successfully validated {len(input_files_path)} file(s).")
