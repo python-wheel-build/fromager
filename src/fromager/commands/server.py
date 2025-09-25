@@ -27,10 +27,10 @@ def wheel_server(
 ) -> None:
     "Start a web server to serve the local wheels-repo"
     server.update_wheel_mirror(wkctx)
-    t = server.run_wheel_server(
+    _, _, thread = server.run_wheel_server(
         wkctx,
         address=address,
         port=port,
     )
     print(f"Listening on {wkctx.wheel_server_url}")
-    t.join()
+    thread.join()
