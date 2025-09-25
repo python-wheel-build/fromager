@@ -217,6 +217,7 @@ def test_default_get_install_dependencies_of_sdist(
     m_pep517_metadata_of_sdist: Mock,
     tmp_context: context.WorkContext,
     tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     req = Requirement("huggingface-hub")
     version = Version("1.2.3")
@@ -244,6 +245,34 @@ def test_default_get_install_dependencies_of_sdist(
         config_settings={},
     )
     assert requirements == {Requirement("filelock"), Requirement("requests")}
+
+    # bad metadata (version mismatch) is treated as non-fatal error
+    metadata_txt = textwrap.dedent(
+        """\
+        Metadata-Version: 2.3
+        Name: HuggingFace_Hub
+        Version: 1.2a0
+        Requires-Dist: filelock
+        Requires-Dist: requests
+        """
+    )
+    metadata = Metadata.from_email(metadata_txt)
+    m_pep517_metadata_of_sdist.return_value = metadata
+    requirements = dependencies.default_get_install_dependencies_of_sdist(
+        ctx=tmp_context,
+        req=req,
+        version=version,
+        sdist_root_dir=tmp_path,
+        build_env=Mock(),
+        extra_environ={},
+        build_dir=tmp_path,
+        config_settings={},
+    )
+    assert requirements == {Requirement("filelock"), Requirement("requests")}
+    assert (
+        "sdist metadata '1.2a0' does not match public version '1.2.3'"
+        in caplog.messages[-1]
+    )
 
 
 @pytest.mark.parametrize(
