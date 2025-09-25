@@ -237,7 +237,10 @@ class BuildEnvironment:
             "json.dump({d.name: d.version for d in distributions()}, sys.stdout)",
         ]
         result = self.run([str(self.python), "-c", "; ".join(lines)])
-        mapping = json.loads(result.strip())
+        try:
+            mapping = json.loads(result.strip())
+        except Exception:
+            logger.exception("failed to de-serialize JSON: %s", result)
         return {name: Version(version) for name, version in sorted(mapping.items())}
 
 
@@ -296,9 +299,13 @@ def prepare_build_environment(
         dep_req_type=RequirementType.BUILD_SDIST,
     )
 
-    logger.debug(
-        "build env %r has packages %r", build_env.path, build_env.get_distributions()
-    )
+    try:
+        distributions = build_env.get_distributions()
+    except Exception:
+        # ignore error for debug call, error reason is logged in get_distributions()
+        pass
+    else:
+        logger.debug("build env %r has packages %r", build_env.path, distributions)
 
     return build_env
 
