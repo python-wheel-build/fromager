@@ -913,9 +913,11 @@ class Bootstrapper:
             return None
         try:
             # no need to pass req type to enable caching since we are already using the graph as our cache
+            # do not cache candidates
             provider = resolver.GenericProvider(
-                version_source=lambda x, y, z: version_source,
+                version_source=lambda identifier: version_source,
                 constraints=self.ctx.constraints,
+                use_resolver_cache=False,
             )
             return resolver.resolve_from_provider(provider, req)
         except Exception as err:
