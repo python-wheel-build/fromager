@@ -156,14 +156,15 @@ Resolver hooks
 
         from fromager import resolver
 
-        VERSION_MAP = {'1.0': 'first-release', '2.0': 'second-release'}
+        VERSIONS = {
+            "https://pkg.example/pkg-1.0.tar.gz": "1.0",
+            "https://pkg.example/pkg-2.0.tar.gz": "2.0",
+        }
 
         def _version_source(
                 identifier: str,
-                requirements: resolver.RequirementsMap,
-                incompatibilities: resolver.CandidatesMap,
-            ) -> typing.Iterable[Version]:
-            return VERSION_MAP.keys()
+            ) -> typing.Iterable[tuple[str, Version]]:
+            return VERSIONS.items()
 
 
         def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
