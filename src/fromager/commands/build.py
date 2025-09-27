@@ -550,6 +550,130 @@ def _build_parallel(
         )
 
 
+class ParallelBuildManager:
+    """Manages the logic for determining which nodes can be built in parallel."""
+
+    def __init__(
+        self, wkctx: context.WorkContext, graph: dependency_graph.DependencyGraph
+    ):
+        self.wkctx = wkctx
+        self.graph = graph
+        self.built_node_keys: set[str] = set()
+        # Cache remaining nodes for efficiency - initialize with all non-root nodes
+        self._remaining_nodes: DependencyNodeList = [
+            node for node in graph.nodes.values() if node.key != dependency_graph.ROOT
+        ]
+
+    def _find_buildable_nodes(
+        self, nodes_to_build: DependencyNodeList
+    ) -> DependencyNodeList:
+        """Find nodes that can be built (all build dependencies are built)."""
+        buildable_nodes: DependencyNodeList = []
+
+        for node in nodes_to_build:
+            with req_ctxvar_context(Requirement(node.canonicalized_name), node.version):
+                # Get all build dependencies (build-system, build-backend, build-sdist)
+                build_deps: DependencyNodeList = [
+                    edge.destination_node
+                    for edge in node.children
+                    if edge.req_type.is_build_requirement
+                ]
+                # A node can be built when all of its build dependencies are built
+                unbuilt_deps: set[str] = set(
+                    dep.key for dep in build_deps if dep.key not in self.built_node_keys
+                )
+                if not unbuilt_deps:
+                    logger.info(
+                        "ready to build, have all build dependencies: %s",
+                        sorted(set(dep.key for dep in build_deps)),
+                    )
+                    buildable_nodes.append(node)
+                else:
+                    logger.info(
+                        "waiting for build dependencies: %s",
+                        sorted(unbuilt_deps),
+                    )
+
+        return buildable_nodes
+
+    def _filter_for_exclusive_builds(
+        self, buildable_nodes: DependencyNodeList
+    ) -> DependencyNodeList:
+        """Filter buildable nodes to handle exclusive build requirements."""
+        # Check if any buildable node requires exclusive build (exclusive_build == True)
+        exclusive_nodes: DependencyNodeList = [
+            node
+            for node in buildable_nodes
+            if self.wkctx.settings.package_build_info(
+                node.canonicalized_name
+            ).exclusive_build
+        ]
+        if exclusive_nodes:
+            # Only build the first exclusive node this round
+            filtered_nodes = [exclusive_nodes[0]]
+            logger.info(
+                f"{exclusive_nodes[0].canonicalized_name}: requires exclusive build, running it alone this round."
+            )
+            return filtered_nodes
+
+        return buildable_nodes
+
+    def get_nodes_ready_to_build(self) -> DependencyNodeList:
+        """Get the list of nodes that are ready to be built in this round."""
+        buildable_nodes = self._find_buildable_nodes(self._remaining_nodes)
+
+        if not buildable_nodes:
+            # If we can't build anything but still have nodes, we have a cycle
+            remaining: list[str] = [n.key for n in self._remaining_nodes]
+            logger.info("have already built: %s", sorted(self.built_node_keys))
+            raise ValueError(f"Circular dependency detected among: {remaining}")
+
+        logger.info(
+            "ready to build: %s",
+            sorted(n.key for n in buildable_nodes),
+        )
+
+        # Handle exclusive builds
+        buildable_nodes = self._filter_for_exclusive_builds(buildable_nodes)
+
+        return buildable_nodes
+
+    def mark_node_built(self, node: dependency_graph.DependencyNode) -> None:
+        """Mark a node as built."""
+        self.built_node_keys.add(node.key)
+        # Remove from remaining nodes cache for efficiency
+        if node in self._remaining_nodes:
+            self._remaining_nodes.remove(node)
+
+    def have_remaining_nodes(self) -> bool:
+        """Check if there are any nodes left to build."""
+        return bool(self._remaining_nodes)
+
+    def get_built_nodes(self) -> DependencyNodeList:
+        """Get all nodes that have been built."""
+        return [
+            node
+            for node in self.graph.nodes.values()
+            if node.key in self.built_node_keys
+        ]
+
+    def is_node_built(self, node: dependency_graph.DependencyNode) -> bool:
+        """Check if a specific node has been built."""
+        return node.key in self.built_node_keys
+
+    def get_build_progress(self) -> tuple[int, int]:
+        """Get build progress as (built_count, total_count)."""
+        total_nodes = len(
+            [
+                node
+                for node in self.graph.nodes.values()
+                if node.key != dependency_graph.ROOT
+            ]
+        )
+        built_count = len(self.built_node_keys)
+        return built_count, total_nodes
+
+
 @click.command()
 @click.option(
     "-f",
@@ -610,87 +734,35 @@ def build_parallel(
     graph: dependency_graph.DependencyGraph
     graph = dependency_graph.DependencyGraph.from_file(graph_file)
 
-    # Track what has been built
-    built_node_keys: set[str] = set()
+    # Initialize the parallel build manager
+    build_manager = ParallelBuildManager(wkctx, graph)
 
-    # Get all nodes that need to be built (excluding prebuilt ones and the root node)
-    # Sort the nodes to build by their key one time to avoid
-    # redoing the sort every iteration and to make the output deterministic.
-    nodes_to_build: DependencyNodeList = sorted(
-        (n for n in graph.nodes.values() if n.key != dependency_graph.ROOT),
-        key=lambda n: n.key,
+    # Get total count for progress tracking
+    total_nodes = len(
+        [n for n in graph.nodes.values() if n.key != dependency_graph.ROOT]
     )
-    logger.info("found %d packages to build", len(nodes_to_build))
+    logger.info("found %d packages to build", total_nodes)
 
     # A node can be built when all of its build dependencies are built
     entries: list[BuildSequenceEntry] = []
 
-    with progress.progress_context(total=len(nodes_to_build)) as progressbar:
+    with progress.progress_context(total=total_nodes) as progressbar:
 
-        def update_progressbar_cb(future: concurrent.futures.Future) -> None:
+        def update_progressbar_cb(
+            future: concurrent.futures.Future[BuildSequenceEntry],
+        ) -> None:
             """Immediately update the progress when when a task is done"""
             progressbar.update()
 
-        while nodes_to_build:
-            # Find nodes that can be built (all build dependencies are built)
-            buildable_nodes: DependencyNodeList = []
-            for node in nodes_to_build:
-                with req_ctxvar_context(
-                    Requirement(node.canonicalized_name), node.version
-                ):
-                    # Get all build dependencies (build-system, build-backend, build-sdist)
-                    build_deps: DependencyNodeList = [
-                        edge.destination_node
-                        for edge in node.children
-                        if edge.req_type.is_build_requirement
-                    ]
-                    # A node can be built when all of its build dependencies are built
-                    unbuilt_deps: set[str] = set(
-                        dep.key for dep in build_deps if dep.key not in built_node_keys
-                    )
-                    if not unbuilt_deps:
-                        logger.info(
-                            "ready to build, have all build dependencies: %s",
-                            sorted(set(dep.key for dep in build_deps)),
-                        )
-                        buildable_nodes.append(node)
-                    else:
-                        logger.info(
-                            "waiting for build dependencies: %s",
-                            sorted(unbuilt_deps),
-                        )
-
-            if not buildable_nodes:
-                # If we can't build anything but still have nodes, we have a cycle
-                remaining: list[str] = [n.key for n in nodes_to_build]
-                logger.info("have already built: %s", sorted(built_node_keys))
-                raise ValueError(f"Circular dependency detected among: {remaining}")
-
-            logger.info(
-                "ready to build: %s",
-                sorted(n.key for n in buildable_nodes),
-            )
-
-            # Check if any buildable node requires exclusive build (exclusive_build == True)
-            exclusive_nodes: DependencyNodeList = [
-                node
-                for node in buildable_nodes
-                if wkctx.settings.package_build_info(
-                    node.canonicalized_name
-                ).exclusive_build
-            ]
-            if exclusive_nodes:
-                # Only build the first exclusive node this round
-                buildable_nodes = [exclusive_nodes[0]]
-                logger.info(
-                    f"{exclusive_nodes[0].canonicalized_name}: requires exclusive build, running it alone this round."
-                )
+        while build_manager.have_remaining_nodes():
+            # Get nodes that are ready to be built in this round
+            buildable_nodes = build_manager.get_nodes_ready_to_build()
 
             # Build up to max_workers nodes concurrently (or all if max_workers is None)
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=max_workers
             ) as executor:
-                futures: list[concurrent.futures.Future[tuple[pathlib.Path, bool]]] = []
+                futures: list[concurrent.futures.Future[BuildSequenceEntry]] = []
                 reqs: list[Requirement] = []
                 logger.info(
                     "starting to build: %s", sorted(n.key for n in buildable_nodes)
@@ -715,8 +787,7 @@ def build_parallel(
                     try:
                         entry = future.result()
                         entries.append(entry)
-                        built_node_keys.add(node.key)
-                        nodes_to_build.remove(node)
+                        build_manager.mark_node_built(node)
                         # progress bar is updated in callback
                     except Exception as e:
                         logger.error(f"Failed to build {node.key}: {e}")
