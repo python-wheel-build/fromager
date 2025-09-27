@@ -567,7 +567,7 @@ class ParallelBuildManager:
     def _find_buildable_nodes(
         self, nodes_to_build: DependencyNodeList
     ) -> DependencyNodeList:
-        """Find nodes that can be built (all build dependencies are built)."""
+        """Find nodes that can be built (all build dependencies and their install dependencies are built)."""
         buildable_nodes: DependencyNodeList = []
 
         for node in nodes_to_build:
@@ -578,19 +578,39 @@ class ParallelBuildManager:
                     for edge in node.children
                     if edge.req_type.is_build_requirement
                 ]
-                # A node can be built when all of its build dependencies are built
+
+                # Collect all dependencies that must be built before this node can be built
+                all_required_deps: set[str] = set()
+
+                # Add direct build dependencies
+                for build_dep in build_deps:
+                    all_required_deps.add(build_dep.key)
+
+                    # Add installation dependencies of each build dependency
+                    install_deps_of_build_dep = [
+                        edge.destination_node
+                        for edge in build_dep.children
+                        if edge.req_type.is_install_requirement
+                    ]
+                    for install_dep in install_deps_of_build_dep:
+                        all_required_deps.add(install_dep.key)
+
+                # A node can be built when all required dependencies are built
                 unbuilt_deps: set[str] = set(
-                    dep.key for dep in build_deps if dep.key not in self.built_node_keys
+                    dep_key
+                    for dep_key in all_required_deps
+                    if dep_key not in self.built_node_keys
                 )
+
                 if not unbuilt_deps:
                     logger.info(
-                        "ready to build, have all build dependencies: %s",
-                        sorted(set(dep.key for dep in build_deps)),
+                        "ready to build, have all build dependencies and their install dependencies: %s",
+                        sorted(all_required_deps),
                     )
                     buildable_nodes.append(node)
                 else:
                     logger.info(
-                        "waiting for build dependencies: %s",
+                        "waiting for build dependencies and their install dependencies: %s",
                         sorted(unbuilt_deps),
                     )
 
