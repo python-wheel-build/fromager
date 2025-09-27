@@ -725,6 +725,13 @@ class PackageBuildInfo:
         return self._ps.has_config
 
     @property
+    def has_customizations(self) -> bool:
+        """Does the package have any customizations?"""
+        return bool(
+            self.has_config or self.plugin is not None or self.get_all_patches()
+        )
+
+    @property
     def pre_built(self) -> bool:
         """Does the variant use pre-build wheels?"""
         vi = self._ps.variants.get(self.variant)

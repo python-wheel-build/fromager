@@ -106,37 +106,6 @@ def to_dot(
         )
 
 
-def has_customizations(
-    wkctx: context.WorkContext, node: DependencyNode, overridden_packages: set[str]
-) -> bool:
-    """Check if a node has any fromager customizations (overrides, settings, patches, or plugins)."""
-    if not node.canonicalized_name:
-        # This is the root node
-        return True
-
-    name = node.canonicalized_name
-    pbi = wkctx.settings.package_build_info(name)
-
-    # Check for patches
-    all_patches: PatchMap = pbi.get_all_patches()
-    if all_patches:
-        return True
-
-    # Check for plugins
-    if pbi.plugin:
-        return True
-
-    # Check for overrides/settings
-    if name in overridden_packages:
-        return True
-
-    # Check for pre-built wheels (these are also customizations)
-    if node.pre_built:
-        return True
-
-    return False
-
-
 def reduce_graph(
     wkctx: context.WorkContext,
     graph: DependencyGraph,
@@ -161,7 +130,8 @@ def reduce_graph(
     # Find nodes with customizations
     customized_nodes: list[DependencyNode] = []
     for node in all_nodes:
-        if has_customizations(wkctx, node, overridden_packages):
+        pbi = wkctx.settings.package_build_info(node.canonicalized_name)
+        if node.canonicalized_name != ROOT and pbi.has_customizations:
             customized_nodes.append(node)
 
     # Build reduced dependency relationships with requirement tracking
@@ -188,13 +158,14 @@ def reduce_graph(
                     continue
 
                 child = edge.destination_node
+                child_pbi = wkctx.settings.package_build_info(child.canonicalized_name)
                 new_path = path + [current_node.key]
 
                 # Use the first requirement we encounter in the path
                 current_req = original_req if original_req else str(edge.req)
 
                 # If the child has customizations, add it as a direct dependency
-                if has_customizations(wkctx, child, overridden_packages):
+                if child_pbi.has_customizations:
                     # Store the requirement string for this dependency
                     reduced_dependencies[node.key][child.key] = current_req
                 else:
