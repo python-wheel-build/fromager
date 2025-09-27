@@ -681,18 +681,6 @@ class ParallelBuildManager:
         """Check if a specific node has been built."""
         return node.key in self.built_node_keys
 
-    def get_build_progress(self) -> tuple[int, int]:
-        """Get build progress as (built_count, total_count)."""
-        total_nodes = len(
-            [
-                node
-                for node in self.graph.nodes.values()
-                if node.key != dependency_graph.ROOT
-            ]
-        )
-        built_count = len(self.built_node_keys)
-        return built_count, total_nodes
-
 
 @click.command()
 @click.option(
