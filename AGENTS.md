@@ -1,5 +1,15 @@
 # Contributor Quickstart Guide
 
+## Testing
+
+Use `hatch run test:test` to run unit tests.
+
+Use `hatch run lint:check` to run the linter.
+
+Use `hatch run mypy:check` to run mypy to check for type annotation issues.
+
+The end-to-end tests are in shell scripts in the `e2e` subdirectory.
+
 ## Commit Message Guidelines
 
 ### Objectives
