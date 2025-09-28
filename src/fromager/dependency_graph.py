@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import graphlib
 import json
 import logging
 import pathlib
@@ -312,3 +313,70 @@ class DependencyGraph:
             yield from self._depth_first_traversal(
                 edge.destination_node.children, visited, match_dep_types
             )
+
+    def _get_dependency_topological_sorter(
+        self,
+        requirement_filter: typing.Callable[[RequirementType], bool],
+    ) -> graphlib.TopologicalSorter[DependencyNode]:
+        """Return a TopologicalSorter for dependencies matching the filter.
+
+        Args:
+            requirement_filter: Function that returns True for requirement types to include
+
+        Returns:
+            A TopologicalSorter with all DependencyNode objects and filtered dependency relationships
+        """
+        sorter: graphlib.TopologicalSorter[DependencyNode] = (
+            graphlib.TopologicalSorter()
+        )
+
+        # Add all nodes (except ROOT) and filtered dependency relationships
+        for node in self.get_all_nodes():
+            if node.key != ROOT:
+                sorter.add(node)
+
+            for edge in node.children:
+                if requirement_filter(edge.req_type):
+                    # In topological sorting, if A depends on B, then B must come before A
+                    # So we add (dependent=A, dependency=B)
+                    # Skip self-dependencies to avoid cycles and skip ROOT node
+                    if (
+                        node != edge.destination_node
+                        and edge.destination_node.key != ROOT
+                    ):
+                        sorter.add(node, edge.destination_node)
+
+        sorter.prepare()
+        return sorter
+
+    def get_build_dependency_topological_sorter(
+        self,
+    ) -> graphlib.TopologicalSorter[DependencyNode]:
+        """Return a TopologicalSorter for the build dependencies in the graph.
+
+        The sorter contains DependencyNode objects and edges
+        representing build-time dependencies between packages.
+
+        Returns:
+            A TopologicalSorter where each node is a DependencyNode and edges
+            represent build dependencies (build-system, build-backend, build-sdist).
+        """
+        return self._get_dependency_topological_sorter(
+            lambda req_type: req_type.is_build_requirement
+        )
+
+    def get_install_dependency_topological_sorter(
+        self,
+    ) -> graphlib.TopologicalSorter[DependencyNode]:
+        """Return a TopologicalSorter for the install dependencies in the graph.
+
+        The sorter contains DependencyNode objects and edges
+        representing install-time dependencies between packages.
+
+        Returns:
+            A TopologicalSorter where each node is a DependencyNode and edges
+            represent install dependencies (install, toplevel).
+        """
+        return self._get_dependency_topological_sorter(
+            lambda req_type: req_type.is_install_requirement
+        )

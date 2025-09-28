@@ -1,6 +1,8 @@
+import collections.abc
 import concurrent.futures
 import dataclasses
 import datetime
+import graphlib
 import json
 import logging
 import pathlib
@@ -559,88 +561,30 @@ class ParallelBuildManager:
         self.wkctx = wkctx
         self.graph = graph
         self.built_node_keys: set[str] = set()
+        self.build_sorter: graphlib.TopologicalSorter[
+            dependency_graph.DependencyNode
+        ] = graph.get_build_dependency_topological_sorter()
+        # Track nodes that are built but not yet marked done in the build sorter
+        # so we can mark them as done when their install dependencies are
+        # satisfied.
+        self._built_but_not_done_keys: set[str] = set()
         # Cache remaining nodes for efficiency - initialize with all non-root nodes
         self._remaining_nodes: DependencyNodeList = [
             node for node in graph.nodes.values() if node.key != dependency_graph.ROOT
         ]
 
-    def _find_buildable_nodes(
-        self, nodes_to_build: DependencyNodeList
-    ) -> DependencyNodeList:
-        """Find nodes that can be built (all build dependencies and their install dependencies are built)."""
-        buildable_nodes: DependencyNodeList = []
+    def get_nodes_ready_to_build(
+        self,
+    ) -> collections.abc.Generator[DependencyNodeList, None, None]:
+        """Generator that yields lists of nodes ready to be built, organized by exclusivity.
 
-        for node in nodes_to_build:
-            with req_ctxvar_context(Requirement(node.canonicalized_name), node.version):
-                # Get all build dependencies (build-system, build-backend, build-sdist)
-                build_deps: DependencyNodeList = [
-                    edge.destination_node
-                    for edge in node.children
-                    if edge.req_type.is_build_requirement
-                ]
+        Each exclusive build node is yielded in its own list.
+        All non-exclusive nodes are yielded together in a single list.
+        """
+        self._update_build_sorter_done_status()
 
-                # Collect all dependencies that must be built before this node can be built
-                all_required_deps: set[str] = set()
-
-                # Add direct build dependencies
-                for build_dep in build_deps:
-                    all_required_deps.add(build_dep.key)
-
-                    # Add installation dependencies of each build dependency
-                    install_deps_of_build_dep = [
-                        edge.destination_node
-                        for edge in build_dep.children
-                        if edge.req_type.is_install_requirement
-                    ]
-                    for install_dep in install_deps_of_build_dep:
-                        all_required_deps.add(install_dep.key)
-
-                # A node can be built when all required dependencies are built
-                unbuilt_deps: set[str] = set(
-                    dep_key
-                    for dep_key in all_required_deps
-                    if dep_key not in self.built_node_keys
-                )
-
-                if not unbuilt_deps:
-                    logger.info(
-                        "ready to build, have all build dependencies and their install dependencies: %s",
-                        sorted(all_required_deps),
-                    )
-                    buildable_nodes.append(node)
-                else:
-                    logger.info(
-                        "waiting for build dependencies and their install dependencies: %s",
-                        sorted(unbuilt_deps),
-                    )
-
-        return buildable_nodes
-
-    def _filter_for_exclusive_builds(
-        self, buildable_nodes: DependencyNodeList
-    ) -> DependencyNodeList:
-        """Filter buildable nodes to handle exclusive build requirements."""
-        # Check if any buildable node requires exclusive build (exclusive_build == True)
-        exclusive_nodes: DependencyNodeList = [
-            node
-            for node in buildable_nodes
-            if self.wkctx.settings.package_build_info(
-                node.canonicalized_name
-            ).exclusive_build
-        ]
-        if exclusive_nodes:
-            # Only build the first exclusive node this round
-            filtered_nodes = [exclusive_nodes[0]]
-            logger.info(
-                f"{exclusive_nodes[0].canonicalized_name}: requires exclusive build, running it alone this round."
-            )
-            return filtered_nodes
-
-        return buildable_nodes
-
-    def get_nodes_ready_to_build(self) -> DependencyNodeList:
-        """Get the list of nodes that are ready to be built in this round."""
-        buildable_nodes = self._find_buildable_nodes(self._remaining_nodes)
+        # Get nodes that are ready to build from the build dependency sorter
+        buildable_nodes = list(self.build_sorter.get_ready())
 
         if not buildable_nodes:
             # If we can't build anything but still have nodes, we have a cycle
@@ -653,17 +597,62 @@ class ParallelBuildManager:
             sorted(n.key for n in buildable_nodes),
         )
 
-        # Handle exclusive builds
-        buildable_nodes = self._filter_for_exclusive_builds(buildable_nodes)
+        # Process nodes and yield exclusive ones immediately
+        non_exclusive_nodes: DependencyNodeList = []
 
-        return buildable_nodes
+        for node in buildable_nodes:
+            if self.wkctx.settings.package_build_info(
+                node.canonicalized_name
+            ).exclusive_build:
+                logger.info(f"{node.canonicalized_name}: requires exclusive build")
+                yield [node]
+            else:
+                non_exclusive_nodes.append(node)
+
+        # Yield all non-exclusive nodes together if any exist
+        if non_exclusive_nodes:
+            logger.info(
+                "ready to build: %s",
+                sorted(n.key for n in non_exclusive_nodes),
+            )
+            yield non_exclusive_nodes
 
     def mark_node_built(self, node: dependency_graph.DependencyNode) -> None:
         """Mark a node as built."""
+        if node.key not in self.built_node_keys:
+            self._built_but_not_done_keys.add(node.key)
         self.built_node_keys.add(node.key)
-        # Remove from remaining nodes cache for efficiency
         if node in self._remaining_nodes:
             self._remaining_nodes.remove(node)
+
+    def _update_build_sorter_done_status(self) -> None:
+        """Check built nodes that haven't been marked done to see if they can now be marked done in build sorter."""
+        # Use a copy of the set to avoid modification during iteration
+        nodes_to_check = self._built_but_not_done_keys.copy()
+
+        for node_key in nodes_to_check:
+            node = self.graph.nodes[node_key]
+
+            install_deps_satisfied = True
+            for edge in node.children:
+                if edge.req_type.is_install_requirement:
+                    if not self.is_node_built(edge.destination_node):
+                        install_deps_satisfied = False
+                        break
+
+            if install_deps_satisfied:
+                try:
+                    self.build_sorter.done(node)
+                    logger.debug(
+                        "marked %s as done in build sorter (install deps satisfied)",
+                        node.key,
+                    )
+                except ValueError:
+                    logger.debug(
+                        "could not mark %s as done in build sorter (not ready or already done)",
+                        node.key,
+                    )
+                self._built_but_not_done_keys.discard(node_key)
 
     def have_remaining_nodes(self) -> bool:
         """Check if there are any nodes left to build."""
@@ -763,43 +752,44 @@ def build_parallel(
             progressbar.update()
 
         while build_manager.have_remaining_nodes():
-            # Get nodes that are ready to be built in this round
-            buildable_nodes = build_manager.get_nodes_ready_to_build()
-
-            # Build up to max_workers nodes concurrently (or all if max_workers is None)
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=max_workers
-            ) as executor:
-                futures: list[concurrent.futures.Future[BuildSequenceEntry]] = []
-                reqs: list[Requirement] = []
-                logger.info(
-                    "starting to build: %s", sorted(n.key for n in buildable_nodes)
-                )
-                for node in buildable_nodes:
-                    req = Requirement(f"{node.canonicalized_name}=={node.version}")
-                    reqs.append(req)
-                    future = executor.submit(
-                        _build_parallel,
-                        wkctx=wkctx,
-                        resolved_version=node.version,
-                        req=req,
-                        source_download_url=node.download_url,
-                        force=force,
-                        cache_wheel_server_url=cache_wheel_server_url,
+            # Get batches of nodes that are ready to be built, organized by exclusivity
+            for buildable_nodes in build_manager.get_nodes_ready_to_build():
+                # Build up to max_workers nodes concurrently (or all if max_workers is None)
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=max_workers
+                ) as executor:
+                    futures: list[concurrent.futures.Future[BuildSequenceEntry]] = []
+                    reqs: list[Requirement] = []
+                    logger.info(
+                        "starting to build batch: %s",
+                        sorted(n.key for n in buildable_nodes),
                     )
-                    future.add_done_callback(update_progressbar_cb)
-                    futures.append(future)
+                    for node in buildable_nodes:
+                        req = Requirement(f"{node.canonicalized_name}=={node.version}")
+                        reqs.append(req)
+                        logger.info(f"{node.key}: ready to build")
+                        future = executor.submit(
+                            _build_parallel,
+                            wkctx=wkctx,
+                            resolved_version=node.version,
+                            req=req,
+                            source_download_url=node.download_url,
+                            force=force,
+                            cache_wheel_server_url=cache_wheel_server_url,
+                        )
+                        future.add_done_callback(update_progressbar_cb)
+                        futures.append(future)
 
-                # Wait for all builds to complete
-                for node, future in zip(buildable_nodes, futures, strict=True):
-                    try:
-                        entry = future.result()
-                        entries.append(entry)
-                        build_manager.mark_node_built(node)
-                        # progress bar is updated in callback
-                    except Exception as e:
-                        logger.error(f"Failed to build {node.key}: {e}")
-                        raise
+                    # Wait for all builds to complete
+                    for node, future in zip(buildable_nodes, futures, strict=True):
+                        try:
+                            entry = future.result()
+                            entries.append(entry)
+                            build_manager.mark_node_built(node)
+                            # progress bar is updated in callback
+                        except Exception as e:
+                            logger.error(f"Failed to build {node.key}: {e}")
+                            raise
 
     metrics.summarize(wkctx, "Building in parallel")
     _summary(wkctx, entries)
