@@ -15,6 +15,9 @@ from packaging.version import Version
 from .read import open_file_or_url
 from .requirements_file import RequirementType
 
+if typing.TYPE_CHECKING:
+    from .context import WorkContext
+
 logger = logging.getLogger(__name__)
 
 ROOT = ""
@@ -66,6 +69,12 @@ class DependencyNode:
             object.__setattr__(
                 self, "key", f"{self.canonicalized_name}=={self.version}"
             )
+
+    @property
+    def requirement(self) -> Requirement:
+        if self.canonicalized_name == ROOT:
+            raise RuntimeError("root node is not a requirement")
+        return Requirement(self.key)
 
     def add_child(
         self,
@@ -249,6 +258,10 @@ class DependencyGraph:
         self.nodes.clear()
         self.nodes[ROOT] = DependencyNode.construct_root_node()
 
+    def __len__(self) -> int:
+        # exclude ROOT
+        return len(self.nodes) - 1
+
     def _to_dict(self):
         raw_graph = {}
         stack = [self.nodes[ROOT]]
@@ -381,6 +394,22 @@ class DependencyGraph:
             yield from self._depth_first_traversal(
                 edge.destination_node.children, visited, match_dep_types
             )
+
+    def get_build_topology(self, context: WorkContext) -> TrackingTopologicalSorter:
+        """Create build topology graph
+
+        The build topology contains all nodes of the graph (except ROOT).
+        Each node depends on its build dependencies, but not on its
+        installation dependencies.
+        """
+        topo = TrackingTopologicalSorter()
+        for node in self.get_all_nodes():
+            if node.key == ROOT:
+                continue
+            pbi = context.package_build_info(node.canonicalized_name)
+            build_req = tuple(node.iter_build_requirements())
+            topo.add(node, *build_req, exclusive=pbi.exclusive_build)
+        return topo
 
 
 class TrackingTopologicalSorter:
