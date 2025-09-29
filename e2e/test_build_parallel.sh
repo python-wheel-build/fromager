@@ -44,7 +44,7 @@ if ! grep -q "cython-3.1.1: ready to build" "$log"; then
   echo "Did not find message indicating build of cython would start" 1>&2
   pass=false
 fi
-if ! grep -q "cython: requires exclusive build" "$log"; then
+if ! grep -q "cython-3.1.1: requires exclusive build" "$log"; then
   echo "Did not find message indicating build of cython would run on its own" 1>&2
   pass=false
 fi
