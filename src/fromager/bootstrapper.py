@@ -88,11 +88,28 @@ class Bootstrapper:
             return self._resolved_requirements[req_str]
 
         pbi = self.ctx.package_build_info(req)
-        if pbi.pre_built:
-            source_url, resolved_version = self._resolve_prebuilt_with_history(
-                req=req,
-                req_type=req_type,
-            )
+
+        # Check if package has version-specific settings (any version-specific config)
+        variant_info = pbi._ps.variants.get(pbi._variant)
+        has_version_specific_prebuilt = (
+            variant_info and variant_info.versions and len(variant_info.versions) > 0
+        )
+
+        if pbi.pre_built or has_version_specific_prebuilt:
+            try:
+                source_url, resolved_version = self._resolve_prebuilt_with_history(
+                    req=req,
+                    req_type=req_type,
+                )
+            except Exception as e:
+                # Version-specific prebuilt resolution failed, fall back to source
+                logger.debug(
+                    f"{req.name}: prebuilt resolution failed, falling back to source: {e}"
+                )
+                source_url, resolved_version = self._resolve_source_with_history(
+                    req=req,
+                    req_type=req_type,
+                )
         else:
             source_url, resolved_version = self._resolve_source_with_history(
                 req=req,
@@ -185,7 +202,8 @@ class Bootstrapper:
 
         source_url_type = sources.get_source_type(self.ctx, req)
 
-        if pbi.pre_built:
+        # Use version-aware prebuilt check now that we have resolved_version
+        if pbi.is_pre_built(resolved_version):
             wheel_filename, unpack_dir = self._download_prebuilt(
                 req=req,
                 req_type=req_type,
@@ -826,6 +844,19 @@ class Bootstrapper:
         req: Requirement,
         req_type: RequirementType,
     ) -> tuple[str, Version]:
+        # Try version-specific resolution FIRST (highest priority)
+        # This allows version-specific wheel_server_url settings to override
+        # any cached resolutions from previous bootstraps or current graph
+        try:
+            wheel_url, resolved_version = (
+                self._resolve_prebuilt_with_version_specific_urls(req, req_type)
+            )
+            return (wheel_url, resolved_version)
+        except Exception:
+            # No version-specific settings matched, fall back to cached resolution
+            pass
+
+        # Fall back to cached resolution from graph
         cached_resolution = self._resolve_from_graph(
             req=req,
             req_type=req_type,
@@ -835,14 +866,76 @@ class Bootstrapper:
         if cached_resolution and not req.url:
             wheel_url, resolved_version = cached_resolution
             logger.debug(f"resolved from previous bootstrap to {resolved_version}")
-        else:
-            servers = wheels.get_wheel_server_urls(
-                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
-            )
-            wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
-                ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
-            )
+            return (wheel_url, resolved_version)
+
+        # Fall back to regular prebuilt wheel resolution (no version-specific or cached)
+        servers = wheels.get_wheel_server_urls(
+            self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
+        )
+        wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
+            ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
+        )
         return (wheel_url, resolved_version)
+
+    def _resolve_prebuilt_with_version_specific_urls(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+    ) -> tuple[str, Version]:
+        """Resolve prebuilt wheel using version-specific wheel server URLs if configured."""
+        pbi = self.ctx.package_build_info(req)
+
+        # Check if there are version-specific settings
+        variant_info = pbi._ps.variants.get(pbi._variant)
+        if not variant_info or not variant_info.versions:
+            raise ValueError("No version-specific settings configured")
+
+        # Get the constraint for this package
+        constraint = self.ctx.constraints.get_constraint(req.name)
+
+        # Try to resolve using version-specific wheel server URLs
+        for version_str, version_settings in variant_info.versions.items():
+            # Only process versions that have both wheel_server_url and pre_built=True
+            if not (version_settings.wheel_server_url and version_settings.pre_built):
+                continue
+
+            # Only try this version if it satisfies the requirement specifier AND constraint
+            try:
+                version_obj = Version(version_str)
+
+                # Check requirement specifier (if present)
+                if req.specifier and version_obj not in req.specifier:
+                    continue
+
+                # Check constraint (if present) - this is the version from constraints.txt
+                if constraint and version_obj not in constraint.specifier:
+                    continue
+
+            except Exception:
+                continue  # Skip invalid version strings
+
+            # Create a constraint for this specific version
+            version_req = Requirement(f"{req.name}=={version_str}")
+
+            try:
+                # Try to resolve this specific version from the version-specific server
+                wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
+                    ctx=self.ctx,
+                    req=version_req,
+                    wheel_server_urls=[version_settings.wheel_server_url],
+                    req_type=req_type,
+                )
+                logger.info(
+                    f"{req.name}: using version-specific prebuilt wheel "
+                    f"{resolved_version} from {version_settings.wheel_server_url}"
+                )
+                return (wheel_url, resolved_version)
+            except Exception:
+                # Version not found on this server, try next
+                continue
+
+        # No matching version-specific prebuilt settings found
+        raise ValueError("No matching version-specific prebuilt settings found")
 
     def _resolve_from_graph(
         self,
@@ -949,7 +1042,8 @@ class Bootstrapper:
             req=req,
             req_version=req_version,
             download_url=download_url,
-            pre_built=pbi.pre_built,
+            # Use version-aware prebuilt check for dependency graph
+            pre_built=pbi.is_pre_built(req_version),
         )
         self.ctx.write_to_graph_to_file()
 

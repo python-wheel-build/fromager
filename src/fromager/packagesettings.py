@@ -313,6 +313,32 @@ class ProjectOverride(pydantic.BaseModel):
         return v
 
 
+class VersionSpecificSettings(pydantic.BaseModel):
+    """Version-specific variant settings
+
+    ::
+
+      pre_built: True
+      wheel_server_url: https://pypi.org/simple/
+      env:
+        VERSION_SPECIFIC_VAR: "value"
+    """
+
+    model_config = MODEL_CONFIG
+
+    annotations: RawAnnotations | None = None
+    """Version-specific annotations (override variant annotations)"""
+
+    env: EnvVars = Field(default_factory=dict)
+    """Version-specific env vars (override variant env vars)"""
+
+    wheel_server_url: str | None = None
+    """Version-specific package index for pre-built wheel"""
+
+    pre_built: bool | None = None
+    """Version-specific pre-built setting (None = use variant default)"""
+
+
 class VariantInfo(pydantic.BaseModel):
     """Variant information for a package
 
@@ -323,6 +349,12 @@ class VariantInfo(pydantic.BaseModel):
         VAR2: "2.0
       wheel_server_url: https://pypi.org/simple/
       pre_build: False
+      versions:
+        "1.0.0":
+          pre_built: True
+          wheel_server_url: https://custom.server/simple/
+        "2.0.0":
+          pre_built: False
     """
 
     model_config = MODEL_CONFIG
@@ -342,6 +374,9 @@ class VariantInfo(pydantic.BaseModel):
 
     pre_built: bool = False
     """Use pre-built wheel from index server?"""
+
+    versions: Mapping[str, VersionSpecificSettings] = Field(default_factory=dict)
+    """Version-specific settings that override variant defaults"""
 
 
 class GitOptions(pydantic.BaseModel):
@@ -732,11 +767,70 @@ class PackageBuildInfo:
             return vi.pre_built
         return False
 
+    def is_pre_built(self, version: Version | str | None = None) -> bool:
+        """Check if a specific version uses pre-built wheels
+
+        This method provides version-aware lookup with proper precedence:
+        1. Version-specific setting (if version provided and setting exists)
+        2. Variant-wide setting (fallback)
+
+        Args:
+            version: Package version to check. If None, uses variant-wide setting only.
+
+        Returns:
+            True if the version should use pre-built wheels
+        """
+        vi = self._ps.variants.get(self.variant)
+        if vi is None:
+            return False
+
+        # Priority 1: Version-specific setting (if version provided)
+        if version is not None:
+            version_str = str(version) if not isinstance(version, str) else version
+            version_settings = vi.versions.get(version_str)
+            if version_settings is not None and version_settings.pre_built is not None:
+                return version_settings.pre_built
+
+        # Priority 2: Variant-wide setting (backward compatibility)
+        return vi.pre_built
+
     @property
     def wheel_server_url(self) -> str | None:
         """Alternative package index for pre-build wheel"""
         vi = self._ps.variants.get(self.variant)
         if vi is not None and vi.wheel_server_url is not None:
+            return str(vi.wheel_server_url)
+        return None
+
+    def get_wheel_server_url(self, version: Version | str | None = None) -> str | None:
+        """Get wheel server URL for a specific version
+
+        This method provides version-aware lookup with proper precedence:
+        1. Version-specific wheel_server_url (if version provided and setting exists)
+        2. Variant-wide wheel_server_url (fallback)
+
+        Args:
+            version: Package version to check. If None, uses variant-wide setting only.
+
+        Returns:
+            Wheel server URL for the version or None
+        """
+        vi = self._ps.variants.get(self.variant)
+        if vi is None:
+            return None
+
+        # Priority 1: Version-specific setting (if version provided)
+        if version is not None:
+            version_str = str(version) if not isinstance(version, str) else version
+            version_settings = vi.versions.get(version_str)
+            if (
+                version_settings is not None
+                and version_settings.wheel_server_url is not None
+            ):
+                return str(version_settings.wheel_server_url)
+
+        # Priority 2: Variant-wide setting (backward compatibility)
+        if vi.wheel_server_url is not None:
             return str(vi.wheel_server_url)
         return None
 
@@ -850,15 +944,23 @@ class PackageBuildInfo:
         *,
         template_env: dict[str, str] | None = None,
         build_env: build_environment.BuildEnvironment | None = None,
+        version: Version | str | None = None,
     ) -> dict[str, str]:
-        """Get extra environment variables for a variant
+        """Get extra environment variables for a variant and optionally a specific version
 
+        Environment variable precedence (later entries override earlier ones):
         1. parallel jobs: ``MAKEFLAGS``, ``MAX_JOBS``, ``CMAKE_BUILD_PARALLEL_LEVEL``
         2. PATH and VIRTUAL_ENV from ``build_env`` (if given)
         3. package's env settings
         4. package variant's env settings
+        5. version-specific env settings (if version provided)
 
         `template_env` defaults to `os.environ`.
+
+        Args:
+            template_env: Base environment for template substitution
+            build_env: Build environment for PATH/VIRTUAL_ENV
+            version: Package version for version-specific env vars
         """
         if template_env is None:
             template_env = os.environ.copy()
@@ -884,10 +986,18 @@ class PackageBuildInfo:
             extra_environ.update(venv_environ)
 
         # chain entries so variant entries can reference general entries
+        # Priority order: package env -> variant env -> version-specific env
         entries = list(self._ps.env.items())
         vi = self._ps.variants.get(self.variant)
         if vi is not None:
             entries.extend(vi.env.items())
+
+            # Add version-specific env vars if version provided
+            if version is not None:
+                version_str = str(version) if not isinstance(version, str) else version
+                version_settings = vi.versions.get(version_str)
+                if version_settings is not None:
+                    entries.extend(version_settings.env.items())
 
         for key, value in entries:
             value = substitute_template(value, template_env)
@@ -1124,12 +1234,17 @@ class Settings:
         return pbi
 
     def list_pre_built(self) -> set[Package]:
-        """List packages marked as pre-built"""
-        return set(
-            name
-            for name in self._package_settings
-            if self.package_build_info(name).pre_built
-        )
+        """List packages marked as pre-built (only includes packages that are definitely prebuilt)"""
+        pre_built_packages = set()
+
+        for name in self._package_settings:
+            pbi = self.package_build_info(name)
+            # Only include if variant-wide pre_built is True
+            # Version-specific packages with mixed settings are handled at resolution time
+            if pbi.pre_built:
+                pre_built_packages.add(name)
+
+        return pre_built_packages
 
     def list_overrides(self) -> set[Package]:
         """List packages with overrides
