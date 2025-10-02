@@ -101,3 +101,79 @@ def test_pyproject_fix(
             "torch",
         ],
     }
+
+
+PYPROJECT_MULTIPLE_REQUIRES = """
+[build-system]
+    requires = [
+        "numpy<2.0; python_version<'3.9'",
+        "numpy==2.0.2; python_version>='3.9' and python_version<'3.13'",
+        "numpy==2.1.3; python_version=='3.13'",
+        "packaging",
+        "pip",
+        "scikit-build>=0.14.0",
+        "setuptools==59.2.0; python_version<'3.12'",
+        "setuptools<70.0.0; python_version>='3.12'",
+    ]
+"""
+
+
+def test_pyproject_preserve_multiple_requires(tmp_path: pathlib.Path) -> None:
+    tmp_path.joinpath("pyproject.toml").write_text(PYPROJECT_MULTIPLE_REQUIRES)
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=["setuptools"],
+        remove_build_requires=[canonicalize_name("cmake")],
+    )
+    fixer.run()
+    with tmp_path.joinpath("pyproject.toml").open(encoding="utf-8") as f:
+        doc = tomlkit.load(f)
+    assert isinstance(doc["build-system"], typing.Container)
+    # PyprojectFix parses requirements using packaging.requirements.Requirement and then casts
+    # to str, this may change white spaces in markers, let's do it here as well
+    assert dict(doc["build-system"].items())["requires"] == [
+        str(Requirement(req))
+        for req in [
+            "numpy<2.0; python_version<'3.9'",
+            "numpy==2.0.2; python_version>='3.9' and python_version<'3.13'",
+            "numpy==2.1.3; python_version=='3.13'",
+            "packaging",
+            "pip",
+            "scikit-build>=0.14.0",
+            "setuptools",
+        ]
+    ]
+
+
+def test_pyproject_override_multiple_requires(tmp_path: pathlib.Path) -> None:
+    tmp_path.joinpath("pyproject.toml").write_text(PYPROJECT_MULTIPLE_REQUIRES)
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[
+            "setuptools",
+            "numpy<3.0.0; python_version=='3.12'",
+            "numpy==3.0.0",
+        ],
+        remove_build_requires=[canonicalize_name("cmake")],
+    )
+    fixer.run()
+    with tmp_path.joinpath("pyproject.toml").open(encoding="utf-8") as f:
+        doc = tomlkit.load(f)
+    assert isinstance(doc["build-system"], typing.Container)
+    # PyprojectFix parses requirements using packaging.requirements.Requirement and then casts
+    # to str, this may change white spaces in markers, let's do it here as well
+    assert dict(doc["build-system"].items())["requires"] == [
+        str(Requirement(req))
+        for req in [
+            "numpy<3.0.0; python_version=='3.12'",
+            "numpy==3.0.0",
+            "packaging",
+            "pip",
+            "scikit-build>=0.14.0",
+            "setuptools",
+        ]
+    ]
