@@ -951,7 +951,6 @@ class Bootstrapper:
             download_url=download_url,
             pre_built=pbi.pre_built,
         )
-        self.ctx.write_to_graph_to_file()
 
     def _sort_requirements(
         self,
