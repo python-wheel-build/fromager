@@ -1,7 +1,10 @@
 Understanding Why a Package is in the Graph
-==========================================
+============================================
 
-The ``fromager graph why`` command helps you understand why a specific package that is not in your input requirements list appears in the dependency graph. This is useful for debugging unexpected dependencies and understanding the dependency chain.
+The ``fromager graph why`` command helps you understand why a specific package
+that is not in your input requirements list appears in the dependency graph.
+This is useful for debugging unexpected dependencies and understanding the
+dependency chain.
 
 Basic Usage
 -----------
@@ -82,7 +85,7 @@ Understanding the Output
 The output format shows:
 
 - **Package name and version**: The package you're investigating
-- **Dependency type**: Whether it's an ``install``, ``build-system``, or ``toplevel`` dependency  
+- **Dependency type**: Whether it's an ``install``, ``build-system``, or ``toplevel`` dependency
 - **Parent package**: Which package requires this dependency
 - **Requirement specification**: The actual requirement string used
 

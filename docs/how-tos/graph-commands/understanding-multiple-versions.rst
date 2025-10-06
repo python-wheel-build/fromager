@@ -1,7 +1,10 @@
 Understanding Multiple Package Versions in a Graph
 ==================================================
 
-When building complex Python projects, you may encounter situations where multiple versions of the same package appear in your dependency graph. The ``fromager graph explain-duplicates`` command helps you understand why this happens and whether it represents a problem.
+When building complex Python projects, you may encounter situations where
+multiple versions of the same package appear in your dependency graph. The
+``fromager graph explain-duplicates`` command helps you understand why this
+happens and whether it represents a problem.
 
 Basic Usage
 -----------
@@ -49,7 +52,7 @@ This output tells us:
 - No version conflicts exist
 
 Interpreting Results
--------------------
+--------------------
 
 Good Case: Single Compatible Version
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -85,9 +88,9 @@ Sometimes you'll see the same package required at different versions for build-t
 
    setuptools
      45.0.0
-       setuptools>=40 matches ['45.0.0', '65.0.0']
+       setuptools<60 matches ['45.0.0']
          some-old-package==1.0.0
-     65.0.0  
+     65.0.0
        setuptools>=60 matches ['65.0.0']
          modern-package==2.0.0
    * No single version of setuptools meets all requirements
@@ -95,12 +98,12 @@ Sometimes you'll see the same package required at different versions for build-t
 In this case, you might need to update the older package or use package overrides.
 
 Transitive Dependencies
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Multiple versions can appear when different top-level packages pull in different versions of the same transitive dependency.
 
 Resolution Strategies
---------------------
+---------------------
 
 When you find version conflicts:
 
@@ -116,13 +119,13 @@ Example Investigation Workflow
 
    # 1. Check for duplicates
    fromager graph explain-duplicates e2e/build-parallel/graph.json
-   
+
    # 2. If conflicts found, investigate why specific packages are included
    fromager graph why e2e/build-parallel/graph.json problematic-package
-   
+
    # 3. Check the full dependency chain
    fromager graph why e2e/build-parallel/graph.json problematic-package --depth -1
-   
+
    # 4. Visualize to better understand the relationships
    fromager graph to-dot e2e/build-parallel/graph.json --output graph.dot
    dot -Tpng graph.dot -o dependency-analysis.png
@@ -131,7 +134,7 @@ This workflow helps you:
 
 1. Identify which packages have version conflicts
 2. Understand why conflicting packages are included
-3. See the complete dependency chain causing conflicts  
+3. See the complete dependency chain causing conflicts
 4. Visualize the relationships for better analysis
 
 Best Practices

@@ -7,10 +7,9 @@ All examples use the sample graph file ``e2e/build-parallel/graph.json`` which c
 
 .. toctree::
    :maxdepth: 1
+   :glob:
 
-   using-graph-why
-   visualizing-graphs
-   understanding-multiple-versions
+   [uvw]*
 
 Overview of Graph Commands
 --------------------------
@@ -18,7 +17,7 @@ Overview of Graph Commands
 The ``fromager graph`` command group provides several subcommands for analyzing dependency graphs:
 
 - ``why``: Understand why a package appears in the dependency graph
-- ``to-dot``: Convert graph to DOT format for visualization with Graphviz  
+- ``to-dot``: Convert graph to DOT format for visualization with Graphviz
 - ``explain-duplicates``: Analyze multiple versions of packages in the graph
 - ``to-constraints``: Convert graph to constraints file format
 - ``migrate-graph``: Convert old graph formats to the current format
