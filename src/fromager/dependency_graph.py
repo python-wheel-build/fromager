@@ -111,6 +111,60 @@ class DependencyNode:
             Version("0"),
         )
 
+    def iter_build_requirements(self) -> typing.Iterable[DependencyNode]:
+        """Get all unique, recursive build requirements
+
+        Yield all direct and indirect requirements to build the dependency.
+        Includes direct build dependencies and their recursive **install**
+        requirements.
+
+        The result is equivalent to the set of ``[build-system].requires``
+        plus all ``Requires-Dist`` of build system requirements -- all
+        packages in the build environment.
+        """
+        visited: set[str] = set()
+        # The outer loop iterates over all children and picks
+        # direct build requirements. For each build requirement, it traverses
+        # all children and recursively get their install requirements
+        # (depth first).
+        for edge in self.children:
+            if edge.key in visited:
+                # optimization: don't traverse visited nodes
+                continue
+            if not edge.req_type.is_build_requirement:
+                # not a build requirement
+                continue
+            visited.add(edge.key)
+            # it's a new ``[build-system].requires``.
+            yield edge.destination_node
+            # recursively get install dependencies of this build dep (depth first).
+            for install_edge in self._traverse_install_requirements(
+                edge.destination_node.children, visited
+            ):
+                yield install_edge.destination_node
+
+    def iter_install_requirements(self) -> typing.Iterable[DependencyNode]:
+        """Get all unique, recursive install requirements"""
+        visited: set[str] = set()
+        for edge in self._traverse_install_requirements(self.children, visited):
+            yield edge.destination_node
+
+    def _traverse_install_requirements(
+        self,
+        start_edges: list[DependencyEdge],
+        visited: set[str],
+    ) -> typing.Iterable[DependencyEdge]:
+        for edge in start_edges:
+            if edge.key in visited:
+                continue
+            if not edge.req_type.is_install_requirement:
+                continue
+            visited.add(edge.destination_node.key)
+            yield edge
+            yield from self._traverse_install_requirements(
+                edge.destination_node.children, visited
+            )
+
 
 @dataclasses.dataclass(frozen=True, order=True, slots=True)
 class DependencyEdge:
