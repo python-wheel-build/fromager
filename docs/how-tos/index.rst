@@ -6,3 +6,4 @@ How-tos
    :glob:
 
    *
+   */index
