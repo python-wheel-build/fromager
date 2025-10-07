@@ -375,32 +375,20 @@ class Bootstrapper:
         sdist_root_dir: pathlib.Path,
         build_env: build_environment.BuildEnvironment,
     ) -> pathlib.Path:
-        sdist_filename: pathlib.Path | None = None
-        try:
-            find_sdist_result = finders.find_sdist(
-                self.ctx, self.ctx.sdists_builds, req, str(resolved_version)
+        find_sdist_result = finders.find_sdist(
+            self.ctx, self.ctx.sdists_builds, req, str(resolved_version)
+        )
+        if not find_sdist_result:
+            sdist_filename = sources.build_sdist(
+                ctx=self.ctx,
+                req=req,
+                version=resolved_version,
+                sdist_root_dir=sdist_root_dir,
+                build_env=build_env,
             )
-            if not find_sdist_result:
-                sdist_filename = sources.build_sdist(
-                    ctx=self.ctx,
-                    req=req,
-                    version=resolved_version,
-                    sdist_root_dir=sdist_root_dir,
-                    build_env=build_env,
-                )
-            else:
-                sdist_filename = find_sdist_result
-                logger.info(
-                    f"have sdist version {resolved_version}: {find_sdist_result}"
-                )
-        except Exception as err:
-            logger.warning(f"failed to build source distribution: {err}")
-            # Re-raise the exception since we cannot continue without a sdist
-            raise
-
-        if sdist_filename is None:
-            raise RuntimeError(f"Failed to build or find sdist for {req}")
-
+        else:
+            sdist_filename = find_sdist_result
+            logger.info(f"have sdist version {resolved_version}: {find_sdist_result}")
         return sdist_filename
 
     def _build_wheel(
