@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import typing
-from collections import defaultdict
 from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
@@ -180,7 +179,7 @@ def get_project_from_pypi(
     extras: typing.Iterable[str],
     sdist_server_url: str,
     ignore_platform: bool = False,
-) -> typing.Iterable[Candidate]:
+) -> Candidates:
     """Return candidates created from the project name and extras."""
     found_candidates: set[str] = set()
     ignored_candidates: set[str] = set()
@@ -330,33 +329,61 @@ def get_project_from_pypi(
 
 
 RequirementsMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Requirement]]
-CandidatesMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Candidate]]
+Candidates: typing.TypeAlias = typing.Iterable[Candidate]
+CandidatesMap: typing.TypeAlias = typing.Mapping[str, Candidates]
+# {identifier: [cls, cachekey]: list[candidates]}}
+ResolverCache: typing.TypeAlias = dict[
+    str, dict[tuple[type[ExtrasProvider], str], list[Candidate]]
+]
 VersionSource: typing.TypeAlias = typing.Callable[
-    [str, RequirementsMap, CandidatesMap],
+    [str],
     typing.Iterable[tuple[str, str | Version]],
 ]
 
 
 class BaseProvider(ExtrasProvider):
+    resolver_cache: typing.ClassVar[ResolverCache] = {}
+
     def __init__(
         self,
-        include_sdists: bool = True,
-        include_wheels: bool = True,
-        sdist_server_url: str = "https://pypi.org/simple/",
+        *,
         constraints: Constraints | None = None,
         req_type: RequirementType | None = None,
-        ignore_platform: bool = False,
+        use_resolver_cache: bool = True,
     ):
         super().__init__()
-        self.include_sdists = include_sdists
-        self.include_wheels = include_wheels
-        self.sdist_server_url = sdist_server_url
         self.constraints = constraints or Constraints()
         self.req_type = req_type
-        self.ignore_platform = ignore_platform
+        self.use_cache_candidates = use_resolver_cache
+
+    @property
+    def cache_key(self) -> str:
+        """Return cache key for the provider
+
+        The cache key must be unique for each provider configuration, e.g.
+        PyPI URL, GitHub org + repo, ...
+        """
+        raise NotImplementedError()
+
+    def find_candidates(self, identifier: str) -> Candidates:
+        """Find unfiltered candidates"""
+        raise NotImplementedError()
 
     def identify(self, requirement_or_candidate: Requirement | Candidate) -> str:
         return canonicalize_name(requirement_or_candidate.name)
+
+    @classmethod
+    def clear_cache(cls, identifier: str | None = None) -> None:
+        """Clear global resolver cache
+
+        ``None`` clears all caches, an ``identifier`` string clears the
+        cache for an identifier. Raises :exc:`KeyError` for unknown
+        identifiers.
+        """
+        if identifier is None:
+            cls.resolver_cache.clear()
+        else:
+            cls.resolver_cache.pop(canonicalize_name(identifier))
 
     def get_extras_for(
         self,
@@ -390,31 +417,6 @@ class BaseProvider(ExtrasProvider):
             if self.is_satisfied_by(requirement=r, candidate=candidate):
                 return True
         return False
-
-    def get_cache(self) -> dict[str, list[Candidate]]:
-        raise NotImplementedError()
-
-    def get_from_cache(
-        self,
-        identifier: str,
-        requirements: RequirementsMap,
-        incompatibilities: CandidatesMap,
-    ) -> list[Candidate]:
-        cache = self.get_cache()
-        # we only want caching for build reqs because for install time reqs we always want to get the latest version
-        # we can't guarantee that the latest version is available in the cache so install time reqs cannot use the cache
-        if self.req_type is None or not self.req_type.is_build_requirement:
-            return []
-        return [
-            c
-            for c in cache[identifier]
-            if self.validate_candidate(identifier, requirements, incompatibilities, c)
-        ]
-
-    def add_to_cache(self, identifier: str, candidates: list[Candidate]) -> None:
-        # we can add candidates to cache even for install type reqs because build time reqs are
-        # allowed to use candidates seen when we were resolving the same req as an install type
-        self.get_cache()[identifier].extend(candidates)
 
     def get_preference(
         self,
@@ -459,19 +461,66 @@ class BaseProvider(ExtrasProvider):
         # return candidate.dependencies
         return []
 
+    def _get_cached_candidates(self, identifier: str) -> list[Candidate]:
+        """Get list of cached candidates for identifier and provider
+
+        The method always returns a list. If the cache did not have an entry
+        before, a new empty list is stored in the cache and returned to the
+        caller. The caller can mutate the list in place to update the cache.
+        """
+        cls = type(self)
+        provider_cache = cls.resolver_cache.setdefault(identifier, {})
+        candidate_cache = provider_cache.setdefault((cls, self.cache_key), [])
+        return candidate_cache
+
+    def _find_cached_candidates(self, identifier: str) -> Candidates:
+        """Find candidates with caching"""
+        if self.use_cache_candidates:
+            cached_candidates = self._get_cached_candidates(identifier)
+            if cached_candidates:
+                logger.debug(
+                    "%s: use %i cached candidates",
+                    identifier,
+                    len(cached_candidates),
+                )
+                return cached_candidates
+        candidates = list(self.find_candidates(identifier))
+        if self.use_cache_candidates:
+            # mutate list object in-place
+            cached_candidates[:] = candidates
+            logger.debug(
+                "%s: cache %i unfiltered candidates",
+                identifier,
+                len(candidates),
+            )
+        else:
+            logger.debug(
+                "%s: got %i unfiltered candidates, ignoring cache",
+                identifier,
+                len(candidates),
+            )
+        return candidates
+
     def find_matches(
         self,
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[Candidate]:
-        raise NotImplementedError()
+    ) -> Candidates:
+        """Find matching candidates, sorted by version and build tag"""
+        unfiltered_candidates = self._find_cached_candidates(identifier)
+        candidates = [
+            candidate
+            for candidate in unfiltered_candidates
+            if self.validate_candidate(
+                identifier, requirements, incompatibilities, candidate
+            )
+        ]
+        return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
 
 class PyPIProvider(BaseProvider):
     """Lookup package and versions from a simple Python index (PyPI)"""
-
-    pypi_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(list)
 
     def __init__(
         self,
@@ -481,18 +530,34 @@ class PyPIProvider(BaseProvider):
         constraints: Constraints | None = None,
         req_type: RequirementType | None = None,
         ignore_platform: bool = False,
+        *,
+        use_resolver_cache: bool = True,
     ):
         super().__init__(
-            include_sdists=include_sdists,
-            include_wheels=include_wheels,
-            sdist_server_url=sdist_server_url,
             constraints=constraints,
             req_type=req_type,
-            ignore_platform=ignore_platform,
+            use_resolver_cache=use_resolver_cache,
         )
+        self.include_sdists = include_sdists
+        self.include_wheels = include_wheels
+        self.sdist_server_url = sdist_server_url
+        self.ignore_platform = ignore_platform
 
-    def get_cache(self) -> dict[str, list[Candidate]]:
-        return PyPIProvider.pypi_resolver_cache
+    @property
+    def cache_key(self) -> str:
+        # ignore platform parameter changes behavior of find_candidates()
+        if self.ignore_platform:
+            return f"{self.sdist_server_url}+ignore_platform"
+        else:
+            return self.sdist_server_url
+
+    def find_candidates(self, identifier: str) -> Candidates:
+        return get_project_from_pypi(
+            identifier,
+            set(),
+            self.sdist_server_url,
+            self.ignore_platform,
+        )
 
     def validate_candidate(
         self,
@@ -526,23 +591,8 @@ class PyPIProvider(BaseProvider):
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[Candidate]:
-        candidates = self.get_from_cache(identifier, requirements, incompatibilities)
-        if not candidates:
-            # Need to pass the extras to the search, so they
-            # are added to the candidate at creation - we
-            # treat candidates as immutable once created.
-            for candidate in get_project_from_pypi(
-                identifier,
-                set(),
-                self.sdist_server_url,
-                self.ignore_platform,
-            ):
-                if self.validate_candidate(
-                    identifier, requirements, incompatibilities, candidate
-                ):
-                    candidates.append(candidate)
-            self.add_to_cache(identifier, candidates)
+    ) -> Candidates:
+        candidates = super().find_matches(identifier, requirements, incompatibilities)
         if not candidates:
             # Try to construct a meaningful error message that points out the
             # type(s) of files the resolver has been told it can choose as a
@@ -571,18 +621,21 @@ class MatchFunction(typing.Protocol):
 class GenericProvider(BaseProvider):
     """Lookup package and version by using a callback"""
 
-    generic_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(
-        list
-    )
-
     def __init__(
         self,
         version_source: VersionSource,
         constraints: Constraints | None = None,
         req_type: RequirementType | None = None,
         matcher: MatchFunction | re.Pattern | None = None,
+        *,
+        # generic provider does not implement caching
+        use_resolver_cache: bool = False,
     ):
-        super().__init__(constraints=constraints, req_type=req_type)
+        super().__init__(
+            constraints=constraints,
+            req_type=req_type,
+            use_resolver_cache=use_resolver_cache,
+        )
         self._version_source = version_source
         if matcher is None:
             self._match_function = self._default_match_function
@@ -616,42 +669,25 @@ class GenericProvider(BaseProvider):
             logger.debug(f"{identifier}: could not parse version from {value}: {err}")
             return None
 
-    def get_cache(self) -> dict[str, list[Candidate]]:
-        return GenericProvider.generic_resolver_cache
+    @property
+    def cache_key(self) -> str:
+        raise NotImplementedError("GenericProvider does not implement caching")
 
-    def find_matches(
-        self,
-        identifier: str,
-        requirements: RequirementsMap,
-        incompatibilities: CandidatesMap,
-    ) -> typing.Iterable[Candidate]:
-        candidates = self.get_from_cache(identifier, requirements, incompatibilities)
+    def find_candidates(self, identifier) -> Candidates:
+        candidates: list[Candidate] = []
         version: Version | None
-
-        if not candidates:
-            # Need to pass the extras to the search, so they
-            # are added to the candidate at creation - we
-            # treat candidates as immutable once created.
-            for url, item in self._version_source(
-                identifier, requirements, incompatibilities
-            ):
-                if isinstance(item, Version):
-                    version = item
-                else:
-                    version = self._match_function(identifier, item)
-                    if version is None:
-                        logger.debug(f"{identifier}: match function ignores {item}")
-                        continue
-                    assert isinstance(version, Version)
-                    version = version
-                candidate = Candidate(identifier, version, url=url)
-                if self.validate_candidate(
-                    identifier, requirements, incompatibilities, candidate
-                ):
-                    candidates.append(candidate)
-                self.add_to_cache(identifier, candidates)
-
-        return sorted(candidates, key=attrgetter("version"), reverse=True)
+        for url, item in self._version_source(identifier):
+            if isinstance(item, Version):
+                version = item
+            else:
+                version = self._match_function(identifier, item)
+                if version is None:
+                    logger.debug(f"{identifier}: match function ignores {item}")
+                    continue
+                assert isinstance(version, Version)
+                version = version
+            candidates.append(Candidate(identifier, version, url=url))
+        return candidates
 
 
 class GitHubTagProvider(GenericProvider):
@@ -662,9 +698,6 @@ class GitHubTagProvider(GenericProvider):
 
     host = "github.com:443"
     api_url = "https://api.{self.host}/repos/{self.organization}/{self.repo}/tags"
-    github_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(
-        list
-    )
 
     def __init__(
         self,
@@ -672,23 +705,27 @@ class GitHubTagProvider(GenericProvider):
         repo: str,
         constraints: Constraints | None = None,
         matcher: MatchFunction | re.Pattern | None = None,
+        *,
+        req_type: RequirementType | None = None,
+        use_resolver_cache: bool = True,
     ):
         super().__init__(
-            version_source=self._find_tags,
             constraints=constraints,
+            req_type=req_type,
+            use_resolver_cache=use_resolver_cache,
+            version_source=self._find_tags,
             matcher=matcher,
         )
         self.organization = organization
         self.repo = repo
 
-    def get_cache(self) -> dict[str, list[Candidate]]:
-        return GitHubTagProvider.github_resolver_cache
+    @property
+    def cache_key(self) -> str:
+        return f"{self.organization}/{self.repo}"
 
     def _find_tags(
         self,
         identifier: str,
-        requirements: RequirementsMap,
-        incompatibilities: CandidatesMap,
     ) -> Iterable[tuple[str, Version]]:
         headers = {"accept": "application/vnd.github+json"}
 
@@ -727,20 +764,21 @@ class GitHubTagProvider(GenericProvider):
 class GitLabTagProvider(GenericProvider):
     """Lookup tarball and version from GitLab git tags"""
 
-    gitlab_resolver_cache: typing.ClassVar[dict[str, list[Candidate]]] = defaultdict(
-        list
-    )
-
     def __init__(
         self,
         project_path: str,
         server_url: str = "https://gitlab.com",
         constraints: Constraints | None = None,
         matcher: MatchFunction | re.Pattern | None = None,
+        *,
+        req_type: RequirementType | None = None,
+        use_resolver_cache: bool = True,
     ) -> None:
         super().__init__(
-            version_source=self._find_tags,
             constraints=constraints,
+            req_type=req_type,
+            use_resolver_cache=use_resolver_cache,
+            version_source=self._find_tags,
             matcher=matcher,
         )
         self.server_url = server_url.rstrip("/")
@@ -755,14 +793,13 @@ class GitLabTagProvider(GenericProvider):
             f"{self.server_url}/api/v4/projects/{encoded_path}/repository/tags"
         )
 
-    def get_cache(self) -> dict[str, list[Candidate]]:
-        return GitLabTagProvider.gitlab_resolver_cache
+    @property
+    def cache_key(self) -> str:
+        return f"{self.server_url}/{self.project_path}"
 
     def _find_tags(
         self,
         identifier: str,
-        requirements: RequirementsMap,
-        incompatibilities: CandidatesMap,
     ) -> Iterable[tuple[str, Version]]:
         nexturl: str = self.api_url
         while nexturl:
