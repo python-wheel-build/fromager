@@ -406,3 +406,36 @@ def migrate_graph(
             graph.serialize(f)
     else:
         graph.serialize(sys.stdout)
+
+
+@graph.command()
+@click.argument(
+    "graph-file",
+    type=clickext.ClickPath(),
+)
+@click.pass_obj
+def build_graph(
+    wkctx: context.WorkContext,
+    graph_file: pathlib.Path,
+):
+    "Print build graph steps for parallel-build"
+    graph = DependencyGraph.from_file(graph_file)
+    topo = graph.get_build_topology(context=wkctx)
+    topo.prepare()
+
+    def n2s(nodes: typing.Iterable[DependencyNode]) -> str:
+        return ", ".join(sorted(node.key for node in nodes))
+
+    print(f"Build dependencies ({len(topo.dependency_nodes)}):", n2s(topo.dependency_nodes))
+    if topo.exclusive_nodes:
+        print(f"Exclusive builds ({len(topo.exclusive_nodes)}):", n2s(topo.exclusive_nodes))
+
+    print("\nBuild rounds:")
+    rounds: int = 0
+    while topo.is_active():
+        rounds += 1
+        nodes_to_build = topo.get_available()
+        print(f"- #{rounds}:", n2s(nodes_to_build))
+        topo.done(*nodes_to_build)
+
+    print(f"\nBuilding {len(graph)} packages in {rounds} rounds.")
