@@ -115,7 +115,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Super-Linter
-        uses: super-linter/super-linter@v8.1.0 # x-release-please-version
+        uses: super-linter/super-linter@v8.2.0 # x-release-please-version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # To reuse the same Super-linter configuration that you use in the
