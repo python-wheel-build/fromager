@@ -238,8 +238,10 @@ def add_extra_metadata_to_wheels(
         build_tag_from_settings = pbi.build_tag(version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
 
+        # Use wheel binary from the same virtual environment as the running Python
+        wheel_bin = pathlib.Path(sys.executable).parent / "wheel"
         cmd = [
-            "wheel",
+            str(wheel_bin),
             "pack",
             str(wheel_root_dir),
             "--dest-dir",
