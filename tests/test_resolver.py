@@ -1,5 +1,5 @@
-import collections
 import re
+import typing
 
 import pytest
 import requests_mock
@@ -8,7 +8,6 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import constraints, resolver
-from fromager.requirements_file import RequirementType
 
 _hydra_core_simple_response = """
 <!DOCTYPE html>
@@ -40,9 +39,56 @@ _hydra_core_simple_response = """
 
 @pytest.fixture(autouse=True)
 def reset_cache():
-    resolver.PyPIProvider.pypi_resolver_cache = collections.defaultdict(list)
-    resolver.GenericProvider.generic_resolver_cache = collections.defaultdict(list)
-    resolver.GitHubTagProvider.github_resolver_cache = collections.defaultdict(list)
+    resolver.BaseProvider.clear_cache()
+
+
+@pytest.fixture
+def pypi_hydra_resolver() -> typing.Generator[resolvelib.AbstractResolver, None, None]:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_sdists=False)
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        yield resolvelib.Resolver(provider, reporter)
+
+
+@pytest.fixture
+def gitlab_decile_resolver() -> typing.Generator[resolvelib.AbstractResolver, None, None]:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
+            text=_gitlab_submodlib_repo_response,
+        )
+
+        provider = resolver.GitLabTagProvider(
+            project_path="mirrors/github/decile-team/submodlib",
+            server_url="https://gitlab.com",
+            matcher=re.compile("v(.*)"),  # with match object
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        yield resolvelib.Resolver(provider, reporter)
+
+
+@pytest.fixture
+def github_fromager_resolver() -> typing.Generator[resolvelib.AbstractResolver, None, None]:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            text=_github_fromager_repo_response,
+        )
+        r.get(
+            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            text=_github_fromager_tag_response,
+        )
+
+        provider = resolver.GitHubTagProvider(
+            organization="python-wheel-build", repo="fromager"
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        yield resolvelib.Resolver(provider, reporter)
 
 
 def test_provider_choose_wheel():
@@ -67,72 +113,38 @@ def test_provider_choose_wheel():
         assert str(candidate.version) == "1.3.2"
 
 
-def test_provider_cache():
-    with requests_mock.Mocker() as r:
-        r.get(
-            "https://pypi.org/simple/hydra-core/",
-            text=_hydra_core_simple_response,
-        )
+def test_provider_cache_key_pypi(pypi_hydra_resolver) -> None:
+    req = Requirement("hydra-core<1.3")
 
-        # fill the cache
-        provider = resolver.PyPIProvider(include_sdists=False)
-        reporter = resolvelib.BaseReporter()
-        rslvr = resolvelib.Resolver(provider, reporter)
-        result = rslvr.resolve([Requirement("hydra-core<1.3")])
-        candidate = result.mapping["hydra-core"]
-        assert str(candidate.version) == "1.2.2"
-        assert "hydra-core" in resolver.PyPIProvider.pypi_resolver_cache
-        assert len(resolver.PyPIProvider.pypi_resolver_cache["hydra-core"]) == 1
+    # fill the cache
+    provider = pypi_hydra_resolver.provider
+    assert provider.cache_key == "https://pypi.org/simple/"
+    req_cache = provider._get_cached_candidates(req.name)
+    assert req_cache == []
 
-        # store a copy of the cache
-        cache_copy = {
-            "hydra-core": resolver.PyPIProvider.pypi_resolver_cache["hydra-core"][:]
-        }
+    result = pypi_hydra_resolver.resolve([req])
+    candidate = result.mapping[req.name]
+    assert str(candidate.version) == "1.2.2"
 
-        # resolve for build requirement should end up with the already seen older version
-        provider = resolver.PyPIProvider(
-            include_sdists=False, req_type=RequirementType.BUILD_SDIST
-        )
-        reporter = resolvelib.BaseReporter()
-        rslvr = resolvelib.Resolver(provider, reporter)
-        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
-        candidate = result.mapping["hydra-core"]
-        assert str(candidate.version) == "1.2.2"
-        assert "hydra-core" in resolver.PyPIProvider.pypi_resolver_cache
-        assert len(resolver.PyPIProvider.pypi_resolver_cache["hydra-core"]) == 1
+    resolver_cache = resolver.BaseProvider.resolver_cache
+    assert req.name in resolver_cache
+    assert (resolver.PyPIProvider, provider.cache_key) in resolver_cache[req.name]
+    # mutated in place
+    assert provider._get_cached_candidates(req.name) is req_cache
+    assert len(provider._get_cached_candidates(req.name)) == 7
+    assert len(req_cache) == 7
 
-        # resolve for install requirement should ignore the already seen older version
-        provider = resolver.PyPIProvider(
-            include_sdists=False, req_type=RequirementType.INSTALL
-        )
-        reporter = resolvelib.BaseReporter()
-        rslvr = resolvelib.Resolver(provider, reporter)
-        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
-        candidate = result.mapping["hydra-core"]
-        assert str(candidate.version) == "1.3.2"
 
-        # have to restore the cache so that 1.3.2 doesn't get picked up from there
-        resolver.PyPIProvider.pypi_resolver_cache = cache_copy
+def test_provider_cache_key_gitlab(gitlab_decile_resolver) -> None:
+    provider = gitlab_decile_resolver.provider
+    assert (
+        provider.cache_key == "https://gitlab.com/mirrors/github/decile-team/submodlib"
+    )
 
-        # double check that the restoration worked
-        provider = resolver.PyPIProvider(
-            include_sdists=False, req_type=RequirementType.BUILD_SDIST
-        )
-        reporter = resolvelib.BaseReporter()
-        rslvr = resolvelib.Resolver(provider, reporter)
-        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
-        candidate = result.mapping["hydra-core"]
-        assert str(candidate.version) == "1.2.2"
 
-        # if resolving for build but with different conditions, don't use cache
-        provider = resolver.PyPIProvider(
-            include_wheels=False, req_type=RequirementType.BUILD_SDIST
-        )
-        reporter = resolvelib.BaseReporter()
-        rslvr = resolvelib.Resolver(provider, reporter)
-        result = rslvr.resolve([Requirement("hydra-core>=1.2")])
-        candidate = result.mapping["hydra-core"]
-        assert str(candidate.version) == "1.3.2"
+def test_provider_cache_key_github(github_fromager_resolver) -> None:
+    provider = github_fromager_resolver.provider
+    assert provider.cache_key == "python-wheel-build/fromager"
 
 
 def test_provider_choose_wheel_prereleases():
@@ -593,7 +605,9 @@ def test_resolve_github():
             text=_github_fromager_tag_response,
         )
 
-        provider = resolver.GitHubTagProvider("python-wheel-build", "fromager")
+        provider = resolver.GitHubTagProvider(
+            organization="python-wheel-build", repo="fromager"
+        )
         reporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
@@ -623,7 +637,7 @@ def test_github_constraint_mismatch():
         )
 
         provider = resolver.GitHubTagProvider(
-            "python-wheel-build", "fromager", constraints=constraint
+            organization="python-wheel-build", repo="fromager", constraints=constraint
         )
         reporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
@@ -646,7 +660,7 @@ def test_github_constraint_match():
         )
 
         provider = resolver.GitHubTagProvider(
-            "python-wheel-build", "fromager", constraints=constraint
+            organization="python-wheel-build", repo="fromager", constraints=constraint
         )
         reporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
@@ -667,7 +681,7 @@ def test_resolve_generic():
     def _versions(*args, **kwds):
         return [("url", "1.2"), ("url", "1.3"), ("url", "1.4.1")]
 
-    provider = resolver.GenericProvider(_versions, None)
+    provider = resolver.GenericProvider(version_source=_versions)
     reporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
 
@@ -676,6 +690,12 @@ def test_resolve_generic():
 
     candidate = result.mapping["fromager"]
     assert str(candidate.version) == "1.4.1"
+
+    # generic provider does not use resolver cache
+    assert not resolver.BaseProvider.resolver_cache
+
+    with pytest.raises(NotImplementedError):
+        assert provider.cache_key
 
 
 _gitlab_submodlib_repo_response = """
