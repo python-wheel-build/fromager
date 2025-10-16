@@ -3,6 +3,7 @@ import pathlib
 from click.testing import CliRunner
 
 from fromager.__main__ import main as fromager
+from fromager.commands import commands
 
 
 def test_migrate_config(
@@ -39,3 +40,31 @@ def test_fromager_version(cli_runner: CliRunner) -> None:
     result = cli_runner.invoke(fromager, ["--version"])
     assert result.exit_code == 0
     assert result.stdout.startswith("fromager, version")
+
+
+KNOWN_COMMANDS: set[str] = {
+    "bootstrap",
+    "bootstrap-parallel",
+    "build",
+    "build-order",
+    "build-parallel",
+    "build-sequence",
+    "canonicalize",
+    "download-sequence",
+    "find-updates",
+    "graph",
+    "lint",
+    "lint-requirements",
+    "list-overrides",
+    "list-versions",
+    "migrate-config",
+    "minimize",
+    "stats",
+    "step",
+    "wheel-server",
+}
+
+
+def test_registered_eps() -> None:
+    registered = {c.name for c in commands}
+    assert registered == KNOWN_COMMANDS

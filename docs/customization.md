@@ -445,3 +445,30 @@ def post_bootstrap(
         f"{req.name}: running post bootstrap hook for {sdist_filename} and {wheel_filename}"
     )
 ```
+
+## Custom CLI (command line interface) commands
+
+Fromager's CLI can be extended with additional commands with entry point
+group `fromager.cli`. The entry point value must return a valid `click`
+command or command group. The name must match the command name.
+
+```yaml
+# pyproject.toml
+[project.entry-points."fromager.cli"]
+mycommand = "mypackage.module:mycommand"
+```
+
+```python
+# mypackage/module.py
+import click
+from fromager import context
+
+@click.command()
+@click.argument("example")
+@click.pass_obj
+def mycommand(
+    wkctx: context.WorkContext,
+    example: str,
+) -> None:
+    ...
+```

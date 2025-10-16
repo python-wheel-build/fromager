@@ -101,6 +101,27 @@ resolve_source = "fromager.sources:default_resolve_source"
 build_sdist = "fromager.sources:default_build_sdist"
 build_wheel = "fromager.wheels:default_build_wheel"
 
+[project.entry-points."fromager.cli"]
+bootstrap = "fromager.commands.bootstrap:bootstrap"
+bootstrap-parallel = "fromager.commands.bootstrap:bootstrap_parallel"
+build = "fromager.commands.build:build"
+build-sequence = "fromager.commands.build:build_sequence"
+build-parallel = "fromager.commands.build:build_parallel"
+build-order = "fromager.commands.build_order:build_order"
+find-updates = "fromager.commands.find_updates:find_updates"
+graph = "fromager.commands.graph:graph"
+lint = "fromager.commands.lint:lint"
+list-overrides = "fromager.commands.list_overrides:list_overrides"
+list-versions = "fromager.commands.list_versions:list_versions"
+migrate-config = "fromager.commands.migrate_config:migrate_config"
+minimize = "fromager.commands.minimize:minimize"
+stats = "fromager.commands.stats:stats"
+step = "fromager.commands.step:step"
+canonicalize = "fromager.commands.canonicalize:canonicalize"
+download-sequence = "fromager.commands.download_sequence:download_sequence"
+wheel-server = "fromager.commands.server:wheel_server"
+lint-requirements = "fromager.commands.lint_requirements:lint_requirements"
+
 [tool.coverage.run]
 branch = true
 parallel = true
