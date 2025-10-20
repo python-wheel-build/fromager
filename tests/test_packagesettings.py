@@ -87,6 +87,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
+            "versions": {},
         },
         "rocm": {
             "annotations": {
@@ -95,12 +96,14 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"SPAM": ""},
             "wheel_server_url": None,
             "pre_built": True,
+            "versions": {},
         },
         "cuda": {
             "annotations": None,
             "env": {},
             "wheel_server_url": None,
             "pre_built": False,
+            "versions": {},
         },
     },
 }
@@ -182,6 +185,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
             "env": {},
             "pre_built": True,
             "wheel_server_url": None,
+            "versions": {},
         },
     },
 }
