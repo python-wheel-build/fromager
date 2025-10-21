@@ -549,16 +549,24 @@ class PyPIProvider(BaseProvider):
             # hint in case that should be adjusted for the package that does not
             # resolve.
             r = next(iter(requirements[identifier]))
+
+            # Determine if pre-releases are allowed
+            req_allows_prerelease = bool(r.specifier) and bool(r.specifier.prereleases)
+            allow_prerelease = (
+                self.constraints.allow_prerelease(r.name) or req_allows_prerelease
+            )
+            prerelease_info = "including" if allow_prerelease else "ignoring"
+
+            # Determine the file type that was allowed
             if self.include_sdists and self.include_wheels:
-                raise resolvelib.resolvers.ResolverException(
-                    f"found no match for {r}, any file type, in cache or at {self.sdist_server_url}"
-                )
+                file_type_info = "any file type"
             elif self.include_sdists:
-                raise resolvelib.resolvers.ResolverException(
-                    f"found no match for {r}, limiting search to sdists, in cache or at {self.sdist_server_url}"
-                )
+                file_type_info = "sdists"
+            else:
+                file_type_info = "wheels"
+
             raise resolvelib.resolvers.ResolverException(
-                f"found no match for {r}, limiting search to wheels, in cache or at {self.sdist_server_url}"
+                f"found no match for {r}, searching for {file_type_info}, {prerelease_info} pre-release versions, in cache or at {self.sdist_server_url}"
             )
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
