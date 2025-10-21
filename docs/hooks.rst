@@ -169,7 +169,7 @@ Resolver hooks
         def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
             return resolver.GenericProvider(version_source=_version_source, constraints=ctx.constraints)
 
-    ``GenericProvider``, ``GitHubTagProvider``, and ``GitHubTagProvider`` take
+    ``GenericProvider``, ``GitHubTagProvider``, and ``GitLabTagProvider`` take
     an optional ``matcher`` argument. The matcher can be a
     ``Callable[[str, str], Version | None]`` or a regular expression pattern
     object from ``re.compile``  The default match function attempts to convert
