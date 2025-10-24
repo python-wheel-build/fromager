@@ -570,7 +570,7 @@ class Bootstrapper:
             logger.info(f"has expected build tag {expected_build_tag}")
             # Get changelogs for debug info
             changelogs = pbi.get_changelog(resolved_version)
-            logger.debug(f"{req.name} has change logs {changelogs}")
+            logger.debug(f"has change logs {changelogs}")
 
             _, _, build_tag, _ = wheels.extract_info_from_wheel_file(
                 req, wheelfile_name
