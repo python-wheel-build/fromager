@@ -237,7 +237,11 @@ def show_explain_duplicates(graph: DependencyGraph) -> None:
         usable_versions: dict[str, list[str]] = {}
         user_counter: int = 0
 
-        print(f"\n{dep_name}")
+        # Get the constraint from the first node (all versions have the same constraint)
+        constraint_info = (
+            f" (constraint: {nodes[0].constraint})" if nodes[0].constraint else ""
+        )
+        print(f"\n{dep_name}{constraint_info}")
         for node in sorted(nodes, key=lambda x: x.version):
             print(f"  {node.version}")
 
@@ -327,7 +331,8 @@ def find_why(
     # we might be invoked for multiple packages and we want the format to be
     # consistent.
     if depth == 0:
-        print(f"\n{node.key}")
+        constraint_info = f" (constraint: {node.constraint})" if node.constraint else ""
+        print(f"\n{node.key}{constraint_info}")
 
     seen = set([node.key]).union(seen)
     all_skipped = True
@@ -338,16 +343,25 @@ def find_why(
         # dependencies.
         if parent.destination_node.key == ROOT:
             is_toplevel = True
+            # Show constraint for top-level dependencies
+            constraint_info = (
+                f" (constraint: {node.constraint})" if node.constraint else ""
+            )
             print(
-                f"{'  ' * depth} * {node.key} is a toplevel dependency with req {parent.req}"
+                f"{'  ' * depth} * {node.key}{constraint_info} is a toplevel dependency with req {parent.req}"
             )
             continue
         # Skip dependencies that don't match the req_type.
         if req_type and parent.req_type not in req_type:
             continue
         all_skipped = False
+        parent_constraint = (
+            f" (constraint: {parent.destination_node.constraint})"
+            if parent.destination_node.constraint
+            else ""
+        )
         print(
-            f"{'  ' * depth} * {node.key} is an {parent.req_type} dependency of {parent.destination_node.key} with req {parent.req}"
+            f"{'  ' * depth} * {node.key} is an {parent.req_type} dependency of {parent.destination_node.key}{parent_constraint} with req {parent.req}"
         )
         if max_depth and (max_depth == -1 or depth <= max_depth):
             find_why(

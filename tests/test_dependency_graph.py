@@ -48,7 +48,7 @@ def test_dependencynode_dataclass():
     assert a.key == "a==1.0"
     assert (
         repr(a)
-        == "DependencyNode(canonicalized_name='a', version=<Version('1.0')>, download_url='', pre_built=False)"
+        == "DependencyNode(canonicalized_name='a', version=<Version('1.0')>, download_url='', pre_built=False, constraint='')"
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
         a.version = Version("2.0")
