@@ -323,9 +323,7 @@ def _safe_install(
     try:
         build_env.install(deps)
     except subprocess.CalledProcessError as err:
-        logger.error(
-            f"{req.name}: failed to install {dep_req_type} dependencies {deps}: {err}"
-        )
+        logger.error(f"failed to install {dep_req_type} dependencies {deps}: {err}")
         match = _uv_missing_dependency_pattern.search(err.output)
         if match is not None:
             req_info = match.groups()[0]
@@ -338,4 +336,4 @@ def _safe_install(
             deps,
         ) from err
 
-    logger.info("%s: installed %s requirements %s", req.name, dep_req_type, deps)
+    logger.info("installed %s requirements %s", dep_req_type, deps)
