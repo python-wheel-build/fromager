@@ -29,6 +29,7 @@ class DependencyNodeDict(typing.TypedDict):
     canonicalized_name: str
     version: str
     pre_built: bool
+    constraint: str
     edges: list[DependencyEdgeDict]
 
 
@@ -38,6 +39,7 @@ class DependencyNode:
     version: Version
     download_url: str = dataclasses.field(default="", compare=False)
     pre_built: bool = dataclasses.field(default=False, compare=False)
+    constraint: str = dataclasses.field(default="", compare=False)
     # additional fields
     key: str = dataclasses.field(init=False, compare=False, repr=False)
     parents: list[DependencyEdge] = dataclasses.field(
@@ -85,6 +87,7 @@ class DependencyNode:
             "pre_built": self.pre_built,
             "version": str(self.version),
             "canonicalized_name": str(self.canonicalized_name),
+            "constraint": self.constraint,
             "edges": [edge.to_dict() for edge in self.children],
         }
 
@@ -175,6 +178,7 @@ class DependencyGraph:
                     req_version=Version(destination_node_dict["version"]),
                     download_url=destination_node_dict["download_url"],
                     pre_built=destination_node_dict["pre_built"],
+                    constraint=destination_node_dict.get("constraint", ""),
                 )
                 stack.append(edge_dict["key"])
             visited.add(curr_key)
@@ -207,12 +211,14 @@ class DependencyGraph:
         version: Version,
         download_url: str,
         pre_built: bool,
+        constraint: str,
     ):
         new_node = DependencyNode(
             canonicalized_name=req_name,
             version=version,
             download_url=download_url,
             pre_built=pre_built,
+            constraint=constraint,
         )
         # check if a node with that key already exists. if it does then use that
         node = self.nodes.get(new_node.key, new_node)
@@ -229,6 +235,7 @@ class DependencyGraph:
         req_version: Version,
         download_url: str = "",
         pre_built: bool = False,
+        constraint: str = "",
     ) -> None:
         logger.debug(
             "recording %s dependency %s%s -> %s==%s",
@@ -244,6 +251,7 @@ class DependencyGraph:
             version=req_version,
             download_url=download_url,
             pre_built=pre_built,
+            constraint=constraint,
         )
 
         parent_key = ROOT if parent_name is None else f"{parent_name}=={parent_version}"
