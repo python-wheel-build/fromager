@@ -939,9 +939,6 @@ class Bootstrapper:
 
         _, parent_req, parent_version = self.why[-1] if self.why else (None, None, None)
         pbi = self.ctx.package_build_info(req)
-        # Get the constraint rule if any
-        constraint_req = self.ctx.constraints.get_constraint(req.name)
-        constraint = str(constraint_req) if constraint_req else ""
         # Update the dependency graph after we determine that this requirement is
         # useful but before we determine if it is redundant so that we capture all
         # edges to use for building a valid constraints file.
@@ -953,7 +950,7 @@ class Bootstrapper:
             req_version=req_version,
             download_url=download_url,
             pre_built=pbi.pre_built,
-            constraint=constraint,
+            constraint=self.ctx.constraints.get_constraint(req.name),
         )
         self.ctx.write_to_graph_to_file()
 

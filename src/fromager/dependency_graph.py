@@ -29,7 +29,8 @@ class DependencyNodeDict(typing.TypedDict):
     canonicalized_name: str
     version: str
     pre_built: bool
-    constraint: str
+    # not set in older graph files
+    constraint: typing.NotRequired[str | None]
     edges: list[DependencyEdgeDict]
 
 
@@ -39,7 +40,7 @@ class DependencyNode:
     version: Version
     download_url: str = dataclasses.field(default="", compare=False)
     pre_built: bool = dataclasses.field(default=False, compare=False)
-    constraint: str = dataclasses.field(default="", compare=False)
+    constraint: Requirement | None = dataclasses.field(default=None, compare=False)
     # additional fields
     key: str = dataclasses.field(init=False, compare=False, repr=False)
     parents: list[DependencyEdge] = dataclasses.field(
@@ -87,7 +88,7 @@ class DependencyNode:
             "pre_built": self.pre_built,
             "version": str(self.version),
             "canonicalized_name": str(self.canonicalized_name),
-            "constraint": self.constraint,
+            "constraint": str(self.constraint) if self.constraint else None,
             "edges": [edge.to_dict() for edge in self.children],
         }
 
@@ -170,6 +171,10 @@ class DependencyGraph:
                 destination_node_dict = typing.cast(
                     DependencyNodeDict, graph_dict[edge_dict["key"]]
                 )
+                constraint_value: str | None = destination_node_dict.get("constraint")
+                constraint: Requirement | None = (
+                    Requirement(constraint_value) if constraint_value else None
+                )
                 graph.add_dependency(
                     parent_name=parent_name,
                     parent_version=parent_version,
@@ -178,7 +183,7 @@ class DependencyGraph:
                     req_version=Version(destination_node_dict["version"]),
                     download_url=destination_node_dict["download_url"],
                     pre_built=destination_node_dict["pre_built"],
-                    constraint=destination_node_dict.get("constraint", ""),
+                    constraint=constraint,
                 )
                 stack.append(edge_dict["key"])
             visited.add(curr_key)
@@ -211,7 +216,7 @@ class DependencyGraph:
         version: Version,
         download_url: str,
         pre_built: bool,
-        constraint: str,
+        constraint: Requirement | None,
     ):
         new_node = DependencyNode(
             canonicalized_name=req_name,
@@ -235,7 +240,7 @@ class DependencyGraph:
         req_version: Version,
         download_url: str = "",
         pre_built: bool = False,
-        constraint: str = "",
+        constraint: Requirement | None = None,
     ) -> None:
         logger.debug(
             "recording %s dependency %s%s -> %s==%s",
