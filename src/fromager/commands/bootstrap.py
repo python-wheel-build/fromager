@@ -169,9 +169,6 @@ def bootstrap(
                     req_type=RequirementType.TOP_LEVEL,
                 )
             logger.info("%s resolves to %s", req, version)
-            # Get the constraint rule if any
-            constraint_req = wkctx.constraints.get_constraint(req.name)
-            constraint = str(constraint_req) if constraint_req else ""
             wkctx.dependency_graph.add_dependency(
                 parent_name=None,
                 parent_version=None,
@@ -180,7 +177,7 @@ def bootstrap(
                 req_version=version,
                 download_url=source_url,
                 pre_built=pbi.pre_built,
-                constraint=constraint,
+                constraint=wkctx.constraints.get_constraint(req.name),
             )
             requirement_ctxvar.reset(token)
 

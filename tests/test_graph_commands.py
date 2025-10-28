@@ -1,5 +1,6 @@
 """Test graph command functions that display constraint information."""
 
+import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
@@ -9,7 +10,9 @@ from fromager.commands.graph import find_why, show_explain_duplicates
 from fromager.requirements_file import RequirementType
 
 
-def test_show_explain_duplicates_with_constraints(capsys):
+def test_show_explain_duplicates_with_constraints(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Test that explain_duplicates shows constraint information."""
     # Create a graph with duplicate dependencies that have constraints
     graph = dependency_graph.DependencyGraph()
@@ -32,7 +35,7 @@ def test_show_explain_duplicates_with_constraints(capsys):
         req=Requirement("package-b>=1.0"),
         req_version=Version("1.0.0"),
         download_url="https://example.com/package-b-1.0.0.tar.gz",
-        constraint="package-b>=1.0,<2.0",
+        constraint=Requirement("package-b>=1.0,<2.0"),
     )
 
     # Add another top-level package
@@ -53,7 +56,7 @@ def test_show_explain_duplicates_with_constraints(capsys):
         req=Requirement("package-b>=2.0"),
         req_version=Version("2.0.0"),
         download_url="https://example.com/package-b-2.0.0.tar.gz",
-        constraint="",
+        constraint=None,
     )
 
     # Run the command
@@ -63,7 +66,7 @@ def test_show_explain_duplicates_with_constraints(capsys):
     captured = capsys.readouterr()
 
     # Verify constraint is shown at the package name level, not per-version
-    assert "package-b (constraint: package-b>=1.0,<2.0)" in captured.out
+    assert "package-b (constraint: package-b<2.0,>=1.0)" in captured.out
     # Versions should be shown without constraint info
     assert "  1.0.0\n" in captured.out
     assert "  2.0.0\n" in captured.out
@@ -72,7 +75,9 @@ def test_show_explain_duplicates_with_constraints(capsys):
     assert "2.0.0 (constraint:" not in captured.out
 
 
-def test_find_why_with_constraints(capsys):
+def test_find_why_with_constraints(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Test that why command shows constraint information."""
     # Create a graph with constraints
     graph = dependency_graph.DependencyGraph()
@@ -85,7 +90,7 @@ def test_find_why_with_constraints(capsys):
         req=Requirement("parent-pkg"),
         req_version=Version("1.0.0"),
         download_url="https://example.com/parent-pkg-1.0.0.tar.gz",
-        constraint="parent-pkg==1.0.0",
+        constraint=Requirement("parent-pkg==1.0.0"),
     )
 
     # Add child dependency with its own constraint
@@ -96,7 +101,7 @@ def test_find_why_with_constraints(capsys):
         req=Requirement("child-pkg>=1.0"),
         req_version=Version("1.5.0"),
         download_url="https://example.com/child-pkg-1.5.0.tar.gz",
-        constraint="child-pkg>=1.0,<2.0",
+        constraint=Requirement("child-pkg>=1.0,<2.0"),
     )
 
     # Find why child-pkg is included
@@ -107,12 +112,14 @@ def test_find_why_with_constraints(capsys):
     captured = capsys.readouterr()
 
     # Verify constraint is shown for the child package at depth 0
-    assert "child-pkg==1.5.0 (constraint: child-pkg>=1.0,<2.0)" in captured.out
+    assert "child-pkg==1.5.0 (constraint: child-pkg<2.0,>=1.0)" in captured.out
     # Verify constraint is shown for the parent when showing the dependency relationship
     assert "(constraint: parent-pkg==1.0.0)" in captured.out
 
 
-def test_find_why_toplevel_with_constraint(capsys):
+def test_find_why_toplevel_with_constraint(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Test that why command shows constraint for top-level dependencies."""
     # Create a graph with a top-level package that has a constraint
     graph = dependency_graph.DependencyGraph()
@@ -125,7 +132,7 @@ def test_find_why_toplevel_with_constraint(capsys):
         req=Requirement("toplevel-pkg"),
         req_version=Version("2.0.0"),
         download_url="https://example.com/toplevel-pkg-2.0.0.tar.gz",
-        constraint="toplevel-pkg>=2.0,<3.0",
+        constraint=Requirement("toplevel-pkg<3.0,>=2.0"),
     )
 
     # Find why toplevel-pkg is included
@@ -136,15 +143,17 @@ def test_find_why_toplevel_with_constraint(capsys):
     captured = capsys.readouterr()
 
     # Verify constraint is shown at depth 0
-    assert "toplevel-pkg==2.0.0 (constraint: toplevel-pkg>=2.0,<3.0)" in captured.out
+    assert "toplevel-pkg==2.0.0 (constraint: toplevel-pkg<3.0,>=2.0)" in captured.out
     # Verify constraint is shown when identifying it as a top-level dependency
     assert (
-        "toplevel-pkg==2.0.0 (constraint: toplevel-pkg>=2.0,<3.0) is a toplevel dependency"
+        "toplevel-pkg==2.0.0 (constraint: toplevel-pkg<3.0,>=2.0) is a toplevel dependency"
         in captured.out
     )
 
 
-def test_find_why_without_constraints(capsys):
+def test_find_why_without_constraints(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Test that why command works when no constraints are present."""
     # Create a graph without constraints
     graph = dependency_graph.DependencyGraph()

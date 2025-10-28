@@ -11,7 +11,7 @@ raw_graph = {
         "pre_built": False,
         "version": "0",
         "canonicalized_name": "",
-        "constraint": "",
+        "constraint": None,
         "edges": [{"key": "a==2.0", "req_type": "install", "req": "a==2.0"}],
     },
     "a==2.0": {
@@ -19,7 +19,7 @@ raw_graph = {
         "pre_built": False,
         "version": "2.0",
         "canonicalized_name": "a",
-        "constraint": "",
+        "constraint": None,
         "edges": [
             {"key": "b==3.0", "req_type": "build-system", "req": "b==3.0"},
             {"key": "c==4.0", "req_type": "build-backend", "req": "c==4.0"},
@@ -30,7 +30,7 @@ raw_graph = {
         "pre_built": False,
         "version": "3.0",
         "canonicalized_name": "b",
-        "constraint": "",
+        "constraint": None,
         "edges": [
             {"key": "c==4.0", "req_type": "build-sdist", "req": "c<=4.0"},
         ],
@@ -40,7 +40,7 @@ raw_graph = {
         "pre_built": False,
         "version": "4.0",
         "canonicalized_name": "c",
-        "constraint": "",
+        "constraint": None,
         "edges": [],
     },
 }
