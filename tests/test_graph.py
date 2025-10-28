@@ -46,7 +46,7 @@ raw_graph = {
 }
 
 
-def test_graph_add_dependency():
+def test_graph_add_dependency() -> None:
     graph = dependency_graph.DependencyGraph()
     # top level dependency
     graph.add_dependency(
@@ -100,12 +100,12 @@ def test_graph_add_dependency():
     assert graph._to_dict() == raw_graph
 
 
-def test_graph_from_dict():
+def test_graph_from_dict() -> None:
     graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
     assert graph._to_dict() == raw_graph
 
 
-def test_get_install_dependencies():
+def test_get_install_dependencies() -> None:
     graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
     graph.add_dependency(
         parent_name=canonicalize_name("a"),
@@ -149,7 +149,7 @@ def test_get_install_dependencies():
     assert install_nodes == ["a==2.0", "d==6.0", "b==3.0", "e==6.0"]
 
 
-def test_graph_add_dependency_with_constraint():
+def test_graph_add_dependency_with_constraint() -> None:
     """Test that constraints are properly stored in dependency nodes."""
     graph = dependency_graph.DependencyGraph()
 
@@ -184,7 +184,7 @@ def test_graph_add_dependency_with_constraint():
     assert child_node.constraint == "package-b>=2.0,<3.0"
 
 
-def test_graph_constraint_serialization():
+def test_graph_constraint_serialization() -> None:
     """Test that constraints survive to_dict/from_dict roundtrip."""
     graph = dependency_graph.DependencyGraph()
 
@@ -235,7 +235,7 @@ def test_graph_constraint_serialization():
     assert node3.constraint == ""
 
 
-def test_graph_duplicate_node_constraint_behavior():
+def test_graph_duplicate_node_constraint_behavior() -> None:
     """Test behavior when same package is added with different constraints.
 
     When a node with the same key (name==version) is added multiple times,
@@ -283,7 +283,7 @@ def test_graph_duplicate_node_constraint_behavior():
     assert len(node.parents) == 2
 
 
-def test_graph_constraint_in_to_dict():
+def test_graph_constraint_in_to_dict() -> None:
     """Test that to_dict() includes constraint information."""
     graph = dependency_graph.DependencyGraph()
 
@@ -304,7 +304,7 @@ def test_graph_constraint_in_to_dict():
     assert graph_dict["test-pkg==1.0.0"]["constraint"] == "test-pkg>=1.0,<2.0"
 
 
-def test_cycles_get_install_dependencies():
+def test_cycles_get_install_dependencies() -> None:
     graph = dependency_graph.DependencyGraph.from_dict(raw_graph)
     # create cycle: a depends on d and d depends on a
     graph.add_dependency(
