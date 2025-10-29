@@ -43,4 +43,18 @@ if fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs
     pass=false
 fi;
 
+# Test to demonstrate that command accepts valid duplicate entries in constraint files
+
+if ! fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/valid-duplicate-constraints.txt" "$SCRIPTDIR/validate_inputs/requirements.txt"; then
+    echo "the duplicate entries in files should have been recognized as valid" 1>&2
+    pass=false
+fi;
+
+# Test to demonstrate that command rejects invalid duplicate entries in constraint files
+
+if fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/invalid-duplicate-constraints.txt" "$SCRIPTDIR/validate_inputs/requirements.txt"; then
+    echo "duplicate entries in files should have been recognized by the command" 1>&2
+    pass=false
+fi;
+
 $pass
