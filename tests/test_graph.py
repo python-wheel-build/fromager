@@ -161,12 +161,13 @@ def test_graph_add_dependency_with_constraint() -> None:
         req=Requirement("package-a>=1.0"),
         req_version=Version("2.0"),
         download_url="url",
-        constraint="package-a>=1.0,<3.0",
+        constraint=Requirement("package-a>=1.0,<3.0"),
     )
 
     # Verify constraint is stored
     node = graph.nodes["package-a==2.0"]
-    assert node.constraint == "package-a>=1.0,<3.0"
+    assert node.constraint is not None
+    assert str(node.constraint) == "package-a<3.0,>=1.0"
 
     # Add child dependency with its own constraint
     graph.add_dependency(
@@ -176,12 +177,13 @@ def test_graph_add_dependency_with_constraint() -> None:
         req=Requirement("package-b>=2.0"),
         req_version=Version("2.5.0"),
         download_url="url-b",
-        constraint="package-b>=2.0,<3.0",
+        constraint=Requirement("package-b>=2.0,<3.0"),
     )
 
     # Verify child constraint is stored
     child_node = graph.nodes["package-b==2.5.0"]
-    assert child_node.constraint == "package-b>=2.0,<3.0"
+    assert child_node.constraint is not None
+    assert str(child_node.constraint) == "package-b<3.0,>=2.0"
 
 
 def test_graph_constraint_serialization() -> None:
@@ -196,7 +198,7 @@ def test_graph_constraint_serialization() -> None:
         req=Requirement("pkg-with-constraint"),
         req_version=Version("1.5.0"),
         download_url="url",
-        constraint="pkg-with-constraint>=1.0,<2.0",
+        constraint=Requirement("pkg-with-constraint>=1.0,<2.0"),
     )
 
     graph.add_dependency(
@@ -206,7 +208,7 @@ def test_graph_constraint_serialization() -> None:
         req=Requirement("dependency-pkg"),
         req_version=Version("3.0.0"),
         download_url="url-dep",
-        constraint="dependency-pkg==3.0.0",
+        constraint=Requirement("dependency-pkg==3.0.0"),
     )
 
     # Add dependency without constraint
@@ -225,14 +227,16 @@ def test_graph_constraint_serialization() -> None:
 
     # Verify constraints are preserved
     node1 = restored_graph.nodes["pkg-with-constraint==1.5.0"]
-    assert node1.constraint == "pkg-with-constraint>=1.0,<2.0"
+    assert node1.constraint is not None
+    assert str(node1.constraint) == "pkg-with-constraint<2.0,>=1.0"
 
     node2 = restored_graph.nodes["dependency-pkg==3.0.0"]
-    assert node2.constraint == "dependency-pkg==3.0.0"
+    assert node2.constraint is not None
+    assert str(node2.constraint) == "dependency-pkg==3.0.0"
 
-    # Verify empty constraint is preserved
+    # Verify None constraint is preserved
     node3 = restored_graph.nodes["build-pkg==1.0.0"]
-    assert node3.constraint == ""
+    assert node3.constraint is None
 
 
 def test_graph_duplicate_node_constraint_behavior() -> None:
@@ -251,7 +255,7 @@ def test_graph_duplicate_node_constraint_behavior() -> None:
         req=Requirement("shared-pkg>=1.0"),
         req_version=Version("2.0"),
         download_url="url1",
-        constraint="shared-pkg>=1.0,<3.0",
+        constraint=Requirement("shared-pkg>=1.0,<3.0"),
     )
 
     # Add another toplevel
@@ -272,12 +276,13 @@ def test_graph_duplicate_node_constraint_behavior() -> None:
         req=Requirement("shared-pkg>=2.0"),
         req_version=Version("2.0"),
         download_url="url1",
-        constraint="shared-pkg>=2.0,<4.0",  # Different constraint
+        constraint=Requirement("shared-pkg>=2.0,<4.0"),  # Different constraint
     )
 
     # The first constraint should be retained (existing node is reused)
     node = graph.nodes["shared-pkg==2.0"]
-    assert node.constraint == "shared-pkg>=1.0,<3.0"
+    assert node.constraint is not None
+    assert str(node.constraint) == "shared-pkg<3.0,>=1.0"
 
     # Verify both parents exist
     assert len(node.parents) == 2
@@ -294,14 +299,14 @@ def test_graph_constraint_in_to_dict() -> None:
         req=Requirement("test-pkg"),
         req_version=Version("1.0.0"),
         download_url="https://example.com/test-pkg.tar.gz",
-        constraint="test-pkg>=1.0,<2.0",
+        constraint=Requirement("test-pkg>=1.0,<2.0"),
     )
 
     graph_dict = graph._to_dict()
 
-    # Verify constraint is in the serialized format
+    # Verify constraint is in the serialized format (as string in JSON)
     assert "test-pkg==1.0.0" in graph_dict
-    assert graph_dict["test-pkg==1.0.0"]["constraint"] == "test-pkg>=1.0,<2.0"
+    assert graph_dict["test-pkg==1.0.0"]["constraint"] == "test-pkg<2.0,>=1.0"
 
 
 def test_cycles_get_install_dependencies() -> None:
