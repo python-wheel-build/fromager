@@ -105,6 +105,48 @@ VariantChangelog = Mapping[PackageVersion, list[str]]
 # Annotations
 RawAnnotations = Mapping[str, str]
 
+# PEP 517 config_settings value type
+# Values can be either str or list[str]
+ConfigSettingsValue = str | list[str]
+
+
+def _validate_config_settings_dict(
+    v: dict[str, typing.Any],
+) -> dict[str, ConfigSettingsValue]:
+    """Validate config_settings dict to ensure values are str or list[str]
+
+    This validator explicitly handles the union type for Pydantic 2.12+
+    compatibility, where nested dict values with union types may not be
+    automatically validated correctly.
+    """
+    if not isinstance(v, dict):
+        return v
+
+    result: dict[str, ConfigSettingsValue] = {}
+    for key, value in v.items():
+        if isinstance(value, str):
+            # String values are acceptable
+            result[key] = value
+        elif isinstance(value, list):
+            # List of strings is acceptable
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError(
+                    f"config_settings[{key!r}]: list must contain only strings"
+                )
+            result[key] = value
+        else:
+            raise ValueError(
+                f"config_settings[{key!r}]: value must be str or list[str], "
+                f"got {type(value).__name__}"
+            )
+    return result
+
+
+ConfigSettings = typing.Annotated[
+    dict[str, ConfigSettingsValue],
+    pydantic.BeforeValidator(_validate_config_settings_dict),
+]
+
 
 class Annotations(Mapping):
     """Read-only mapping for package annotations"""
@@ -426,7 +468,7 @@ class PackageSettings(pydantic.BaseModel):
     changelog: VariantChangelog = Field(default_factory=dict)
     """Changelog entries"""
 
-    config_settings: dict[str, str | list[str]] = Field(default_factory=dict)
+    config_settings: ConfigSettings = Field(default_factory=dict)
     """PEP 517 arbitrary configuration for wheel builds
 
     https://peps.python.org/pep-0517/#config-settings
@@ -939,7 +981,7 @@ class PackageBuildInfo:
         return self._ps.build_options.build_ext_parallel
 
     @property
-    def config_settings(self) -> dict[str, str | list[str]]:
+    def config_settings(self) -> ConfigSettings:
         return self._ps.config_settings
 
     @property

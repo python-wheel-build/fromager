@@ -785,3 +785,92 @@ def test_pbi_annotations(testdata_context: context.WorkContext) -> None:
 
     pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
     assert pbi.annotations == {}
+
+
+def test_config_settings_union_types() -> None:
+    """Test that config_settings accepts both str and list[str] values.
+
+    This test ensures Pydantic 2.12+ compatibility where union types in
+    nested dict values require explicit validation.
+
+    Regression test for:
+    - faiss-cpu build failure with cmake.define.BLA_VENDOR string value
+    - Pydantic 2.12 stricter union type validation in dict values
+    """
+    # Test with mixed str and list[str] values
+    settings_data = {
+        "name": "test-pkg",
+        "has_config": True,
+        "config_settings": {
+            "cmake.define.BLA_VENDOR": "OpenBLAS",  # string value
+            "cmake.define.BLAS_LIBRARIES": "openblaso",  # string value
+            "setup-args": [  # list value
+                "-Dsystem-freetype=true",
+                "-Dsystem-qhull=true",
+            ],
+        },
+    }
+
+    ps = PackageSettings(**settings_data)
+    assert ps.config_settings["cmake.define.BLA_VENDOR"] == "OpenBLAS"
+    assert ps.config_settings["cmake.define.BLAS_LIBRARIES"] == "openblaso"
+    assert ps.config_settings["setup-args"] == [
+        "-Dsystem-freetype=true",
+        "-Dsystem-qhull=true",
+    ]
+
+    # Test with only string values
+    settings_data_str_only = {
+        "name": "test-pkg-2",
+        "has_config": True,
+        "config_settings": {
+            "key1": "value1",
+            "key2": "value2",
+        },
+    }
+
+    ps2 = PackageSettings(**settings_data_str_only)
+    assert ps2.config_settings["key1"] == "value1"
+    assert ps2.config_settings["key2"] == "value2"
+
+    # Test with only list values
+    settings_data_list_only = {
+        "name": "test-pkg-3",
+        "has_config": True,
+        "config_settings": {
+            "list1": ["a", "b"],
+            "list2": ["c"],
+        },
+    }
+
+    ps3 = PackageSettings(**settings_data_list_only)
+    assert ps3.config_settings["list1"] == ["a", "b"]
+    assert ps3.config_settings["list2"] == ["c"]
+
+    # Test that invalid types are rejected
+    settings_data_invalid = {
+        "name": "test-pkg-4",
+        "has_config": True,
+        "config_settings": {
+            "invalid": 123,  # int is not allowed
+        },
+    }
+
+    with pytest.raises(pydantic.ValidationError) as exc_info:
+        PackageSettings(**settings_data_invalid)
+
+    assert "value must be str or list[str]" in str(exc_info.value)
+
+    # Test that list with non-string items is rejected
+    settings_data_invalid_list = {
+        "name": "test-pkg-5",
+        "has_config": True,
+        "config_settings": {
+            "invalid": ["valid", 123],  # list must contain only strings
+        },
+    }
+
+    with pytest.raises(pydantic.ValidationError) as exc_info:
+        PackageSettings(**settings_data_invalid_list)
+
+    assert "list must contain only strings" in str(exc_info.value)
