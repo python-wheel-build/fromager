@@ -58,15 +58,18 @@ def lint_requirements(
     for path in input_files_path:
         is_constraints: bool = path.name.endswith("constraints.txt")
         parsed_lines = requirements_file.parse_requirements_file(path)
-        unique_entries: dict[str, Requirement] = {}
+        unique_entries: dict[tuple[str, str], Requirement] = {}
         for line in parsed_lines:
             try:
                 requirement = Requirement(line)
-                if requirement.name in unique_entries:
+                marker_key = str(requirement.marker) if requirement.marker else ""
+                unique_key = (requirement.name, marker_key)
+
+                if unique_key in unique_entries:
                     raise InvalidRequirement(
-                        f"Duplicate entry, first found: {unique_entries[requirement.name]}"
+                        f"Duplicate entry, first found: {unique_entries[unique_key]}"
                     )
-                unique_entries[requirement.name] = requirement
+                unique_entries[unique_key] = requirement
                 if is_constraints:
                     if requirement.extras:
                         raise InvalidRequirement(
