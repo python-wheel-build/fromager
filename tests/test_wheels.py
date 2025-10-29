@@ -52,7 +52,8 @@ def test_default_build_wheel(
     mock_build_wheel.assert_called_once_with(
         str(testdata_context.wheels_build),
         config_settings={
-            "setup-args": ["-Dsystem-freetype=true", "-Dsystem-qhull=true"]
+            "setup-args": ["-Dsystem-freetype=true", "-Dsystem-qhull=true"],
+            "cmake.define.BLA_VENDOR": "OpenBLAS",
         },
     )
 
