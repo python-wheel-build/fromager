@@ -49,6 +49,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "-Dsystem-freetype=true",
             "-Dsystem-qhull=true",
         ],
+        "cmake.define.BLA_VENDOR": "OpenBLAS",
     },
     "download_source": {
         "destination_filename": "${canonicalized_name}-${version}.tar.gz",

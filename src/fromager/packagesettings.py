@@ -426,7 +426,7 @@ class PackageSettings(pydantic.BaseModel):
     changelog: VariantChangelog = Field(default_factory=dict)
     """Changelog entries"""
 
-    config_settings: dict[str, list[str]] = Field(default_factory=dict)
+    config_settings: dict[str, str | list[str]] = Field(default_factory=dict)
     """PEP 517 arbitrary configuration for wheel builds
 
     https://peps.python.org/pep-0517/#config-settings
@@ -932,7 +932,7 @@ class PackageBuildInfo:
         return self._ps.build_options.build_ext_parallel
 
     @property
-    def config_settings(self) -> dict[str, list[str]]:
+    def config_settings(self) -> dict[str, str | list[str]]:
         return self._ps.config_settings
 
     @property
