@@ -69,3 +69,41 @@ for new contributors.
 - Use the body to explain the motivation for the change
 - Reference issues and pull requests where relevant
 - Use `BREAKING CHANGE:` in footer for breaking changes
+
+## Code Quality Guidelines
+
+### Formatting Standards
+
+- **No trailing whitespace**: Ensure no extra spaces at the end of lines
+- **No whitespace on blank lines**: Empty lines should contain no spaces or tabs
+- **Include a blank line as EOF**: Every file should end with a newline character
+- Follow the project's existing code style and indentation patterns
+- Use consistent line endings (LF for this project)
+
+### Testing After Code Changes
+
+After making code changes, run the following tests within a Python virtual environment to ensure code quality:
+
+#### Run all unit tests
+
+```bash
+hatch run test:test
+```
+
+#### Run lint checks
+
+```bash
+hatch run lint:check
+```
+
+#### Run mypy type checking
+
+```bash
+hatch run mypy:check
+```
+
+### Before Committing
+
+- Review your changes for trailing whitespace: `git diff | grep -E "^\+.*[[:space:]]$"`
+- Run tests to ensure all changes work correctly
+- Check for linting errors if the project uses linters
