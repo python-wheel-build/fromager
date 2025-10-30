@@ -16,7 +16,7 @@ from operator import attrgetter
 from platform import python_version
 from urllib.parse import quote, unquote, urljoin, urlparse
 
-import html5lib
+import pypi_simple
 import resolvelib
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
@@ -24,7 +24,6 @@ from packaging.tags import Tag, sys_tags
 from packaging.utils import (
     BuildTag,
     canonicalize_name,
-    parse_sdist_filename,
     parse_wheel_filename,
 )
 from packaging.version import Version
@@ -184,149 +183,179 @@ def get_project_from_pypi(
     """Return candidates created from the project name and extras."""
     found_candidates: set[str] = set()
     ignored_candidates: set[str] = set()
-    simple_index_url = sdist_server_url.rstrip("/") + "/" + project + "/"
-    logger.debug("%s: getting available versions from %s", project, simple_index_url)
+    logger.debug("%s: getting available versions from %s", project, sdist_server_url)
 
+    client = pypi_simple.PyPISimple(
+        endpoint=sdist_server_url,
+        session=session,
+        accept=pypi_simple.ACCEPT_JSON_PREFERRED,
+    )
     try:
-        response = session.get(simple_index_url)
-        response.raise_for_status()
-        data = response.content
+        package = client.get_project_page(project)
     except Exception as e:
         logger.debug(
-            "%s: failed to fetch package index from %s: %s",
-            project,
-            simple_index_url,
+            "failed to fetch package index from %s: %s",
+            sdist_server_url,
             e,
         )
         raise
 
-    doc = html5lib.parse(data, namespaceHTMLElements=False)
-    for i in doc.findall(".//a"):
-        candidate_url = urljoin(simple_index_url, i.attrib["href"])
-        py_req = i.attrib.get("data-requires-python")
-        # PEP 658: Check for metadata availability (PEP 714 data-core-metadata first)
-        dist_info_metadata = i.attrib.get("data-core-metadata") or i.attrib.get(
-            "data-dist-info-metadata"
-        )
-        # PEP 592: Check if package was yanked
-        reason_data_yanked = i.attrib.get("data-yanked")
-        # file names are URL quoted, "1.0%2Blocal" -> "1.0+local"
-        filename = extract_filename_from_url(candidate_url)
-        found_candidates.add(filename)
-        if DEBUG_RESOLVER:
-            logger.debug("%s: candidate %r -> %r", project, candidate_url, filename)
+    # PEP 792 package status
+    match package.status:
+        case None:
+            logger.debug("no package status")
+        case pypi_simple.ProjectStatus.ACTIVE:
+            logger.debug("project %r is active: %s", project, package.status_reason)
+        case pypi_simple.ProjectStatus.DEPRECATED | pypi_simple.ProjectStatus.ARCHIVED:
+            logger.warning(
+                "project %r is no longer active: %r: %s",
+                project,
+                package.status,
+                package.status_reason,
+            )
+        case pypi_simple.ProjectStatus.QUARANTINED:
+            raise ValueError(
+                f"project {project!r} is quarantined: {package.status_reason}"
+            )
+        case _:
+            logger.warning(
+                "project %r has unknown status %r: %s",
+                project,
+                package.status,
+                package.status_reason,
+            )
 
-        # PEP 592: Skip items that were yanked
-        if reason_data_yanked is not None:
+    for dp in package.packages:
+        found_candidates.add(dp.filename)
+        if DEBUG_RESOLVER:
+            logger.debug("candidate %r -> %r==%r", dp.url, dp.filename, dp.version)
+
+        if (
+            dp.project is None
+            or dp.version is None
+            or dp.package_type is None
+            or len(dp.project) != len(project)
+        ):
+            # Legacy file names that pypi_simple does not understand,
+            # pypi_simple sets one or all fields to None.
+            #
+            # Look for and ignore cases like `cffi-1.0.2-2.tar.gz` which
+            # produces the name `cffi-1-0-2`. We can't just compare the
+            # names directly because of case and punctuation changes in
+            # making names canonical and the way requirements are
+            # expressed and there seems to be *no* way of producing sdist
+            # filenames consistently, so we compare the length for this
+            # case.
             if DEBUG_RESOLVER:
                 logger.debug(
-                    "%s: skipping %s because it was yanked (%s)",
-                    project,
-                    filename,
-                    reason_data_yanked if reason_data_yanked else "no reason found",
+                    "skipping %r because 'pypi_simple' could not parse it or it's an invalid name",
+                    dp.filename,
                 )
-            ignored_candidates.add(filename)
+            ignored_candidates.add(dp.filename)
             continue
 
-        # Construct metadata URL if PEP 658 metadata is available
-        metadata_url = None
-        if dist_info_metadata:
-            # PEP 658: metadata is available at {file_url}.metadata
-            metadata_url = candidate_url + ".metadata"
+        if dp.package_type not in {"sdist", "wheel"}:
             if DEBUG_RESOLVER:
                 logger.debug(
-                    "%s: PEP 658 metadata available at %s", project, metadata_url
+                    "skipping %r because it's not an sdist or wheel, got %r",
+                    dp.filename,
+                    dp.package_type,
                 )
+            ignored_candidates.add(dp.filename)
+            continue
+
+        # PEP 592: Skip items that were yanked
+        if dp.is_yanked:
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    "skipping %s because it was yanked (%s)",
+                    dp.filename,
+                    dp.yanked_reason,
+                )
+            ignored_candidates.add(dp.filename)
+            continue
+
         # Skip items that need a different Python version
-        if py_req:
+        if dp.requires_python:
             try:
-                matched_py: bool = match_py_req(py_req)
+                matched_py: bool = match_py_req(dp.requires_python)
             except InvalidSpecifier as err:
                 # Ignore files with invalid python specifiers
                 # e.g. shellingham has files with ">= '2.7'"
                 if DEBUG_RESOLVER:
                     logger.debug(
-                        f"{project}: skipping {filename} because of an invalid python version specifier {py_req}: {err}"
+                        "skipping %r because of an invalid python version specifier %r: %s",
+                        dp.filename,
+                        dp.requires_python,
+                        err,
                     )
-                ignored_candidates.add(filename)
+                ignored_candidates.add(dp.filename)
                 continue
             if not matched_py:
                 if DEBUG_RESOLVER:
                     logger.debug(
-                        f"{project}: skipping {filename} because of python version {py_req}"
+                        "skipping %r because of python version %r",
+                        dp.filename,
+                        dp.requires_python,
                     )
-                ignored_candidates.add(filename)
+                ignored_candidates.add(dp.filename)
                 continue
 
         # TODO: Handle compatibility tags?
 
         try:
-            if filename.endswith(".tar.gz") or filename.endswith(".zip"):
+            if dp.package_type == "sdist":
                 is_sdist = True
-                name, version = parse_sdist_filename(filename)
+                name: str = dp.project
+                version: Version = Version(dp.version)
                 tags: frozenset[Tag] = frozenset()
                 build_tag: BuildTag = ()
             else:
                 is_sdist = False
-                name, version, build_tag, tags = parse_wheel_filename(filename)
-            if tags:
-                # FIXME: This doesn't take into account precedence of
-                # the supported tags for best fit.
-                matching_tags = SUPPORTED_TAGS.intersection(tags)
-                if not matching_tags and ignore_platform:
-                    if DEBUG_RESOLVER:
-                        logger.debug(f"{project}: ignoring platform for {filename}")
-                    ignore_platform_tags: frozenset[Tag] = frozenset(
-                        Tag(t.interpreter, t.abi, IGNORE_PLATFORM) for t in tags
-                    )
-                    matching_tags = SUPPORTED_TAGS_IGNORE_PLATFORM.intersection(
-                        ignore_platform_tags
-                    )
-                if not matching_tags:
-                    if DEBUG_RESOLVER:
-                        logger.debug(f"{project}: ignoring {filename} with tags {tags}")
-                    ignored_candidates.add(filename)
-                    continue
+                name, version, build_tag, tags = parse_wheel_filename(dp.filename)
         except Exception as err:
             # Ignore files with invalid versions
             if DEBUG_RESOLVER:
-                logger.debug(
-                    f'{project}: could not determine version for "{filename}": {err}'
+                logger.debug("could not determine version for %r: %s", dp.filename, err)
+            ignored_candidates.add(dp.filename)
+            continue
+
+        if tags:
+            # FIXME: This doesn't take into account precedence of
+            # the supported tags for best fit.
+            matching_tags = SUPPORTED_TAGS.intersection(tags)
+            if not matching_tags and ignore_platform:
+                if DEBUG_RESOLVER:
+                    logger.debug("ignoring platform for %r", dp.filename)
+                ignore_platform_tags: frozenset[Tag] = frozenset(
+                    Tag(t.interpreter, t.abi, IGNORE_PLATFORM) for t in tags
                 )
-            ignored_candidates.add(filename)
-            continue
-        # Look for and ignore cases like `cffi-1.0.2-2.tar.gz` which
-        # produces the name `cffi-1-0-2`. We can't just compare the
-        # names directly because of case and punctuation changes in
-        # making names canonical and the way requirements are
-        # expressed and there seems to be *no* way of producing sdist
-        # filenames consistently, so we compare the length for this
-        # case.
-        if len(name) != len(project):
-            if DEBUG_RESOLVER:
-                logger.debug(f'{project}: skipping invalid filename "{filename}"')
-            ignored_candidates.add(filename)
-            continue
+                matching_tags = SUPPORTED_TAGS_IGNORE_PLATFORM.intersection(
+                    ignore_platform_tags
+                )
+            if not matching_tags:
+                if DEBUG_RESOLVER:
+                    logger.debug("ignoring %r with tags %r", dp.filename, tags)
+                ignored_candidates.add(dp.filename)
+                continue
 
         c = Candidate(
             name,
             version,
-            url=candidate_url,
+            url=dp.url,
             extras=extras,
             is_sdist=is_sdist,
             build_tag=build_tag,
-            metadata_url=metadata_url,
+            metadata_url=dp.metadata_url if dp.has_metadata else None,
         )
         if DEBUG_RESOLVER:
-            logger.debug(
-                "%s: candidate %s (%s) %s", project, filename, c, candidate_url
-            )
+            logger.debug("candidate %s (%s) %s", dp.filename, c, dp.url)
         yield c
 
     if not found_candidates:
-        logger.info(f"{project}: found no candidate files at {simple_index_url}")
+        logger.info("found no candidate files at %s", sdist_server_url)
     elif ignored_candidates == found_candidates:
-        logger.info(f"{project}: ignored all candidate files at {simple_index_url}")
+        logger.info("ignored all candidate files at %s", sdist_server_url)
 
 
 RequirementsMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Requirement]]
