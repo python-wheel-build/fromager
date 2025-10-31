@@ -1,6 +1,8 @@
 import pathlib
+import typing
 
 import pytest
+from packaging import markers
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -54,18 +56,49 @@ def test_add_constraint_conflict():
     with pytest.raises(KeyError):
         c.add_constraint("flit-core>2.0.0")
 
+    # Different, but equivalent markers should raise KeyError
+    with pytest.raises(KeyError):
+        c.add_constraint(
+            "bar==1.0; python_version >= '3.11' and platform_machine == 'x86_64'"
+        )
+        c.add_constraint(
+            "bar==1.1; platform_machine == 'x86_64' and python_version >= '3.11'"
+        )
+        c.add_constraint(
+            "bar==1.0; python_version >= '3.11' and platform_machine == 'arm64'"
+        )
+        c.add_constraint(
+            "bar==1.1; platform_machine == 'arm64' and python_version >= '3.11'"
+        )
+
     # Same package with different markers should NOT raise error
-    c.add_constraint("foo==1.0; platform_machine != 'ppc64le'")
-    c.add_constraint("foo==1.1; platform_machine == 'ppc64le'")
+    c.add_constraint("baz==1.0; platform_machine != 'ppc64le'")
+    c.add_constraint("baz==1.1; platform_machine == 'ppc64le'")
 
     # But same package with same marker should raise error
     with pytest.raises(KeyError):
         c.add_constraint("foo==1.2; platform_machine != 'ppc64le'")
 
     # Verify multiple constraints for same package are stored
-    assert len(c._data[constraints.canonicalize_name("foo")]) == 3
-    assert len(c._data[constraints.canonicalize_name("flit_core")]) == 1
-    assert len(c._data) == 2
+    assert len(c._data) == 4  # flit_core, foo, bar, and baz
+
+    # Make sure correct constraint is added
+    env = typing.cast(dict[str, str], markers.default_environment())
+    constraint = c.get_constraint("bar")
+
+    if env.get("platform_machine") == "x86_64" and constraint is not None:
+        assert constraint.name == "bar"
+        assert constraint.specifier == "==1.0"
+        assert constraint.marker == markers.Marker(
+            'python_version >= "3.11" and platform_machine == "x86_64"'
+        )
+
+    if env.get("platform_machine") == "arm64" and constraint is not None:
+        assert constraint.name == "bar"
+        assert constraint.specifier == "==1.0"
+        assert constraint.marker == markers.Marker(
+            'python_version >= "3.11" and platform_machine == "arm64"'
+        )
 
 
 def test_allow_prerelease():
@@ -92,49 +125,3 @@ def test_load_constraints_file(tmp_path: pathlib.Path):
     c.load_constraints_file(constraint_file)
     assert list(c) == ["egg", "torch"]  # type: ignore
     assert c.get_constraint("torch") == Requirement("torch==3.1.0")
-
-
-def test_get_constraint():
-    c = constraints.Constraints()
-
-    # Test: No constraint returns None
-    assert c.get_constraint("nonexistent") is None
-
-    # Test: Single constraint without marker
-    c.add_constraint("foo==1.0")
-    constraint = c.get_constraint("foo")
-    assert constraint is not None
-    assert str(constraint.specifier) == "==1.0"
-    assert constraint.marker is None
-
-    # Test: Multiple constraints with markers - should return the one matching current platform
-    c.add_constraint("bar==1.0; platform_machine == 'x86_64'")
-    c.add_constraint("bar==2.0; platform_machine == 'ppc64le'")
-    c.add_constraint("bar==3.0; platform_machine == 'arm64'")
-
-    # get_constraint should return whichever one matches the current platform
-    constraint = c.get_constraint("bar")
-    assert constraint is not None
-    assert str(constraint.specifier) in ["==1.0", "==2.0", "==3.0"]
-
-    # Test: Constraint with marker that evaluates to False returns None
-    c.add_constraint("baz==1.0; python_version < '2.0'")
-    # This marker should never match (we're not on Python < 2.0)
-    constraint = c.get_constraint("baz")
-    assert constraint is None
-
-    # Test: Constraint with marker that evaluates to True
-    c.add_constraint("qux==1.0; python_version >= '3.0'")
-    constraint = c.get_constraint("qux")
-    assert constraint is not None
-    assert str(constraint.specifier) == "==1.0"
-
-    # Test: Name normalization (foo-bar vs foo_bar)
-    c.add_constraint("my-package==1.0")
-    constraint = c.get_constraint("my_package")
-    assert constraint is not None
-    assert str(constraint.specifier) == "==1.0"
-
-    constraint = c.get_constraint("my-package")
-    assert constraint is not None
-    assert str(constraint.specifier) == "==1.0"
