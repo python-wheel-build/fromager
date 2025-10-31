@@ -59,6 +59,7 @@ KNOWN_COMMANDS: set[str] = {
     "list-versions",
     "migrate-config",
     "minimize",
+    "pypi-info",
     "stats",
     "step",
     "wheel-server",
