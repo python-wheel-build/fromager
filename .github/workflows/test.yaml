@@ -108,6 +108,7 @@ jobs:
           - elfdeps
           - prebuilt_wheel_hook
           - lint_requirements
+          - pypi_info
         os:
           - ubuntu-latest
           - macos-latest
