@@ -93,6 +93,7 @@ def test_load_constraints_file(tmp_path: pathlib.Path):
     assert list(c) == ["egg", "torch"]  # type: ignore
     assert c.get_constraint("torch") == Requirement("torch==3.1.0")
 
+
 def test_get_constraint():
     c = constraints.Constraints()
 

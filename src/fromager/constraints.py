@@ -29,7 +29,9 @@ class Constraints:
 
         # Check for conflicts with existing constraints
         for existing_req in previous:
-            existing_marker_key = str(existing_req.marker) if existing_req.marker else ""
+            existing_marker_key = (
+                str(existing_req.marker) if existing_req.marker else ""
+            )
 
             # If markers match (including both being empty), it's a conflict
             if marker_key == existing_marker_key:
