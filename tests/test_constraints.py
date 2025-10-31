@@ -37,14 +37,35 @@ def test_add_constraint_conflict():
     c = constraints.Constraints()
     c.add_constraint("foo<=1.1")
     c.add_constraint("flit_core==2.0rc3")
+
+    # Exact duplicate should raise error (same package, same marker)
     with pytest.raises(KeyError):
         c.add_constraint("foo<=1.1")
+
+    # Different version, same marker (no marker) should raise error
     with pytest.raises(KeyError):
         c.add_constraint("foo>1.1")
+
+    # Different version for flit_core should raise error
     with pytest.raises(KeyError):
         c.add_constraint("flit_core>2.0.0")
+
+    # Normalized name conflict should raise error
     with pytest.raises(KeyError):
         c.add_constraint("flit-core>2.0.0")
+
+    # Same package with different markers should NOT raise error
+    c.add_constraint("foo==1.0; platform_machine != 'ppc64le'")
+    c.add_constraint("foo==1.1; platform_machine == 'ppc64le'")
+
+    # But same package with same marker should raise error
+    with pytest.raises(KeyError):
+        c.add_constraint("foo==1.2; platform_machine != 'ppc64le'")
+
+    # Verify multiple constraints for same package are stored
+    assert len(c._data[constraints.canonicalize_name("foo")]) == 3
+    assert len(c._data[constraints.canonicalize_name("flit_core")]) == 1
+    assert len(c._data) == 2
 
 
 def test_allow_prerelease():
