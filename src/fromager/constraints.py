@@ -25,6 +25,11 @@ class Constraints:
         req = Requirement(unparsed)
         canon_name = canonicalize_name(req.name)
         previous = self._data.get(canon_name)
+
+        if not requirements_file.evaluate_marker(req, req):
+            logger.debug(f"Constraint {req} does not match environment")
+            return
+
         if previous is not None:
             raise KeyError(
                 f"{canon_name}: new constraint '{req}' conflicts with '{previous}'"
