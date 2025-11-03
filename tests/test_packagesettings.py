@@ -79,6 +79,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "include_wheels": True,
         "sdist_server_url": "https://sdist.test/egg",
         "ignore_platform": True,
+        "use_pypi_org_metadata": True,
     },
     "variants": {
         "cpu": {
@@ -138,6 +139,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "include_sdists": True,
         "include_wheels": False,
         "ignore_platform": False,
+        "use_pypi_org_metadata": None,
     },
     "variants": {},
 }
@@ -176,6 +178,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "include_sdists": True,
         "include_wheels": False,
         "ignore_platform": False,
+        "use_pypi_org_metadata": None,
     },
     "variants": {
         "cpu": {
@@ -785,3 +788,16 @@ def test_pbi_annotations(testdata_context: context.WorkContext) -> None:
 
     pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
     assert pbi.annotations == {}
+
+
+def test_use_pypi_org_metadata(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.use_pypi_org_metadata
+
+    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    assert not pbi.use_pypi_org_metadata
+
+    pbi = testdata_context.settings.package_build_info(
+        "somepackage_without_customization"
+    )
+    assert pbi.use_pypi_org_metadata
