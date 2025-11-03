@@ -142,7 +142,8 @@ def default_add_extra_metadata_to_wheels(
     sdist_root_dir: pathlib.Path,
     dist_info_dir: pathlib.Path,
 ) -> dict[str, typing.Any]:
-    raise NotImplementedError
+    """Default implementation returns empty dict - no extra metadata."""
+    return {}
 
 
 @metrics.timeit(description="add extra metadata to wheels")
@@ -160,11 +161,6 @@ def add_extra_metadata_to_wheels(
         req, wheel_file
     )
     dist_filename = f"{dist_name}-{dist_version}"
-
-    extra_data_plugin = overrides.find_override_method(
-        req.name, "add_extra_metadata_to_wheels"
-    )
-    data_to_add = {}
 
     with tempfile.TemporaryDirectory() as dir_name:
         wheel_root_dir = pathlib.Path(dir_name) / dist_filename
@@ -187,21 +183,22 @@ def add_extra_metadata_to_wheels(
         if not dist_info_dir.is_dir():
             raise ValueError(f"{wheel_file} does not contain {dist_info_dir.name}")
 
-        if extra_data_plugin:
-            data_to_add = overrides.invoke(
-                extra_data_plugin,
-                ctx=ctx,
-                req=req,
-                version=version,
-                extra_environ=extra_environ,
-                sdist_root_dir=sdist_root_dir,
-                dist_info_dir=dist_info_dir,
+        data_to_add = overrides.find_and_invoke(
+            req.name,
+            "add_extra_metadata_to_wheels",
+            default_add_extra_metadata_to_wheels,
+            ctx=ctx,
+            req=req,
+            version=version,
+            extra_environ=extra_environ,
+            sdist_root_dir=sdist_root_dir,
+            dist_info_dir=dist_info_dir,
+        )
+        if not isinstance(data_to_add, dict):
+            logger.warning(
+                "unexpected return type from plugin add_extra_metadata_to_wheels. Expected dictionary. Will ignore"
             )
-            if not isinstance(data_to_add, dict):
-                logger.warning(
-                    "unexpected return type from plugin add_extra_metadata_to_wheels. Expected dictionary. Will ignore"
-                )
-                data_to_add = {}
+            data_to_add = {}
 
         if pbi.has_config:
             settings = pbi.serialize(mode="json", exclude_defaults=False)
