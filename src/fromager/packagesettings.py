@@ -192,6 +192,15 @@ class ResolverDist(pydantic.BaseModel):
     .. versionadded:: 0.52
     """
 
+    use_pypi_org_metadata: bool | None = None
+    """Can use metadata from pypi.org JSON / Simple API?
+
+    None (default) is for auto-setting. Packages with customizations (config,
+    patches, plugins) don't use pypi.org metadata by default.
+
+    .. versionadded:: 0.70
+    """
+
     @pydantic.model_validator(mode="after")
     def validate_ignore_platform(self) -> typing.Self:
         if self.ignore_platform and not self.include_wheels:
@@ -813,6 +822,21 @@ class PackageBuildInfo:
     def resolver_ignore_platform(self) -> bool:
         """Ignore the platform when resolving with wheels?"""
         return self._ps.resolver_dist.ignore_platform
+
+    @property
+    def use_pypi_org_metadata(self) -> bool:
+        """Can use metadata from pypi.org JSON / Simple API?
+
+        By default, packages with customizations do not use public
+        pypi.org metadata.
+        """
+        ps = self._ps
+        flag = ps.resolver_dist.use_pypi_org_metadata
+        if flag is not None:
+            # flag is set
+            return flag
+        # return True if package does not have any customizations
+        return not self.has_customizations
 
     def build_dir(self, sdist_root_dir: pathlib.Path) -> pathlib.Path:
         """Build directory for package (e.g. subdirectory)"""

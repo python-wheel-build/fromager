@@ -40,6 +40,7 @@ resolver_dist:
     include_sdists: true
     include_wheels: true
     ignore_platform: true
+    use_pypi_org_metadata: true
 variants:
     cpu:
         annotations:
