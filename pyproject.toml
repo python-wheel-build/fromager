@@ -33,6 +33,7 @@ requires-python = ">=3.11"
 dependencies = [
     "click>=8.1.7",
     "elfdeps>=0.2.0",
+    "license-expression",
     "packaging",
     "pkginfo",
     "psutil",
@@ -204,7 +205,7 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["pyproject_hooks", "requests_mock", "resolver", "stevedore"]
+module = ["license_expression", "pyproject_hooks", "requests_mock", "resolver", "stevedore"]
 ignore_missing_imports = true
 
 [tool.basedpyright]
