@@ -30,6 +30,11 @@ extensions = [
     "sphinx.ext.intersphinx",
 ]
 
+# Enable MyST extensions to support reStructuredText directives in Markdown
+myst_enable_extensions = [
+    "colon_fence",
+]
+
 # Recognized suffixes
 source_suffix = {
     ".rst": "restructuredtext",
@@ -37,7 +42,7 @@ source_suffix = {
 }
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "example"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 language = "English"
 
