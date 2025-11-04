@@ -15,7 +15,7 @@ from sphinx.util.typing import ExtensionMetadata
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Fromager"
-copyright = "2024, Fromager Authors"
+copyright = "%Y, Fromager Authors"
 author = "Fromager Authors"
 release = metadata.version("fromager")
 
