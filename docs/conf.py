@@ -72,7 +72,7 @@ autodoc_pydantic_model_show_validator_members = False
 
 
 class FromagerHookDocumenter(FunctionDocumenter):
-    """Documenter for 'autofromagehook' directive"""
+    """Documenter for 'autofromagerhook' directive"""
 
     objtype = "fromagerhook"
 
@@ -84,7 +84,7 @@ class FromagerHookDocumenter(FunctionDocumenter):
 
 
 class PyFromagerHook(PyFunction):
-    """:py:fromagehook"""
+    """:py:fromagerhook"""
 
     def handle_signature(self, sig: str, signode: desc_signature) -> tuple[str, str]:
         # hack to remove module prefix from output
