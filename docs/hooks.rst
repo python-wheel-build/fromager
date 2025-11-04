@@ -239,6 +239,17 @@ Source hooks
 
     The return value is the ``Path`` to the newly created source distribution.
 
+Source helper functions
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The following helper functions are available in the ``fromager.sources`` module
+for use in custom source hooks:
+
+.. autofunction:: fromager.sources.ensure_pkg_info
+
+.. autofunction:: fromager.sources.pep517_build_sdist
+
+.. autofunction:: fromager.sources.unpack_source
 
 Wheel hooks
 -----------
