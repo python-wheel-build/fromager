@@ -242,7 +242,7 @@ class BuildOptions(pydantic.BaseModel):
 
     ::
 
-        build_ext_parallel: False
+        build_ext_parallel: False  # DEPRECATED: ignored, will be removed
         cpu_cores_per_job: 1
         memory_per_job_gb: 1.0
     """
@@ -252,8 +252,10 @@ class BuildOptions(pydantic.BaseModel):
     build_ext_parallel: bool = False
     """Configure `build_ext[parallel]` in `DIST_EXTRA_CONFIG`
 
-    This enables parallel builds of setuptools extensions. Incompatible
-    with some packages, e.g. numba 0.60.0.
+    .. deprecated:: 0.72.0
+       This option is deprecated and will be removed in a future release.
+       The parallel build feature for extensions is unsafe due to race conditions.
+       This option is now ignored and will emit a warning if set to True.
     """
 
     cpu_cores_per_job: int = Field(default=1, ge=1)

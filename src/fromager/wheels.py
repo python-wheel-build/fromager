@@ -7,7 +7,6 @@ import pathlib
 import shutil
 import sys
 import tempfile
-import textwrap
 import typing
 import zipfile
 
@@ -302,23 +301,13 @@ def build_wheel(
         build_env=build_env,
     )
 
-    if (
-        pbi.build_ext_parallel
-        and "DIST_EXTRA_CONFIG" not in extra_environ
-        and "MAX_JOBS" in extra_environ
-    ):
-        # configure setuptools to use parallel builds
-        # https://setuptools.pypa.io/en/latest/deprecated/distutils/configfile.html
-        dist_extra_cfg = build_env.path / "dist-extra.cfg"
-        dist_extra_cfg.write_text(
-            textwrap.dedent(
-                f"""
-                [build_ext]
-                parallel = {extra_environ["MAX_JOBS"]}
-                """
-            )
+    if pbi.build_ext_parallel:
+        logger.warning(
+            "%s: build_ext_parallel is deprecated and will be removed in a "
+            "future release. The parallel build feature for extensions is unsafe and "
+            "can cause build failures or miscompiled wheels. This option is now ignored.",
+            req.name,
         )
-        extra_environ["DIST_EXTRA_CONFIG"] = str(dist_extra_cfg)
 
     overrides.find_and_invoke(
         req.name,
