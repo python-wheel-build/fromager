@@ -36,6 +36,23 @@ _hydra_core_simple_response = """
 <!--SERIAL 22812307-->
 """
 
+_numpy_simple_response = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="pypi:repository-version" content="1.1">
+<title>Links for numpy</title>
+</head>
+<body>
+<h1>Links for numpy</h1>
+<a href="https://files.pythonhosted.org/packages/numpy-1.24.0-py3-none-any.whl">numpy-1.24.0-py3-none-any.whl</a><br/>
+<a href="https://files.pythonhosted.org/packages/numpy-1.26.4-py3-none-any.whl">numpy-1.26.4-py3-none-any.whl</a><br/>
+<a href="https://files.pythonhosted.org/packages/numpy-2.0.0-py3-none-any.whl">numpy-2.0.0-py3-none-any.whl</a><br/>
+<a href="https://files.pythonhosted.org/packages/numpy-2.2.0-py3-none-any.whl">numpy-2.2.0-py3-none-any.whl</a><br/>
+</body>
+</html>
+"""
+
 
 @pytest.fixture(autouse=True)
 def reset_cache():
@@ -149,6 +166,73 @@ def test_provider_cache_key_gitlab(gitlab_decile_resolver) -> None:
 def test_provider_cache_key_github(github_fromager_resolver) -> None:
     provider = github_fromager_resolver.provider
     assert provider.cache_key == "python-wheel-build/fromager"
+
+
+def test_cache_not_overly_aggressive() -> None:
+    """Test that resolver cache doesn't poison subsequent resolutions.
+
+    This test demonstrates the fix for issue #766 where the cache would
+    store only candidates matching the first requirement's constraints,
+    preventing subsequent less-constrained requirements from seeing
+    newer versions.
+
+    Scenario:
+    1. First requirement: numpy<2 (e.g., from aotriton build dependency)
+    2. Second requirement: numpy (e.g., from torch build dependency)
+
+    Before the fix: Second resolution would incorrectly use numpy 1.26.4
+    After the fix: Second resolution correctly uses numpy 2.2.0
+    """
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/numpy/",
+            text=_numpy_simple_response,
+        )
+
+        # First resolution: numpy<2 (simulating aotriton's build requirement)
+        provider1 = resolver.PyPIProvider(include_sdists=False)
+        reporter1: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        resolver1 = resolvelib.Resolver(provider1, reporter1)
+
+        result1 = resolver1.resolve([Requirement("numpy<2")])
+        candidate1 = result1.mapping["numpy"]
+
+        assert candidate1.version == Version("1.26.4")
+
+        # Verify cache was populated with ALL candidates (not just <2)
+        cache = resolver.BaseProvider.resolver_cache
+        assert "numpy" in cache
+        cached_candidates = cache["numpy"][
+            (resolver.PyPIProvider, "https://pypi.org/simple/")
+        ]
+
+        # Critical: Cache should have ALL 4 versions, not just the 2 that matched numpy<2
+        assert len(cached_candidates) == 4
+        versions = {c.version for c in cached_candidates}
+        assert versions == {
+            Version("1.24.0"),
+            Version("1.26.4"),
+            Version("2.0.0"),
+            Version("2.2.0"),
+        }
+
+        # Second resolution: numpy (no constraint, simulating torch's build requirement)
+        # This creates a new provider instance, but the cache is shared via the class-level
+        # BaseProvider.resolver_cache, demonstrating that the cache works across instances
+        provider2 = resolver.PyPIProvider(include_sdists=False)
+        reporter2: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        resolver2 = resolvelib.Resolver(provider2, reporter2)
+
+        result2 = resolver2.resolve([Requirement("numpy")])
+        candidate2 = result2.mapping["numpy"]
+
+        # Critical assertion: Should get latest version (2.2.0), not 1.26.4
+        # This is the bug that issue #766 reported - before the fix, this would
+        # incorrectly return 1.26.4 because the cache only had <2 versions
+        assert candidate2.version == Version("2.2.0")
+
+        # Verify cache is still intact with all candidates
+        assert len(cached_candidates) == 4
 
 
 def test_provider_choose_wheel_prereleases():
