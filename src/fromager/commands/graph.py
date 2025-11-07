@@ -106,6 +106,91 @@ def to_dot(
         )
 
 
+def _get_nodes_for_reduction(
+    graph: DependencyGraph,
+    install_only: bool,
+) -> list[DependencyNode]:
+    """Determine starting node set based on install_only flag."""
+    if install_only:
+        nodes: list[DependencyNode] = [graph.nodes[ROOT]]
+        nodes.extend(graph.get_install_dependencies())
+        return nodes
+    return list(graph.get_all_nodes())
+
+
+def _find_customized_nodes(
+    wkctx: context.WorkContext,
+    nodes: list[DependencyNode],
+) -> list[DependencyNode]:
+    """Filter nodes to find only those with customizations."""
+    customized_nodes: list[DependencyNode] = []
+    for node in nodes:
+        pbi = wkctx.settings.package_build_info(node.canonicalized_name)
+        if node.canonicalized_name != ROOT and pbi.has_customizations:
+            customized_nodes.append(node)
+    return customized_nodes
+
+
+def _find_customized_dependencies_for_node(
+    wkctx: context.WorkContext,
+    node: DependencyNode,
+    install_only: bool,
+) -> dict[str, str]:
+    """
+    Find all reachable customized nodes from a given node using depth-first search.
+
+    Returns:
+        Dictionary mapping child keys to their requirement strings.
+        Format: {child_key: requirement_string}
+    """
+    dependencies: dict[str, str] = {}
+    visited: set[str] = set()
+    # Stack contains: (current_node, path_from_start, original_requirement)
+    stack: list[tuple[DependencyNode, list[str], str | None]] = [(node, [], None)]
+
+    while stack:
+        current_node, path, original_req = stack.pop()
+
+        if current_node.key in visited:
+            continue
+        visited.add(current_node.key)
+
+        for edge in current_node.children:
+            # Skip build dependencies if install_only is True
+            if install_only and edge.req_type.is_build_requirement:
+                continue
+
+            child = edge.destination_node
+            child_pbi = wkctx.settings.package_build_info(child.canonicalized_name)
+            new_path = path + [current_node.key]
+
+            # Use the first requirement we encounter in the path
+            current_req = original_req if original_req else str(edge.req)
+
+            # If the child has customizations, add it as a direct dependency
+            if child_pbi.has_customizations:
+                dependencies[child.key] = current_req
+            else:
+                # If the child doesn't have customizations, continue traversing
+                stack.append((child, new_path, current_req))
+
+    return dependencies
+
+
+def _build_reduced_dependency_map(
+    wkctx: context.WorkContext,
+    customized_nodes: list[DependencyNode],
+    install_only: bool,
+) -> dict[str, dict[str, str]]:
+    """Build dependency map for all customized nodes."""
+    reduced_dependencies: dict[str, dict[str, str]] = {}
+    for node in customized_nodes:
+        reduced_dependencies[node.key] = _find_customized_dependencies_for_node(
+            wkctx, node, install_only
+        )
+    return reduced_dependencies
+
+
 def reduce_graph(
     wkctx: context.WorkContext,
     graph: DependencyGraph,
@@ -120,57 +205,16 @@ def reduce_graph(
         - Dictionary mapping each included node to its direct dependencies with requirement info
           Format: {parent_key: {child_key: requirement_string}}
     """
-    # Start with all nodes or just install dependencies
-    if install_only:
-        all_nodes: list[DependencyNode] = [graph.nodes[ROOT]]
-        all_nodes.extend(graph.get_install_dependencies())
-    else:
-        all_nodes = list(graph.get_all_nodes())
+    # Get starting node set based on install_only flag
+    all_nodes = _get_nodes_for_reduction(graph, install_only)
 
     # Find nodes with customizations
-    customized_nodes: list[DependencyNode] = []
-    for node in all_nodes:
-        pbi = wkctx.settings.package_build_info(node.canonicalized_name)
-        if node.canonicalized_name != ROOT and pbi.has_customizations:
-            customized_nodes.append(node)
+    customized_nodes = _find_customized_nodes(wkctx, all_nodes)
 
     # Build reduced dependency relationships with requirement tracking
-    reduced_dependencies: dict[str, dict[str, str]] = {}
-
-    for node in customized_nodes:
-        reduced_dependencies[node.key] = {}
-
-        # Find all reachable customized nodes from this node
-        visited: set[str] = set()
-        # Stack now includes: (current_node, path_from_start, original_requirement)
-        stack: list[tuple[DependencyNode, list[str], str | None]] = [(node, [], None)]
-
-        while stack:
-            current_node, path, original_req = stack.pop()
-
-            if current_node.key in visited:
-                continue
-            visited.add(current_node.key)
-
-            for edge in current_node.children:
-                # Skip build dependencies if install_only is True
-                if install_only and edge.req_type.is_build_requirement:
-                    continue
-
-                child = edge.destination_node
-                child_pbi = wkctx.settings.package_build_info(child.canonicalized_name)
-                new_path = path + [current_node.key]
-
-                # Use the first requirement we encounter in the path
-                current_req = original_req if original_req else str(edge.req)
-
-                # If the child has customizations, add it as a direct dependency
-                if child_pbi.has_customizations:
-                    # Store the requirement string for this dependency
-                    reduced_dependencies[node.key][child.key] = current_req
-                else:
-                    # If the child doesn't have customizations, continue traversing
-                    stack.append((child, new_path, current_req))
+    reduced_dependencies = _build_reduced_dependency_map(
+        wkctx, customized_nodes, install_only
+    )
 
     return customized_nodes, reduced_dependencies
 
