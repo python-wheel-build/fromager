@@ -339,13 +339,13 @@ def get_project_from_pypi(
                 continue
 
         c = Candidate(
-            name,
-            version,
+            name=name,
+            version=version,
             url=dp.url,
-            extras=extras,
+            extras=tuple(sorted(extras)),
             is_sdist=is_sdist,
             build_tag=build_tag,
-            metadata_url=dp.metadata_url if dp.has_metadata else None,
+            has_metadata=bool(dp.has_metadata),
         )
         if DEBUG_RESOLVER:
             logger.debug("candidate %s (%s) %s", dp.filename, c, dp.url)
@@ -723,7 +723,7 @@ class GenericProvider(BaseProvider):
                     continue
                 assert isinstance(version, Version)
                 version = version
-            candidates.append(Candidate(identifier, version, url=url))
+            candidates.append(Candidate(name=identifier, version=version, url=url))
         return candidates
 
 

@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import typing
 from email.message import EmailMessage, Message
@@ -22,27 +23,26 @@ else:
     Metadata = Message
 
 
+@dataclasses.dataclass(frozen=True, order=True, slots=True, repr=False, kw_only=True)
 class Candidate:
-    def __init__(
-        self,
-        name: str,
-        version: Version,
-        url: str,
-        extras: typing.Iterable[str] | None = None,
-        is_sdist: bool | None = None,
-        build_tag: BuildTag = (),
-        metadata_url: str | None = None,
-    ):
-        self.name = canonicalize_name(name)
-        self.version = version
-        self.url = url
-        self.extras = extras
-        self.is_sdist = is_sdist
-        self.build_tag = build_tag
-        self.metadata_url = metadata_url
+    name: str
+    version: Version
+    url: str
+    is_sdist: bool | None = dataclasses.field(default=None)
+    extras: tuple[str, ...] = dataclasses.field(default=(), compare=False)
+    build_tag: BuildTag = dataclasses.field(default=(), compare=False)
+    has_metadata: bool = dataclasses.field(default=False, compare=False)
 
-        self._metadata: Metadata | None = None
-        self._dependencies: list[Requirement] | None = None
+    _metadata: Metadata | None = dataclasses.field(
+        default=None, init=False, compare=False
+    )
+    _dependencies: list[Requirement] | None = dataclasses.field(
+        default=None, init=False, compare=False
+    )
+
+    def __post_init__(self):
+        # force normalized name
+        object.__setattr__(self, "name", canonicalize_name(self.name))
 
     def __repr__(self) -> str:
         if not self.extras:
@@ -50,9 +50,20 @@ class Candidate:
         return f"<{self.name}[{','.join(self.extras)}]=={self.version}>"
 
     @property
+    def metadata_url(self) -> str | None:
+        """PEP 658: metadata is available at {url}.metadata"""
+        if self.has_metadata:
+            return self.url + ".metadata"
+        return None
+
+    @property
     def metadata(self) -> Metadata:
         if self._metadata is None:
-            self._metadata = get_metadata_for_wheel(self.url, self.metadata_url)
+            if not self.has_metadata:
+                raise ValueError(f"{self.url} does not have metadata")
+            metadata = get_metadata_for_wheel(self.url, self.metadata_url)
+            object.__setattr__(self, "_metadata", metadata)
+        assert self._metadata
         return self._metadata
 
     def _get_dependencies(self) -> typing.Iterable[Requirement]:
@@ -71,7 +82,9 @@ class Candidate:
     @property
     def dependencies(self) -> list[Requirement]:
         if self._dependencies is None:
-            self._dependencies = list(self._get_dependencies())
+            dependencies = list(self._get_dependencies())
+            object.__setattr__(self, "_dependencies", dependencies)
+        assert self._dependencies
         return self._dependencies
 
     @property

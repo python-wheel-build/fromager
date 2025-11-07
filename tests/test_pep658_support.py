@@ -16,7 +16,7 @@ class TestPEP658Support:
             name="test-package",
             version=Version("1.0.0"),
             url="https://example.com/test-package-1.0.0-py3-none-any.whl",
-            metadata_url="https://example.com/test-package-1.0.0-py3-none-any.whl.metadata",
+            has_metadata=True,
         )
 
         assert (
@@ -132,12 +132,15 @@ Requires-Dist: requests >= 2.0.0
             name="test-package",
             version=Version("1.0.0"),
             url="https://example.com/test-package-1.0.0-py3-none-any.whl",
-            metadata_url="https://example.com/test-package-1.0.0-py3-none-any.whl.metadata",
+            has_metadata=True,
         )
 
         # The candidate should have the metadata URL attribute
         assert hasattr(candidate, "metadata_url")
-        assert candidate.metadata_url is not None
+        assert (
+            candidate.metadata_url
+            == "https://example.com/test-package-1.0.0-py3-none-any.whl.metadata"
+        )
 
     def test_metadata_url_construction(self):
         """Test that metadata URLs are constructed correctly."""
@@ -157,13 +160,18 @@ Requires-Dist: requests >= 2.0.0
             name="test-package",
             version=Version("1.0.0"),
             url="https://example.com/test.whl",
-            metadata_url="https://example.com/test.whl.metadata",
+            has_metadata=True,
         )
 
         candidate_without_metadata = Candidate(
             name="test-package",
             version=Version("1.0.0"),
             url="https://example.com/test.whl",
+        )
+
+        assert (
+            candidate_with_metadata.metadata_url
+            == "https://example.com/test.whl.metadata"
         )
 
         # Verify PEP 658 metadata URL handling
