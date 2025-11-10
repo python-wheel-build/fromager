@@ -2,6 +2,7 @@
 
 This module provides a robust retry mechanism for HTTP requests with exponential
 backoff, jitter, and specific handling for common network failures including:
+- Request timeouts (408)
 - Server timeouts (502, 503, 504)
 - Rate limiting (429, GitHub API rate limits)
 - Connection errors and incomplete reads
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_RETRY_CONFIG = {
     "total": 5,
     "backoff_factor": 1.0,
-    "status_forcelist": [429, 500, 502, 503, 504],
+    "status_forcelist": [408, 429, 500, 502, 503, 504],
     "allowed_methods": ["GET", "PUT", "POST", "HEAD", "OPTIONS"],
     "raise_on_status": False,
 }

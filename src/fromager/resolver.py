@@ -33,6 +33,7 @@ from . import overrides
 from .candidate import Candidate
 from .constraints import Constraints
 from .extras_provider import ExtrasProvider
+from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
 from .requirements_file import RequirementType
 
@@ -760,6 +761,12 @@ class GitHubTagProvider(GenericProvider):
     def cache_key(self) -> str:
         return f"{self.organization}/{self.repo}"
 
+    @retry_on_exception(
+        exceptions=RETRYABLE_EXCEPTIONS,
+        max_attempts=5,
+        backoff_factor=1.5,
+        max_backoff=120.0,
+    )
     def _find_tags(
         self,
         identifier: str,
@@ -773,17 +780,8 @@ class GitHubTagProvider(GenericProvider):
 
         nexturl = self.api_url.format(self=self)
         while nexturl:
-            try:
-                resp = session.get(nexturl, headers=headers)
-                resp.raise_for_status()
-            except Exception as e:
-                logger.error(
-                    "%s: Failed to fetch GitHub tags from %s: %s",
-                    identifier,
-                    nexturl,
-                    e,
-                )
-                raise
+            resp = session.get(nexturl, headers=headers)
+            resp.raise_for_status()
 
             for entry in resp.json():
                 name = entry["name"]
@@ -834,23 +832,20 @@ class GitLabTagProvider(GenericProvider):
     def cache_key(self) -> str:
         return f"{self.server_url}/{self.project_path}"
 
+    @retry_on_exception(
+        exceptions=RETRYABLE_EXCEPTIONS,
+        max_attempts=5,
+        backoff_factor=1.5,
+        max_backoff=120.0,
+    )
     def _find_tags(
         self,
         identifier: str,
     ) -> Iterable[tuple[str, Version]]:
         nexturl: str = self.api_url
         while nexturl:
-            try:
-                resp: Response = session.get(nexturl)
-                resp.raise_for_status()
-            except Exception as e:
-                logger.error(
-                    "%s: Failed to fetch GitLab tags from %s: %s",
-                    identifier,
-                    nexturl,
-                    e,
-                )
-                raise
+            resp: Response = session.get(nexturl)
+            resp.raise_for_status()
             for entry in resp.json():
                 name = entry["name"]
                 version = self._match_function(identifier, name)
