@@ -86,6 +86,8 @@ jobs:
           - bootstrap_git_url
           - bootstrap_git_url_tag
           - bootstrap_parallel
+          - bootstrap_parallel_git_url
+          - bootstrap_parallel_git_url_tag
           - bootstrap_skip_constraints
           - build
           - build_order
