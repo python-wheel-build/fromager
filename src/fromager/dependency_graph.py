@@ -352,6 +352,19 @@ class DependencyGraph:
     def get_root_node(self) -> DependencyNode:
         return self.nodes[ROOT]
 
+    def get_top_level_requirement(self, node: DependencyNode) -> Requirement | None:
+        """Get the top-level requirement specification for a node.
+
+        For packages that were specified as top-level requirements (e.g., with git URLs),
+        this returns the original requirement specification. Returns None if the node
+        is not a direct child of ROOT.
+        """
+        root = self.get_root_node()
+        for edge in root.children:
+            if edge.destination_node.key == node.key:
+                return edge.req
+        return None
+
     def get_all_nodes(self) -> typing.Iterable[DependencyNode]:
         return self.nodes.values()
 

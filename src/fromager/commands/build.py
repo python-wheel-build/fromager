@@ -696,7 +696,19 @@ def build_parallel(
                     "starting to build: %s", sorted(n.key for n in buildable_nodes)
                 )
                 for node in buildable_nodes:
-                    req = Requirement(f"{node.canonicalized_name}=={node.version}")
+                    # Try to get the original top-level requirement if it includes a URL.
+                    # We only use the top-level requirement if:
+                    # 1. The node is a direct child of ROOT (it's actually top-level)
+                    # 2. The requirement includes a URL (git, etc.)
+                    # Otherwise, we use the already-resolved version from the node to avoid:
+                    # - Building wrong versions when same package appears multiple times
+                    # - Re-resolving unpinned version specifiers
+                    top_level_req = graph.get_top_level_requirement(node)
+                    if top_level_req and top_level_req.url:
+                        req = top_level_req
+                        logger.debug("using top-level requirement with URL: %s", req)
+                    else:
+                        req = Requirement(f"{node.canonicalized_name}=={node.version}")
                     reqs.append(req)
                     future = executor.submit(
                         _build_parallel,
