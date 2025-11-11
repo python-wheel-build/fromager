@@ -43,6 +43,7 @@ The retry mechanism specifically handles these error conditions:
 
 ### Server Errors
 
+- `408 Request Timeout` - Request took too long to complete
 - `504 Gateway Timeout` - Server overwhelmed or upstream timeout
 - `502 Bad Gateway` - Proxy/gateway errors
 - `503 Service Unavailable` - Temporary server overload

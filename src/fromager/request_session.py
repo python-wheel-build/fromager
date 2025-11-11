@@ -6,7 +6,7 @@ from .http_retry import create_retry_session
 FROMAGER_RETRY_CONFIG = {
     "total": int(os.environ.get("FROMAGER_HTTP_RETRIES", "8")),
     "backoff_factor": float(os.environ.get("FROMAGER_HTTP_BACKOFF_FACTOR", "1.5")),
-    "status_forcelist": [429, 500, 502, 503, 504],
+    "status_forcelist": [408, 429, 500, 502, 503, 504],
     "allowed_methods": ["GET", "PUT", "POST", "HEAD", "OPTIONS"],
     "raise_on_status": False,
 }
