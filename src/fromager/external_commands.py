@@ -99,7 +99,16 @@ def run(
         )
         output = completed.stdout.decode("utf-8") if completed.stdout else ""
     if completed.returncode != 0:
-        logger.error("%s failed with %s", cmd, output)
+        # Log the command failure first
+        logger.error(
+            "command failed with exit code %d: %s",
+            completed.returncode,
+            " ".join(shlex.quote(str(s)) for s in cmd),
+        )
+        # Log command output with visual prefix to distinguish from fromager output
+        if output:
+            logger.error("  > " + output.replace("\n", "\n  > "))
+
         err_type = subprocess.CalledProcessError
         if network_isolation:
             # Look for a few common messages that mean there is a network
@@ -113,5 +122,9 @@ def run(
                 if substr in output:
                     err_type = NetworkIsolationError
         raise err_type(completed.returncode, cmd, output)
-    logger.debug("output: %s", output)
+
+    # Log command output with visual prefix to distinguish from fromager output
+    if output:
+        logger.debug("  > " + output.replace("\n", "\n  > "))
+
     return output
