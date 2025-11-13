@@ -76,9 +76,38 @@ for new contributors.
 
 - **No trailing whitespace**: Ensure no extra spaces at the end of lines
 - **No whitespace on blank lines**: Empty lines should contain no spaces or tabs
-- **Include a blank line as EOF**: Every file should end with a newline character
+- **End files with a single newline**: Each file should end with a single newline character (`\n`). This is a widely adopted convention recommended by PEP 8, Python's style guide. Many Unix-style text editors and tools expect files to end with a newline character and may not handle files without one properly.
 - Follow the project's existing code style and indentation patterns
 - Use consistent line endings (LF for this project)
+
+### Type Annotations
+
+- **Always add type annotations to all functions**: All functions must include type annotations for parameters and return values
+- This applies to regular functions, test functions, class methods, and async functions
+- Existing code will be updated gradually; new code must be fully typed
+- Follow the existing pattern in the codebase for consistency
+- Examples:
+
+  ```python
+  def calculate_total(items: list[int]) -> int:
+      """Calculate sum of items."""
+      return sum(items)
+
+  def test_my_feature() -> None:
+      """Test that my feature works correctly."""
+      assert my_feature() == expected_result
+  ```
+
+### Code Comments
+
+- **Avoid unnecessary comments**: Write self-documenting code with clear variable names, function names, and structure
+- **Only add comments when absolutely necessary**: Comments should be reserved for must-have cases such as:
+  - Explaining complex algorithms or non-obvious logic
+  - Documenting "why" decisions were made (not "what" the code does)
+  - Warning about edge cases or subtle bugs
+  - Explaining workarounds for external library issues
+- **Do not add comments that simply restate what the code does**: The code itself should be clear enough
+- **Prefer docstrings over comments**: Use docstrings for functions, classes, and modules to document their purpose and usage
 
 ### Testing After Code Changes
 
