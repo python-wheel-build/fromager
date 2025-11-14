@@ -83,7 +83,8 @@ def download_sequence(
             except Exception as err:
                 logger.error(f"failed to download sdist for {req}: {err}")
                 if not ignore_missing_sdists:
-                    raise
+                    # Re-raise with package context since context var is lost across threads
+                    raise RuntimeError(f"Failed to download sdist for {req}") from err
         else:
             logger.info(
                 f"{entry['dist']}: uses a {entry['source_url_type']} downloader, skipping"

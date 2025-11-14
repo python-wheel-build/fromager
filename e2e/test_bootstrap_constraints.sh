@@ -28,7 +28,7 @@ fromager \
 pass=true
 
 # Check for log message that the override is loaded
-if ! grep -q "ERROR: Unable to resolve requirement specifier stevedore==5.2.0 with constraint stevedore==4.0.0" "$OUTDIR/bootstrap.log"; then
+if ! grep -q "ERROR.*stevedore: Unable to resolve requirement specifier stevedore==5.2.0 with constraint stevedore==4.0.0" "$OUTDIR/bootstrap.log"; then
   echo "FAIL: did not throw expected error when constraint and requirement conflict" 1>&2
   pass=false
 fi

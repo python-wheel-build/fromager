@@ -720,7 +720,8 @@ def build_parallel(
                         # progress bar is updated in callback
                     except Exception as e:
                         logger.error(f"Failed to build {node.key}: {e}")
-                        raise
+                        # Re-raise with package context since context var is lost across threads
+                        raise RuntimeError(f"Failed to build {node.key}") from e
 
     metrics.summarize(wkctx, "Building in parallel")
     _summary(wkctx, entries)
