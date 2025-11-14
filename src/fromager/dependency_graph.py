@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
+import graphlib
 import json
 import logging
 import pathlib
+import threading
 import typing
 
 from packaging.requirements import Requirement
@@ -12,6 +14,9 @@ from packaging.version import Version
 
 from .read import open_file_or_url
 from .requirements_file import RequirementType
+
+if typing.TYPE_CHECKING:
+    from .context import WorkContext
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +69,12 @@ class DependencyNode:
             object.__setattr__(
                 self, "key", f"{self.canonicalized_name}=={self.version}"
             )
+
+    @property
+    def requirement(self) -> Requirement:
+        if self.canonicalized_name == ROOT:
+            raise RuntimeError("root node is not a requirement")
+        return Requirement(self.key)
 
     def add_child(
         self,
@@ -247,6 +258,10 @@ class DependencyGraph:
         self.nodes.clear()
         self.nodes[ROOT] = DependencyNode.construct_root_node()
 
+    def __len__(self) -> int:
+        # exclude ROOT
+        return len(self.nodes) - 1
+
     def _to_dict(self):
         raw_graph = {}
         stack = [self.nodes[ROOT]]
@@ -379,3 +394,149 @@ class DependencyGraph:
             yield from self._depth_first_traversal(
                 edge.destination_node.children, visited, match_dep_types
             )
+
+    def get_build_topology(self, context: WorkContext) -> TrackingTopologicalSorter:
+        """Create build topology graph
+
+        The build topology contains all nodes of the graph (except ROOT).
+        Each node depends on its build dependencies, but not on its
+        installation dependencies.
+        """
+        topo = TrackingTopologicalSorter()
+        for node in self.get_all_nodes():
+            if node.key == ROOT:
+                continue
+            pbi = context.package_build_info(node.canonicalized_name)
+            build_req = tuple(node.iter_build_requirements())
+            topo.add(node, *build_req, exclusive=pbi.exclusive_build)
+        return topo
+
+
+class TrackingTopologicalSorter:
+    """A thread-safe topological sorter that tracks nodes in progress
+
+    ``TopologicalSorter.get_ready()`` returns each node only once. The
+    tracking topological sorter keeps track which nodes are marked as done.
+    The ``get_available()`` method returns nodes again and again, until
+    they are marked as done. The graph is active until all nodes are marked
+    as done.
+
+    Individual nodes can be marked as exclusive nodes. ``get_available``
+    treats exclusive nodes special and returns:
+
+    1. one or more non-exclusive nodes
+    2. exactly one exclusive node that is a predecessor of another node
+    3. exactly one exclusive node
+
+    The class uses a lock for ``is_activate`, ``get_available`, and ``done``,
+    so the methods can be used from threading pool and future callback.
+    """
+
+    __slots__ = (
+        "_dep_nodes",
+        "_exclusive_nodes",
+        "_in_progress_nodes",
+        "_lock",
+        "_topo",
+    )
+
+    def __init__(
+        self,
+        graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+        | None = None,
+    ) -> None:
+        self._topo: graphlib.TopologicalSorter[DependencyNode] = (
+            graphlib.TopologicalSorter()
+        )
+        # set of nodes that are not done, yet
+        self._in_progress_nodes: set[DependencyNode] = set()
+        # set of nodes that are predecessors of other nodes
+        self._dep_nodes: set[DependencyNode] = set()
+        # dict of nodes -> priority; dependency: -1, leaf: +1
+        self._exclusive_nodes: dict[DependencyNode, int] = {}
+        self._lock = threading.Lock()
+        if graph is not None:
+            for node, predecessors in graph.items():
+                self.add(node, *predecessors)
+
+    @property
+    def dependency_nodes(self) -> set[DependencyNode]:
+        """Nodes that other nodes depend on"""
+        return self._dep_nodes.copy()
+
+    @property
+    def exclusive_nodes(self) -> set[DependencyNode]:
+        """Nodes that are marked as exclusive"""
+        return set(self._exclusive_nodes)
+
+    def add(
+        self,
+        node: DependencyNode,
+        *predecessors: DependencyNode,
+        exclusive: bool = False,
+    ) -> None:
+        """Add new node
+
+        Can be called multiple times for a node to add more predecessors or
+        to mark a node as exclusive. Exclusive nodes cannot be unmarked.
+        """
+        self._topo.add(node, *predecessors)
+        self._dep_nodes.update(predecessors)
+        if exclusive:
+            self._exclusive_nodes[node] = 1
+
+    def prepare(self) -> None:
+        """Prepare and check for cyclic dependencies"""
+        self._topo.prepare()
+        for node in self._exclusive_nodes:
+            if node in self._dep_nodes:
+                # give dependency nodes a higher priority
+                self._exclusive_nodes[node] = -1
+
+    def is_active(self) -> bool:
+        with self._lock:
+            return bool(self._in_progress_nodes) or self._topo.is_active()
+
+    def __bool__(self) -> bool:
+        return self.is_active()
+
+    def get_available(self) -> set[DependencyNode]:
+        """Get available nodes
+
+        A node can be returned multiple times until it is marked as 'done'.
+        """
+        with self._lock:
+            # get ready nodes, update in progress nodes.
+            ready = self._topo.get_ready()
+            self._in_progress_nodes.update(ready)
+
+            # get and prefer non-exclusive nodes. Exclusive nodes are
+            # 'heavy' nodes, that that a long time to build. Start with
+            # 'light' nodes first.
+            exclusive_nodes = self._exclusive_nodes
+            non_exclusive = self._in_progress_nodes.difference(exclusive_nodes)
+            if non_exclusive:
+                # set.difference() returns a new set object
+                return non_exclusive
+
+            # return a single exclusive node, prefer nodes that are a
+            # dependency of other nodes.
+            exclusive = self._in_progress_nodes.intersection(exclusive_nodes)
+            exclusive_list = sorted(
+                exclusive,
+                key=lambda node: (exclusive_nodes[node], node),
+            )
+            return {exclusive_list[0]}
+
+    def done(self, *nodes: DependencyNode) -> None:
+        """Mark nodes as done"""
+        with self._lock:
+            self._in_progress_nodes.difference_update(nodes)
+            self._topo.done(*nodes)
+
+    def static_batches(self) -> typing.Iterable[set[DependencyNode]]:
+        self.prepare()
+        while self.is_active():
+            nodes = self.get_available()
+            yield nodes
+            self.done(*nodes)

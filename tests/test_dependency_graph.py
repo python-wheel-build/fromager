@@ -1,12 +1,19 @@
 import dataclasses
 import graphlib
+import pathlib
+import typing
 
 import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from fromager.dependency_graph import DependencyNode
+from fromager import context
+from fromager.dependency_graph import (
+    DependencyGraph,
+    DependencyNode,
+    TrackingTopologicalSorter,
+)
 from fromager.requirements_file import RequirementType
 
 
@@ -53,6 +60,8 @@ def test_dependencynode_dataclass():
         repr(a)
         == "DependencyNode(canonicalized_name='a', version=<Version('1.0')>, download_url='', pre_built=False, constraint=None)"
     )
+    assert a.requirement == Requirement("a==1.0")
+
     with pytest.raises(dataclasses.FrozenInstanceError):
         a.version = Version("2.0")
     with pytest.raises((TypeError, AttributeError)):
@@ -62,6 +71,8 @@ def test_dependencynode_dataclass():
     assert root.canonicalized_name == ""
     assert root.version == Version("0.0")
     assert root.key == ""
+    with pytest.raises(RuntimeError):
+        assert root.requirement
 
 
 def test_iter_requirements() -> None:
@@ -172,3 +183,153 @@ def test_pr759_discussion() -> None:
     assert sorted(d.iter_install_requirements()) == [e]
     assert sorted(e.iter_install_requirements()) == []
     assert sorted(f.iter_install_requirements()) == []
+
+
+def test_tracking_topology_sorter() -> None:
+    a = mknode("a")
+    b = mknode("b")
+    c = mknode("c")
+    d = mknode("d")
+    e = mknode("e")
+    f = mknode("f")
+
+    graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+    graph = {
+        a: [b, c],
+        b: [c, d],
+        d: [e],
+        f: [d],
+    }
+
+    topo = TrackingTopologicalSorter(graph)
+    topo.prepare()
+
+    assert topo.dependency_nodes == {b, c, d, e}
+    assert topo.exclusive_nodes == set()
+    # properties return new objects
+    assert topo.dependency_nodes is not topo.dependency_nodes
+    assert topo.exclusive_nodes is not topo.exclusive_nodes
+
+    processed: list[DependencyNode] = []
+    while topo.is_active():
+        ready = sorted(topo.get_available())
+        r0 = ready[0]
+        processed.append(r0)
+        topo.done(r0)
+    # c and e have no dependency
+    # d depends on e
+    # b after d
+    # f after d, but sorting pushes it after a
+    # a on b
+    assert processed == [c, e, d, b, a, f]
+
+    topo = TrackingTopologicalSorter(graph)
+    assert topo.dependency_nodes == {b, c, d, e}
+    assert topo.exclusive_nodes == set()
+    batches = list(topo.static_batches())
+    assert batches == [
+        {c, e},
+        {d},
+        {b, f},
+        {a},
+    ]
+
+    topo = TrackingTopologicalSorter(graph)
+    # mark b as exclusive
+    topo.add(b, exclusive=True)
+    assert topo.dependency_nodes == {b, c, d, e}
+    assert topo.exclusive_nodes == {b}
+    batches = list(topo.static_batches())
+    assert batches == [
+        {c, e},
+        {d},
+        {f},
+        {b},
+        {a},
+    ]
+
+
+def node2str(nodes: set[DependencyNode]) -> set[str]:
+    return {node.key for node in nodes}
+
+
+def test_e2e_parallel_graph(
+    tmp_context: context.WorkContext, e2e_path: pathlib.Path
+) -> None:
+    graph = DependencyGraph.from_file(e2e_path / "build-parallel" / "graph.json")
+    assert len(graph) == 16
+
+    topo = graph.get_build_topology(tmp_context)
+    assert node2str(topo.dependency_nodes) == {
+        "cython==3.1.1",
+        "flit-core==3.12.0",
+        "packaging==25.0",
+        "setuptools-scm==8.3.1",
+        "setuptools==80.8.0",
+        "wheel==0.46.1",
+    }
+
+    steps = [node2str(batch) for batch in topo.static_batches()]
+    assert steps == [
+        {
+            "flit-core==3.12.0",
+            "setuptools==80.8.0",
+        },
+        {
+            "cython==3.1.1",
+            "imapclient==3.0.1",
+            "jinja2==3.1.6",
+            "markupsafe==3.0.2",
+            "more-itertools==10.7.0",
+            "packaging==25.0",
+        },
+        {
+            "setuptools-scm==8.3.1",
+            "wheel==0.46.1",
+        },
+        {
+            "imapautofiler==1.14.0",
+            "jaraco-classes==3.4.0",
+            "jaraco-context==6.0.1",
+            "jaraco-functools==4.1.0",
+            "keyring==25.6.0",
+            "pyyaml==6.0.2",
+        },
+    ]
+
+    # same graph, but mark cython as exclusive
+    topo = graph.get_build_topology(tmp_context)
+    node = graph.nodes["cython==3.1.1"]
+    topo.add(node, exclusive=True)
+
+    steps = [node2str(batch) for batch in topo.static_batches()]
+    assert steps == [
+        {
+            "flit-core==3.12.0",
+            "setuptools==80.8.0",
+        },
+        {
+            "imapclient==3.0.1",
+            "jinja2==3.1.6",
+            "markupsafe==3.0.2",
+            "more-itertools==10.7.0",
+            "packaging==25.0",
+        },
+        {
+            "setuptools-scm==8.3.1",
+            "wheel==0.46.1",
+        },
+        {
+            "imapautofiler==1.14.0",
+            "jaraco-classes==3.4.0",
+            "jaraco-context==6.0.1",
+            "jaraco-functools==4.1.0",
+            "keyring==25.6.0",
+        },
+        {
+            "cython==3.1.1",
+        },
+        {
+            "pyyaml==6.0.2",
+        },
+    ]
