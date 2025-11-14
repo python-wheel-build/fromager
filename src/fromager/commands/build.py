@@ -680,14 +680,15 @@ def build_parallel(
                     try:
                         entry = future.result()
                     except Exception as e:
-                        logger.error("failed to build: %s", e)
-                        raise
+                        logger.error(f"Failed to build {node.key}: {e}")
+                        raise RuntimeError(f"Failed to build {node.key}") from e
                     else:
                         # success
                         built_entries.append(entry)
                     finally:
                         # mark node as done, progress bar is updated in callback.
                         topo.done(node)
+                        # Re-raise with package context since context var is lost across threads
 
     metrics.summarize(wkctx, "Building in parallel")
     _summary(wkctx, built_entries)

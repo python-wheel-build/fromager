@@ -131,3 +131,48 @@ def test_external_command_output_prefix(caplog: pytest.LogCaptureFixture) -> Non
     finally:
         # Restore the original log record factory
         logging.setLogRecordFactory(old_factory)
+
+
+def test_external_commands_error_includes_package_name(caplog) -> None:
+    """Test that package name is included in error logs when context var is set"""
+    logging.setLogRecordFactory(log.FromagerLogRecord)
+
+    req = Requirement("test-package==1.0.0")
+    version = Version("1.0.0")
+
+    with log.req_ctxvar_context(req, version):
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(subprocess.CalledProcessError):
+                external_commands.run(["sh", "-c", "exit 1"])
+
+    error_logs = [
+        record.message for record in caplog.records if record.levelname == "ERROR"
+    ]
+    assert len(error_logs) > 0
+    assert any("test-package-1.0.0:" in msg for msg in error_logs), (
+        f"Expected package name in error logs, got: {error_logs}"
+    )
+
+
+def test_format_exception_formats_chained_exceptions() -> None:
+    """Test that _format_exception formats chained exceptions correctly"""
+    from fromager import __main__
+
+    # Test basic exception formatting
+    exception_without_cause = subprocess.CalledProcessError(
+        1, ["command"], output="some output"
+    )
+    message = __main__._format_exception(exception_without_cause)
+    assert "Command '['command']' returned non-zero exit status 1" in message
+
+    # Test chained exception formatting with "because"
+    try:
+        try:
+            raise ValueError("Root cause")
+        except ValueError as e:
+            raise RuntimeError("Higher level error") from e
+    except RuntimeError as chained_exc:
+        formatted = __main__._format_exception(chained_exc)
+        assert "Higher level error" in formatted
+        assert "because" in formatted
+        assert "Root cause" in formatted
