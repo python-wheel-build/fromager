@@ -1,5 +1,7 @@
 # Contributor Quickstart Guide
 
+> **Note*: For comprehensive coding standards, design patterns, and detailed examples, refer to [CONTRIBUTING.md](CONTRIBUTING.md). This file provides quick reference guidelines for common tasks.
+
 ## Commit Message Guidelines
 
 ### Objectives
@@ -72,67 +74,17 @@ for new contributors.
 
 ## Code Quality Guidelines
 
-### Formatting Standards
+For detailed coding standards including type annotations, formatting rules, documentation expectations, import organization, and design patterns, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- **No trailing whitespace**: Ensure no extra spaces at the end of lines
-- **No whitespace on blank lines**: Empty lines should contain no spaces or tabs
-- **End files with a single newline**: Each file should end with a single newline character (`\n`). This is a widely adopted convention recommended by PEP 8, Python's style guide. Many Unix-style text editors and tools expect files to end with a newline character and may not handle files without one properly.
-- Follow the project's existing code style and indentation patterns
-- Use consistent line endings (LF for this project)
+### Quick Testing Commands
 
-### Type Annotations
-
-- **Always add type annotations to all functions**: All functions must include type annotations for parameters and return values
-- This applies to regular functions, test functions, class methods, and async functions
-- Existing code will be updated gradually; new code must be fully typed
-- Follow the existing pattern in the codebase for consistency
-- Examples:
-
-  ```python
-  def calculate_total(items: list[int]) -> int:
-      """Calculate sum of items."""
-      return sum(items)
-
-  def test_my_feature() -> None:
-      """Test that my feature works correctly."""
-      assert my_feature() == expected_result
-  ```
-
-### Code Comments
-
-- **Avoid unnecessary comments**: Write self-documenting code with clear variable names, function names, and structure
-- **Only add comments when absolutely necessary**: Comments should be reserved for must-have cases such as:
-  - Explaining complex algorithms or non-obvious logic
-  - Documenting "why" decisions were made (not "what" the code does)
-  - Warning about edge cases or subtle bugs
-  - Explaining workarounds for external library issues
-- **Do not add comments that simply restate what the code does**: The code itself should be clear enough
-- **Prefer docstrings over comments**: Use docstrings for functions, classes, and modules to document their purpose and usage
-
-### Testing After Code Changes
-
-After making code changes, run the following tests within a Python virtual environment to ensure code quality:
-
-#### Run all unit tests
+After making code changes, run these commands to ensure quality:
 
 ```bash
-hatch run test:test
+hatch run lint:fix      # Format code
+hatch run test:test     # Run all tests
+hatch run mypy:check    # Type checking
+hatch run lint:check    # Final lint check
 ```
 
-#### Run lint checks
-
-```bash
-hatch run lint:check
-```
-
-#### Run mypy type checking
-
-```bash
-hatch run mypy:check
-```
-
-### Before Committing
-
-- Review your changes for trailing whitespace: `git diff | grep -E "^\+.*[[:space:]]$"`
-- Run tests to ensure all changes work correctly
-- Check for linting errors if the project uses linters
+See [CONTRIBUTING.md - Quick Reference](CONTRIBUTING.md#quick-reference) for the complete command reference and quality checklist.
