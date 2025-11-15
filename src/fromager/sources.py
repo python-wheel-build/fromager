@@ -204,6 +204,17 @@ def download_git_source(
     if url_to_clone.startswith("git+"):
         url_to_clone = url_to_clone[len("git+") :]
 
+    # Parse ref from URL if it's in the form repo@ref
+    from urllib.parse import urlparse
+
+    if ref is None:
+        parsed_url = urlparse(url_to_clone)
+        if "@" in parsed_url.path:
+            # Extract the ref from the path
+            new_path, _, git_ref = parsed_url.path.rpartition("@")
+            url_to_clone = parsed_url._replace(path=new_path).geturl()
+            ref = git_ref
+
     logger.info(f"cloning source from {url_to_clone}@{ref} to {destination_dir}")
     # Get git options from package settings
     pbi = ctx.package_build_info(req)
