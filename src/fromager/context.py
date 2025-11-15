@@ -164,7 +164,7 @@ class WorkContext:
             name = package.name
         else:
             name = package
-        return self.settings.package_build_info(name)
+        return self.settings.package_build_info(name, self)
 
     def setup(self) -> None:
         # The work dir must already exist, so don't try to create it.

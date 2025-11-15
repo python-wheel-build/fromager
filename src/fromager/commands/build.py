@@ -675,9 +675,7 @@ def build_parallel(
             exclusive_nodes: DependencyNodeList = [
                 node
                 for node in buildable_nodes
-                if wkctx.settings.package_build_info(
-                    node.canonicalized_name
-                ).exclusive_build
+                if wkctx.package_build_info(node.canonicalized_name).exclusive_build
             ]
             if exclusive_nodes:
                 # Only build the first exclusive node this round
