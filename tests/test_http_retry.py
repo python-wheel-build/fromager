@@ -20,14 +20,14 @@ from fromager import http_retry
 class TestRetryHTTPAdapter:
     """Test cases for RetryHTTPAdapter class."""
 
-    def test_init_with_default_config(self):
+    def test_init_with_default_config(self) -> None:
         """Test adapter initialization with default configuration."""
         adapter = http_retry.RetryHTTPAdapter()
         assert adapter.timeout == 60.0
         assert adapter.backoff_factor == 1.0
         assert adapter.max_backoff == 60.0
 
-    def test_init_with_custom_config(self):
+    def test_init_with_custom_config(self) -> None:
         """Test adapter initialization with custom configuration."""
         custom_config = {
             "total": 3,
@@ -40,7 +40,7 @@ class TestRetryHTTPAdapter:
         assert adapter.timeout == 30.0
         assert adapter.backoff_factor == 2.0
 
-    def test_init_with_invalid_config_types(self):
+    def test_init_with_invalid_config_types(self) -> None:
         """Test adapter handles invalid configuration types gracefully."""
         invalid_config = {
             "total": "invalid",
@@ -55,7 +55,9 @@ class TestRetryHTTPAdapter:
 
     @patch("fromager.http_retry.RetryHTTPAdapter._handle_github_rate_limit")
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_successful_response(self, mock_super_send, mock_github_handler):
+    def test_send_successful_response(
+        self, mock_super_send, mock_github_handler
+    ) -> None:
         """Test successful HTTP request without retries."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -73,7 +75,7 @@ class TestRetryHTTPAdapter:
 
     @patch("time.sleep")
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_retries_on_server_errors(self, mock_super_send, mock_sleep):
+    def test_send_retries_on_server_errors(self, mock_super_send, mock_sleep) -> None:
         """Test retry behavior on server error status codes."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -94,7 +96,7 @@ class TestRetryHTTPAdapter:
 
     @patch("time.sleep")
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_github_rate_limit_handling(self, mock_super_send, mock_sleep):
+    def test_send_github_rate_limit_handling(self, mock_super_send, mock_sleep) -> None:
         """Test GitHub API rate limit handling."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -119,7 +121,9 @@ class TestRetryHTTPAdapter:
 
     @patch("time.sleep")
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_retries_on_connection_error(self, mock_super_send, mock_sleep):
+    def test_send_retries_on_connection_error(
+        self, mock_super_send, mock_sleep
+    ) -> None:
         """Test retry behavior on connection errors."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -141,7 +145,7 @@ class TestRetryHTTPAdapter:
         mock_sleep.assert_called_once()
 
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_exhausts_retries_and_raises(self, mock_super_send):
+    def test_send_exhausts_retries_and_raises(self, mock_super_send) -> None:
         """Test that retries are exhausted and exception is raised."""
         adapter = http_retry.RetryHTTPAdapter(retry_config={"total": 1})
         request = Mock(spec=requests.PreparedRequest)
@@ -152,7 +156,7 @@ class TestRetryHTTPAdapter:
         with pytest.raises(ConnectionError):
             adapter.send(request)
 
-    def test_handle_github_rate_limit_with_reset_header(self):
+    def test_handle_github_rate_limit_with_reset_header(self) -> None:
         """Test GitHub rate limit handling with reset header."""
         adapter = http_retry.RetryHTTPAdapter()
         response = Mock(spec=requests.Response)
@@ -164,7 +168,7 @@ class TestRetryHTTPAdapter:
             adapter._handle_github_rate_limit(response, 0, 3)
             mock_sleep.assert_called_once()
 
-    def test_handle_github_rate_limit_without_reset_header(self):
+    def test_handle_github_rate_limit_without_reset_header(self) -> None:
         """Test GitHub rate limit handling without reset header."""
         adapter = http_retry.RetryHTTPAdapter()
         response = Mock(spec=requests.Response)
@@ -176,7 +180,7 @@ class TestRetryHTTPAdapter:
             adapter._handle_github_rate_limit(response, 0, 3)
             mock_sleep.assert_called_once()
 
-    def test_handle_retryable_exception(self):
+    def test_handle_retryable_exception(self) -> None:
         """Test handling of retryable exceptions."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -187,7 +191,7 @@ class TestRetryHTTPAdapter:
             adapter._handle_retryable_exception(exception, request, 0, 3)
             mock_sleep.assert_called_once()
 
-    def test_handle_retryable_exception_max_attempts(self):
+    def test_handle_retryable_exception_max_attempts(self) -> None:
         """Test handling retryable exception at max attempts."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -202,14 +206,14 @@ class TestRetryHTTPAdapter:
 class TestCreateRetrySession:
     """Test cases for create_retry_session function."""
 
-    def test_create_retry_session_default(self):
+    def test_create_retry_session_default(self) -> None:
         """Test creating a retry session with default configuration."""
         session = http_retry.create_retry_session()
         assert isinstance(session, requests.Session)
         assert "http://" in session.adapters
         assert "https://" in session.adapters
 
-    def test_create_retry_session_custom_config(self):
+    def test_create_retry_session_custom_config(self) -> None:
         """Test creating a retry session with custom configuration."""
         custom_config = {"total": 3, "backoff_factor": 2.0}
         session = http_retry.create_retry_session(
@@ -217,7 +221,7 @@ class TestCreateRetrySession:
         )
         assert isinstance(session, requests.Session)
 
-    def test_create_retry_session_basic(self):
+    def test_create_retry_session_basic(self) -> None:
         """Test basic session creation."""
         session = http_retry.create_retry_session()
         assert isinstance(session.get_adapter("http://"), http_retry.RetryHTTPAdapter)
@@ -228,7 +232,7 @@ class TestCreateRetrySession:
 class TestRetryOnExceptionDecorator:
     """Test cases for retry_on_exception decorator."""
 
-    def test_retry_decorator_success_on_first_attempt(self):
+    def test_retry_decorator_success_on_first_attempt(self) -> None:
         """Test decorator when function succeeds on first attempt."""
 
         @http_retry.retry_on_exception(max_attempts=3)
@@ -238,7 +242,7 @@ class TestRetryOnExceptionDecorator:
         result = successful_function()
         assert result == "success"
 
-    def test_retry_decorator_success_after_retries(self):
+    def test_retry_decorator_success_after_retries(self) -> None:
         """Test decorator when function succeeds after retries."""
         call_count = 0
 
@@ -255,7 +259,7 @@ class TestRetryOnExceptionDecorator:
             assert result == "success"
             assert call_count == 3
 
-    def test_retry_decorator_exhausts_attempts(self):
+    def test_retry_decorator_exhausts_attempts(self) -> None:
         """Test decorator when all retry attempts are exhausted."""
 
         @http_retry.retry_on_exception(max_attempts=2, backoff_factor=0.01)
@@ -266,7 +270,7 @@ class TestRetryOnExceptionDecorator:
             with pytest.raises(ConnectionError):
                 always_failing_function()
 
-    def test_retry_decorator_non_retryable_exception(self):
+    def test_retry_decorator_non_retryable_exception(self) -> None:
         """Test decorator with non-retryable exception."""
 
         @http_retry.retry_on_exception(exceptions=(ConnectionError,), max_attempts=3)
@@ -276,7 +280,7 @@ class TestRetryOnExceptionDecorator:
         with pytest.raises(ValueError):
             function_with_non_retryable_exception()
 
-    def test_retry_decorator_custom_exceptions(self):
+    def test_retry_decorator_custom_exceptions(self) -> None:
         """Test decorator with custom exception types."""
 
         @http_retry.retry_on_exception(
@@ -289,7 +293,7 @@ class TestRetryOnExceptionDecorator:
             with pytest.raises(ValueError):
                 function_with_custom_exceptions()
 
-    def test_retry_decorator_with_function_arguments(self):
+    def test_retry_decorator_with_function_arguments(self) -> None:
         """Test decorator preserves function arguments."""
 
         @http_retry.retry_on_exception(max_attempts=2)
@@ -303,7 +307,7 @@ class TestRetryOnExceptionDecorator:
 class TestGetRetrySession:
     """Test cases for get_retry_session function."""
 
-    def test_get_retry_session(self):
+    def test_get_retry_session(self) -> None:
         """Test getting a pre-configured retry session."""
         session = http_retry.get_retry_session()
         assert isinstance(session, requests.Session)
@@ -314,21 +318,25 @@ class TestGetRetrySession:
 class TestDefaultRetryConfig:
     """Test cases for default retry configuration."""
 
-    def test_default_retry_config_values(self):
+    def test_default_retry_config_values(self) -> None:
         """Test that default retry configuration has expected values."""
         config = http_retry.DEFAULT_RETRY_CONFIG
         assert config["total"] == 5
         assert config["backoff_factor"] == 1.0
-        assert 429 in config["status_forcelist"]
-        assert 502 in config["status_forcelist"]
-        assert "GET" in config["allowed_methods"]
+        status_forcelist = config["status_forcelist"]
+        assert isinstance(status_forcelist, list)
+        assert 429 in status_forcelist
+        assert 502 in status_forcelist
+        allowed_methods = config["allowed_methods"]
+        assert isinstance(allowed_methods, list)
+        assert "GET" in allowed_methods
         assert config["raise_on_status"] is False
 
 
 class TestRetryableExceptions:
     """Test cases for retryable exceptions tuple."""
 
-    def test_retryable_exceptions_contains_expected_types(self):
+    def test_retryable_exceptions_contains_expected_types(self) -> None:
         """Test that RETRYABLE_EXCEPTIONS contains expected exception types."""
         exceptions = http_retry.RETRYABLE_EXCEPTIONS
         assert ConnectionError in exceptions
@@ -344,7 +352,7 @@ class TestRetryableExceptions:
 class TestIntegration:
     """Integration test cases."""
 
-    def test_end_to_end_retry_session(self):
+    def test_end_to_end_retry_session(self) -> None:
         """Test end-to-end usage of retry session."""
         # Test that we can create a session and access its adapters
         session = http_retry.create_retry_session()
@@ -357,7 +365,7 @@ class TestIntegration:
         http_adapter = session.adapters["https://"]
         assert http_adapter.timeout == 60.0
 
-    def test_adapter_with_various_retryable_exceptions(self):
+    def test_adapter_with_various_retryable_exceptions(self) -> None:
         """Test adapter handles various retryable exceptions."""
         adapter = http_retry.RetryHTTPAdapter(retry_config={"total": 1})
         request = Mock(spec=requests.PreparedRequest)
@@ -381,7 +389,7 @@ class TestIntegration:
 
     @patch("time.sleep")
     @patch("random.uniform", return_value=0.5)
-    def test_backoff_calculation(self, mock_random, mock_sleep):
+    def test_backoff_calculation(self, mock_random, mock_sleep) -> None:
         """Test backoff time calculation with jitter."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -395,7 +403,7 @@ class TestIntegration:
 
 
 # Test standalone functions
-def test_default_retry_config_structure():
+def test_default_retry_config_structure() -> None:
     """Test that DEFAULT_RETRY_CONFIG has the correct structure."""
     config = http_retry.DEFAULT_RETRY_CONFIG
     expected_keys = {
@@ -408,14 +416,14 @@ def test_default_retry_config_structure():
     assert set(config.keys()) == expected_keys
 
 
-def test_retryable_exceptions_tuple_is_not_empty():
+def test_retryable_exceptions_tuple_is_not_empty() -> None:
     """Test that RETRYABLE_EXCEPTIONS is not empty."""
     assert len(http_retry.RETRYABLE_EXCEPTIONS) > 0
 
 
 @patch("time.sleep")
 @patch("random.uniform", return_value=0.1)
-def test_retry_decorator_backoff_timing(mock_random, mock_sleep):
+def test_retry_decorator_backoff_timing(mock_random, mock_sleep) -> None:
     """Test retry decorator backoff timing calculation."""
     call_count = 0
 
@@ -440,7 +448,7 @@ def test_retry_decorator_backoff_timing(mock_random, mock_sleep):
 
 
 @patch("fromager.http_retry.logger")
-def test_adapter_logging_on_retry(mock_logger):
+def test_adapter_logging_on_retry(mock_logger) -> None:
     """Test that appropriate logging occurs during retries."""
     adapter = http_retry.RetryHTTPAdapter()
     request = Mock(spec=requests.PreparedRequest)
@@ -458,7 +466,7 @@ def test_adapter_logging_on_retry(mock_logger):
 
 
 @patch("fromager.http_retry.logger")
-def test_adapter_logging_on_github_rate_limit(mock_logger):
+def test_adapter_logging_on_github_rate_limit(mock_logger) -> None:
     """Test logging during GitHub rate limit handling."""
     adapter = http_retry.RetryHTTPAdapter()
     response = Mock(spec=requests.Response)

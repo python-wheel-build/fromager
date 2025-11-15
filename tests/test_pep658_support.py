@@ -10,7 +10,7 @@ from fromager.candidate import Candidate, get_metadata_for_wheel
 class TestPEP658Support:
     """Test PEP 658 metadata support in fromager."""
 
-    def test_candidate_with_metadata_url(self):
+    def test_candidate_with_metadata_url(self) -> None:
         """Test that Candidate can be created with a metadata URL."""
         candidate = Candidate(
             name="test-package",
@@ -24,7 +24,7 @@ class TestPEP658Support:
             == "https://example.com/test-package-1.0.0-py3-none-any.whl.metadata"
         )
 
-    def test_candidate_without_metadata_url(self):
+    def test_candidate_without_metadata_url(self) -> None:
         """Test that Candidate works without metadata URL (legacy behavior)."""
         candidate = Candidate(
             name="test-package",
@@ -35,7 +35,7 @@ class TestPEP658Support:
         assert candidate.metadata_url is None
 
     @patch("fromager.candidate.session")
-    def test_get_metadata_with_pep658_success(self, mock_session):
+    def test_get_metadata_with_pep658_success(self, mock_session) -> None:
         """Test successful metadata retrieval via PEP 658 endpoint."""
         # Mock the metadata response
         mock_response = Mock()
@@ -65,7 +65,7 @@ Requires-Dist: requests >= 2.0.0
         mock_session.get.assert_called_once_with(metadata_url)
 
     @patch("fromager.candidate.session")
-    def test_get_metadata_pep658_fallback_behavior(self, mock_session):
+    def test_get_metadata_pep658_fallback_behavior(self, mock_session) -> None:
         """Test that PEP 658 is tried first, then falls back to wheel download."""
         # Mock that metadata URL fails, then wheel URL succeeds
         responses = []
@@ -102,7 +102,7 @@ Requires-Dist: requests >= 2.0.0
         assert mock_session.get.call_count == 2
 
     @patch("fromager.candidate.session")
-    def test_get_metadata_without_pep658_behavior(self, mock_session):
+    def test_get_metadata_without_pep658_behavior(self, mock_session) -> None:
         """Test that without PEP 658 metadata URL, only wheel URL is called."""
         # Mock wheel request
         responses = []
@@ -126,7 +126,7 @@ Requires-Dist: requests >= 2.0.0
         assert responses[0] == ("wheel", wheel_url)
         mock_session.get.assert_called_once_with(wheel_url)
 
-    def test_candidate_repr_with_metadata_url(self):
+    def test_candidate_repr_with_metadata_url(self) -> None:
         """Test that Candidate representation includes metadata URL info."""
         candidate = Candidate(
             name="test-package",
@@ -142,7 +142,7 @@ Requires-Dist: requests >= 2.0.0
             == "https://example.com/test-package-1.0.0-py3-none-any.whl.metadata"
         )
 
-    def test_metadata_url_construction(self):
+    def test_metadata_url_construction(self) -> None:
         """Test that metadata URLs are constructed correctly."""
         base_url = (
             "https://pypi.org/simple/test-package/test-package-1.0.0-py3-none-any.whl"
@@ -153,7 +153,7 @@ Requires-Dist: requests >= 2.0.0
         assert expected_metadata_url.endswith(".whl.metadata")
         assert expected_metadata_url.startswith("https://")
 
-    def test_pep658_integration_with_resolver(self):
+    def test_pep658_integration_with_resolver(self) -> None:
         """Test that PEP 658 metadata URLs are properly handled by the candidate system."""
         # Test the basic integration of metadata URLs with candidates
         candidate_with_metadata = Candidate(

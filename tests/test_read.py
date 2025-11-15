@@ -5,7 +5,7 @@ import requests_mock
 from fromager import read
 
 
-def test_read_from_file(tmp_path: pathlib.Path):
+def test_read_from_file(tmp_path: pathlib.Path) -> None:
     file = tmp_path / "test"
     text = ["hello", "world"]
     file.write_text("\n".join(text))
@@ -14,7 +14,7 @@ def test_read_from_file(tmp_path: pathlib.Path):
             assert line.strip() == text[index]
 
 
-def test_read_from_url():
+def test_read_from_url() -> None:
     url = "https://someurl.com"
     text = ["hello", "world"]
     with requests_mock.Mocker() as r:

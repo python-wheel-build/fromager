@@ -6,21 +6,21 @@ import pytest
 from fromager import overrides
 
 
-def test_invoke_override_with_exact_args():
+def test_invoke_override_with_exact_args() -> None:
     def foo(arg1, arg2):
         return arg1 is not None and arg2 is not None
 
     assert overrides.invoke(foo, arg1="value1", arg2="value2")
 
 
-def test_invoke_override_with_more_args_than_needed():
+def test_invoke_override_with_more_args_than_needed() -> None:
     def foo(arg1, arg2):
         return arg1 is not None and arg2 is not None
 
     assert overrides.invoke(foo, arg1="value1", arg2="value2", arg3="value3")
 
 
-def test_invoke_override_with_not_enough_args():
+def test_invoke_override_with_not_enough_args() -> None:
     def foo(arg1, arg2):
         return arg1 is not None and arg2 is not None
 
@@ -31,7 +31,7 @@ def test_invoke_override_with_not_enough_args():
 @patch("fromager.overrides.find_override_method")
 def test_find_and_invoke(
     find_override_method: mock.Mock,
-):
+) -> None:
     def default_foo(arg1):
         return arg1 is not None
 

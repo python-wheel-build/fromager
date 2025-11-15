@@ -2,9 +2,8 @@ import pathlib
 
 import pytest
 from packaging.requirements import Requirement
-from packaging.version import Version
 
-from fromager import finders
+from fromager import context, finders
 
 
 @pytest.mark.parametrize(
@@ -17,7 +16,13 @@ from fromager import finders
         ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6.tar.gz"),
     ],
 )
-def test_find_sdist(tmp_path, tmp_context, dist_name, version_string, expected_base):
+def test_find_sdist(
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+    dist_name: str,
+    version_string: str,
+    expected_base: str,
+) -> None:
     sdists_repo = pathlib.Path(tmp_path)
     downloads = sdists_repo / "downloads"
     downloads.mkdir()
@@ -25,8 +30,7 @@ def test_find_sdist(tmp_path, tmp_context, dist_name, version_string, expected_b
     archive.write_text("not-empty")
 
     req = Requirement(dist_name)
-    ver = Version(version_string)
-    actual = finders.find_sdist(tmp_context, downloads, req, ver)
+    actual = finders.find_sdist(tmp_context, downloads, req, version_string)
     assert str(archive) == str(actual)
 
 
@@ -40,7 +44,9 @@ def test_find_sdist(tmp_path, tmp_context, dist_name, version_string, expected_b
         ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6-py3-none-any.whl"),
     ],
 )
-def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
+def test_find_wheel(
+    tmp_path: pathlib.Path, dist_name: str, version_string: str, expected_base: str
+) -> None:
     wheels_repo = pathlib.Path(tmp_path)
     downloads = wheels_repo / "downloads"
     downloads.mkdir()
@@ -48,8 +54,7 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
     wheel.write_text("not-empty")
 
     req = Requirement(dist_name)
-    ver = Version(version_string)
-    actual = finders.find_wheel(downloads, req, ver, 0)
+    actual = finders.find_wheel(downloads, req, version_string, ())
     assert str(wheel) == str(actual)
 
 
@@ -63,8 +68,13 @@ def test_find_wheel(tmp_path, dist_name, version_string, expected_base):
     ],
 )
 def test_find_source_dir(
-    tmp_path, tmp_context, dist_name, version_string, unpack_base, source_base
-):
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+    dist_name: str,
+    version_string: str,
+    unpack_base: str,
+    source_base: str,
+) -> None:
     work_dir = pathlib.Path(tmp_path)
     unpack_dir = work_dir / unpack_base
     unpack_dir.mkdir()
@@ -73,6 +83,5 @@ def test_find_source_dir(
     print(f"created {source_dir}")
 
     req = Requirement(dist_name)
-    ver = Version(version_string)
-    actual = finders.find_source_dir(tmp_context, work_dir, req, ver)
+    actual = finders.find_source_dir(tmp_context, work_dir, req, version_string)
     assert str(source_dir) == str(actual)

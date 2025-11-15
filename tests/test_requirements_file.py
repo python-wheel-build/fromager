@@ -13,14 +13,14 @@ from fromager.requirements_file import (
 )
 
 
-def test_get_requirements_requirements_file(tmp_path: pathlib.Path):
+def test_get_requirements_requirements_file(tmp_path: pathlib.Path) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("c\n")
     requirements = parse_requirements_file(req_file)
     assert requirements == ["c"]
 
 
-def test_get_requirements_requirements_file_comments(tmp_path: pathlib.Path):
+def test_get_requirements_requirements_file_comments(tmp_path: pathlib.Path) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text(
         textwrap.dedent("""
@@ -34,14 +34,14 @@ def test_get_requirements_requirements_file_comments(tmp_path: pathlib.Path):
     assert requirements == ["c", "d"]
 
 
-def test_get_requirements_file_with_comments_and_blanks(tmp_path: pathlib.Path):
+def test_get_requirements_file_with_comments_and_blanks(tmp_path: pathlib.Path) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("a\n\n# ignore\nb\nc\n")
     requirements = parse_requirements_file(req_file)
     assert requirements == ["a", "b", "c"]
 
 
-def test_req_type_flag():
+def test_req_type_flag() -> None:
     assert not RequirementType.INSTALL.is_build_requirement
     assert not RequirementType.TOP_LEVEL.is_build_requirement
     assert RequirementType.BUILD_SYSTEM.is_build_requirement
@@ -62,7 +62,7 @@ def test_req_type_flag():
 @pytest.mark.parametrize(
     "parent_e,marker_e,extras_e", list(product(["b-c", "b_c", "B_C"], repeat=3))
 )
-def test_evaluate_marker_canonical_names(parent_e, marker_e, extras_e):
+def test_evaluate_marker_canonical_names(parent_e, marker_e, extras_e) -> None:
     parent_req = Requirement(f"a[{parent_e}]")
     req = Requirement("d")
     marker = Marker(f"extra == '{marker_e}'")
