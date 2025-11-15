@@ -154,15 +154,17 @@ bootstrap requirements, such as:
 my-package @ git+https://github.com/example/repo.git@v1.2.3
 ```
 
-For example requirements with git URLs, see:
+Example requirements file with Git URLs:
 
-.. literalinclude:: example/requirements-git-example.txt
-   :caption: requirements-git-example.txt
+```{literalinclude} example/requirements-git-example.txt
+:caption: requirements-git-example.txt
+```
 
-For a complete package configuration example, see:
+A complete package configuration example:
 
-.. literalinclude:: example/git-submodules-example.yaml
-   :caption: git-submodules-example.yaml
+```{literalinclude} example/git-submodules-example.yaml
+:caption: git-submodules-example.yaml
+```
 
 ### Build directory
 

@@ -15,7 +15,7 @@ from sphinx.util.typing import ExtensionMetadata
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Fromager"
-copyright = "2024, Fromager Authors"
+copyright = "%Y, Fromager Authors"
 author = "Fromager Authors"
 release = metadata.version("fromager")
 
@@ -30,6 +30,11 @@ extensions = [
     "sphinx.ext.intersphinx",
 ]
 
+# Enable MyST extensions to support reStructuredText directives in Markdown
+myst_enable_extensions = [
+    "colon_fence",
+]
+
 # Recognized suffixes
 source_suffix = {
     ".rst": "restructuredtext",
@@ -37,7 +42,7 @@ source_suffix = {
 }
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "example"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 language = "English"
 
@@ -67,7 +72,7 @@ autodoc_pydantic_model_show_validator_members = False
 
 
 class FromagerHookDocumenter(FunctionDocumenter):
-    """Documenter for 'autofromagehook' directive"""
+    """Documenter for 'autofromagerhook' directive"""
 
     objtype = "fromagerhook"
 
@@ -79,7 +84,7 @@ class FromagerHookDocumenter(FunctionDocumenter):
 
 
 class PyFromagerHook(PyFunction):
-    """:py:fromagehook"""
+    """:py:fromagerhook"""
 
     def handle_signature(self, sig: str, signode: desc_signature) -> tuple[str, str]:
         # hack to remove module prefix from output
