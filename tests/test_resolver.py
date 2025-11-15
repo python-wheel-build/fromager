@@ -112,7 +112,7 @@ def github_fromager_resolver() -> typing.Generator[
         yield resolvelib.Resolver(provider, reporter)
 
 
-def test_provider_choose_wheel():
+def test_provider_choose_wheel() -> None:
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -120,7 +120,7 @@ def test_provider_choose_wheel():
         )
 
         provider = resolver.PyPIProvider(include_sdists=False)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("hydra-core")])
@@ -235,7 +235,7 @@ def test_cache_not_overly_aggressive() -> None:
         assert len(cached_candidates) == 4
 
 
-def test_provider_choose_wheel_prereleases():
+def test_provider_choose_wheel_prereleases() -> None:
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -243,7 +243,7 @@ def test_provider_choose_wheel_prereleases():
         )
 
         provider = resolver.PyPIProvider(include_sdists=False)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("hydra-core==2.0.0a1")])
@@ -257,7 +257,7 @@ def test_provider_choose_wheel_prereleases():
         assert str(candidate.version) == "2.0.0a1"
 
 
-def test_provider_choose_wheel_local():
+def test_provider_choose_wheel_local() -> None:
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -265,7 +265,7 @@ def test_provider_choose_wheel_local():
         )
 
         provider = resolver.PyPIProvider(include_sdists=False)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("hydra-core==1.3.1+local")])
@@ -279,7 +279,7 @@ def test_provider_choose_wheel_local():
         assert str(candidate.version) == "1.3.1+local"
 
 
-def test_provider_choose_sdist():
+def test_provider_choose_sdist() -> None:
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -287,7 +287,7 @@ def test_provider_choose_sdist():
         )
 
         provider = resolver.PyPIProvider(include_wheels=False)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("hydra-core")])
@@ -301,7 +301,7 @@ def test_provider_choose_sdist():
         assert str(candidate.version) == "1.3.2"
 
 
-def test_provider_choose_either_with_constraint():
+def test_provider_choose_either_with_constraint() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("hydra-core==1.3.2")
     with requests_mock.Mocker() as r:
@@ -313,7 +313,7 @@ def test_provider_choose_either_with_constraint():
         provider = resolver.PyPIProvider(
             include_wheels=True, include_sdists=True, constraints=constraint
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("hydra-core")])
@@ -328,7 +328,7 @@ def test_provider_choose_either_with_constraint():
         )
 
 
-def test_provider_constraint_mismatch():
+def test_provider_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("hydra-core<=1.1")
     with requests_mock.Mocker() as r:
@@ -338,14 +338,14 @@ def test_provider_constraint_mismatch():
         )
 
         provider = resolver.PyPIProvider(include_wheels=False, constraints=constraint)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         with pytest.raises(resolvelib.resolvers.ResolverException):
             rslvr.resolve([Requirement("hydra-core")])
 
 
-def test_provider_constraint_match():
+def test_provider_constraint_match() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("hydra-core<=1.3")
     with requests_mock.Mocker() as r:
@@ -355,7 +355,7 @@ def test_provider_constraint_match():
         )
 
         provider = resolver.PyPIProvider(include_wheels=False, constraints=constraint)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("hydra-core")])
@@ -386,7 +386,7 @@ _ignore_platform_simple_response = """
 """
 
 
-def test_provider_platform_mismatch():
+def test_provider_platform_mismatch() -> None:
     constraint = constraints.Constraints()
     with requests_mock.Mocker() as r:
         r.get(
@@ -395,14 +395,14 @@ def test_provider_platform_mismatch():
         )
 
         provider = resolver.PyPIProvider(include_wheels=True, constraints=constraint)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         with pytest.raises(resolvelib.resolvers.ResolverException):
             rslvr.resolve([Requirement("fromager")])
 
 
-def test_provider_ignore_platform():
+def test_provider_ignore_platform() -> None:
     constraint = constraints.Constraints()
     with requests_mock.Mocker() as r:
         r.get(
@@ -413,7 +413,7 @@ def test_provider_ignore_platform():
         provider = resolver.PyPIProvider(
             include_wheels=True, constraints=constraint, ignore_platform=True
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("fromager")])
@@ -682,7 +682,7 @@ _github_fromager_tag_response = """
 """
 
 
-def test_resolve_github():
+def test_resolve_github() -> None:
     with requests_mock.Mocker() as r:
         r.get(
             "https://api.github.com:443/repos/python-wheel-build/fromager",
@@ -696,7 +696,7 @@ def test_resolve_github():
         provider = resolver.GitHubTagProvider(
             organization="python-wheel-build", repo="fromager"
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("fromager")])
@@ -711,7 +711,7 @@ def test_resolve_github():
         )
 
 
-def test_github_constraint_mismatch():
+def test_github_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("fromager>=1.0")
     with requests_mock.Mocker() as r:
@@ -727,14 +727,14 @@ def test_github_constraint_mismatch():
         provider = resolver.GitHubTagProvider(
             organization="python-wheel-build", repo="fromager", constraints=constraint
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         with pytest.raises(resolvelib.resolvers.ResolutionImpossible):
             rslvr.resolve([Requirement("fromager")])
 
 
-def test_github_constraint_match():
+def test_github_constraint_match() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("fromager<0.9")
     with requests_mock.Mocker() as r:
@@ -750,7 +750,7 @@ def test_github_constraint_match():
         provider = resolver.GitHubTagProvider(
             organization="python-wheel-build", repo="fromager", constraints=constraint
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("fromager")])
@@ -765,12 +765,12 @@ def test_github_constraint_match():
         )
 
 
-def test_resolve_generic():
+def test_resolve_generic() -> None:
     def _versions(*args, **kwds):
         return [("url", "1.2"), ("url", "1.3"), ("url", "1.4.1")]
 
     provider = resolver.GenericProvider(version_source=_versions)
-    reporter = resolvelib.BaseReporter()
+    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
 
     result = rslvr.resolve([Requirement("fromager")])
@@ -886,7 +886,7 @@ def tag_match(identifier: str, item: str) -> Version | None:
     return None
 
 
-def test_resolve_gitlab():
+def test_resolve_gitlab() -> None:
     with requests_mock.Mocker() as r:
         r.get(
             "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
@@ -898,7 +898,7 @@ def test_resolve_gitlab():
             server_url="https://gitlab.com",
             matcher=re.compile("v(.*)"),  # with match object
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("submodlib")])
@@ -913,7 +913,7 @@ def test_resolve_gitlab():
         )
 
 
-def test_gitlab_constraint_mismatch():
+def test_gitlab_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("submodlib>=1.0")
     with requests_mock.Mocker() as r:
@@ -928,14 +928,14 @@ def test_gitlab_constraint_mismatch():
             matcher=tag_match,  # match function
             constraints=constraint,
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         with pytest.raises(resolvelib.resolvers.ResolutionImpossible):
             rslvr.resolve([Requirement("submodlib")])
 
 
-def test_gitlab_constraint_match():
+def test_gitlab_constraint_match() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("submodlib<0.0.3")
     with requests_mock.Mocker() as r:
@@ -950,7 +950,7 @@ def test_gitlab_constraint_match():
             matcher=None,  # default, Version() also ignores leading 'v'
             constraints=constraint,
         )
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("submodlib")])
@@ -986,14 +986,14 @@ _response_with_data_yanked = """
 """
 
 
-def test_pep592_support_latest_version_yanked():
+def test_pep592_support_latest_version_yanked() -> None:
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/setuptools-scm/", text=_response_with_data_yanked
         )
 
         provider = resolver.PyPIProvider()
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         result = rslvr.resolve([Requirement("setuptools-scm")])
@@ -1004,7 +1004,7 @@ def test_pep592_support_latest_version_yanked():
         assert str(candidate.version) == "8.3.1"
 
 
-def test_pep592_support_constraint_mismatch():
+def test_pep592_support_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("setuptools-scm>=9.0.0")
     with requests_mock.Mocker() as r:
@@ -1013,7 +1013,7 @@ def test_pep592_support_constraint_mismatch():
         )
 
         provider = resolver.PyPIProvider(constraints=constraint)
-        reporter = resolvelib.BaseReporter()
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
         with pytest.raises(resolvelib.resolvers.ResolverException):
@@ -1030,6 +1030,6 @@ def test_pep592_support_constraint_mismatch():
         ),
     ],
 )
-def test_extract_filename_from_url(url, filename):
+def test_extract_filename_from_url(url, filename) -> None:
     result = resolver.extract_filename_from_url(url)
     assert result == filename

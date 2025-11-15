@@ -9,19 +9,19 @@ import pytest
 from fromager import external_commands
 
 
-def test_external_commands_environ():
+def test_external_commands_environ() -> None:
     env = {"BLAH": "test"}
     output = external_commands.run(["sh", "-c", "echo $BLAH"], extra_environ=env)
     assert "test\n" == output
 
 
-def test_external_commands_log_file(tmp_path):
+def test_external_commands_log_file(tmp_path: pathlib.Path) -> None:
     log_filename = pathlib.Path(tmp_path) / "test.log"
     env = {"BLAH": "test"}
     output = external_commands.run(
         ["sh", "-c", "echo $BLAH"],
         extra_environ=env,
-        log_filename=log_filename,
+        log_filename=str(log_filename),
     )
     assert "test\n" == output
     assert log_filename.exists()
@@ -38,7 +38,7 @@ def test_external_commands_log_file(tmp_path):
 def test_external_commands_network_isolation(
     m_network_isolation_cmd: mock.Mock,
     m_run: mock.Mock,
-):
+) -> None:
     os.environ.clear()
     external_commands.run(
         ["host", "github.com"],
@@ -76,7 +76,7 @@ else:
     not SUPPORTS_NETWORK_ISOLATION,
     reason=f"network isolation is not supported: {NETWORK_ISOLATION_ERROR}",
 )
-def test_external_commands_network_isolation_real():
+def test_external_commands_network_isolation_real() -> None:
     with pytest.raises(external_commands.NetworkIsolationError) as e:
         external_commands.run(
             ["host", "github.com"],

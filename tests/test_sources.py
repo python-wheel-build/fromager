@@ -9,7 +9,7 @@ from fromager import context, packagesettings, resolver, sources
 
 
 @patch("fromager.sources.download_url")
-def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path):
+def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path) -> None:
     mock_download_url.return_value = pathlib.Path(tmp_path / "test" / "fake_wheel.txt")
     fake_url = "https://www.thisisafakeurl.com"
     fake_dir = tmp_path / "test"
@@ -27,7 +27,7 @@ def test_default_download_source_from_settings(
     download_source_check: Mock,
     resolve: Mock,
     testdata_context: context.WorkContext,
-):
+) -> None:
     resolve.return_value = ("url", Version("42.1.2"))
     download_source_check.return_value = pathlib.Path("filename.zip")
     req = Requirement("test_pkg==42.1.2")
@@ -73,7 +73,7 @@ def test_default_download_source_with_predefined_resolve_dist(
     download_source_check: Mock,
     resolve: Mock,
     tmp_context: context.WorkContext,
-):
+) -> None:
     resolve.return_value = ("url", Version("1.0"))
     download_source_check.return_value = pathlib.Path("filename")
     req = Requirement("foo==1.0")
@@ -92,7 +92,9 @@ def test_default_download_source_with_predefined_resolve_dist(
 
 
 @patch("fromager.sources.default_resolve_source")
-def test_invalid_version(mock_default_resolve_source, tmp_context: context.WorkContext):
+def test_invalid_version(
+    mock_default_resolve_source, tmp_context: context.WorkContext
+) -> None:
     req = Requirement("fake==1.0")
     sdist_server_url = resolver.PYPI_SERVER_URL
     mock_default_resolve_source.return_value = (
@@ -115,7 +117,7 @@ def test_patch_sources_apply_unversioned_and_versioned(
     warning: Mock,
     tmp_path: pathlib.Path,
     testdata_context: context.WorkContext,
-):
+) -> None:
     source_root_dir = tmp_path / "test_pkg-1.0.2"
     source_root_dir.mkdir()
 
@@ -160,7 +162,7 @@ def test_patch_sources_apply_only_unversioned(
     apply_patch: Mock,
     tmp_path: pathlib.Path,
     tmp_context: context.WorkContext,
-):
+) -> None:
     patches_dir = tmp_path / "patches_dir"
     patches_dir.mkdir()
     tmp_context.settings.patches_dir = patches_dir

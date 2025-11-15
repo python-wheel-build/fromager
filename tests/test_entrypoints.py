@@ -2,7 +2,7 @@ import inspect
 from importlib.metadata import entry_points
 
 
-def test_ep_override_methods():
+def test_ep_override_methods() -> None:
     epg = entry_points(group="fromager.override_methods")
     assert epg
     for name in epg.names:

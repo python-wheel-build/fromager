@@ -423,7 +423,7 @@ def test_pbi_other(testdata_context: context.WorkContext) -> None:
     assert pbi.get_all_patches() is pbi.get_all_patches()
 
 
-def test_type_envvars():
+def test_type_envvars() -> None:
     ta = pydantic.TypeAdapter(EnvVars)
     v = ta.validate_python(
         {"int": 1, "float": 2.0, "true": True, "false": False, "str": "string"}
@@ -441,7 +441,7 @@ def test_type_envvars():
         ta.validate_python({"none": None})
 
 
-def test_type_package():
+def test_type_package() -> None:
     ta = pydantic.TypeAdapter(Package)
     assert ta.validate_python("Some_Package") == "some-package"
     assert ta.validate_python("some.package") == "some-package"
@@ -449,7 +449,7 @@ def test_type_package():
         ta.validate_python("invalid/package")
 
 
-def test_type_builddirectory():
+def test_type_builddirectory() -> None:
     ta = pydantic.TypeAdapter(BuildDirectory)
     assert ta.validate_python("python") == pathlib.Path("python")
     assert ta.validate_python("../tmp/build") == pathlib.Path("../tmp/build")
@@ -457,7 +457,7 @@ def test_type_builddirectory():
         ta.validate_python("/absolute/path")
 
 
-def test_global_settings(testdata_path: pathlib.Path):
+def test_global_settings(testdata_path: pathlib.Path) -> None:
     filename = testdata_path / "context/overrides/settings.yaml"
     gs = SettingsFile.from_file(filename)
     assert gs.changelog == {
@@ -588,11 +588,13 @@ def test_parallel_jobs(
         ("$${var:-default}", {}, "${var:-default}"),
     ],
 )
-def test_substitute_template(value: str, template_env: dict[str, str], expected: str):
+def test_substitute_template(
+    value: str, template_env: dict[str, str], expected: str
+) -> None:
     assert substitute_template(value, template_env) == expected
 
 
-def test_substitute_template_key_error():
+def test_substitute_template_key_error() -> None:
     # This test expects a ValueError to be raised by substitute_template
     with pytest.raises(ValueError) as excinfo:
         substitute_template("${DEFAULT:-default} ${UNKNOWN}", {})
@@ -603,21 +605,21 @@ def test_substitute_template_key_error():
     )
 
 
-def test_git_options_default():
+def test_git_options_default() -> None:
     """Test that GitOptions has correct default values."""
     git_opts = GitOptions()
     assert git_opts.submodules is False
     assert git_opts.submodule_paths == []
 
 
-def test_git_options_with_submodules_enabled():
+def test_git_options_with_submodules_enabled() -> None:
     """Test GitOptions with submodules enabled."""
     git_opts = GitOptions(submodules=True)
     assert git_opts.submodules is True
     assert git_opts.submodule_paths == []
 
 
-def test_git_options_with_specific_paths():
+def test_git_options_with_specific_paths() -> None:
     """Test GitOptions with specific submodule paths."""
     paths = ["vendor/lib1", "vendor/lib2"]
     git_opts = GitOptions(submodule_paths=paths)
@@ -625,7 +627,7 @@ def test_git_options_with_specific_paths():
     assert git_opts.submodule_paths == paths
 
 
-def test_git_options_with_both_settings():
+def test_git_options_with_both_settings() -> None:
     """Test GitOptions with both submodules and paths configured."""
     paths = ["vendor/lib1"]
     git_opts = GitOptions(submodules=True, submodule_paths=paths)
@@ -633,7 +635,7 @@ def test_git_options_with_both_settings():
     assert git_opts.submodule_paths == paths
 
 
-def test_package_settings_git_options_default():
+def test_package_settings_git_options_default() -> None:
     """Test that PackageSettings includes GitOptions with defaults."""
     settings = PackageSettings.from_default("test-pkg")
     assert hasattr(settings, "git_options")
@@ -642,10 +644,10 @@ def test_package_settings_git_options_default():
     assert settings.git_options.submodule_paths == []
 
 
-def test_package_settings_git_options_from_dict():
+def test_package_settings_git_options_from_dict() -> None:
     """Test PackageSettings can parse git_options from dictionary."""
     settings = PackageSettings(
-        **{
+        **{  # type: ignore[arg-type]
             "name": "test-pkg",
             "has_config": True,
             "git_options": {
@@ -657,16 +659,16 @@ def test_package_settings_git_options_from_dict():
     assert settings.git_options.submodule_paths == []  # Default value
 
 
-def test_package_settings_git_options_from_dict_empty():
+def test_package_settings_git_options_from_dict_empty() -> None:
     """Test PackageSettings can parse empty git_options from dictionary."""
     settings = PackageSettings(
-        **{"name": "test-pkg", "has_config": True, "git_options": {}}
+        **{"name": "test-pkg", "has_config": True, "git_options": {}}  # type: ignore[arg-type]
     )
     assert settings.git_options.submodules is False  # Default value
     assert settings.git_options.submodule_paths == []  # Default value
 
 
-def test_package_settings_git_options_from_file(tmp_path):
+def test_package_settings_git_options_from_file(tmp_path) -> None:
     """Test PackageSettings can parse git_options from a YAML file."""
     data = """
 git_options:
@@ -679,7 +681,7 @@ git_options:
     assert settings.git_options.submodule_paths == ["path/to/submodule"]
 
 
-def test_package_build_info_git_options(testdata_context: context.WorkContext):
+def test_package_build_info_git_options(testdata_context: context.WorkContext) -> None:
     """Test that PackageBuildInfo exposes git_options property."""
     req = Requirement("test-pkg==1.0.0")
     pbi = testdata_context.package_build_info(req)
@@ -705,7 +707,9 @@ git_options:
     assert custom_settings.git_options.submodule_paths == ["vendor/lib"]
 
 
-def test_package_build_info_exclusive_build(testdata_context: context.WorkContext):
+def test_package_build_info_exclusive_build(
+    testdata_context: context.WorkContext,
+) -> None:
     """Test that PackageBuildInfo correctly exposes exclusive_build from build_options."""
     # Test default package (should have exclusive_build=False by default)
     req = Requirement("test-empty-pkg==1.0.0")
@@ -738,7 +742,7 @@ build_options:
     assert custom_pbi.exclusive_build is True
 
 
-def test_resolver_dist_validator():
+def test_resolver_dist_validator() -> None:
     with pytest.raises(pydantic.ValidationError):
         ResolverDist(include_wheels=False, ignore_platform=True)
 

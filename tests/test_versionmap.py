@@ -5,7 +5,7 @@ from packaging.version import Version
 from fromager.versionmap import VersionMap
 
 
-def test_initialize():
+def test_initialize() -> None:
     m = VersionMap(
         {
             "1.2": "value for 1.2",
@@ -16,7 +16,7 @@ def test_initialize():
     assert list(m.versions()) == [Version("1.3"), Version("1.2"), Version("1.0")]
 
 
-def test_lookup():
+def test_lookup() -> None:
     m = VersionMap(
         {
             "1.2": "value for 1.2",
@@ -29,7 +29,7 @@ def test_lookup():
     assert m.lookup(Requirement("pkg<1.3")) == (Version("1.2"), "value for 1.2")
 
 
-def test_prerelease():
+def test_prerelease() -> None:
     m = VersionMap(
         {
             Version("0.4.1b0"): "value for 0.4.1b0",
@@ -55,7 +55,7 @@ def test_prerelease():
     ) == (Version("0.4.1b0"), "value for 0.4.1b0")
 
 
-def test_only_prerelease():
+def test_only_prerelease() -> None:
     m = VersionMap(
         {
             Version("0.4.1b0"): "value for 0.4.1b0",
@@ -70,7 +70,7 @@ def test_only_prerelease():
     )
 
 
-def test_with_constraint():
+def test_with_constraint() -> None:
     m = VersionMap(
         {
             "1.2": "value for 1.2",
@@ -88,7 +88,7 @@ def test_with_constraint():
     )
 
 
-def test_no_match():
+def test_no_match() -> None:
     m = VersionMap(
         {
             "1.2": "value for 1.2",

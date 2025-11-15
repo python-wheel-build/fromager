@@ -60,7 +60,7 @@ old_graph.add_dependency(
 )
 
 
-def test_resolve_from_graph_no_changes(tmp_context: WorkContext):
+def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
     bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
 
@@ -98,7 +98,7 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext):
     ) == ("", Version("5"))
 
 
-def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext):
+def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
 
     # simulating new bootstrap with a toplevel requirement of pbr==8
@@ -135,7 +135,7 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext):
     ) == ("", Version("5"))
 
 
-def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext):
+def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
 
     # simulating new bootstrap with a toplevel requirement of pbr<=6
@@ -172,7 +172,7 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext):
     ) == ("", Version("5"))
 
 
-def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext):
+def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
 
     # simulating new bootstrap with a toplevel requirement for foo
@@ -226,19 +226,19 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext):
     ) == ("", Version("6"))
 
 
-def test_seen(tmp_context):
+def test_seen(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testdist")
-    version = "1.2"
+    version = Version("1.2")
     assert not bt._has_been_seen(req, version)
     bt._mark_as_seen(req, version)
     assert bt._has_been_seen(req, version)
 
 
-def test_seen_extras(tmp_context):
+def test_seen_extras(tmp_context: WorkContext) -> None:
     req1 = Requirement("testdist")
     req2 = Requirement("testdist[extra]")
-    version = "1.2"
+    version = Version("1.2")
     bt = bootstrapper.Bootstrapper(tmp_context)
     assert not bt._has_been_seen(req1, version)
     bt._mark_as_seen(req1, version)
@@ -249,19 +249,19 @@ def test_seen_extras(tmp_context):
     assert bt._has_been_seen(req2, version)
 
 
-def test_seen_name_canonicalization(tmp_context):
+def test_seen_name_canonicalization(tmp_context: WorkContext) -> None:
     req = Requirement("flit_core")
-    version = "1.2"
+    version = Version("1.2")
     bt = bootstrapper.Bootstrapper(tmp_context)
     assert not bt._has_been_seen(req, version)
     bt._mark_as_seen(req, version)
     assert bt._has_been_seen(req, version)
 
 
-def test_seen_requirements_sdist(tmp_context):
+def test_seen_requirements_sdist(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testdist")
-    version = "1.2"
+    version = Version("1.2")
     assert not bt._has_been_seen(req, version, sdist_only=False)
     assert not bt._has_been_seen(req, version, sdist_only=True)
     # sdist only does not affect wheel status
@@ -282,17 +282,17 @@ def test_seen_requirements_sdist(tmp_context):
     assert bt._has_been_seen(req2, version, sdist_only=False)
 
 
-def test_build_order(tmp_context):
+def test_build_order(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt._add_to_build_order(
         req=Requirement("buildme>1.0"),
-        version="6.0",
+        version=Version("6.0"),
         source_url="url",
         source_url_type="sdist",
     )
     bt._add_to_build_order(
         req=Requirement("testdist>1.0"),
-        version="1.2",
+        version=Version("1.2"),
         source_url="url",
         source_url_type="sdist",
     )
@@ -321,23 +321,23 @@ def test_build_order(tmp_context):
     assert expected == contents
 
 
-def test_build_order_repeats(tmp_context):
+def test_build_order_repeats(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt._add_to_build_order(
         Requirement("buildme>1.0"),
-        "6.0",
+        Version("6.0"),
         "url",
         "sdist",
     )
     bt._add_to_build_order(
         Requirement("buildme>1.0"),
-        "6.0",
+        Version("6.0"),
         "url",
         "sdist",
     )
     bt._add_to_build_order(
         Requirement("buildme[extra]>1.0"),
-        "6.0",
+        Version("6.0"),
         "url",
         "sdist",
     )
@@ -357,17 +357,17 @@ def test_build_order_repeats(tmp_context):
     assert expected == contents
 
 
-def test_build_order_name_canonicalization(tmp_context):
+def test_build_order_name_canonicalization(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt._add_to_build_order(
         Requirement("flit-core>1.0"),
-        "3.9.0",
+        Version("3.9.0"),
         "url",
         "sdist",
     )
     bt._add_to_build_order(
         Requirement("flit_core>1.0"),
-        "3.9.0",
+        Version("3.9.0"),
         "url",
         "sdist",
     )
@@ -387,7 +387,7 @@ def test_build_order_name_canonicalization(tmp_context):
     assert expected == contents
 
 
-def test_explain(tmp_context: WorkContext):
+def test_explain(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
     bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
     assert bt._explain == f"{RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
@@ -405,7 +405,7 @@ def test_explain(tmp_context: WorkContext):
     )
 
 
-def test_is_build_requirement(tmp_context: WorkContext):
+def test_is_build_requirement(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context, None, old_graph)
     bt.why = []
     assert not bt._processing_build_requirement(RequirementType.TOP_LEVEL)

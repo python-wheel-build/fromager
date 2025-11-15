@@ -1,9 +1,10 @@
 import os
+import pathlib
 
 from fromager import context
 
 
-def test_pip_constraints_args(tmp_path):
+def test_pip_constraints_args(tmp_path: pathlib.Path) -> None:
     constraints_file = tmp_path / "constraints.txt"
     constraints_file.write_text("\n")  # the file has to exist
     ctx = context.WorkContext(

@@ -44,7 +44,7 @@ def test_dependencynode_hash() -> None:
     assert s == {mknode("a")}
 
 
-def test_dependencynode_dataclass():
+def test_dependencynode_dataclass() -> None:
     a = mknode("a", "1.0")
     assert a.canonicalized_name == "a"
     assert a.version == Version("1.0")
@@ -54,9 +54,9 @@ def test_dependencynode_dataclass():
         == "DependencyNode(canonicalized_name='a', version=<Version('1.0')>, download_url='', pre_built=False, constraint=None)"
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
-        a.version = Version("2.0")
+        a.version = Version("2.0")  # type: ignore[misc]
     with pytest.raises((TypeError, AttributeError)):
-        a.new_attribute = None
+        a.new_attribute = None  # type: ignore[attr-defined]
 
     root = DependencyNode.construct_root_node()
     assert root.canonicalized_name == ""

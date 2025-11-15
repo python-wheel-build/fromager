@@ -9,7 +9,7 @@ def get_option_names(cmd: click.Command) -> typing.Iterable[str]:
     return [o.name for o in cmd.params if o.name]
 
 
-def test_bootstrap_pallel_options() -> None:
+def test_bootstrap_parallel_options() -> None:
     expected: set[str] = set()
     expected.update(get_option_names(bootstrap.bootstrap))
     expected.update(get_option_names(build.build_parallel))
