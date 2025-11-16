@@ -58,18 +58,14 @@ def test_add_constraint_conflict():
 
     # Different, but equivalent markers should raise KeyError
     with pytest.raises(KeyError):
-        c.add_constraint(
-            "bar==1.0; python_version >= '3.11' and platform_machine == 'x86_64'"
-        )
-        c.add_constraint(
-            "bar==1.1; platform_machine == 'x86_64' and python_version >= '3.11'"
-        )
-        c.add_constraint(
-            "bar==1.0; python_version >= '3.11' and platform_machine == 'arm64'"
-        )
-        c.add_constraint(
-            "bar==1.1; platform_machine == 'arm64' and python_version >= '3.11'"
-        )
+        # arm64 -> macos; aarch64 -> linux
+        for arch in ["x86_64", "arm64", "aarch64"]:
+            c.add_constraint(
+                f"bar==1.0; python_version >= '3.11' and platform_machine == '{arch}'"
+            )
+            c.add_constraint(
+                f"bar==1.1; platform_machine == '{arch}' and python_version >= '3.11'"
+            )
 
     # Same package with different markers should NOT raise error
     c.add_constraint("baz==1.0; platform_machine != 'ppc64le'")
