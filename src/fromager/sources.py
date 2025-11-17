@@ -354,6 +354,7 @@ def unpack_source(
     version: Version,
     source_filename: pathlib.Path,
 ) -> tuple[pathlib.Path, bool]:
+    """Extracts a downloaded source archive (.tar.gz or .zip file) into a standardized directory."""
     # sdist names are less standardized and the names of the directories they
     # contain are also not very standard. Force the names into a predictable
     # form based on the override module name for the requirement.
@@ -704,13 +705,13 @@ def ensure_pkg_info(
     sdist_root_dir: pathlib.Path,
     build_dir: pathlib.Path | None = None,
 ) -> bool:
-    """Ensure that sdist has a PKG-INFO file
+    """Ensure that sdist has a PKG-INFO file.
 
-    Returns True if PKG-INFO was presence, False if file was missing. The
+    Returns True if PKG-INFO is present, False if file is missing. The
     function also updates build_dir if package has a non-standard build
     directory. Every sdist must have a PKG-INFO file in the first directory.
     The additional PKG-INFO file in build_dir is required for projects
-    with non-standard layout and setuptools-scm.
+    with a non-standard layout and projects using setuptools-scm.
     """
     had_pkg_info = True
     directories = [sdist_root_dir]
