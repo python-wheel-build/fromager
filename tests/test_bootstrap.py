@@ -12,17 +12,17 @@ from fromager import bootstrapper, context, dependency_graph, packagesettings
 from fromager.commands import bootstrap
 
 
-def test_get_requirements_single_arg():
+def test_get_requirements_single_arg() -> None:
     requirements = bootstrap._get_requirements_from_args(["a"], [])
     assert [Requirement("a")] == requirements
 
 
-def test_get_requirements_multiple_args():
+def test_get_requirements_multiple_args() -> None:
     requirements = bootstrap._get_requirements_from_args(["a", "b"], [])
     assert [Requirement("a"), Requirement("b")] == requirements
 
 
-def test_get_requirements_args_and_file(tmp_path: pathlib.Path):
+def test_get_requirements_args_and_file(tmp_path: pathlib.Path) -> None:
     requirements_file = tmp_path / "requirements.txt"
     requirements_file.write_text("c\n")
     requirements = bootstrap._get_requirements_from_args(
@@ -35,14 +35,14 @@ def test_get_requirements_args_and_file(tmp_path: pathlib.Path):
     ] == requirements
 
 
-def test_ignore_based_on_marker():
+def test_ignore_based_on_marker() -> None:
     requirements = bootstrap._get_requirements_from_args(
         ['foo; python_version<"3.9"'], []
     )
     assert [] == requirements
 
 
-def test_write_constraints_file_simple():
+def test_write_constraints_file_simple() -> None:
     buffer = io.StringIO()
     raw_graph = {
         "": {
@@ -87,7 +87,7 @@ def test_write_constraints_file_simple():
     assert expected == buffer.getvalue()
 
 
-def test_write_constraints_file_resolvable_duplicate():
+def test_write_constraints_file_resolvable_duplicate() -> None:
     buffer = io.StringIO()
     raw_graph = {
         "": {
@@ -140,7 +140,7 @@ def test_write_constraints_file_resolvable_duplicate():
     assert expected == buffer.getvalue()
 
 
-def test_write_constraints_file_unresolvable_duplicate():
+def test_write_constraints_file_unresolvable_duplicate() -> None:
     """Test that unresolvable duplicates cause the function to return False and not write conflicting constraints.
 
     This test has conflicting requirements for package 'c':
@@ -203,7 +203,7 @@ def test_write_constraints_file_unresolvable_duplicate():
     assert "c==" not in output  # No conflicting c versions should be written
 
 
-def test_write_constraints_file_duplicates():
+def test_write_constraints_file_duplicates() -> None:
     buffer = io.StringIO()
     raw_graph = {
         "": {
@@ -283,7 +283,7 @@ def test_write_constraints_file_duplicates():
     assert "b==" not in output_content
 
 
-def test_write_constraints_file_multiples():
+def test_write_constraints_file_multiples() -> None:
     buffer = io.StringIO()
     raw_graph = {
         "": {
@@ -342,7 +342,7 @@ def test_write_constraints_file_multiples():
     assert expected == buffer.getvalue()
 
 
-def test_write_constraints_file_prevents_false_resolution():
+def test_write_constraints_file_prevents_false_resolution() -> None:
     """Test that packages marked as unresolvable in early iterations stay unresolvable.
 
     This test validates the fix for the bug where a package could appear unresolvable
@@ -452,7 +452,7 @@ def test_write_constraints_file_prevents_false_resolution():
     assert "conflicted==" not in output_content
 
 
-def test_to_constraints_command_no_file_on_failure(tmp_path):
+def test_to_constraints_command_no_file_on_failure(tmp_path: pathlib.Path) -> None:
     """Test that the to-constraints logic doesn't create output files when there are constraint conflicts.
 
     This is a regression test for the bug where constraint resolution would write partial
@@ -531,7 +531,7 @@ def test_to_constraints_command_no_file_on_failure(tmp_path):
     )
 
 
-def test_skip_constraints_cli_option():
+def test_skip_constraints_cli_option() -> None:
     """Test that the --skip-constraints option is available in the CLI"""
     runner = CliRunner()
     result = runner.invoke(bootstrap.bootstrap, ["--help"])
@@ -545,7 +545,7 @@ def test_skip_constraints_cli_option():
 def test_resolve_version_from_git_url_with_submodules_enabled(
     mock_git_clone: Mock,
     tmp_context: context.WorkContext,
-):
+) -> None:
     """Test that git_clone is called with submodules=True when configured."""
     req = Requirement("test-pkg @ git+https://github.com/example/repo.git")
 
@@ -582,7 +582,7 @@ def test_resolve_version_from_git_url_with_submodules_enabled(
 def test_resolve_version_from_git_url_with_specific_submodule_paths(
     mock_git_clone: Mock,
     tmp_context: context.WorkContext,
-):
+) -> None:
     """Test that git_clone is called with specific submodule paths when configured."""
     req = Requirement("test-pkg @ git+https://github.com/example/repo.git")
 
@@ -618,7 +618,7 @@ def test_resolve_version_from_git_url_with_specific_submodule_paths(
 def test_resolve_version_from_git_url_with_submodules_disabled(
     mock_git_clone: Mock,
     tmp_context: context.WorkContext,
-):
+) -> None:
     """Test that git_clone is called with submodules=False by default."""
     req = Requirement("test-pkg @ git+https://github.com/example/repo.git")
 
@@ -645,7 +645,7 @@ def test_resolve_version_from_git_url_with_submodules_disabled(
 def test_resolve_version_from_git_url_with_git_ref(
     mock_git_clone: Mock,
     tmp_context: context.WorkContext,
-):
+) -> None:
     """Test that git_clone is called with the correct ref when URL includes @ref."""
     req = Requirement("test-pkg @ git+https://github.com/example/repo.git@v1.2.3")
 
@@ -677,7 +677,9 @@ def test_resolve_version_from_git_url_with_git_ref(
     assert call_args.kwargs["ref"] == "v1.2.3"
 
 
-def test_resolve_version_from_git_url_invalid_scheme(tmp_context: context.WorkContext):
+def test_resolve_version_from_git_url_invalid_scheme(
+    tmp_context: context.WorkContext,
+) -> None:
     """Test that non-git URLs raise ValueError."""
     req = Requirement("test-pkg @ https://github.com/example/repo.git")
 

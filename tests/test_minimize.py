@@ -216,7 +216,7 @@ def test_minimize_command_with_output_file() -> None:
         assert content == "requests==2.28.1"
 
 
-def test_minimize_requirements_function():
+def test_minimize_requirements_function() -> None:
     """Test the _minimize_requirements function directly"""
 
     # Create a simple dependency graph
@@ -267,7 +267,7 @@ def test_minimize_requirements_function():
     assert "package-c" not in minimal_names  # Should be removed
 
 
-def test_minimize_requirements_version_mismatch():
+def test_minimize_requirements_version_mismatch() -> None:
     """Test that requirements with version mismatches are NOT removed"""
 
     # Create a dependency graph
@@ -307,7 +307,7 @@ def test_minimize_requirements_version_mismatch():
     assert "package-c" in minimal_names  # Should NOT be removed due to version mismatch
 
 
-def test_minimize_requirements_multiple_versions():
+def test_minimize_requirements_multiple_versions() -> None:
     """Test behavior with multiple versions of the same dependency"""
 
     # Create a dependency graph
@@ -406,7 +406,7 @@ def test_minimize_command_nonexistent_files() -> None:
         assert result.exit_code != 0, "Command should fail with nonexistent files"
 
 
-def test_minimize_requirements_multiple_entries_same_package():
+def test_minimize_requirements_multiple_entries_same_package() -> None:
     """Test that multiple entries for the same package are handled correctly"""
 
     # Create a dependency graph
@@ -450,7 +450,7 @@ def test_minimize_requirements_multiple_entries_same_package():
     assert "package-c==2.0.0" in minimal_strs
 
 
-def test_minimize_requirements_exact_version_preserved():
+def test_minimize_requirements_exact_version_preserved() -> None:
     """Test that requirements with exact version specifications (==) are never removed"""
 
     # Create a dependency graph

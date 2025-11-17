@@ -49,15 +49,15 @@ _fromager_root = pathlib.Path(__file__).parent.parent
 def test_get_build_backend(
     build_system: dict[str, list[str]] | dict[str, str | list[str] | None],
     expected_results: dict[str, typing.Any] | dict[str, str | list[str] | None],
-):
+) -> None:
     pyproject_toml = {"build-system": build_system}
     actual = dependencies.get_build_backend(pyproject_toml)
     assert expected_results == actual
 
 
-def _clean_build_artifacts(f):
+def _clean_build_artifacts(f: typing.Callable[..., None]) -> typing.Callable[..., None]:
     @functools.wraps(f)
-    def _with_cleanup(*args, **kwds):
+    def _with_cleanup(*args: typing.Any, **kwds: typing.Any) -> None:
         try:
             f(*args, **kwds)
         finally:
@@ -74,7 +74,7 @@ def _clean_build_artifacts(f):
 @_clean_build_artifacts
 def test_get_build_system_dependencies(
     _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
-):
+) -> None:
     pyproject_file = _fromager_root / "pyproject.toml"
     shutil.copyfile(pyproject_file, tmp_path / "pyproject.toml")
 
@@ -89,7 +89,7 @@ def test_get_build_system_dependencies(
 
 def test_get_build_system_dependencies_cached(
     tmp_context: context.WorkContext, tmp_path: pathlib.Path
-):
+) -> None:
     sdist_root_dir = tmp_path / "sdist"
     sdist_root_dir.mkdir()
 
@@ -107,7 +107,7 @@ def test_get_build_system_dependencies_cached(
 @_clean_build_artifacts
 def test_get_build_backend_dependencies(
     _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
-):
+) -> None:
     # We have to install the build system dependencies into the build
     # environment to get the build sdist dependencies, and we are not running
     # our own local wheel server, so use the public one.
@@ -137,7 +137,7 @@ def test_get_build_backend_dependencies(
 
 def test_get_build_backend_dependencies_cached(
     tmp_context: context.WorkContext, tmp_path: pathlib.Path
-):
+) -> None:
     sdist_root_dir = tmp_path / "sdist"
     sdist_root_dir.mkdir()
 
@@ -161,7 +161,7 @@ def test_get_build_backend_dependencies_cached(
 @_clean_build_artifacts
 def test_get_build_sdist_dependencies(
     _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
-):
+) -> None:
     # We have to install the build system dependencies into the build
     # environment to get the build sdist dependencies, and we are not running
     # our own local wheel server, so use the public one.
@@ -191,7 +191,7 @@ def test_get_build_sdist_dependencies(
 
 def test_get_build_sdist_dependencies_cached(
     tmp_context: context.WorkContext, tmp_path: pathlib.Path
-):
+) -> None:
     sdist_root_dir = tmp_path / "sdist"
     sdist_root_dir.mkdir()
 

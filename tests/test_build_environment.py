@@ -13,7 +13,7 @@ from fromager.requirements_file import RequirementType
 def test_missing_dependency_format(
     resolve_dist: Mock,
     tmp_context: WorkContext,
-):
+) -> None:
     resolutions = {
         "flit_core": "3.9.0",
         "setuptools": "69.5.1",
@@ -40,7 +40,7 @@ def test_missing_dependency_format(
     assert "flit_core -> 3.9.0" in s
 
 
-def test_missing_dependency_pattern():
+def test_missing_dependency_pattern() -> None:
     msg = textwrap.dedent("""
         DEBUG uv 0.8.4
         DEBUG Searching for default Python interpreter in virtual environments
@@ -62,7 +62,7 @@ def test_missing_dependency_pattern():
     assert match is not None
 
 
-def test_missing_dependency_pattern_resolution_impossible():
+def test_missing_dependency_pattern_resolution_impossible() -> None:
     msg = textwrap.dedent("""
         DEBUG uv 0.8.4
         DEBUG Searching for default Python interpreter in virtual environments
