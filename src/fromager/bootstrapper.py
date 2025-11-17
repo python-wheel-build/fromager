@@ -500,6 +500,9 @@ class Bootstrapper:
 
         wheel_filename = wheels.download_wheel(req, wheel_url, self.ctx.wheels_prebuilt)
         unpack_dir = self._create_unpack_dir(req, resolved_version)
+        # Update the wheel mirror so pre-built wheels are indexed
+        # and available to subsequent builds that need them as dependencies
+        server.update_wheel_mirror(self.ctx)
         return (wheel_filename, unpack_dir)
 
     def _look_for_existing_wheel(
