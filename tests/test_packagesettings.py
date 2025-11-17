@@ -203,7 +203,7 @@ def test_parse_full_file(testdata_path: pathlib.Path) -> None:
     assert p.model_dump() == FULL_EXPECTED
 
 
-def test_parse_minimal(testdata_path) -> None:
+def test_parse_minimal(testdata_path: pathlib.Path) -> None:
     filename = testdata_path / "context/overrides/settings/test_empty_pkg.yaml"
     p = PackageSettings.from_string(TEST_EMPTY_PKG, filename.read_text())
     assert p.model_dump() == EMPTY_EXPECTED
@@ -646,8 +646,8 @@ def test_package_settings_git_options_default() -> None:
 
 def test_package_settings_git_options_from_dict() -> None:
     """Test PackageSettings can parse git_options from dictionary."""
-    settings = PackageSettings(
-        **{  # type: ignore[arg-type]
+    settings = PackageSettings.model_validate(
+        {
             "name": "test-pkg",
             "has_config": True,
             "git_options": {
@@ -661,14 +661,14 @@ def test_package_settings_git_options_from_dict() -> None:
 
 def test_package_settings_git_options_from_dict_empty() -> None:
     """Test PackageSettings can parse empty git_options from dictionary."""
-    settings = PackageSettings(
-        **{"name": "test-pkg", "has_config": True, "git_options": {}}  # type: ignore[arg-type]
+    settings = PackageSettings.model_validate(
+        {"name": "test-pkg", "has_config": True, "git_options": {}}
     )
     assert settings.git_options.submodules is False  # Default value
     assert settings.git_options.submodule_paths == []  # Default value
 
 
-def test_package_settings_git_options_from_file(tmp_path) -> None:
+def test_package_settings_git_options_from_file() -> None:
     """Test PackageSettings can parse git_options from a YAML file."""
     data = """
 git_options:
