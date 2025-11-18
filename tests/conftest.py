@@ -7,11 +7,17 @@ from click.testing import CliRunner
 from fromager import context, packagesettings
 
 TESTDATA_PATH = pathlib.Path(__file__).parent.absolute() / "testdata"
+E2E_PATH = pathlib.Path(__file__).parent.parent.absolute() / "e2e"
 
 
 @pytest.fixture
 def testdata_path() -> typing.Generator[pathlib.Path, None, None]:
     yield TESTDATA_PATH
+
+
+@pytest.fixture
+def e2e_path() -> typing.Generator[pathlib.Path, None, None]:
+    yield E2E_PATH
 
 
 @pytest.fixture
