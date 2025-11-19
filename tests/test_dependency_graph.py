@@ -1,6 +1,8 @@
 import dataclasses
 import graphlib
 import pathlib
+import threading
+import time
 import typing
 
 import pytest
@@ -391,3 +393,78 @@ def test_e2e_parallel_graph(
             "pyyaml==6.0.2",
         },
     ]
+
+
+def test_tracking_topology_sorter_concurrent_access() -> None:
+    """Test thread safety with concurrent get_available() and done() calls.
+    EXPECTED: Should work correctly with multiple threads
+    """
+    nodes = [mknode(f"node_{i}") for i in range(20)]
+
+    graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+    graph_dict = {}
+    for i in range(1, 20):
+        graph_dict[nodes[i]] = [nodes[i - 1]]
+    graph_dict[nodes[0]] = []
+    graph = graph_dict
+
+    topo = TrackingTopologicalSorter(graph)
+    topo.prepare()
+
+    errors: list[Exception] = []
+    processed: list[DependencyNode] = []
+    process_lock = threading.Lock()
+
+    def worker() -> None:
+        try:
+            while True:
+                if not topo.is_active():
+                    break
+
+                try:
+                    available = topo.get_available()
+                except ValueError as e:
+                    if "topology is not active" in str(e):
+                        break
+                    raise
+
+                if not available:
+                    time.sleep(0.0001)
+                    continue
+
+                node = sorted(available)[0]
+                time.sleep(0.0001)
+
+                with process_lock:
+                    if node not in processed:
+                        processed.append(node)
+                        topo.done(node)
+
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+
+    for t in threads:
+        t.start()
+
+    for t in threads:
+        t.join(timeout=5.0)
+        if t.is_alive():
+            errors.append(TimeoutError("Thread did not complete in time"))
+
+    assert not errors, f"Thread safety violated with {len(errors)} errors: {errors}"
+    assert len(processed) == 20, f"Expected 20 nodes processed, got {len(processed)}"
+    assert not topo.is_active()
+
+
+def test_tracking_topology_sorter_empty_graph() -> None:
+    """Test with empty graph."""
+    topo = TrackingTopologicalSorter()
+    topo.prepare()
+
+    assert not topo.is_active()
+
+    with pytest.raises(ValueError) as excinfo:
+        topo.get_available()
+    assert "topology is not active" in str(excinfo.value)
