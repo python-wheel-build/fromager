@@ -163,8 +163,12 @@ def resolve_from_provider(
         result = rslvr.resolve([req])
     except resolvelib.resolvers.ResolverException as err:
         constraint = provider.constraints.get_constraint(req.name)
+        provider_desc = provider.get_provider_description()
+        # Include the original error message to preserve detailed information
+        # (e.g., file types, pre-release info from PyPIProvider)
+        original_msg = str(err)
         raise resolvelib.resolvers.ResolverException(
-            f"Unable to resolve requirement specifier {req} with constraint {constraint}"
+            f"Unable to resolve requirement specifier {req} with constraint {constraint} using {provider_desc}: {original_msg}"
         ) from err
     # resolvelib actually just returns one candidate per requirement.
     # result.mapping is map from an identifier to its resolved candidate
@@ -395,6 +399,13 @@ class BaseProvider(ExtrasProvider):
         """
         raise NotImplementedError()
 
+    def get_provider_description(self) -> str:
+        """Return a human-readable description of the provider type
+
+        This is used in error messages to indicate what resolver was being used.
+        """
+        return type(self).__name__
+
     def find_candidates(self, identifier: str) -> Candidates:
         """Find unfiltered candidates"""
         raise NotImplementedError()
@@ -552,6 +563,9 @@ class BaseProvider(ExtrasProvider):
 class PyPIProvider(BaseProvider):
     """Lookup package and versions from a simple Python index (PyPI)"""
 
+    def get_provider_description(self) -> str:
+        return f"PyPI resolver (searching at {self.sdist_server_url})"
+
     def __init__(
         self,
         include_sdists: bool = True,
@@ -646,7 +660,7 @@ class PyPIProvider(BaseProvider):
                 file_type_info = "wheels"
 
             raise resolvelib.resolvers.ResolverException(
-                f"found no match for {r}, searching for {file_type_info}, {prerelease_info} pre-release versions, in cache or at {self.sdist_server_url}"
+                f"found no match for {r} using {self.get_provider_description()}, searching for {file_type_info}, {prerelease_info} pre-release versions, in cache or at {self.sdist_server_url}"
             )
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
@@ -707,6 +721,9 @@ class GenericProvider(BaseProvider):
             logger.debug(f"{identifier}: could not parse version from {value}: {err}")
             return None
 
+    def get_provider_description(self) -> str:
+        return "custom resolver (GenericProvider)"
+
     @property
     def cache_key(self) -> str:
         raise NotImplementedError("GenericProvider does not implement caching")
@@ -756,6 +773,9 @@ class GitHubTagProvider(GenericProvider):
         )
         self.organization = organization
         self.repo = repo
+
+    def get_provider_description(self) -> str:
+        return f"GitHub tag resolver (repository: {self.organization}/{self.repo})"
 
     @property
     def cache_key(self) -> str:
@@ -827,6 +847,9 @@ class GitLabTagProvider(GenericProvider):
         self.api_url = (
             f"{self.server_url}/api/v4/projects/{encoded_path}/repository/tags"
         )
+
+    def get_provider_description(self) -> str:
+        return f"GitLab tag resolver (project: {self.server_url}/{self.project_path})"
 
     @property
     def cache_key(self) -> str:
