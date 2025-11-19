@@ -165,8 +165,12 @@ def resolve_from_provider(
         result = rslvr.resolve([req])
     except resolvelib.resolvers.ResolverException as err:
         constraint = provider.constraints.get_constraint(req.name)
+        provider_desc = provider.get_provider_description()
+        # Include the original error message to preserve detailed information
+        # (e.g., file types, pre-release info from PyPIProvider)
+        original_msg = str(err)
         raise resolvelib.resolvers.ResolverException(
-            f"Unable to resolve requirement specifier {req} with constraint {constraint}"
+            f"Unable to resolve requirement specifier {req} with constraint {constraint} using {provider_desc}: {original_msg}"
         ) from err
     # resolvelib actually just returns one candidate per requirement.
     # result.mapping is map from an identifier to its resolved candidate
@@ -380,6 +384,7 @@ VersionSource: typing.TypeAlias = typing.Callable[
 
 class BaseProvider(ExtrasProvider):
     resolver_cache: typing.ClassVar[ResolverCache] = {}
+    provider_description: typing.ClassVar[str]
 
     def __init__(
         self,
@@ -401,6 +406,16 @@ class BaseProvider(ExtrasProvider):
         PyPI URL, GitHub org + repo, ...
         """
         raise NotImplementedError()
+
+    def get_provider_description(self) -> str:
+        """Return a human-readable description of the provider type
+
+        This is used in error messages to indicate what resolver was being used.
+        The ClassVar `provider_description` must be set by each subclass.
+        If it contains format placeholders like {self.attr}, it will be formatted
+        with the instance. Strings without placeholders are returned unchanged.
+        """
+        return self.provider_description.format(self=self)
 
     def find_candidates(self, identifier: str) -> Candidates:
         """Find unfiltered candidates"""
@@ -512,6 +527,7 @@ class BaseProvider(ExtrasProvider):
 
     def _find_cached_candidates(self, identifier: str) -> Candidates:
         """Find candidates with caching"""
+        cached_candidates: list[Candidate] = []
         if self.use_cache_candidates:
             cached_candidates = self._get_cached_candidates(identifier)
             if cached_candidates:
@@ -538,6 +554,16 @@ class BaseProvider(ExtrasProvider):
             )
         return candidates
 
+    def _get_no_match_error_message(
+        self, identifier: str, requirements: RequirementsMap
+    ) -> str:
+        """Generate an error message when no candidates are found.
+
+        Subclasses should override this to provide provider-specific error details.
+        """
+        r = next(iter(requirements[identifier]))
+        return f"found no match for {r} using {self.get_provider_description()}"
+
     def find_matches(
         self,
         identifier: str,
@@ -553,11 +579,19 @@ class BaseProvider(ExtrasProvider):
                 identifier, requirements, incompatibilities, candidate
             )
         ]
+        if not candidates:
+            raise resolvelib.resolvers.ResolverException(
+                self._get_no_match_error_message(identifier, requirements)
+            )
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
 
 class PyPIProvider(BaseProvider):
     """Lookup package and versions from a simple Python index (PyPI)"""
+
+    provider_description: typing.ClassVar[str] = (
+        "PyPI resolver (searching at {self.sdist_server_url})"
+    )
 
     def __init__(
         self,
@@ -623,39 +657,39 @@ class PyPIProvider(BaseProvider):
             return False
         return True
 
+    def _get_no_match_error_message(
+        self, identifier: str, requirements: RequirementsMap
+    ) -> str:
+        """Generate a PyPI-specific error message with file type and pre-release details."""
+        r = next(iter(requirements[identifier]))
+
+        # Determine if pre-releases are allowed
+        req_allows_prerelease = bool(r.specifier) and bool(r.specifier.prereleases)
+        allow_prerelease = (
+            self.constraints.allow_prerelease(r.name) or req_allows_prerelease
+        )
+        prerelease_info = "including" if allow_prerelease else "ignoring"
+
+        # Determine the file type that was allowed
+        if self.include_sdists and self.include_wheels:
+            file_type_info = "any file type"
+        elif self.include_sdists:
+            file_type_info = "sdists"
+        else:
+            file_type_info = "wheels"
+
+        return (
+            f"found no match for {r} using {self.get_provider_description()}, "
+            f"searching for {file_type_info}, {prerelease_info} pre-release versions"
+        )
+
     def find_matches(
         self,
         identifier: str,
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
     ) -> Candidates:
-        candidates = super().find_matches(identifier, requirements, incompatibilities)
-        if not candidates:
-            # Try to construct a meaningful error message that points out the
-            # type(s) of files the resolver has been told it can choose as a
-            # hint in case that should be adjusted for the package that does not
-            # resolve.
-            r = next(iter(requirements[identifier]))
-
-            # Determine if pre-releases are allowed
-            req_allows_prerelease = bool(r.specifier) and bool(r.specifier.prereleases)
-            allow_prerelease = (
-                self.constraints.allow_prerelease(r.name) or req_allows_prerelease
-            )
-            prerelease_info = "including" if allow_prerelease else "ignoring"
-
-            # Determine the file type that was allowed
-            if self.include_sdists and self.include_wheels:
-                file_type_info = "any file type"
-            elif self.include_sdists:
-                file_type_info = "sdists"
-            else:
-                file_type_info = "wheels"
-
-            raise resolvelib.resolvers.ResolverException(
-                f"found no match for {r}, searching for {file_type_info}, {prerelease_info} pre-release versions, in cache or at {self.sdist_server_url}"
-            )
-        return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
+        return super().find_matches(identifier, requirements, incompatibilities)
 
 
 class MatchFunction(typing.Protocol):
@@ -714,6 +748,8 @@ class GenericProvider(BaseProvider):
             logger.debug(f"{identifier}: could not parse version from {value}: {err}")
             return None
 
+    provider_description: typing.ClassVar[str] = "custom resolver (GenericProvider)"
+
     @property
     def cache_key(self) -> str:
         raise NotImplementedError("GenericProvider does not implement caching")
@@ -752,6 +788,9 @@ class GitHubTagProvider(GenericProvider):
     Assumes that upstream uses version tags `1.2.3` or `v1.2.3`.
     """
 
+    provider_description: typing.ClassVar[str] = (
+        "GitHub tag resolver (repository: {self.organization}/{self.repo})"
+    )
     host = "github.com:443"
     api_url = "https://api.{self.host}/repos/{self.organization}/{self.repo}/tags"
 
@@ -827,6 +866,10 @@ class GitHubTagProvider(GenericProvider):
 
 class GitLabTagProvider(GenericProvider):
     """Lookup tarball and version from GitLab git tags"""
+
+    provider_description: typing.ClassVar[str] = (
+        "GitLab tag resolver (project: {self.server_url}/{self.project_path})"
+    )
 
     def __init__(
         self,
