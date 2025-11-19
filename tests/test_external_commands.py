@@ -29,7 +29,10 @@ def test_external_commands_log_file(tmp_path: pathlib.Path) -> None:
     assert "test\n" == file_contents
 
 
-@mock.patch("subprocess.run", return_value=mock.Mock(returncode=0))
+@mock.patch(
+    "subprocess.run",
+    return_value=mock.Mock(returncode=0, stdout=b"test output\n"),
+)
 @mock.patch(
     "fromager.external_commands.network_isolation_cmd",
     return_value=["/bin/unshare", "--net", "--map-current-user"],
