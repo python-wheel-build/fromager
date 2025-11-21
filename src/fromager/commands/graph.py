@@ -125,7 +125,7 @@ def _find_customized_nodes(
     """Filter nodes to find only those with customizations."""
     customized_nodes: list[DependencyNode] = []
     for node in nodes:
-        pbi = wkctx.settings.package_build_info(node.canonicalized_name)
+        pbi = wkctx.package_build_info(node.canonicalized_name)
         if node.canonicalized_name != ROOT and pbi.has_customizations:
             customized_nodes.append(node)
     return customized_nodes
@@ -161,7 +161,7 @@ def _find_customized_dependencies_for_node(
                 continue
 
             child = edge.destination_node
-            child_pbi = wkctx.settings.package_build_info(child.canonicalized_name)
+            child_pbi = wkctx.package_build_info(child.canonicalized_name)
             new_path = path + [current_node.key]
 
             # Use the first requirement we encounter in the path
@@ -277,7 +277,7 @@ def write_dot(
         if not name:
             node_type.append("toplevel")
         else:
-            pbi = wkctx.settings.package_build_info(name)
+            pbi = wkctx.package_build_info(name)
             all_patches: PatchMap = pbi.get_all_patches()
 
             if node.pre_built:

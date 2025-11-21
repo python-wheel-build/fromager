@@ -239,7 +239,7 @@ def test_pbi_test_pkg_extra_environ(
         "EXTRA_MAX_JOBS": "1",
     }
 
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert (
         pbi.get_extra_environ(template_env={"EXTRA": "extra"})
         == {
@@ -264,7 +264,7 @@ def test_pbi_test_pkg_extra_environ(
     )
 
     testdata_context.settings.variant = Variant("rocm")
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert (
         pbi.get_extra_environ(template_env={"EXTRA": "extra"})
         == {
@@ -278,7 +278,7 @@ def test_pbi_test_pkg_extra_environ(
     )
 
     testdata_context.settings.variant = Variant("cuda")
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert (
         pbi.get_extra_environ(template_env={"EXTRA": "spam"})
         == {
@@ -319,7 +319,7 @@ def test_pbi_test_pkg_extra_environ(
 
 
 def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.package == NormalizedName(TEST_PKG)
     assert pbi.variant == Variant(testdata_context.settings.variant)
     assert pbi.pre_built is False
@@ -357,7 +357,7 @@ def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
 
 
 def test_pbi_test_pkg_patches(testdata_context: context.WorkContext) -> None:
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     norm_test_pkg = TEST_PKG.replace("-", "_")
     unversioned_patchdir = testdata_context.settings.patches_dir / norm_test_pkg
     versioned_patchdir = (
@@ -391,7 +391,7 @@ def test_pbi_test_pkg_patches(testdata_context: context.WorkContext) -> None:
 
 
 def test_pbi_other(testdata_context: context.WorkContext) -> None:
-    pbi = testdata_context.settings.package_build_info(TEST_OTHER_PKG)
+    pbi = testdata_context.package_build_info(TEST_OTHER_PKG)
     assert pbi.package == NormalizedName(TEST_OTHER_PKG)
     assert pbi.variant == Variant(testdata_context.settings.variant)
     assert pbi.pre_built is False
@@ -478,7 +478,7 @@ def test_settings_overrides(testdata_context: context.WorkContext) -> None:
 
 
 def test_global_changelog(testdata_context: context.WorkContext) -> None:
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.package == TEST_PKG
     assert not pbi.pre_built
     assert pbi.variant == "cpu"
@@ -490,7 +490,7 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
 
     # CUDA variant has no global changelog
     testdata_context.settings.variant = Variant("cuda")
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.package == TEST_PKG
     assert not pbi.pre_built
     assert pbi.variant == "cuda"
@@ -502,14 +502,14 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
 
     # ROCm variant has pre-built flag
     testdata_context.settings.variant = Variant("rocm")
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.package == TEST_PKG
     assert pbi.pre_built
     assert pbi.variant == "rocm"
     assert pbi.build_tag(Version("0.99")) == ()
 
     testdata_context.settings.variant = Variant("cpu")
-    pbi = testdata_context.settings.package_build_info(TEST_PREBUILT_PKG)
+    pbi = testdata_context.package_build_info(TEST_PREBUILT_PKG)
     assert pbi.package == TEST_PREBUILT_PKG
     assert pbi.pre_built
     assert pbi.variant == "cpu"
@@ -543,7 +543,7 @@ def test_parallel_jobs(
 ) -> None:
     assert testdata_context.settings.max_jobs is None
 
-    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    pbi = testdata_context.package_build_info(TEST_EMPTY_PKG)
     assert pbi.parallel_jobs() == 7
 
     get_cpu_count.return_value = 4
@@ -556,13 +556,13 @@ def test_parallel_jobs(
     assert pbi.parallel_jobs() == 1
 
     testdata_context.settings.max_jobs = 2
-    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    pbi = testdata_context.package_build_info(TEST_EMPTY_PKG)
     get_available_memory_gib.return_value = 23
     assert pbi.parallel_jobs() == 2
 
     # test-pkg needs more memory
     testdata_context.settings.max_jobs = 200
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     get_cpu_count.return_value = 16
     get_available_memory_gib.return_value = 20
     assert pbi.parallel_jobs() == 4
@@ -572,7 +572,7 @@ def test_parallel_jobs(
     assert pbi.parallel_jobs() == 6
 
     testdata_context.settings.max_jobs = 4
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.parallel_jobs() == 4
 
 
@@ -727,18 +727,26 @@ build_options:
     # Test PackageBuildInfo properly accesses it through build_options
     import pathlib
 
+    from fromager.context import WorkContext
     from fromager.packagesettings import Settings, SettingsFile
 
-    # Create a temporary Settings object to test with
-    settings = Settings(
-        settings=SettingsFile(),
-        package_settings=[custom_settings],
-        variant="cpu",
+    # Create a temporary WorkContext to test with
+    ctx = WorkContext(
+        active_settings=Settings(
+            settings=SettingsFile(),
+            package_settings=[custom_settings],
+            variant="cpu",
+            patches_dir=pathlib.Path("/tmp"),
+            max_jobs=1,
+        ),
+        constraints_file=None,
         patches_dir=pathlib.Path("/tmp"),
-        max_jobs=1,
+        sdists_repo=pathlib.Path("/tmp/sdists"),
+        wheels_repo=pathlib.Path("/tmp/wheels"),
+        work_dir=pathlib.Path("/tmp/work"),
     )
 
-    custom_pbi = settings.package_build_info("exclusive-pkg")
+    custom_pbi = ctx.package_build_info("exclusive-pkg")
     assert custom_pbi.exclusive_build is True
 
 
@@ -770,38 +778,36 @@ def test_annotation_type() -> None:
 
 
 def test_pbi_annotations(testdata_context: context.WorkContext) -> None:
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.annotations == {
         "fromager.test.value": "somevalue",
         "fromager.test.override": "cpu override",
     }
 
     testdata_context.settings.variant = Variant("cuda")
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.annotations == {
         "fromager.test.value": "somevalue",
         "fromager.test.override": "variant override",
     }
 
     testdata_context.settings.variant = Variant("rocm")
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.annotations == {
         "fromager.test.value": "somevalue",
         "fromager.test.override": "amd override",
     }
 
-    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    pbi = testdata_context.package_build_info(TEST_EMPTY_PKG)
     assert pbi.annotations == {}
 
 
 def test_use_pypi_org_metadata(testdata_context: context.WorkContext) -> None:
-    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    pbi = testdata_context.package_build_info(TEST_PKG)
     assert pbi.use_pypi_org_metadata
 
-    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    pbi = testdata_context.package_build_info(TEST_EMPTY_PKG)
     assert not pbi.use_pypi_org_metadata
 
-    pbi = testdata_context.settings.package_build_info(
-        "somepackage_without_customization"
-    )
+    pbi = testdata_context.package_build_info("somepackage_without_customization")
     assert pbi.use_pypi_org_metadata
