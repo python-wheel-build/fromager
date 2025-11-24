@@ -15,7 +15,7 @@ from stevedore import extension
 logger = logging.getLogger(__name__)
 
 
-_mgr = None
+_mgr: extension.ExtensionManager | None = None
 
 
 def _get_extensions() -> extension.ExtensionManager:
@@ -31,8 +31,8 @@ def _get_extensions() -> extension.ExtensionManager:
 
 def _die_on_plugin_load_failure(
     mgr: extension.ExtensionManager,
-    ep: extension.Extension,
-    err: Exception,
+    ep: metadata.EntryPoint,
+    err: BaseException,
 ) -> None:
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 
