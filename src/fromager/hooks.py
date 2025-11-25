@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import typing
+from importlib.metadata import EntryPoint
 
 from packaging.requirements import Requirement
 from stevedore import extension, hook
@@ -39,7 +40,7 @@ def _get_hooks(name: str) -> hook.HookManager:
 def log_hooks() -> None:
     # We load the hooks differently here because we want all of them when
     # normally we would load them by name.
-    _mgr = extension.ExtensionManager(
+    _mgr: extension.ExtensionManager = extension.ExtensionManager(
         namespace="fromager.hooks",
         invoke_on_load=False,
         on_load_failure_callback=_die_on_plugin_load_failure,
@@ -56,9 +57,9 @@ def log_hooks() -> None:
 
 
 def _die_on_plugin_load_failure(
-    mgr: hook.HookManager,
-    ep: extension.Extension,
-    err: Exception,
+    mgr: extension.ExtensionManager,
+    ep: EntryPoint,
+    err: BaseException,
 ) -> typing.NoReturn:
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
 
