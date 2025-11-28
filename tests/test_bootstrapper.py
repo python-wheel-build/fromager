@@ -1,4 +1,6 @@
 import json
+import pathlib
+from unittest.mock import Mock, patch
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
@@ -428,3 +430,86 @@ def test_is_build_requirement(tmp_context: WorkContext) -> None:
     assert bt._processing_build_requirement(RequirementType.BUILD_SYSTEM)
     assert bt._processing_build_requirement(RequirementType.BUILD_BACKEND)
     assert bt._processing_build_requirement(RequirementType.BUILD_SDIST)
+
+
+def test_find_cached_wheel_returns_tuple(tmp_context: WorkContext) -> None:
+    """Verify _find_cached_wheel returns tuple of (Path|None, Path|None)."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+
+    # Call method (will return None, None since no wheels exist)
+    result = bt._find_cached_wheel(
+        req=Requirement("test-package"),
+        resolved_version=Version("1.0.0"),
+    )
+
+    # Verify return type is tuple with 2 elements
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+
+
+def test_get_install_dependencies_returns_list(tmp_context: WorkContext) -> None:
+    """Verify _get_install_dependencies returns list."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+
+    # Create fake wheel file and mock dependencies
+    wheel_file = pathlib.Path("/fake/package-1.0.0-py3-none-any.whl")
+    unpack_dir = tmp_context.work_dir
+
+    # Mock the dependency extraction to return empty set
+    import fromager.dependencies as deps
+
+    original_func = deps.get_install_dependencies_of_wheel
+    deps.get_install_dependencies_of_wheel = Mock(return_value=set())
+
+    try:
+        result = bt._get_install_dependencies(
+            req=Requirement("test-package"),
+            resolved_version=Version("1.0.0"),
+            wheel_filename=wheel_file,
+            sdist_filename=None,
+            sdist_root_dir=None,
+            build_env=None,
+            unpack_dir=unpack_dir,
+        )
+
+        # Verify return type is list
+        assert isinstance(result, list)
+    finally:
+        deps.get_install_dependencies_of_wheel = original_func
+
+
+def test_build_from_source_returns_dataclass(tmp_context: WorkContext) -> None:
+    """Verify _build_from_source returns SourceBuildResult."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+
+    mock_sdist_root = tmp_context.work_dir / "package-1.0.0" / "package-1.0.0"
+    mock_sdist_root.parent.mkdir(parents=True, exist_ok=True)
+    mock_source_file = tmp_context.work_dir / "package-1.0.0.tar.gz"
+    mock_wheel = tmp_context.work_dir / "package-1.0.0-py3-none-any.whl"
+
+    with (
+        patch("fromager.sources.download_source", return_value=mock_source_file),
+        patch("fromager.sources.prepare_source", return_value=mock_sdist_root),
+        patch("fromager.sources.get_source_type", return_value="sdist"),
+        patch.object(bt, "_prepare_build_dependencies"),
+        patch.object(bt, "_build_wheel", return_value=(mock_wheel, None)),
+    ):
+        result = bt._build_from_source(
+            req=Requirement("test-package"),
+            resolved_version=Version("1.0.0"),
+            source_url="https://pypi.org/simple/test-package",
+            build_sdist_only=False,
+            cached_wheel_filename=None,
+            unpacked_cached_wheel=None,
+        )
+
+        # Verify return type is SourceBuildResult
+        assert isinstance(result, bootstrapper.SourceBuildResult)
+
+        # Verify all expected fields are present
+        assert hasattr(result, "wheel_filename")
+        assert hasattr(result, "sdist_filename")
+        assert hasattr(result, "unpack_dir")
+        assert hasattr(result, "sdist_root_dir")
+        assert hasattr(result, "build_env")
+        assert hasattr(result, "source_url_type")

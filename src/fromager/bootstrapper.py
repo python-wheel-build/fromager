@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import operator
@@ -38,6 +39,21 @@ logger = logging.getLogger(__name__)
 
 # package name, extras, version, sdist/wheel
 SeenKey = tuple[NormalizedName, tuple[str, ...], str, typing.Literal["sdist", "wheel"]]
+
+
+@dataclasses.dataclass
+class SourceBuildResult:
+    """Result of building a package from source.
+
+    Used to return multiple values from _build_from_source().
+    """
+
+    wheel_filename: pathlib.Path | None
+    sdist_filename: pathlib.Path | None
+    unpack_dir: pathlib.Path
+    sdist_root_dir: pathlib.Path
+    build_env: build_environment.BuildEnvironment
+    source_url_type: str
 
 
 class Bootstrapper:
@@ -194,105 +210,33 @@ class Bootstrapper:
             )
             # Remember that this is a prebuilt wheel, and where we got it.
             source_url_type = str(SourceType.PREBUILT)
+            sdist_filename = None
+            sdist_root_dir = None
+            build_env = None
         else:
-            # Look a few places for an existing wheel that matches what we need,
-            # using caches for locations where we might have built the wheel
-            # before.
-
-            # Check if we have previously built a wheel and still have it on the
-            # local filesystem.
-            if not wheel_filename and not cached_wheel_filename:
-                cached_wheel_filename, unpacked_cached_wheel = (
-                    self._look_for_existing_wheel(
-                        req,
-                        resolved_version,
-                        self.ctx.wheels_build,
-                    )
-                )
-
-            # Check if we have previously downloaded a wheel and still have it
-            # on the local filesystem.
-            if not wheel_filename and not cached_wheel_filename:
-                cached_wheel_filename, unpacked_cached_wheel = (
-                    self._look_for_existing_wheel(
-                        req,
-                        resolved_version,
-                        self.ctx.wheels_downloads,
-                    )
-                )
-
-            # Look for a wheel on the cache server and download it if there is
-            # one.
-            if not wheel_filename and not cached_wheel_filename:
-                cached_wheel_filename, unpacked_cached_wheel = (
-                    self._download_wheel_from_cache(req, resolved_version)
-                )
-
-            if not unpacked_cached_wheel:
-                # We didn't find anything so we are going to have to build the
-                # wheel in order to process its installation dependencies.
-                logger.debug("no cached wheel, downloading sources")
-                source_filename = sources.download_source(
-                    ctx=self.ctx,
-                    req=req,
-                    version=resolved_version,
-                    download_url=source_url,
-                )
-                sdist_root_dir = sources.prepare_source(
-                    ctx=self.ctx,
-                    req=req,
-                    source_filename=source_filename,
-                    version=resolved_version,
-                )
-            else:
-                logger.debug(f"have cached wheel in {unpacked_cached_wheel}")
-                sdist_root_dir = unpacked_cached_wheel / unpacked_cached_wheel.stem
-
-            assert sdist_root_dir is not None
-
-            if sdist_root_dir.parent.parent != self.ctx.work_dir:
-                raise ValueError(
-                    f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}"
-                )
-            unpack_dir = sdist_root_dir.parent
-
-            build_env = build_environment.BuildEnvironment(
-                ctx=self.ctx,
-                parent_dir=sdist_root_dir.parent,
+            # Look for an existing wheel in caches (3 levels: build, downloads,
+            # cache server) before building from source.
+            cached_wheel_filename, unpacked_cached_wheel = self._find_cached_wheel(
+                req, resolved_version
             )
 
-            # need to call this function irrespective of whether we had the wheel cached
-            # so that the build dependencies can be bootstrapped
-            self._prepare_build_dependencies(req, sdist_root_dir, build_env)
+            # Build from source (download, prepare, build wheel/sdist)
+            build_result = self._build_from_source(
+                req=req,
+                resolved_version=resolved_version,
+                source_url=source_url,
+                build_sdist_only=build_sdist_only,
+                cached_wheel_filename=cached_wheel_filename,
+                unpacked_cached_wheel=unpacked_cached_wheel,
+            )
 
-            if cached_wheel_filename:
-                logger.debug(
-                    f"getting install requirements from cached "
-                    f"wheel {cached_wheel_filename.name}"
-                )
-                # prefer existing wheel even in sdist_only mode
-                # skip building even if it is a non-fromager built wheel
-                wheel_filename = cached_wheel_filename
-                build_sdist_only = False
-            elif build_sdist_only:
-                # get install dependencies from sdist and pyproject_hooks (only top-level and install)
-                logger.debug(
-                    f"getting install requirements from sdist "
-                    f"{req.name}=={resolved_version} ({req_type})"
-                )
-                wheel_filename = None
-                sdist_filename = self._build_sdist(
-                    req, resolved_version, sdist_root_dir, build_env
-                )
-            else:
-                # build wheel (build requirements, full build mode)
-                logger.debug(
-                    f"building wheel {req.name}=={resolved_version} "
-                    f"to get install requirements ({req_type})"
-                )
-                wheel_filename, sdist_filename = self._build_wheel(
-                    req, resolved_version, sdist_root_dir, build_env
-                )
+            # Unpack result
+            wheel_filename = build_result.wheel_filename
+            sdist_filename = build_result.sdist_filename
+            unpack_dir = build_result.unpack_dir
+            sdist_root_dir = build_result.sdist_root_dir
+            build_env = build_result.build_env
+            source_url_type = build_result.source_url_type
 
         hooks.run_post_bootstrap_hooks(
             ctx=self.ctx,
@@ -303,34 +247,15 @@ class Bootstrapper:
             wheel_filename=wheel_filename,
         )
 
-        if wheel_filename is not None:
-            assert unpack_dir is not None
-            logger.debug(
-                "get install dependencies of wheel %s",
-                wheel_filename.name,
-            )
-            install_dependencies = dependencies.get_install_dependencies_of_wheel(
-                req=req,
-                wheel_filename=wheel_filename,
-                requirements_file_dir=unpack_dir,
-            )
-        elif sdist_filename is not None:
-            assert sdist_root_dir is not None
-            assert build_env is not None
-            logger.debug(
-                "get install dependencies of sdist from directory %s",
-                sdist_root_dir,
-            )
-            install_dependencies = dependencies.get_install_dependencies_of_sdist(
-                ctx=self.ctx,
-                req=req,
-                version=resolved_version,
-                sdist_root_dir=sdist_root_dir,
-                build_env=build_env,
-            )
-        else:
-            # unreachable
-            raise RuntimeError("wheel_filename and sdist_filename are None")
+        install_dependencies = self._get_install_dependencies(
+            req=req,
+            resolved_version=resolved_version,
+            wheel_filename=wheel_filename,
+            sdist_filename=sdist_filename,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+            unpack_dir=unpack_dir,
+        )
 
         logger.debug(
             "install dependencies: %s",
@@ -504,6 +429,193 @@ class Bootstrapper:
         # and available to subsequent builds that need them as dependencies
         server.update_wheel_mirror(self.ctx)
         return (wheel_filename, unpack_dir)
+
+    def _find_cached_wheel(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+        """Look for cached wheel in 3 locations.
+
+        Checks for cached wheels in order:
+        1. wheels_build directory (previously built)
+        2. wheels_downloads directory (previously downloaded)
+        3. Cache server (remote cache)
+
+        Returns:
+            Tuple of (cached_wheel_filename, unpacked_cached_wheel).
+            Both None if no cache hit.
+        """
+        # Check if we have previously built a wheel and still have it on the
+        # local filesystem.
+        cached_wheel, unpacked = self._look_for_existing_wheel(
+            req, resolved_version, self.ctx.wheels_build
+        )
+        if cached_wheel:
+            return cached_wheel, unpacked
+
+        # Check if we have previously downloaded a wheel and still have it
+        # on the local filesystem.
+        cached_wheel, unpacked = self._look_for_existing_wheel(
+            req, resolved_version, self.ctx.wheels_downloads
+        )
+        if cached_wheel:
+            return cached_wheel, unpacked
+
+        # Look for a wheel on the cache server and download it if there is one.
+        cached_wheel, unpacked = self._download_wheel_from_cache(req, resolved_version)
+        if cached_wheel:
+            return cached_wheel, unpacked
+
+        return None, None
+
+    def _get_install_dependencies(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        wheel_filename: pathlib.Path | None,
+        sdist_filename: pathlib.Path | None,
+        sdist_root_dir: pathlib.Path | None,
+        build_env: build_environment.BuildEnvironment | None,
+        unpack_dir: pathlib.Path | None,
+    ) -> list[Requirement]:
+        """Extract install dependencies from wheel or sdist.
+
+        Returns:
+            List of install requirements.
+
+        Raises:
+            RuntimeError: If both wheel_filename and sdist_filename are None.
+        """
+        if wheel_filename is not None:
+            assert unpack_dir is not None
+            logger.debug(
+                "get install dependencies of wheel %s",
+                wheel_filename.name,
+            )
+            return list(
+                dependencies.get_install_dependencies_of_wheel(
+                    req=req,
+                    wheel_filename=wheel_filename,
+                    requirements_file_dir=unpack_dir,
+                )
+            )
+        elif sdist_filename is not None:
+            assert sdist_root_dir is not None
+            assert build_env is not None
+            logger.debug(
+                "get install dependencies of sdist from directory %s",
+                sdist_root_dir,
+            )
+            return list(
+                dependencies.get_install_dependencies_of_sdist(
+                    ctx=self.ctx,
+                    req=req,
+                    version=resolved_version,
+                    sdist_root_dir=sdist_root_dir,
+                    build_env=build_env,
+                )
+            )
+        else:
+            raise RuntimeError("wheel_filename and sdist_filename are None")
+
+    def _build_from_source(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        source_url: str,
+        build_sdist_only: bool,
+        cached_wheel_filename: pathlib.Path | None,
+        unpacked_cached_wheel: pathlib.Path | None,
+    ) -> SourceBuildResult:
+        """Build package from source.
+
+        Handles:
+        1. Download and prepare source (if not cached)
+        2. Create build environment
+        3. Prepare build dependencies
+        4. Build wheel or sdist (based on flags and cache state)
+
+        Returns:
+            SourceBuildResult with all build artifacts.
+
+        Raises:
+            Various exceptions from download, prepare, or build steps.
+            This is where test-mode will catch exceptions.
+        """
+        # Download and prepare source (if no cached wheel)
+        if not unpacked_cached_wheel:
+            logger.debug("no cached wheel, downloading sources")
+            source_filename = sources.download_source(
+                ctx=self.ctx,
+                req=req,
+                version=resolved_version,
+                download_url=source_url,
+            )
+            sdist_root_dir = sources.prepare_source(
+                ctx=self.ctx,
+                req=req,
+                source_filename=source_filename,
+                version=resolved_version,
+            )
+        else:
+            logger.debug(f"have cached wheel in {unpacked_cached_wheel}")
+            sdist_root_dir = unpacked_cached_wheel / unpacked_cached_wheel.stem
+
+        assert sdist_root_dir is not None
+
+        if sdist_root_dir.parent.parent != self.ctx.work_dir:
+            raise ValueError(f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}")
+        unpack_dir = sdist_root_dir.parent
+
+        build_env = build_environment.BuildEnvironment(
+            ctx=self.ctx,
+            parent_dir=sdist_root_dir.parent,
+        )
+
+        # Prepare build dependencies (always needed)
+        self._prepare_build_dependencies(req, sdist_root_dir, build_env)
+
+        # Decide what to build based on cache state and build mode
+        wheel_filename: pathlib.Path | None
+        sdist_filename: pathlib.Path | None
+
+        if cached_wheel_filename:
+            logger.debug(
+                f"getting install requirements from cached "
+                f"wheel {cached_wheel_filename.name}"
+            )
+            # prefer existing wheel even in sdist_only mode
+            wheel_filename = cached_wheel_filename
+            sdist_filename = None
+        elif build_sdist_only:
+            logger.debug(
+                f"getting install requirements from sdist "
+                f"{req.name}=={resolved_version}"
+            )
+            wheel_filename = None
+            sdist_filename = self._build_sdist(
+                req, resolved_version, sdist_root_dir, build_env
+            )
+        else:
+            logger.debug(
+                f"building wheel {req.name}=={resolved_version} "
+                f"to get install requirements"
+            )
+            wheel_filename, sdist_filename = self._build_wheel(
+                req, resolved_version, sdist_root_dir, build_env
+            )
+
+        source_url_type = sources.get_source_type(self.ctx, req)
+
+        return SourceBuildResult(
+            wheel_filename=wheel_filename,
+            sdist_filename=sdist_filename,
+            unpack_dir=unpack_dir,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+            source_url_type=source_url_type,
+        )
 
     def _look_for_existing_wheel(
         self,
