@@ -21,7 +21,6 @@ from .. import (
     server,
 )
 from ..log import requirement_ctxvar
-from ..requirements_file import RequirementType
 from .build import build_parallel
 from .graph import find_why, show_explain_duplicates
 
@@ -97,6 +96,13 @@ def _get_requirements_from_args(
     default=False,
     help="Skip generating constraints.txt file to allow building collections with conflicting versions",
 )
+@click.option(
+    "--test-mode",
+    "test_mode",
+    is_flag=True,
+    default=False,
+    help="Test mode: mark failed packages as pre-built and continue, report failures at end",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -106,6 +112,7 @@ def bootstrap(
     cache_wheel_server_url: str | None,
     sdist_only: bool,
     skip_constraints: bool,
+    test_mode: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -135,6 +142,11 @@ def bootstrap(
     else:
         logger.info("build all missing wheels")
 
+    if test_mode:
+        logger.info(
+            "test mode enabled: will mark failed packages as pre-built and continue"
+        )
+
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
         logger.info("treating %s as pre-built wheels", sorted(pre_built))
@@ -148,44 +160,36 @@ def bootstrap(
             prev_graph,
             cache_wheel_server_url,
             sdist_only=sdist_only,
+            test_mode=test_mode,
         )
 
-        # we need to resolve all the top level dependencies before we start bootstrapping.
-        # this is to ensure that if we are using an older bootstrap to resolve packages
-        # we are able to upgrade a package anywhere in the dependency tree if it is mentioned
-        # in the toplevel without having to fall back to history
+        # Pre-resolution phase: Resolve all top-level dependencies before recursive
+        # bootstrapping begins. Test-mode error handling is in Bootstrapper.
+        # Note: We don't use try/finally here because:
+        # - In test-mode: exceptions are caught inside resolve_and_add_top_level()
+        # - In normal mode: exceptions should propagate with context preserved for logging
         logger.info("resolving top-level dependencies before building")
+        resolved_reqs: list[Requirement] = []
         for req in to_build:
             token = requirement_ctxvar.set(req)
-            pbi = wkctx.package_build_info(req)
-            if pbi.pre_built:
-                source_url, version = bt.resolve_version(
-                    req=req,
-                    req_type=RequirementType.TOP_LEVEL,
-                )
-            else:
-                source_url, version = bt.resolve_version(
-                    req=req,
-                    req_type=RequirementType.TOP_LEVEL,
-                )
-            logger.info("%s resolves to %s", req, version)
-            wkctx.dependency_graph.add_dependency(
-                parent_name=None,
-                parent_version=None,
-                req_type=requirements_file.RequirementType.TOP_LEVEL,
-                req=req,
-                req_version=version,
-                download_url=source_url,
-                pre_built=pbi.pre_built,
-                constraint=wkctx.constraints.get_constraint(req.name),
-            )
+            result = bt.resolve_and_add_top_level(req)
+            if result is not None:
+                resolved_reqs.append(req)
+            # If result is None, test_mode recorded the failure and we continue
             requirement_ctxvar.reset(token)
 
-        for req in to_build:
+        # Bootstrap only packages that were successfully resolved
+        # Note: Same pattern - no try/finally to preserve context for error logging
+        for req in resolved_reqs:
             token = requirement_ctxvar.set(req)
             bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
             progressbar.update()
             requirement_ctxvar.reset(token)
+
+        # Finalize test mode and check for failures
+        exit_code = bt.finalize()
+        if exit_code != 0:
+            raise SystemExit(exit_code)
 
     constraints_filename = wkctx.work_dir / "constraints.txt"
     if skip_constraints:
@@ -480,6 +484,9 @@ def bootstrap_parallel(
     remaining wheels in parallel. The bootstrap step downloads sdists
     and builds build-time dependency in serial. The build-parallel step
     builds the remaining wheels in parallel.
+
+    Note: --test-mode is not supported in parallel builds. Use the serial
+    bootstrap command for test mode.
     """
     # Do not remove build environments in bootstrap phase to speed up the
     # parallel build phase.

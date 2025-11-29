@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import logging
@@ -64,12 +65,19 @@ class Bootstrapper:
         prev_graph: DependencyGraph | None = None,
         cache_wheel_server_url: str | None = None,
         sdist_only: bool = False,
+        test_mode: bool = False,
     ) -> None:
+        if test_mode and sdist_only:
+            raise ValueError(
+                "--test-mode requires full wheel builds; incompatible with --sdist-only"
+            )
+
         self.ctx = ctx
         self.progressbar = progressbar or progress.Progressbar(None)
         self.prev_graph = prev_graph
         self.cache_wheel_server_url = cache_wheel_server_url or ctx.wheel_server_url
         self.sdist_only = sdist_only
+        self.test_mode = test_mode
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -88,6 +96,55 @@ class Bootstrapper:
         self._resolved_requirements: dict[str, tuple[str, Version]] = {}
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
+
+        # Track failed packages in test mode (simple list of package names)
+        self.failed_packages: list[str] = []
+
+    def resolve_and_add_top_level(
+        self,
+        req: Requirement,
+    ) -> tuple[str, Version] | None:
+        """Resolve a top-level requirement and add it to the dependency graph.
+
+        This is the pre-resolution phase before recursive bootstrapping begins.
+        In test mode, catches resolution errors and records them as failures.
+
+        Args:
+            req: The top-level requirement to resolve.
+
+        Returns:
+            Tuple of (source_url, version) if resolution succeeded, None if it
+            failed in test mode.
+
+        Raises:
+            Exception: In normal mode, re-raises any resolution error.
+        """
+        try:
+            pbi = self.ctx.package_build_info(req)
+            source_url, version = self.resolve_version(
+                req=req,
+                req_type=RequirementType.TOP_LEVEL,
+            )
+            logger.info("%s resolves to %s", req, version)
+            self.ctx.dependency_graph.add_dependency(
+                parent_name=None,
+                parent_version=None,
+                req_type=RequirementType.TOP_LEVEL,
+                req=req,
+                req_version=version,
+                download_url=source_url,
+                pre_built=pbi.pre_built,
+                constraint=self.ctx.constraints.get_constraint(req.name),
+            )
+            return (source_url, version)
+        except Exception as err:
+            if not self.test_mode:
+                raise
+            logger.error(
+                "test mode: failed to resolve %s: %s", req.name, err, exc_info=True
+            )
+            self.failed_packages.append(str(req.name))
+            return None
 
     def resolve_version(
         self,
@@ -144,7 +201,34 @@ class Bootstrapper:
         logger.debug("is not a build requirement")
         return False
 
-    def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
+    def bootstrap(self, req: Requirement, req_type: RequirementType) -> None:
+        """Bootstrap a package and its dependencies.
+
+        In test mode, catches build exceptions, records package name, and continues.
+        In normal mode, raises exceptions immediately (fail-fast).
+        """
+        try:
+            self._bootstrap_impl(req, req_type)
+        except Exception as err:
+            if not self.test_mode:
+                raise
+            logger.error(
+                "test mode: failed to bootstrap %s: %s", req.name, err, exc_info=True
+            )
+            self.failed_packages.append(str(req.name))
+
+    def _bootstrap_impl(self, req: Requirement, req_type: RequirementType) -> None:
+        """Internal implementation of bootstrap logic.
+
+        Error Handling:
+            Fatal errors (version resolution, source build, prebuilt download)
+            raise exceptions for bootstrap() to catch and record.
+
+            Non-fatal errors (post-hook, dependency extraction) are recorded
+            locally and processing continues. These are recorded here rather
+            than in bootstrap() because the package build succeeded - only
+            optional processing failed.
+        """
         logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
         constraint = self.ctx.constraints.get_constraint(req.name)
         if constraint:
@@ -180,98 +264,124 @@ class Bootstrapper:
                 f"redundant {req_type} dependency {req} "
                 f"({resolved_version}, sdist_only={build_sdist_only}) for {self._explain}"
             )
-            return resolved_version
+            return
         self._mark_as_seen(req, resolved_version, build_sdist_only)
 
         logger.info(f"new {req_type} dependency {req} resolves to {resolved_version}")
 
-        # Build the dependency chain up to the point of this new
-        # requirement using a new list so we can avoid modifying the list
-        # we're given.
-        self.why.append((req_type, req, resolved_version))
+        # Track dependency chain for error messages - context manager ensures cleanup
+        with self._track_why(req_type, req, resolved_version):
+            cached_wheel_filename: pathlib.Path | None = None
+            unpacked_cached_wheel: pathlib.Path | None = None
 
-        cached_wheel_filename: pathlib.Path | None = None
-        unpacked_cached_wheel: pathlib.Path | None = None
+            if pbi.pre_built:
+                wheel_filename, unpack_dir = self._download_prebuilt(
+                    req=req,
+                    req_type=req_type,
+                    resolved_version=resolved_version,
+                    wheel_url=source_url,
+                )
+                build_result = SourceBuildResult(
+                    wheel_filename=wheel_filename,
+                    sdist_filename=None,
+                    unpack_dir=unpack_dir,
+                    sdist_root_dir=None,
+                    build_env=None,
+                    source_type=SourceType.PREBUILT,
+                )
+            else:
+                # Look for an existing wheel in caches before building
+                cached_wheel_filename, unpacked_cached_wheel = self._find_cached_wheel(
+                    req, resolved_version
+                )
 
-        if pbi.pre_built:
-            wheel_filename, unpack_dir = self._download_prebuilt(
+                # Build from source (handles test-mode fallback internally)
+                build_result = self._build_from_source(
+                    req=req,
+                    resolved_version=resolved_version,
+                    source_url=source_url,
+                    req_type=req_type,
+                    build_sdist_only=build_sdist_only,
+                    cached_wheel_filename=cached_wheel_filename,
+                    unpacked_cached_wheel=unpacked_cached_wheel,
+                )
+
+            # Run post-bootstrap hooks - in test mode, log and continue on failure
+            try:
+                hooks.run_post_bootstrap_hooks(
+                    ctx=self.ctx,
+                    req=req,
+                    dist_name=canonicalize_name(req.name),
+                    dist_version=str(resolved_version),
+                    sdist_filename=build_result.sdist_filename,
+                    wheel_filename=build_result.wheel_filename,
+                )
+            except Exception as hook_error:
+                if not self.test_mode:
+                    raise
+                logger.warning(
+                    "test mode: post-bootstrap hook failed for %s==%s: %s (continuing)",
+                    req.name,
+                    resolved_version,
+                    hook_error,
+                )
+                # Continue - hooks are not critical for dependency discovery
+
+            # Extract install dependencies (handles test-mode internally)
+            install_dependencies = self._get_install_dependencies(
                 req=req,
-                req_type=req_type,
                 resolved_version=resolved_version,
-                wheel_url=source_url,
-            )
-            # Remember that this is a prebuilt wheel, and where we got it.
-            build_result = SourceBuildResult(
-                wheel_filename=wheel_filename,
-                sdist_filename=None,
-                unpack_dir=unpack_dir,
-                sdist_root_dir=None,
-                build_env=None,
-                source_type=SourceType.PREBUILT,
-            )
-        else:
-            # Look for an existing wheel in caches (3 levels: build, downloads,
-            # cache server) before building from source.
-            cached_wheel_filename, unpacked_cached_wheel = self._find_cached_wheel(
-                req, resolved_version
+                wheel_filename=build_result.wheel_filename,
+                sdist_filename=build_result.sdist_filename,
+                sdist_root_dir=build_result.sdist_root_dir,
+                build_env=build_result.build_env,
+                unpack_dir=build_result.unpack_dir,
             )
 
-            # Build from source (download, prepare, build wheel/sdist)
-            build_result = self._build_from_source(
+            logger.debug(
+                "install dependencies: %s",
+                ", ".join(sorted(str(r) for r in install_dependencies)),
+            )
+
+            self._add_to_build_order(
                 req=req,
-                resolved_version=resolved_version,
+                version=resolved_version,
                 source_url=source_url,
-                build_sdist_only=build_sdist_only,
-                cached_wheel_filename=cached_wheel_filename,
-                unpacked_cached_wheel=unpacked_cached_wheel,
+                source_type=build_result.source_type,
+                prebuilt=pbi.pre_built,
+                constraint=constraint,
             )
 
-        hooks.run_post_bootstrap_hooks(
-            ctx=self.ctx,
-            req=req,
-            dist_name=canonicalize_name(req.name),
-            dist_version=str(resolved_version),
-            sdist_filename=build_result.sdist_filename,
-            wheel_filename=build_result.wheel_filename,
-        )
-
-        install_dependencies = self._get_install_dependencies(
-            req=req,
-            resolved_version=resolved_version,
-            wheel_filename=build_result.wheel_filename,
-            sdist_filename=build_result.sdist_filename,
-            sdist_root_dir=build_result.sdist_root_dir,
-            build_env=build_result.build_env,
-            unpack_dir=build_result.unpack_dir,
-        )
-
-        logger.debug(
-            "install dependencies: %s",
-            ", ".join(sorted(str(req) for req in install_dependencies)),
-        )
-
-        self._add_to_build_order(
-            req=req,
-            version=resolved_version,
-            source_url=source_url,
-            source_type=build_result.source_type,
-            prebuilt=pbi.pre_built,
-            constraint=constraint,
-        )
-
-        self.progressbar.update_total(len(install_dependencies))
-        for dep in self._sort_requirements(install_dependencies):
-            with req_ctxvar_context(dep):
-                try:
+            self.progressbar.update_total(len(install_dependencies))
+            for dep in self._sort_requirements(install_dependencies):
+                with req_ctxvar_context(dep):
+                    # In test mode, bootstrap() catches and records failures internally.
+                    # In normal mode, it raises immediately which we propagate.
                     self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
-                except Exception as err:
-                    raise ValueError(f"could not handle {self._explain}") from err
-            self.progressbar.update()
+                self.progressbar.update()
 
-        # we are done processing this req, so lets remove it from the why chain
-        self.why.pop()
-        self.ctx.clean_build_dirs(build_result.sdist_root_dir, build_result.build_env)
-        return resolved_version
+            # Clean up build directories (why stack cleanup handled by context manager)
+            self.ctx.clean_build_dirs(
+                build_result.sdist_root_dir, build_result.build_env
+            )
+
+    @contextlib.contextmanager
+    def _track_why(
+        self,
+        req_type: RequirementType,
+        req: Requirement,
+        resolved_version: Version,
+    ) -> typing.Generator[None, None, None]:
+        """Context manager to track dependency chain in self.why stack.
+
+        Ensures the entry is always popped from the stack, even if an
+        exception occurs during processing. This prevents stack corruption.
+        """
+        self.why.append((req_type, req, resolved_version))
+        try:
+            yield
+        finally:
+            self.why.pop()
 
     @property
     def _explain(self) -> str:
@@ -396,10 +506,9 @@ class Bootstrapper:
 
         for dep in self._sort_requirements(build_dependencies):
             with req_ctxvar_context(dep):
-                try:
-                    self.bootstrap(req=dep, req_type=build_type)
-                except Exception as err:
-                    raise ValueError(f"could not handle {self._explain}") from err
+                # In test mode, bootstrap() catches and records failures internally.
+                # In normal mode, it raises immediately which we propagate.
+                self.bootstrap(req=dep, req_type=build_type)
             self.progressbar.update()
 
     def _download_prebuilt(
@@ -469,141 +578,294 @@ class Bootstrapper:
     ) -> list[Requirement]:
         """Extract install dependencies from wheel or sdist.
 
+        In test mode, returns empty list on failure instead of raising.
+
         Returns:
-            List of install requirements.
+            List of install requirements (empty list on failure in test mode).
 
         Raises:
             RuntimeError: If both wheel_filename and sdist_filename are None.
+            Exception: In normal mode, re-raises any extraction error.
         """
-        if wheel_filename is not None:
-            assert unpack_dir is not None
-            logger.debug(
-                "get install dependencies of wheel %s",
-                wheel_filename.name,
-            )
-            return list(
-                dependencies.get_install_dependencies_of_wheel(
-                    req=req,
-                    wheel_filename=wheel_filename,
-                    requirements_file_dir=unpack_dir,
+        try:
+            if wheel_filename is not None:
+                assert unpack_dir is not None
+                logger.debug(
+                    "get install dependencies of wheel %s",
+                    wheel_filename.name,
                 )
-            )
-        elif sdist_filename is not None:
-            assert sdist_root_dir is not None
-            assert build_env is not None
-            logger.debug(
-                "get install dependencies of sdist from directory %s",
-                sdist_root_dir,
-            )
-            return list(
-                dependencies.get_install_dependencies_of_sdist(
-                    ctx=self.ctx,
-                    req=req,
-                    version=resolved_version,
-                    sdist_root_dir=sdist_root_dir,
-                    build_env=build_env,
+                return list(
+                    dependencies.get_install_dependencies_of_wheel(
+                        req=req,
+                        wheel_filename=wheel_filename,
+                        requirements_file_dir=unpack_dir,
+                    )
                 )
+            elif sdist_filename is not None:
+                assert sdist_root_dir is not None
+                assert build_env is not None
+                logger.debug(
+                    "get install dependencies of sdist from directory %s",
+                    sdist_root_dir,
+                )
+                return list(
+                    dependencies.get_install_dependencies_of_sdist(
+                        ctx=self.ctx,
+                        req=req,
+                        version=resolved_version,
+                        sdist_root_dir=sdist_root_dir,
+                        build_env=build_env,
+                    )
+                )
+            else:
+                raise RuntimeError("wheel_filename and sdist_filename are None")
+
+        except Exception as err:
+            if not self.test_mode:
+                raise
+            logger.warning(
+                "test mode: failed to extract dependencies for %s==%s: %s (continuing)",
+                req.name,
+                resolved_version,
+                err,
+            )
+            return []
+
+    def _download_source(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        source_url: str,
+    ) -> pathlib.Path:
+        """Download source for a package."""
+        result: pathlib.Path = sources.download_source(
+            ctx=self.ctx,
+            req=req,
+            version=resolved_version,
+            download_url=source_url,
+        )
+        return result
+
+    def _prepare_source(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        source_filename: pathlib.Path,
+    ) -> pathlib.Path:
+        """Prepare (unpack/patch) source for building."""
+        result: pathlib.Path = sources.prepare_source(
+            ctx=self.ctx,
+            req=req,
+            source_filename=source_filename,
+            version=resolved_version,
+        )
+        return result
+
+    def _create_build_env(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        parent_dir: pathlib.Path,
+    ) -> build_environment.BuildEnvironment:
+        """Create isolated build environment."""
+        return build_environment.BuildEnvironment(
+            ctx=self.ctx,
+            parent_dir=parent_dir,
+        )
+
+    def _do_build(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        sdist_root_dir: pathlib.Path,
+        build_env: build_environment.BuildEnvironment,
+        build_sdist_only: bool,
+        cached_wheel_filename: pathlib.Path | None,
+    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+        """Build wheel or sdist from prepared source."""
+        if cached_wheel_filename:
+            logger.debug(
+                f"getting install requirements from cached wheel {cached_wheel_filename.name}"
+            )
+            return cached_wheel_filename, None
+        elif build_sdist_only:
+            logger.debug(
+                f"getting install requirements from sdist {req.name}=={resolved_version}"
+            )
+            return None, self._build_sdist(
+                req, resolved_version, sdist_root_dir, build_env
             )
         else:
-            raise RuntimeError("wheel_filename and sdist_filename are None")
+            logger.debug(
+                f"building wheel {req.name}=={resolved_version} to get install requirements"
+            )
+            return self._build_wheel(req, resolved_version, sdist_root_dir, build_env)
 
     def _build_from_source(
         self,
         req: Requirement,
         resolved_version: Version,
         source_url: str,
+        req_type: RequirementType,
         build_sdist_only: bool,
         cached_wheel_filename: pathlib.Path | None,
         unpacked_cached_wheel: pathlib.Path | None,
     ) -> SourceBuildResult:
         """Build package from source.
 
-        Handles:
-        1. Download and prepare source (if not cached)
-        2. Create build environment
-        3. Prepare build dependencies
-        4. Build wheel or sdist (based on flags and cache state)
-
-        Returns:
-            SourceBuildResult with all build artifacts.
+        Orchestrates download, preparation, build environment setup, and build.
+        In test mode, attempts pre-built fallback on failure.
 
         Raises:
-            Various exceptions from download, prepare, or build steps.
-            This is where test-mode will catch exceptions.
+            Exception: In normal mode, if build fails.
+                In test mode, only if build fails AND fallback also fails.
         """
-        # Download and prepare source (if no cached wheel)
-        if not unpacked_cached_wheel:
-            logger.debug("no cached wheel, downloading sources")
-            source_filename = sources.download_source(
-                ctx=self.ctx,
+        try:
+            # Download and prepare source (if no cached wheel)
+            if not unpacked_cached_wheel:
+                logger.debug("no cached wheel, downloading sources")
+                source_filename = self._download_source(
+                    req=req,
+                    resolved_version=resolved_version,
+                    source_url=source_url,
+                )
+                sdist_root_dir = self._prepare_source(
+                    req=req,
+                    resolved_version=resolved_version,
+                    source_filename=source_filename,
+                )
+            else:
+                logger.debug(f"have cached wheel in {unpacked_cached_wheel}")
+                sdist_root_dir = unpacked_cached_wheel / unpacked_cached_wheel.stem
+
+            assert sdist_root_dir is not None
+
+            if sdist_root_dir.parent.parent != self.ctx.work_dir:
+                raise ValueError(
+                    f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}"
+                )
+            unpack_dir = sdist_root_dir.parent
+
+            build_env = self._create_build_env(
                 req=req,
-                version=resolved_version,
-                download_url=source_url,
+                resolved_version=resolved_version,
+                parent_dir=sdist_root_dir.parent,
             )
-            sdist_root_dir = sources.prepare_source(
-                ctx=self.ctx,
+
+            # Prepare build dependencies (always needed)
+            # Note: This may recursively call bootstrap() for build deps,
+            # which has its own error handling.
+            self._prepare_build_dependencies(req, sdist_root_dir, build_env)
+
+            # Build wheel or sdist
+            wheel_filename, sdist_filename = self._do_build(
                 req=req,
-                source_filename=source_filename,
-                version=resolved_version,
+                resolved_version=resolved_version,
+                sdist_root_dir=sdist_root_dir,
+                build_env=build_env,
+                build_sdist_only=build_sdist_only,
+                cached_wheel_filename=cached_wheel_filename,
             )
-        else:
-            logger.debug(f"have cached wheel in {unpacked_cached_wheel}")
-            sdist_root_dir = unpacked_cached_wheel / unpacked_cached_wheel.stem
 
-        assert sdist_root_dir is not None
+            source_type = sources.get_source_type(self.ctx, req)
 
-        if sdist_root_dir.parent.parent != self.ctx.work_dir:
-            raise ValueError(f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}")
-        unpack_dir = sdist_root_dir.parent
+            return SourceBuildResult(
+                wheel_filename=wheel_filename,
+                sdist_filename=sdist_filename,
+                unpack_dir=unpack_dir,
+                sdist_root_dir=sdist_root_dir,
+                build_env=build_env,
+                source_type=source_type,
+            )
 
-        build_env = build_environment.BuildEnvironment(
-            ctx=self.ctx,
-            parent_dir=sdist_root_dir.parent,
+        except Exception as build_error:
+            if not self.test_mode:
+                raise
+
+            # Test mode: attempt pre-built fallback
+            fallback_result = self._handle_test_mode_failure(
+                req=req,
+                resolved_version=resolved_version,
+                req_type=req_type,
+                build_error=build_error,
+            )
+            if fallback_result is None:
+                # Fallback failed, re-raise for bootstrap() to catch
+                raise
+
+            return fallback_result
+
+    def _handle_test_mode_failure(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        req_type: RequirementType,
+        build_error: Exception,
+    ) -> SourceBuildResult | None:
+        """Handle build failure in test mode by attempting pre-built fallback.
+
+        Args:
+            req: The requirement that failed to build.
+            resolved_version: The version that was attempted.
+            req_type: The type of requirement (for fallback resolution).
+            build_error: The original exception from the build attempt.
+
+        Returns:
+            SourceBuildResult if fallback succeeded, None if fallback also failed.
+        """
+        logger.warning(
+            "test mode: build failed for %s==%s, attempting pre-built fallback: %s",
+            req.name,
+            resolved_version,
+            build_error,
         )
 
-        # Prepare build dependencies (always needed)
-        self._prepare_build_dependencies(req, sdist_root_dir, build_env)
-
-        # Decide what to build based on cache state and build mode
-        wheel_filename: pathlib.Path | None
-        sdist_filename: pathlib.Path | None
-
-        if cached_wheel_filename:
-            logger.debug(
-                f"getting install requirements from cached "
-                f"wheel {cached_wheel_filename.name}"
-            )
-            # prefer existing wheel even in sdist_only mode
-            wheel_filename = cached_wheel_filename
-            sdist_filename = None
-        elif build_sdist_only:
-            logger.debug(
-                f"getting install requirements from sdist "
-                f"{req.name}=={resolved_version}"
-            )
-            wheel_filename = None
-            sdist_filename = self._build_sdist(
-                req, resolved_version, sdist_root_dir, build_env
-            )
-        else:
-            logger.debug(
-                f"building wheel {req.name}=={resolved_version} "
-                f"to get install requirements"
-            )
-            wheel_filename, sdist_filename = self._build_wheel(
-                req, resolved_version, sdist_root_dir, build_env
+        try:
+            wheel_url, fallback_version = self._resolve_prebuilt_with_history(
+                req=req,
+                req_type=req_type,
             )
 
-        source_type = sources.get_source_type(self.ctx, req)
+            if fallback_version != resolved_version:
+                logger.warning(
+                    "test mode: version mismatch for %s - requested %s, fallback %s",
+                    req.name,
+                    resolved_version,
+                    fallback_version,
+                )
 
-        return SourceBuildResult(
-            wheel_filename=wheel_filename,
-            sdist_filename=sdist_filename,
-            unpack_dir=unpack_dir,
-            sdist_root_dir=sdist_root_dir,
-            build_env=build_env,
-            source_type=source_type,
-        )
+            wheel_filename, unpack_dir = self._download_prebuilt(
+                req=req,
+                req_type=req_type,
+                resolved_version=fallback_version,
+                wheel_url=wheel_url,
+            )
+
+            logger.info(
+                "test mode: successfully used pre-built wheel for %s==%s",
+                req.name,
+                fallback_version,
+            )
+            # Package succeeded via fallback - no failure to record
+
+            return SourceBuildResult(
+                wheel_filename=wheel_filename,
+                sdist_filename=None,
+                unpack_dir=unpack_dir,
+                sdist_root_dir=None,
+                build_env=None,
+                source_type=SourceType.PREBUILT,
+            )
+
+        except Exception as fallback_error:
+            logger.error(
+                "test mode: pre-built fallback also failed for %s: %s",
+                req.name,
+                fallback_error,
+                exc_info=True,
+            )
+            # Return None to signal failure; bootstrap() will record via re-raised exception
+            return None
 
     def _look_for_existing_wheel(
         self,
@@ -1129,3 +1391,26 @@ class Bootstrapper:
             # Requirement and Version instances that can't be
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
+
+    def finalize(self) -> int:
+        """Finalize bootstrap and return exit code.
+
+        In test mode, logs summary and returns non-zero if there were failures.
+
+        Returns:
+            0 if all packages built successfully (or not in test mode)
+            1 if any packages failed in test mode
+        """
+        if not self.test_mode:
+            return 0
+
+        if not self.failed_packages:
+            logger.info("test mode: all packages processed successfully")
+            return 0
+
+        logger.error(
+            "test mode: %d package(s) failed: %s",
+            len(self.failed_packages),
+            ", ".join(self.failed_packages),
+        )
+        return 1
