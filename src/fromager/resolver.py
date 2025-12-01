@@ -5,6 +5,7 @@
 #
 from __future__ import annotations
 
+import datetime
 import functools
 import logging
 import os
@@ -39,6 +40,7 @@ from .requirements_file import RequirementType
 
 if typing.TYPE_CHECKING:
     from . import context
+
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +341,10 @@ def get_project_from_pypi(
                 ignored_candidates.add(dp.filename)
                 continue
 
+        upload_time = dp.upload_time
+        if upload_time is not None:
+            upload_time = upload_time.astimezone(datetime.UTC)
+
         c = Candidate(
             name=name,
             version=version,
@@ -347,6 +353,7 @@ def get_project_from_pypi(
             is_sdist=is_sdist,
             build_tag=build_tag,
             has_metadata=bool(dp.has_metadata),
+            upload_time=upload_time,
         )
         if DEBUG_RESOLVER:
             logger.debug("candidate %s (%s) %s", dp.filename, c, dp.url)
@@ -367,7 +374,7 @@ ResolverCache: typing.TypeAlias = dict[
 ]
 VersionSource: typing.TypeAlias = typing.Callable[
     [str],
-    typing.Iterable[tuple[str, str | Version]],
+    typing.Iterable[Candidate | tuple[str, str | Version]],
 ]
 
 
@@ -714,17 +721,28 @@ class GenericProvider(BaseProvider):
     def find_candidates(self, identifier) -> Candidates:
         candidates: list[Candidate] = []
         version: Version | None
-        for url, item in self._version_source(identifier):
-            if isinstance(item, Version):
-                version = item
+        for item in self._version_source(identifier):
+            if isinstance(item, Candidate):
+                candidate = item
             else:
-                version = self._match_function(identifier, item)
-                if version is None:
-                    logger.debug(f"{identifier}: match function ignores {item}")
-                    continue
-                assert isinstance(version, Version)
-                version = version
-            candidates.append(Candidate(name=identifier, version=version, url=url))
+                # TODO: deprecate (url, version_or_string)
+                url, version_or_string = item
+                if isinstance(version_or_string, Version):
+                    version = version_or_string
+                else:
+                    match_result = self._match_function(identifier, version_or_string)
+                    if match_result is None:
+                        logger.debug(
+                            f"{identifier}: match function ignores {version_or_string}"
+                        )
+                        continue
+                    assert isinstance(match_result, Version)
+                    version = match_result
+
+                candidate = Candidate(name=identifier, version=version, url=url)
+
+            candidates.append(candidate)
+
         return candidates
 
 
@@ -770,7 +788,7 @@ class GitHubTagProvider(GenericProvider):
     def _find_tags(
         self,
         identifier: str,
-    ) -> Iterable[tuple[str, Version]]:
+    ) -> Iterable[Candidate]:
         headers = {"accept": "application/vnd.github+json"}
 
         # Add GitHub authentication if available
@@ -784,13 +802,24 @@ class GitHubTagProvider(GenericProvider):
             resp.raise_for_status()
 
             for entry in resp.json():
-                name = entry["name"]
-                result = self._match_function(identifier, name)
-                if result is None:
-                    logger.debug(f"{identifier}: match function ignores {name}")
+                tagname = entry["name"]
+                version = self._match_function(identifier, tagname)
+                if version is None:
+                    logger.debug(f"{identifier}: match function ignores {tagname}")
                     continue
-                assert isinstance(result, Version)
-                yield entry["tarball_url"], result
+                assert isinstance(version, Version)
+                url = entry["tarball_url"]
+
+                # Github tag API endpoint does not include commit date information.
+                # It would be too expensive to query every commit API endpoint.
+                yield Candidate(
+                    name=identifier,
+                    version=version,
+                    url=url,
+                    remote_tag=tagname,
+                    remote_commit=entry["commit"]["sha"],
+                    upload_time=None,
+                )
 
             # pagination links
             nexturl = resp.links.get("next", {}).get("url")
@@ -841,25 +870,43 @@ class GitLabTagProvider(GenericProvider):
     def _find_tags(
         self,
         identifier: str,
-    ) -> Iterable[tuple[str, Version]]:
+    ) -> Iterable[Candidate]:
         nexturl: str = self.api_url
+        created_at: datetime.datetime | None
         while nexturl:
             resp: Response = session.get(nexturl)
             resp.raise_for_status()
             for entry in resp.json():
-                name = entry["name"]
-                version = self._match_function(identifier, name)
+                tagname = entry["name"]
+                version = self._match_function(identifier, tagname)
                 if version is None:
-                    logger.debug(f"{identifier}: match function ignores {name}")
+                    logger.debug(f"{identifier}: match function ignores {tagname}")
                     continue
                 assert isinstance(version, Version)
 
-                # GitLab provides a download URL for the archive, so return it
-                # in case prepare_source wants to download it instead of cloning
-                # the repository.
-                archive_path: str = f"{self.project_path}/-/archive/{name}/{self.project_path.split('/')[-1]}-{name}.tar.gz"
-                archive_url: str = urljoin(self.server_url, archive_path)
-                yield archive_url, version
+                archive_path: str = f"{self.project_path}/-/archive/{tagname}/{self.project_path.split('/')[-1]}-{tagname}.tar.gz"
+                url = urljoin(self.server_url, archive_path)
+
+                # get tag creation time, fall back to commit creation time
+                created_at_str: str | None = entry.get("created_at")
+                if created_at_str is None:
+                    created_at_str = entry["commit"].get("created_at")
+
+                if created_at_str is not None:
+                    created_at = datetime.datetime.fromisoformat(
+                        created_at_str
+                    ).astimezone(datetime.UTC)
+                else:
+                    created_at = None
+
+                yield Candidate(
+                    name=identifier,
+                    version=version,
+                    url=url,
+                    remote_tag=tagname,
+                    remote_commit=entry["commit"]["id"],
+                    upload_time=created_at,
+                )
 
             # GitLab API uses Link headers for pagination
             nexturl = resp.links.get("next", {}).get("url")

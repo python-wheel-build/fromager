@@ -1,4 +1,5 @@
 import dataclasses
+import datetime
 import logging
 import typing
 from email.message import EmailMessage, Message
@@ -32,6 +33,11 @@ class Candidate:
     extras: tuple[str, ...] = dataclasses.field(default=(), compare=False)
     build_tag: BuildTag = dataclasses.field(default=(), compare=False)
     has_metadata: bool = dataclasses.field(default=False, compare=False)
+    remote_tag: str | None = dataclasses.field(default=None, compare=False)
+    remote_commit: str | None = dataclasses.field(default=None, compare=False)
+    upload_time: datetime.datetime | None = dataclasses.field(
+        default=None, compare=False
+    )
 
     _metadata: Metadata | None = dataclasses.field(
         default=None, init=False, compare=False
