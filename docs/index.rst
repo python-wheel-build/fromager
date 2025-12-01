@@ -29,6 +29,7 @@ those special cases directly into fromager.
    using.md
    getting-started.rst
    customization.md
+   concepts/index.rst
    how-tos/index.rst
    hooks.rst
    files.md
