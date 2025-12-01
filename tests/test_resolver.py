@@ -1,3 +1,4 @@
+import datetime
 import re
 import typing
 
@@ -704,6 +705,9 @@ def test_resolve_github() -> None:
 
         candidate = result.mapping["fromager"]
         assert str(candidate.version) == "0.9.0"
+        assert candidate.remote_tag == "0.9.0"
+        assert candidate.remote_commit == "5fbdab491e983152f7e5c8200b4f7f62f714aedf"
+        assert candidate.upload_time is None
         # check the "URL" in case tag syntax does not match version syntax
         assert (
             str(candidate.url)
@@ -910,6 +914,11 @@ def test_resolve_gitlab() -> None:
         assert (
             str(candidate.url)
             == "https://gitlab.com/mirrors/github/decile-team/submodlib/-/archive/v0.0.3/submodlib-v0.0.3.tar.gz"
+        )
+        assert candidate.remote_tag == "v0.0.3"
+        assert candidate.remote_commit == "72ae33a1ead9761e7240c2e095873047339ada7c"
+        assert candidate.upload_time == datetime.datetime(
+            2025, 5, 14, 15, 43, 0, tzinfo=datetime.UTC
         )
 
 
