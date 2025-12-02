@@ -27,14 +27,13 @@ from . import (
     overrides,
     packagesettings,
     pyproject,
-    requirements_file,
     resolver,
     tarballs,
     vendor_rust,
 )
 from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
-from .requirements_file import RequirementType
+from .requirements_file import RequirementType, SourceType
 
 if typing.TYPE_CHECKING:
     from . import build_environment, context
@@ -42,10 +41,10 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
-    source_type = requirements_file.SourceType.SDIST
+def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
+    source_type = SourceType.SDIST
     if req.url:
-        return requirements_file.SourceType.GIT
+        return SourceType.GIT
     pbi = ctx.package_build_info(req)
     if (
         overrides.find_override_method(req.name, "download_source")
@@ -53,8 +52,8 @@ def get_source_type(ctx: context.WorkContext, req: Requirement) -> str:
         or overrides.find_override_method(req.name, "get_resolver_provider")
         or pbi.download_source_url(resolve_template=False)
     ):
-        source_type = requirements_file.SourceType.OVERRIDE
-    return str(source_type)
+        source_type = SourceType.OVERRIDE
+    return source_type
 
 
 @metrics.timeit(description="download source")

@@ -9,7 +9,7 @@ from packaging.version import Version
 from fromager import bootstrapper
 from fromager.context import WorkContext
 from fromager.dependency_graph import DependencyGraph
-from fromager.requirements_file import RequirementType
+from fromager.requirements_file import RequirementType, SourceType
 
 old_graph = DependencyGraph()
 
@@ -290,13 +290,13 @@ def test_build_order(tmp_context: WorkContext) -> None:
         req=Requirement("buildme>1.0"),
         version=Version("6.0"),
         source_url="url",
-        source_url_type="sdist",
+        source_type=SourceType.SDIST,
     )
     bt._add_to_build_order(
         req=Requirement("testdist>1.0"),
         version=Version("1.2"),
         source_url="url",
-        source_url_type="sdist",
+        source_type=SourceType.SDIST,
     )
     contents_str = bt._build_order_filename.read_text()
     contents = json.loads(contents_str)
@@ -329,19 +329,19 @@ def test_build_order_repeats(tmp_context: WorkContext) -> None:
         Requirement("buildme>1.0"),
         Version("6.0"),
         "url",
-        "sdist",
+        SourceType.SDIST,
     )
     bt._add_to_build_order(
         Requirement("buildme>1.0"),
         Version("6.0"),
         "url",
-        "sdist",
+        SourceType.SDIST,
     )
     bt._add_to_build_order(
         Requirement("buildme[extra]>1.0"),
         Version("6.0"),
         "url",
-        "sdist",
+        SourceType.SDIST,
     )
     contents_str = bt._build_order_filename.read_text()
     contents = json.loads(contents_str)
@@ -365,13 +365,13 @@ def test_build_order_name_canonicalization(tmp_context: WorkContext) -> None:
         Requirement("flit-core>1.0"),
         Version("3.9.0"),
         "url",
-        "sdist",
+        SourceType.SDIST,
     )
     bt._add_to_build_order(
         Requirement("flit_core>1.0"),
         Version("3.9.0"),
         "url",
-        "sdist",
+        SourceType.SDIST,
     )
     contents_str = bt._build_order_filename.read_text()
     contents = json.loads(contents_str)
@@ -447,7 +447,10 @@ def test_find_cached_wheel_returns_tuple(tmp_context: WorkContext) -> None:
     assert len(result) == 2
 
 
-def test_get_install_dependencies_returns_list(tmp_context: WorkContext) -> None:
+@patch("fromager.dependencies.get_install_dependencies_of_wheel", return_value=set())
+def test_get_install_dependencies_returns_list(
+    mock_get_deps: Mock, tmp_context: WorkContext
+) -> None:
     """Verify _get_install_dependencies returns list."""
     bt = bootstrapper.Bootstrapper(tmp_context)
 
@@ -455,42 +458,36 @@ def test_get_install_dependencies_returns_list(tmp_context: WorkContext) -> None
     wheel_file = pathlib.Path("/fake/package-1.0.0-py3-none-any.whl")
     unpack_dir = tmp_context.work_dir
 
-    # Mock the dependency extraction to return empty set
-    import fromager.dependencies as deps
+    result = bt._get_install_dependencies(
+        req=Requirement("test-package"),
+        resolved_version=Version("1.0.0"),
+        wheel_filename=wheel_file,
+        sdist_filename=None,
+        sdist_root_dir=None,
+        build_env=None,
+        unpack_dir=unpack_dir,
+    )
 
-    original_func = deps.get_install_dependencies_of_wheel
-    deps.get_install_dependencies_of_wheel = Mock(return_value=set())
-
-    try:
-        result = bt._get_install_dependencies(
-            req=Requirement("test-package"),
-            resolved_version=Version("1.0.0"),
-            wheel_filename=wheel_file,
-            sdist_filename=None,
-            sdist_root_dir=None,
-            build_env=None,
-            unpack_dir=unpack_dir,
-        )
-
-        # Verify return type is list
-        assert isinstance(result, list)
-    finally:
-        deps.get_install_dependencies_of_wheel = original_func
+    # Verify return type is list
+    assert isinstance(result, list)
+    # Verify the mocked function was called
+    mock_get_deps.assert_called_once()
 
 
 def test_build_from_source_returns_dataclass(tmp_context: WorkContext) -> None:
-    """Verify _build_from_source returns SourceBuildResult."""
+    """Verify _build_from_source returns SourceBuildResult with correct values."""
     bt = bootstrapper.Bootstrapper(tmp_context)
 
     mock_sdist_root = tmp_context.work_dir / "package-1.0.0" / "package-1.0.0"
     mock_sdist_root.parent.mkdir(parents=True, exist_ok=True)
     mock_source_file = tmp_context.work_dir / "package-1.0.0.tar.gz"
     mock_wheel = tmp_context.work_dir / "package-1.0.0-py3-none-any.whl"
+    expected_unpack_dir = mock_sdist_root.parent
 
     with (
         patch("fromager.sources.download_source", return_value=mock_source_file),
         patch("fromager.sources.prepare_source", return_value=mock_sdist_root),
-        patch("fromager.sources.get_source_type", return_value="sdist"),
+        patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         patch.object(bt, "_prepare_build_dependencies"),
         patch.object(bt, "_build_wheel", return_value=(mock_wheel, None)),
     ):
@@ -506,10 +503,10 @@ def test_build_from_source_returns_dataclass(tmp_context: WorkContext) -> None:
         # Verify return type is SourceBuildResult
         assert isinstance(result, bootstrapper.SourceBuildResult)
 
-        # Verify all expected fields are present
-        assert hasattr(result, "wheel_filename")
-        assert hasattr(result, "sdist_filename")
-        assert hasattr(result, "unpack_dir")
-        assert hasattr(result, "sdist_root_dir")
-        assert hasattr(result, "build_env")
-        assert hasattr(result, "source_url_type")
+        # Verify all expected fields have correct values
+        assert result.wheel_filename == mock_wheel
+        assert result.sdist_filename is None
+        assert result.unpack_dir == expected_unpack_dir
+        assert result.sdist_root_dir == mock_sdist_root
+        assert result.build_env is not None
+        assert result.source_type == SourceType.SDIST

@@ -51,9 +51,9 @@ class SourceBuildResult:
     wheel_filename: pathlib.Path | None
     sdist_filename: pathlib.Path | None
     unpack_dir: pathlib.Path
-    sdist_root_dir: pathlib.Path
-    build_env: build_environment.BuildEnvironment
-    source_url_type: str
+    sdist_root_dir: pathlib.Path | None
+    build_env: build_environment.BuildEnvironment | None
+    source_type: SourceType
 
 
 class Bootstrapper:
@@ -190,16 +190,8 @@ class Bootstrapper:
         # we're given.
         self.why.append((req_type, req, resolved_version))
 
-        # for cleanup
-        build_env: build_environment.BuildEnvironment | None = None
-        sdist_root_dir: pathlib.Path | None = None
         cached_wheel_filename: pathlib.Path | None = None
-        wheel_filename: pathlib.Path | None = None
-        sdist_filename: pathlib.Path | None = None
-        unpack_dir: pathlib.Path | None = None
         unpacked_cached_wheel: pathlib.Path | None = None
-
-        source_url_type = sources.get_source_type(self.ctx, req)
 
         if pbi.pre_built:
             wheel_filename, unpack_dir = self._download_prebuilt(
@@ -209,10 +201,14 @@ class Bootstrapper:
                 wheel_url=source_url,
             )
             # Remember that this is a prebuilt wheel, and where we got it.
-            source_url_type = str(SourceType.PREBUILT)
-            sdist_filename = None
-            sdist_root_dir = None
-            build_env = None
+            build_result = SourceBuildResult(
+                wheel_filename=wheel_filename,
+                sdist_filename=None,
+                unpack_dir=unpack_dir,
+                sdist_root_dir=None,
+                build_env=None,
+                source_type=SourceType.PREBUILT,
+            )
         else:
             # Look for an existing wheel in caches (3 levels: build, downloads,
             # cache server) before building from source.
@@ -230,31 +226,23 @@ class Bootstrapper:
                 unpacked_cached_wheel=unpacked_cached_wheel,
             )
 
-            # Unpack result
-            wheel_filename = build_result.wheel_filename
-            sdist_filename = build_result.sdist_filename
-            unpack_dir = build_result.unpack_dir
-            sdist_root_dir = build_result.sdist_root_dir
-            build_env = build_result.build_env
-            source_url_type = build_result.source_url_type
-
         hooks.run_post_bootstrap_hooks(
             ctx=self.ctx,
             req=req,
             dist_name=canonicalize_name(req.name),
             dist_version=str(resolved_version),
-            sdist_filename=sdist_filename,
-            wheel_filename=wheel_filename,
+            sdist_filename=build_result.sdist_filename,
+            wheel_filename=build_result.wheel_filename,
         )
 
         install_dependencies = self._get_install_dependencies(
             req=req,
             resolved_version=resolved_version,
-            wheel_filename=wheel_filename,
-            sdist_filename=sdist_filename,
-            sdist_root_dir=sdist_root_dir,
-            build_env=build_env,
-            unpack_dir=unpack_dir,
+            wheel_filename=build_result.wheel_filename,
+            sdist_filename=build_result.sdist_filename,
+            sdist_root_dir=build_result.sdist_root_dir,
+            build_env=build_result.build_env,
+            unpack_dir=build_result.unpack_dir,
         )
 
         logger.debug(
@@ -266,7 +254,7 @@ class Bootstrapper:
             req=req,
             version=resolved_version,
             source_url=source_url,
-            source_url_type=source_url_type,
+            source_type=build_result.source_type,
             prebuilt=pbi.pre_built,
             constraint=constraint,
         )
@@ -282,7 +270,7 @@ class Bootstrapper:
 
         # we are done processing this req, so lets remove it from the why chain
         self.why.pop()
-        self.ctx.clean_build_dirs(sdist_root_dir, build_env)
+        self.ctx.clean_build_dirs(build_result.sdist_root_dir, build_result.build_env)
         return resolved_version
 
     @property
@@ -606,7 +594,7 @@ class Bootstrapper:
                 req, resolved_version, sdist_root_dir, build_env
             )
 
-        source_url_type = sources.get_source_type(self.ctx, req)
+        source_type = sources.get_source_type(self.ctx, req)
 
         return SourceBuildResult(
             wheel_filename=wheel_filename,
@@ -614,7 +602,7 @@ class Bootstrapper:
             unpack_dir=unpack_dir,
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
-            source_url_type=source_url_type,
+            source_type=source_type,
         )
 
     def _look_for_existing_wheel(
@@ -1108,7 +1096,7 @@ class Bootstrapper:
         req: Requirement,
         version: Version,
         source_url: str,
-        source_url_type: str,
+        source_type: SourceType,
         prebuilt: bool = False,
         constraint: Requirement | None = None,
     ) -> None:
@@ -1129,7 +1117,7 @@ class Bootstrapper:
             "version": str(version),
             "prebuilt": prebuilt,
             "source_url": source_url,
-            "source_url_type": source_url_type,
+            "source_url_type": str(source_type),
         }
         if req.url:
             info["source_url"] = req.url
