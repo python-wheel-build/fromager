@@ -36,10 +36,10 @@ if fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs
     pass=false
 fi;
 
-# Test to demonstrate that command reports error for duplicate entries in files
+# Test to demonstrate that command accepts duplicate entries in requirements files
 
-if fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/duplicate-requirements.txt"; then
-    echo "duplicate entries in files should have been recognized by the command" 1>&2
+if ! fromager lint-requirements --resolve-requirements "$SCRIPTDIR/validate_inputs/constraints.txt" "$SCRIPTDIR/validate_inputs/duplicate-requirements.txt"; then
+    echo "duplicate entries in requirements files should have been recognized as valid" 1>&2
     pass=false
 fi;
 
