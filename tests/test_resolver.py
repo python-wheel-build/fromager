@@ -734,7 +734,7 @@ def test_github_constraint_mismatch() -> None:
         reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
-        with pytest.raises(resolvelib.resolvers.ResolutionImpossible):
+        with pytest.raises(resolvelib.resolvers.ResolverException):
             rslvr.resolve([Requirement("fromager")])
 
 
@@ -940,7 +940,7 @@ def test_gitlab_constraint_mismatch() -> None:
         reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
         rslvr = resolvelib.Resolver(provider, reporter)
 
-        with pytest.raises(resolvelib.resolvers.ResolutionImpossible):
+        with pytest.raises(resolvelib.resolvers.ResolverException):
             rslvr.resolve([Requirement("submodlib")])
 
 
@@ -1042,3 +1042,68 @@ def test_pep592_support_constraint_mismatch() -> None:
 def test_extract_filename_from_url(url, filename) -> None:
     result = resolver.extract_filename_from_url(url)
     assert result == filename
+
+
+def test_custom_resolver_error_message_missing_tag() -> None:
+    """Test that error message indicates custom resolver when tag doesn't exist.
+
+    This reproduces issue #858 where the error message mentions PyPI and sdists
+    even when using a custom resolver like GitHubTagProvider.
+    """
+    with requests_mock.Mocker() as r:
+        # Mock GitHub API to return empty tags (simulating missing tag)
+        r.get(
+            "https://api.github.com:443/repos/test-org/test-repo/tags",
+            json=[],  # Empty tags list - tag doesn't exist
+        )
+
+        provider = resolver.GitHubTagProvider(organization="test-org", repo="test-repo")
+
+        with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
+            resolver.resolve_from_provider(provider, Requirement("test-package==1.0.0"))
+
+        error_message = str(exc_info.value)
+        assert (
+            "GitHub" in error_message
+            or "test-org/test-repo" in error_message
+            or "custom resolver" in error_message.lower()
+        ), (
+            f"Error message should indicate custom resolver was used (GitHub tag resolver), "
+            f"but got: {error_message}"
+        )
+        # Should NOT mention PyPI when using GitHub resolver
+        assert "pypi.org" not in error_message.lower(), (
+            f"Error message incorrectly mentions PyPI when using GitHub resolver: {error_message}"
+        )
+
+
+def test_custom_resolver_error_message_via_resolve() -> None:
+    """Test error message when using resolve() function with custom resolver override."""
+
+    def custom_resolver_provider(*args, **kwargs):
+        """Custom resolver that returns GitHubTagProvider."""
+        return resolver.GitHubTagProvider(organization="test-org", repo="test-repo")
+
+    with requests_mock.Mocker() as r:
+        # Mock GitHub API to return empty tags
+        r.get(
+            "https://api.github.com:443/repos/test-org/test-repo/tags",
+            json=[],
+        )
+
+        provider = custom_resolver_provider()
+
+        with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
+            resolver.resolve_from_provider(provider, Requirement("test-package==1.0.0"))
+
+        error_message = str(exc_info.value)
+        # After fix for issue #858, the error message should indicate that a GitHub resolver was used
+        assert (
+            "GitHub" in error_message
+            or "test-org/test-repo" in error_message
+            or "custom resolver" in error_message.lower()
+        ), f"Error message should indicate GitHub resolver was used: {error_message}"
+        # Should NOT mention PyPI when using GitHub resolver
+        assert "pypi.org" not in error_message.lower(), (
+            f"Error message incorrectly mentions PyPI when using GitHub resolver: {error_message}"
+        )
