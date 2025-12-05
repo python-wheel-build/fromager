@@ -10,7 +10,6 @@ import shutil
 import tempfile
 import typing
 import zipfile
-from email.parser import BytesParser
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
@@ -907,10 +906,8 @@ class Bootstrapper:
             config_settings=pbi.config_settings,
         )
         metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
-        with open(metadata_filename, "rb") as f:
-            p = BytesParser()
-            metadata = p.parse(f, headersonly=True)
-        return Version(metadata["Version"])
+        metadata = dependencies.parse_metadata(metadata_filename)
+        return metadata.version
 
     def _resolve_prebuilt_with_history(
         self,
