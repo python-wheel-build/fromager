@@ -17,6 +17,27 @@ requirement_ctxvar: contextvars.ContextVar[Requirement] = contextvars.ContextVar
 version_ctxvar: contextvars.ContextVar[Version] = contextvars.ContextVar("version")
 
 
+def get_log_prefix() -> str | None:
+    """Get the log prefix based on current context (requirement and version).
+
+    Returns:
+        - "name-version" if both requirement and version are available
+        - "name" if only requirement is available
+        - None if no context is available
+    """
+    try:
+        req = requirement_ctxvar.get()
+    except LookupError:
+        return None
+    else:
+        try:
+            version = version_ctxvar.get()
+        except LookupError:
+            return req.name
+        else:
+            return f"{req.name}-{version}"
+
+
 @contextlib.contextmanager
 def req_ctxvar_context(
     req: Requirement, version: Version | None = None
@@ -53,17 +74,10 @@ class FromagerLogRecord(logging.LogRecord):
 
     def getMessage(self) -> str:  # noqa: N802
         msg = super().getMessage()
-        try:
-            req = requirement_ctxvar.get()
-        except LookupError:
-            return msg
-        else:
-            try:
-                version = version_ctxvar.get()
-            except LookupError:
-                return f"{req.name}: {msg}"
-            else:
-                return f"{req.name}-{version}: {msg}"
+        prefix = get_log_prefix()
+        if prefix:
+            return f"{prefix}: {msg}"
+        return msg
 
 
 class ThreadLogFilter(logging.Filter):
