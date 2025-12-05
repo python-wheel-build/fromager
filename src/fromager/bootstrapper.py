@@ -56,6 +56,47 @@ class SourceBuildResult:
     source_type: SourceType
 
 
+@dataclasses.dataclass
+class BuildFailure:
+    """Tracks a failed build in test mode for reporting.
+
+    Contains only fields needed for failure tracking and JSON serialization.
+    """
+
+    req: Requirement
+    resolved_version: Version | None = None
+    source_url_type: str = "unknown"
+    exception_type: str | None = None
+    exception_message: str | None = None
+
+    @classmethod
+    def from_exception(
+        cls,
+        req: Requirement,
+        resolved_version: Version | None,
+        source_url_type: str,
+        exception: Exception,
+    ) -> BuildFailure:
+        """Create a BuildFailure from an exception."""
+        return cls(
+            req=req,
+            resolved_version=resolved_version,
+            source_url_type=source_url_type,
+            exception_type=exception.__class__.__name__,
+            exception_message=str(exception),
+        )
+
+    def to_dict(self) -> dict[str, typing.Any]:
+        """Convert to JSON-serializable dict."""
+        return {
+            "package": str(self.req),
+            "version": str(self.resolved_version) if self.resolved_version else None,
+            "source_url_type": self.source_url_type,
+            "exception_type": self.exception_type,
+            "exception_message": self.exception_message,
+        }
+
+
 class Bootstrapper:
     def __init__(
         self,
@@ -64,12 +105,19 @@ class Bootstrapper:
         prev_graph: DependencyGraph | None = None,
         cache_wheel_server_url: str | None = None,
         sdist_only: bool = False,
+        test_mode: bool = False,
     ) -> None:
+        if test_mode and sdist_only:
+            raise ValueError(
+                "--test-mode requires full wheel builds; incompatible with --sdist-only"
+            )
+
         self.ctx = ctx
         self.progressbar = progressbar or progress.Progressbar(None)
         self.prev_graph = prev_graph
         self.cache_wheel_server_url = cache_wheel_server_url or ctx.wheel_server_url
         self.sdist_only = sdist_only
+        self.test_mode = test_mode
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -88,6 +136,35 @@ class Bootstrapper:
         self._resolved_requirements: dict[str, tuple[str, Version]] = {}
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
+
+        # Track failed builds in test mode
+        self.failed_builds: list[BuildFailure] = []
+
+    def _record_failure(
+        self,
+        req: Requirement,
+        resolved_version: Version | None,
+        exception: Exception,
+    ) -> None:
+        """Record a build failure for test mode reporting.
+
+        Single point for failure recording, used by all failure paths.
+        """
+        source_url_type = "unknown"
+        if resolved_version:
+            try:
+                source_url_type = str(sources.get_source_type(self.ctx, req))
+            except Exception:
+                pass
+
+        self.failed_builds.append(
+            BuildFailure.from_exception(
+                req=req,
+                resolved_version=resolved_version,
+                source_url_type=source_url_type,
+                exception=exception,
+            )
+        )
 
     def resolve_version(
         self,
@@ -144,7 +221,34 @@ class Bootstrapper:
         logger.debug("is not a build requirement")
         return False
 
-    def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version:
+    def bootstrap(self, req: Requirement, req_type: RequirementType) -> Version | None:
+        """Bootstrap a package and its dependencies.
+
+        In test mode, catches all exceptions, records failures, and continues.
+        In normal mode, raises exceptions immediately (fail-fast).
+
+        Returns:
+            The resolved version on success, None on failure in test mode.
+        """
+        try:
+            return self._bootstrap_impl(req, req_type)
+        except Exception as err:
+            if not self.test_mode:
+                raise
+            logger.error(
+                "test mode: failed to bootstrap %s: %s",
+                req,
+                err,
+                exc_info=True,
+            )
+            # Get cached version if available for better failure reporting
+            cached = self._resolved_requirements.get(str(req))
+            resolved_version = cached[1] if cached else None
+            self._record_failure(req, resolved_version, err)
+            return None
+
+    def _bootstrap_impl(self, req: Requirement, req_type: RequirementType) -> Version:
+        """Internal implementation of bootstrap logic."""
         logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
         constraint = self.ctx.constraints.get_constraint(req.name)
         if constraint:
@@ -185,9 +289,7 @@ class Bootstrapper:
 
         logger.info(f"new {req_type} dependency {req} resolves to {resolved_version}")
 
-        # Build the dependency chain up to the point of this new
-        # requirement using a new list so we can avoid modifying the list
-        # we're given.
+        # Track dependency chain for error messages
         self.why.append((req_type, req, resolved_version))
 
         cached_wheel_filename: pathlib.Path | None = None
@@ -200,7 +302,6 @@ class Bootstrapper:
                 resolved_version=resolved_version,
                 wheel_url=source_url,
             )
-            # Remember that this is a prebuilt wheel, and where we got it.
             build_result = SourceBuildResult(
                 wheel_filename=wheel_filename,
                 sdist_filename=None,
@@ -210,21 +311,36 @@ class Bootstrapper:
                 source_type=SourceType.PREBUILT,
             )
         else:
-            # Look for an existing wheel in caches (3 levels: build, downloads,
-            # cache server) before building from source.
+            # Look for an existing wheel in caches before building
             cached_wheel_filename, unpacked_cached_wheel = self._find_cached_wheel(
                 req, resolved_version
             )
 
             # Build from source (download, prepare, build wheel/sdist)
-            build_result = self._build_from_source(
-                req=req,
-                resolved_version=resolved_version,
-                source_url=source_url,
-                build_sdist_only=build_sdist_only,
-                cached_wheel_filename=cached_wheel_filename,
-                unpacked_cached_wheel=unpacked_cached_wheel,
-            )
+            try:
+                build_result = self._build_from_source(
+                    req=req,
+                    resolved_version=resolved_version,
+                    source_url=source_url,
+                    build_sdist_only=build_sdist_only,
+                    cached_wheel_filename=cached_wheel_filename,
+                    unpacked_cached_wheel=unpacked_cached_wheel,
+                )
+            except Exception as build_error:
+                if not self.test_mode:
+                    raise
+
+                fallback_result = self._handle_test_mode_failure(
+                    req=req,
+                    resolved_version=resolved_version,
+                    req_type=req_type,
+                    build_error=build_error,
+                )
+                if fallback_result is None:
+                    self.why.pop()
+                    return resolved_version
+
+                build_result = fallback_result
 
         hooks.run_post_bootstrap_hooks(
             ctx=self.ctx,
@@ -268,7 +384,7 @@ class Bootstrapper:
                     raise ValueError(f"could not handle {self._explain}") from err
             self.progressbar.update()
 
-        # we are done processing this req, so lets remove it from the why chain
+        # Done processing this req, remove from why chain and clean up
         self.why.pop()
         self.ctx.clean_build_dirs(build_result.sdist_root_dir, build_result.build_env)
         return resolved_version
@@ -604,6 +720,72 @@ class Bootstrapper:
             build_env=build_env,
             source_type=source_type,
         )
+
+    def _handle_test_mode_failure(
+        self,
+        req: Requirement,
+        resolved_version: Version,
+        req_type: RequirementType,
+        build_error: Exception,
+    ) -> SourceBuildResult | None:
+        """Handle build failure in test mode by attempting pre-built fallback.
+
+        Returns:
+            SourceBuildResult if fallback succeeded, None if fallback also failed.
+            Records failure via _record_failure() before returning None.
+        """
+        logger.warning(
+            "test mode: build failed for %s==%s, attempting pre-built fallback",
+            req.name,
+            resolved_version,
+            exc_info=True,
+        )
+
+        try:
+            wheel_url, fallback_version = self._resolve_prebuilt_with_history(
+                req=req,
+                req_type=req_type,
+            )
+
+            if fallback_version != resolved_version:
+                logger.warning(
+                    "test mode: version mismatch for %s - requested %s, fallback %s",
+                    req.name,
+                    resolved_version,
+                    fallback_version,
+                )
+
+            wheel_filename, unpack_dir = self._download_prebuilt(
+                req=req,
+                req_type=req_type,
+                resolved_version=fallback_version,
+                wheel_url=wheel_url,
+            )
+
+            logger.info(
+                "test mode: successfully used pre-built wheel for %s==%s",
+                req.name,
+                fallback_version,
+            )
+
+            return SourceBuildResult(
+                wheel_filename=wheel_filename,
+                sdist_filename=None,
+                unpack_dir=unpack_dir,
+                sdist_root_dir=None,
+                build_env=None,
+                source_type=SourceType.PREBUILT,
+            )
+
+        except Exception as fallback_error:
+            logger.error(
+                "test mode: pre-built fallback also failed for %s: %s",
+                req.name,
+                fallback_error,
+                exc_info=True,
+            )
+            self._record_failure(req, resolved_version, build_error)
+            return None
 
     def _look_for_existing_wheel(
         self,
@@ -1127,3 +1309,43 @@ class Bootstrapper:
             # Requirement and Version instances that can't be
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
+
+    def write_test_mode_report(self, work_dir: pathlib.Path) -> None:
+        """Write test mode failure report to JSON files.
+
+        Generates two JSON files:
+        - test-mode-failures.json: Detailed list of all failures
+        - test-mode-summary.json: Summary statistics
+        """
+        if not self.test_mode:
+            return
+
+        failures_file = work_dir / "test-mode-failures.json"
+        summary_file = work_dir / "test-mode-summary.json"
+
+        # Generate failures report
+        failures_data = {
+            "failures": [build_result.to_dict() for build_result in self.failed_builds]
+        }
+
+        with open(failures_file, "w") as f:
+            json.dump(failures_data, f, indent=2)
+        logger.info("test mode: wrote failure details to %s", failures_file)
+
+        # Generate summary report
+        exception_counts: dict[str, int] = {}
+        for build_result in self.failed_builds:
+            exception_type = build_result.exception_type or "Unknown"
+            exception_counts[exception_type] = (
+                exception_counts.get(exception_type, 0) + 1
+            )
+
+        summary_data = {
+            "total_packages": len(self._build_stack),
+            "total_failures": len(self.failed_builds),
+            "failure_breakdown": exception_counts,
+        }
+
+        with open(summary_file, "w") as f:
+            json.dump(summary_data, f, indent=2)
+        logger.info("test mode: wrote summary to %s", summary_file)
