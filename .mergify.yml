@@ -1,4 +1,12 @@
 pull_request_rules:
+  - name: Automatic rebase to keep PRs up-to-date
+    conditions:
+      - "-draft"
+      - "-conflict"
+      - "-closed"
+      - "#approved-reviews-by>=1"
+    actions:
+      update:
   - name: Add CI label
     conditions:
       - or:
