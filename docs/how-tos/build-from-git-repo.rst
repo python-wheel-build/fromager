@@ -14,6 +14,15 @@ you can do the following:
 This will clone the ``stevedore`` repository and build the package from the
 local copy.
 
+You can also use the ``bootstrap-parallel`` command for faster builds:
+
+.. code-block:: console
+
+   $ fromager bootstrap-parallel stevedore @ git+https://github.com/openstack/stevedore.git
+
+This will perform the same operation but build wheels in parallel after the
+bootstrap phase completes.
+
 Building from a specific version
 --------------------------------
 
@@ -24,8 +33,14 @@ the ``@`` syntax to specify the version.
 
    $ fromager bootstrap stevedore @ git+https://github.com/openstack/stevedore.git@5.2.0
 
-This will clone the ``stevedore`` repository at the tagg ``5.2.0`` and build the
+This will clone the ``stevedore`` repository at the tag ``5.2.0`` and build the
 package from the local copy.
+
+Or with parallel builds:
+
+.. code-block:: console
+
+   $ fromager bootstrap-parallel stevedore @ git+https://github.com/openstack/stevedore.git@5.2.0
 
 .. important::
 

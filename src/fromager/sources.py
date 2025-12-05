@@ -8,6 +8,7 @@ import shutil
 import tarfile
 import typing
 import zipfile
+from urllib.parse import urlparse
 
 import resolvelib
 from packaging.requirements import Requirement
@@ -76,11 +77,32 @@ def download_source(
     elif req.url:
         download_path = ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
         download_path.mkdir(parents=True, exist_ok=True)
+
+        # Parse ref from URL if it's in the form repo@ref
+        url_to_clone = req.url
+        git_ref: str | None = None
+
+        # Remove git+ prefix for parsing
+        parsing_url = url_to_clone
+        if parsing_url.startswith("git+"):
+            parsing_url = parsing_url[len("git+") :]
+
+        parsed_url = urlparse(parsing_url)
+        if "@" in parsed_url.path:
+            # Extract the ref from the path (e.g., /path/to/repo.git@5.2.0 -> @5.2.0)
+            new_path, _, git_ref = parsed_url.path.rpartition("@")
+            # Reconstruct URL without the @ref part
+            url_to_clone = parsed_url._replace(path=new_path).geturl()
+            # Add back git+ prefix if it was present
+            if req.url.startswith("git+"):
+                url_to_clone = f"git+{url_to_clone}"
+
         download_git_source(
             ctx=ctx,
             req=req,
-            url_to_clone=req.url,
+            url_to_clone=url_to_clone,
             destination_dir=download_path,
+            ref=git_ref,
         )
         return download_path
 

@@ -661,11 +661,20 @@ def build_parallel(
                         logger.info("requires exclusive build")
                     logger.info("ready to build")
 
+                # Use original top-level requirement only if it has a URL (git, etc.),
+                # otherwise use the resolved version to avoid building wrong versions.
+                top_level_req = graph.get_top_level_requirement(node)
+                if top_level_req and top_level_req.url:
+                    req = top_level_req
+                    logger.debug("using top-level requirement with URL: %s", req)
+                else:
+                    req = Requirement(f"{node.canonicalized_name}=={node.version}")
+
                 future = executor.submit(
                     _build_parallel,
                     wkctx=wkctx,
                     resolved_version=node.version,
-                    req=node.requirement,
+                    req=req,
                     source_download_url=node.download_url,
                     force=force,
                     cache_wheel_server_url=cache_wheel_server_url,
