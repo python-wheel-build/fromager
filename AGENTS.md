@@ -1,138 +1,216 @@
-# Contributor Quickstart Guide
+# AI Agent Guide for Fromager
 
-## Commit Message Guidelines
+> **Note**: This file is also available as `CLAUDE.md` (symlink) for Claude Code CLI users.
+>
+> **IMPORTANT**: Before making any code changes, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md) for comprehensive coding standards and design patterns. This file provides essential quick reference only.
 
-### Objectives
+## When to Read CONTRIBUTING.md
 
-- Help the user craft commit messages that follow best practices
-- Use [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/) format unless otherwise specified
-- Clarify unclear or incomplete input with targeted questions
-- Ensure messages are concise, informative, and use imperative mood
+**Always read CONTRIBUTING.md before:**
 
-### Style Guidelines
+- Writing new functions (for type annotation standards)
+- Adding imports (for import organization rules)
+- Creating tests (for testing patterns)
+- Making commits (for commit message format)
+- Adding error handling or logging
 
-- Use the format: `<type>(<scope>): <short summary>` for the subject line
-- Keep the subject line ≤ 72 characters
-- Use a blank line before the body
-- The body explains what and why (not how)
-- Use a footer for metadata (e.g., `Closes: #123`, `BREAKING CHANGE:`)
+## Essential Rules (MUST FOLLOW)
 
-### Commit Types
+### Do
 
-- **feat**: a new feature
-- **fix**: a bug fix
-- **docs**: documentation only changes
-- **style**: formatting, missing semi colons, etc
-- **refactor**: code change that neither fixes a bug nor adds a feature
-- **perf**: performance improvements
-- **test**: adding missing tests
-- **chore**: changes to the build process or auxiliary tools
+- **Type annotations REQUIRED** on ALL functions including tests. Use syntax compatible with Python 3.11+
+- Use `X | None` not `Optional[X]`
+- Add docstrings on all public functions and classes
+- Use file-scoped commands for fast feedback (see below)
+- Follow existing patterns - search codebase for similar code
+- Chain exceptions: `raise ValueError(...) from err`
+- Use `req_ctxvar_context()` for per-requirement logging
+- Run `hatch run lint:fix` to format code (handles line length, whitespace, etc.)
 
-### Examples
+### Don't
 
-#### Good commit messages
+- Don't use `Optional[X]` syntax (use `X | None`)
+- Don't omit type annotations or return types
+- Don't run full test suite for small changes (use file-scoped)
+- Don't create temporary helper scripts or workarounds
+- Don't commit without running quality checks
+- Don't make large speculative changes without asking
+- Don't update git config or force push to main
+- Don't use bare `except:` - always specify exception types
+
+## Commands (IMPORTANT: Use File-Scoped First)
+
+### File-Scoped Commands (PREFER THESE)
+
+```bash
+# Type check single file
+hatch run mypy:check <filepath>
+
+# Format single file
+hatch run lint:fix <filepath>
+
+# Test specific file
+hatch run test:test tests/test_<module>.py
+
+# Test specific function
+hatch run test:test tests/test_<module>.py::test_function_name
+
+# Debug test with verbose output
+hatch run test:test <filepath> --log-level DEBUG
+```
+
+### Project-Wide Commands (ASK BEFORE RUNNING)
+
+```bash
+hatch run lint:fix      # Format all code
+hatch run test:test     # Full test suite (slow!)
+hatch run mypy:check    # Type check everything
+hatch run lint:check    # Final lint check
+```
+
+## Safety and Permissions
+
+### Allowed Without Asking
+
+- Read files, search codebase
+- Run file-scoped linting, type checking, tests
+- Edit existing files following established patterns
+- Create test files
+
+### Ask First
+
+- Installing/updating packages in pyproject.toml
+- Git commit or push operations
+- Deleting files or entire modules
+- Running full test suite
+- Creating new modules or major refactors
+- Making breaking changes
+
+## Project Structure
+
+- `src/fromager/` - Main package code
+- `tests/` - Unit tests (mirror `src/` structure)
+- `e2e/` - End-to-end integration tests
+- `docs/` - Sphinx documentation
+
+### Reference Files for Patterns
+
+**Before writing code, look at these examples:**
+
+- Type annotations: `src/fromager/context.py`
+- Pydantic models: `src/fromager/packagesettings.py`
+- Logging with context: `src/fromager/resolver.py`
+- Error handling: `src/fromager/commands.py`
+- Testing patterns: `tests/test_context.py`
+
+## Code Patterns
+
+**Import Guidelines:**
+
+- **PEP 8: imports should be at the top**: All import statements must be placed at the top of the file, after module docstrings and before other code
+- **No local imports**: Do not place import statements inside functions, methods, or conditional blocks
+
+### Testing Pattern
+
+```python
+def test_behavior(tmp_path: pathlib.Path) -> None:
+    """Verify expected behavior."""
+    # Arrange
+    config = tmp_path / "config.txt"
+    config.write_text("key=value\n")
+    # Act
+    result = load_config(config)
+    # Assert
+    assert result["key"] == "value"
+```
+
+## Commit Message Format (REQUIRED)
+
+Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format:
 
 ```text
-feat(api): add user authentication endpoint
+<type>(<scope>): <short summary>
 
-Add JWT-based authentication system for secure API access.
-Includes token generation, validation, and refresh functionality.
+<body explaining what + why>
+
+<footer: Closes: #123>
+```
+
+### Types
+
+- **feat**: new functionality
+- **fix**: bug fix
+- **docs**: documentation only
+- **test**: tests only
+- **refactor**: behavioral no-op refactor
+- **perf**: performance improvement
+- **chore**: tooling or dependency change
+
+### Good Examples
+
+```text
+feat(resolver): add exponential backoff for HTTP retries
+
+Improves resilience when PyPI is under load by adding jittered backoff.
 
 Closes: #123
 ```
 
 ```text
-fix(parser): handle empty input gracefully
+fix(constraints): handle missing constraint file gracefully
 
-Previously, empty input would cause a null pointer exception.
-Now returns an appropriate error message.
+Validate file existence and emit helpful message instead of crashing.
 ```
+
+### AI Agent Attribution
+
+When AI agents create or significantly modify code, add attribution using `Co-Authored-By`:
 
 ```text
-docs: update installation instructions
+feat(resolver): add exponential backoff for HTTP retries
 
-Add missing dependency requirements and clarify setup steps
-for new contributors.
+Improves resilience when PyPI is under load by adding jittered backoff.
+
+Co-Authored-By: Claude <claude@anthropic.com>
+Closes: #123
 ```
 
-#### Poor commit messages to avoid
+### Bad Examples (NEVER DO THIS)
 
 - `fix bug` (too vague)
 - `updated files` (not descriptive)
 - `WIP` (not informative)
 - `fixed the thing that was broken` (not professional)
 
-### Best Practices
+## Workflow for Complex Tasks
 
-- Write in imperative mood (e.g., "add feature" not "added feature")
-- Don't end the subject line with a period
-- Use the body to explain the motivation for the change
-- Reference issues and pull requests where relevant
-- Use `BREAKING CHANGE:` in footer for breaking changes
+1. **Search codebase** for similar patterns first
+2. **Create a checklist** in a markdown file for tracking
+3. **Work through items systematically** one at a time
+4. **Run file-scoped tests** after each change
+5. **Check off completed items** before moving to next
+6. **Run full quality checks** only at the end
 
-## Code Quality Guidelines
+## When Uncertain
 
-### Formatting Standards
+- Ask clarifying questions rather than making assumptions
+- Search the codebase for similar patterns before inventing new ones
+- Propose a specific plan before making large changes
+- Reference [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidance
+- **DO NOT** make large speculative changes without confirmation
 
-- **No trailing whitespace**: Ensure no extra spaces at the end of lines
-- **No whitespace on blank lines**: Empty lines should contain no spaces or tabs
-- **End files with a single newline**: Each file should end with a single newline character (`\n`). This is a widely adopted convention recommended by PEP 8, Python's style guide. Many Unix-style text editors and tools expect files to end with a newline character and may not handle files without one properly.
-- Follow the project's existing code style and indentation patterns
-- Use consistent line endings (LF for this project)
+## Quality Checklist Before Finishing
 
-### Type Annotations
+- [ ] Read CONTRIBUTING.md for relevant standards
+- [ ] Type annotations on all functions
+- [ ] Docstrings on public APIs
+- [ ] Tests cover the change
+- [ ] File-scoped tests pass
+- [ ] No trailing whitespace
+- [ ] File ends with single newline
+- [ ] Conventional Commit format used
+- [ ] Full quality checks pass: `hatch run lint:fix && hatch run test:test && hatch run mypy:check && hatch run lint:check`
 
-- **Always add type annotations to all functions**: All functions must include type annotations for parameters and return values
-- This applies to regular functions, test functions, class methods, and async functions
-- Existing code will be updated gradually; new code must be fully typed
-- Follow the existing pattern in the codebase for consistency
-- Examples:
+---
 
-  ```python
-  def calculate_total(items: list[int]) -> int:
-      """Calculate sum of items."""
-      return sum(items)
-
-  def test_my_feature() -> None:
-      """Test that my feature works correctly."""
-      assert my_feature() == expected_result
-  ```
-
-### Code Comments
-
-- **Avoid unnecessary comments**: Write self-documenting code with clear variable names, function names, and structure
-- **Only add comments when absolutely necessary**: Comments should be reserved for must-have cases such as:
-  - Explaining complex algorithms or non-obvious logic
-  - Documenting "why" decisions were made (not "what" the code does)
-  - Warning about edge cases or subtle bugs
-  - Explaining workarounds for external library issues
-- **Do not add comments that simply restate what the code does**: The code itself should be clear enough
-- **Prefer docstrings over comments**: Use docstrings for functions, classes, and modules to document their purpose and usage
-
-### Testing After Code Changes
-
-After making code changes, run the following tests within a Python virtual environment to ensure code quality:
-
-#### Run all unit tests
-
-```bash
-hatch run test:test
-```
-
-#### Run lint checks
-
-```bash
-hatch run lint:check
-```
-
-#### Run mypy type checking
-
-```bash
-hatch run mypy:check
-```
-
-### Before Committing
-
-- Review your changes for trailing whitespace: `git diff | grep -E "^\+.*[[:space:]]$"`
-- Run tests to ensure all changes work correctly
-- Check for linting errors if the project uses linters
+**See [CONTRIBUTING.md](CONTRIBUTING.md) for comprehensive standards, detailed examples, and design patterns used in Fromager.**
