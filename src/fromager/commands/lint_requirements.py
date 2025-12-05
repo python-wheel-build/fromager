@@ -65,12 +65,12 @@ def lint_requirements(
                 marker_key = str(requirement.marker) if requirement.marker else ""
                 unique_key = (requirement.name, marker_key)
 
-                if unique_key in unique_entries:
-                    raise InvalidRequirement(
-                        f"Duplicate entry, first found: {unique_entries[unique_key]}"
-                    )
-                unique_entries[unique_key] = requirement
                 if is_constraints:
+                    if unique_key in unique_entries:
+                        raise InvalidRequirement(
+                            f"Duplicate entry, first found: {unique_entries[unique_key]}"
+                        )
+                    unique_entries[unique_key] = requirement
                     if requirement.extras:
                         raise InvalidRequirement(
                             f"{requirement.name}: Constraints files cannot contain extra dependencies"
