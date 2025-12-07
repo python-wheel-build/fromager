@@ -7,6 +7,8 @@ import sys
 import typing
 from io import TextIOWrapper
 
+from . import log
+
 logger = logging.getLogger(__name__)
 
 HERE = pathlib.Path(__file__).absolute().parent
@@ -98,8 +100,33 @@ def run(
             stdin=stdin,
         )
         output = completed.stdout.decode("utf-8") if completed.stdout else ""
+
+    # Add package prefix to continuation lines for greppability
+    prefix = log.get_log_prefix()
+    formatted_output = None
+
+    if output:
+        if prefix:
+            # FromagerLogRecord handles first line, we handle continuation lines
+            formatted_output = output.rstrip("\n").replace("\n", f"\n{prefix}: ")
+        else:
+            formatted_output = output
+
     if completed.returncode != 0:
-        logger.error("%s failed with %s", cmd, output)
+        # Prefix first line for error output (embedded in larger message)
+        if formatted_output and prefix:
+            output_to_log = f"\n{prefix}: {formatted_output}"
+        elif formatted_output:
+            output_to_log = f"\n{formatted_output}"
+        else:
+            output_to_log = ""
+        logger.error(
+            "command failed with exit code %d: %s%s",
+            completed.returncode,
+            shlex.join(cmd),
+            output_to_log,
+        )
+
         err_type = subprocess.CalledProcessError
         if network_isolation:
             # Look for a few common messages that mean there is a network
@@ -113,5 +140,9 @@ def run(
                 if substr in output:
                     err_type = NetworkIsolationError
         raise err_type(completed.returncode, cmd, output)
-    logger.debug("output: %s", output)
+
+    # Log command output for debugging
+    if formatted_output:
+        logger.debug(formatted_output)
+
     return output
