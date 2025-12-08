@@ -275,7 +275,7 @@ def invoke_main() -> None:
             err,
             exc_info=True,
         )  # log the full traceback details to the debug log file, if any
-        logger.error(f"ERROR: {_format_exception(err)}")
+        logger.error(_format_exception(err))
         if _DEBUG:
             raise
         sys.exit(1)
