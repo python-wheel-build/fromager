@@ -3,6 +3,7 @@ import dataclasses
 import datetime
 import json
 import logging
+import os
 import pathlib
 import sys
 import threading
@@ -560,6 +561,55 @@ def _nodes_to_string(nodes: typing.Iterable[dependency_graph.DependencyNode]) ->
     return ", ".join(sorted(node.key for node in nodes))
 
 
+def _calculate_optimal_max_workers(
+    graph: dependency_graph.DependencyGraph,
+    wkctx: context.WorkContext,
+    user_max_workers: int | None,
+) -> int:
+    """Calculate optimal max_workers based on graph parallelism.
+
+    Analyzes the dependency graph to determine the maximum number of packages
+    that can be built in parallel at any point. Uses this to optimize the
+    number of worker threads, avoiding wasteful allocation of idle workers.
+
+    Args:
+        graph: The dependency graph to analyze.
+        wkctx: The work context for topology calculation.
+        user_max_workers: User-specified max_workers, or None for automatic.
+
+    Returns:
+        The optimal number of workers to use.
+    """
+    # Analyze the topology to find maximum parallelism available
+    topo_for_analysis = graph.get_build_topology(context=wkctx)
+    max_parallelism = max(
+        (len(batch) for batch in topo_for_analysis.static_batches()), default=1
+    )
+
+    if user_max_workers is None:
+        # Use the smaller of CPU-based default and graph-based maximum
+        cpu_default = min(32, (os.cpu_count() or 1) + 4)
+        optimal_workers = min(cpu_default, max_parallelism)
+        logger.info(
+            "graph allows max %i parallel builds, using %i workers (cpu default: %i)",
+            max_parallelism,
+            optimal_workers,
+            cpu_default,
+        )
+        return optimal_workers
+    else:
+        # User specified max_workers, log if it exceeds graph parallelism
+        if user_max_workers > max_parallelism:
+            logger.info(
+                "user specified %i workers, but graph only allows %i parallel builds",
+                user_max_workers,
+                max_parallelism,
+            )
+        else:
+            logger.info("using user-specified %i workers", user_max_workers)
+        return user_max_workers
+
+
 @click.command()
 @click.option(
     "-f",
@@ -633,13 +683,18 @@ def build_parallel(
         _nodes_to_string(topo.dependency_nodes),
     )
 
+    # Calculate optimal max_workers based on graph parallelism
+    optimal_max_workers = _calculate_optimal_max_workers(graph, wkctx, max_workers)
+
     future2node: dict[BuildSequenceEntryFuture, dependency_graph.DependencyNode] = {}
     built_entries: list[BuildSequenceEntry] = []
     rounds: int = 0
 
     with (
         progress.progress_context(total=len(graph)) as progressbar,
-        concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor,
+        concurrent.futures.ThreadPoolExecutor(
+            max_workers=optimal_max_workers
+        ) as executor,
     ):
 
         def update_progressbar_cb(future: concurrent.futures.Future) -> None:
