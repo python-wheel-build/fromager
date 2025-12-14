@@ -1,4 +1,5 @@
 import time
+import typing
 from unittest import mock
 from unittest.mock import Mock, patch
 
@@ -56,7 +57,7 @@ class TestRetryHTTPAdapter:
     @patch("fromager.http_retry.RetryHTTPAdapter._handle_github_rate_limit")
     @patch("requests.adapters.HTTPAdapter.send")
     def test_send_successful_response(
-        self, mock_super_send, mock_github_handler
+        self, mock_super_send: typing.Any, mock_github_handler: typing.Any
     ) -> None:
         """Test successful HTTP request without retries."""
         adapter = http_retry.RetryHTTPAdapter()
@@ -75,7 +76,9 @@ class TestRetryHTTPAdapter:
 
     @patch("time.sleep")
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_retries_on_server_errors(self, mock_super_send, mock_sleep) -> None:
+    def test_send_retries_on_server_errors(
+        self, mock_super_send: typing.Any, mock_sleep: typing.Any
+    ) -> None:
         """Test retry behavior on server error status codes."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -96,7 +99,9 @@ class TestRetryHTTPAdapter:
 
     @patch("time.sleep")
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_github_rate_limit_handling(self, mock_super_send, mock_sleep) -> None:
+    def test_send_github_rate_limit_handling(
+        self, mock_super_send: typing.Any, mock_sleep: typing.Any
+    ) -> None:
         """Test GitHub API rate limit handling."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -122,7 +127,7 @@ class TestRetryHTTPAdapter:
     @patch("time.sleep")
     @patch("requests.adapters.HTTPAdapter.send")
     def test_send_retries_on_connection_error(
-        self, mock_super_send, mock_sleep
+        self, mock_super_send: typing.Any, mock_sleep: typing.Any
     ) -> None:
         """Test retry behavior on connection errors."""
         adapter = http_retry.RetryHTTPAdapter()
@@ -145,7 +150,9 @@ class TestRetryHTTPAdapter:
         mock_sleep.assert_called_once()
 
     @patch("requests.adapters.HTTPAdapter.send")
-    def test_send_exhausts_retries_and_raises(self, mock_super_send) -> None:
+    def test_send_exhausts_retries_and_raises(
+        self, mock_super_send: typing.Any
+    ) -> None:
         """Test that retries are exhausted and exception is raised."""
         adapter = http_retry.RetryHTTPAdapter(retry_config={"total": 1})
         request = Mock(spec=requests.PreparedRequest)
@@ -389,7 +396,9 @@ class TestIntegration:
 
     @patch("time.sleep")
     @patch("random.uniform", return_value=0.5)
-    def test_backoff_calculation(self, mock_random, mock_sleep) -> None:
+    def test_backoff_calculation(
+        self, mock_random: typing.Any, mock_sleep: typing.Any
+    ) -> None:
         """Test backoff time calculation with jitter."""
         adapter = http_retry.RetryHTTPAdapter()
         request = Mock(spec=requests.PreparedRequest)
@@ -423,7 +432,9 @@ def test_retryable_exceptions_tuple_is_not_empty() -> None:
 
 @patch("time.sleep")
 @patch("random.uniform", return_value=0.1)
-def test_retry_decorator_backoff_timing(mock_random, mock_sleep) -> None:
+def test_retry_decorator_backoff_timing(
+    mock_random: typing.Any, mock_sleep: typing.Any
+) -> None:
     """Test retry decorator backoff timing calculation."""
     call_count = 0
 
@@ -448,7 +459,7 @@ def test_retry_decorator_backoff_timing(mock_random, mock_sleep) -> None:
 
 
 @patch("fromager.http_retry.logger")
-def test_adapter_logging_on_retry(mock_logger) -> None:
+def test_adapter_logging_on_retry(mock_logger: typing.Any) -> None:
     """Test that appropriate logging occurs during retries."""
     adapter = http_retry.RetryHTTPAdapter()
     request = Mock(spec=requests.PreparedRequest)
@@ -466,7 +477,7 @@ def test_adapter_logging_on_retry(mock_logger) -> None:
 
 
 @patch("fromager.http_retry.logger")
-def test_adapter_logging_on_github_rate_limit(mock_logger) -> None:
+def test_adapter_logging_on_github_rate_limit(mock_logger: typing.Any) -> None:
     """Test logging during GitHub rate limit handling."""
     adapter = http_retry.RetryHTTPAdapter()
     response = Mock(spec=requests.Response)

@@ -211,9 +211,9 @@ def make_app(basedir: pathlib.Path) -> Starlette:
 def _run_background_thread(
     loop: asyncio.AbstractEventLoop,
     app: Starlette,
-    host="127.0.0.1",
-    port=0,
-    **kwargs,
+    host: str = "127.0.0.1",
+    port: int = 0,
+    **kwargs: typing.Any,
 ) -> tuple[uvicorn.Server, socket.socket, threading.Thread]:
     """Run uvicorn server in a daemon thread"""
     config = uvicorn.Config(app=app, host=host, port=port, **kwargs)

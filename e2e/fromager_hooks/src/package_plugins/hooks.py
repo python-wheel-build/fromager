@@ -15,7 +15,7 @@ def after_build_wheel(
     dist_version: str,
     sdist_filename: pathlib.Path,
     wheel_filename: pathlib.Path,
-):
+) -> None:
     logger.info(
         f"running post build hook in {__name__} for {sdist_filename} and {wheel_filename}"
     )
@@ -31,7 +31,7 @@ def after_bootstrap(
     dist_version: str,
     sdist_filename: pathlib.Path | None,
     wheel_filename: pathlib.Path | None,
-):
+) -> None:
     logger.info(
         f"running post bootstrap hook in {__name__} for {sdist_filename} and {wheel_filename}"
     )
@@ -46,7 +46,7 @@ def after_prebuilt_wheel(
     dist_name: str,
     dist_version: str,
     wheel_filename: pathlib.Path,
-):
+) -> None:
     logger.info(
         f"running post build hook in {__name__} for {wheel_filename}"
     )

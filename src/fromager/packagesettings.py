@@ -544,12 +544,14 @@ class PackageSettings(pydantic.BaseModel):
     def serialize(
         self,
         mode: str = "python",
-        exclude_defaults=True,
-        exclude_unset=True,
-        exclude=frozenset({"name", "has_config"}),
-        **kwargs,
+        exclude_defaults: bool = True,
+        exclude_unset: bool = True,
+        exclude: typing.Any = None,
+        **kwargs: typing.Any,
     ) -> dict[str, typing.Any]:
         """Serialize package configuration"""
+        if exclude is None:
+            exclude = {"name", "has_config"}
         return self.model_dump(
             mode=mode,
             # exclude defaults
@@ -986,7 +988,7 @@ class PackageBuildInfo:
         """Get the variant configuration for the current package"""
         return self._ps.variants
 
-    def serialize(self, **kwargs) -> dict[str, typing.Any]:
+    def serialize(self, **kwargs: typing.Any) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)
 
 

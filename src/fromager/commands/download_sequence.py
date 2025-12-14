@@ -61,7 +61,7 @@ def download_sequence(
     with read.open_file_or_url(build_order_file) as f:
         build_order = json.load(f)
 
-    def download_one(entry: dict[str, typing.Any]):
+    def download_one(entry: dict[str, typing.Any]) -> None:
         req = Requirement(f"{entry['dist']}=={entry['version']}")
         token = requirement_ctxvar.set(req)
 

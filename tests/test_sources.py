@@ -1,4 +1,5 @@
 import pathlib
+import typing
 from unittest.mock import Mock, patch
 
 import pytest
@@ -9,7 +10,7 @@ from fromager import context, packagesettings, resolver, sources
 
 
 @patch("fromager.sources.download_url")
-def test_invalid_tarfile(mock_download_url, tmp_path: pathlib.Path) -> None:
+def test_invalid_tarfile(mock_download_url: typing.Any, tmp_path: pathlib.Path) -> None:
     mock_download_url.return_value = pathlib.Path(tmp_path / "test" / "fake_wheel.txt")
     fake_url = "https://www.thisisafakeurl.com"
     fake_dir = tmp_path / "test"
@@ -93,7 +94,7 @@ def test_default_download_source_with_predefined_resolve_dist(
 
 @patch("fromager.sources.default_resolve_source")
 def test_invalid_version(
-    mock_default_resolve_source, tmp_context: context.WorkContext
+    mock_default_resolve_source: typing.Any, tmp_context: context.WorkContext
 ) -> None:
     req = Requirement("fake==1.0")
     sdist_server_url = resolver.PYPI_SERVER_URL

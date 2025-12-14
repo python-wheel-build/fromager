@@ -275,7 +275,7 @@ class DependencyGraph:
             visited.add(node.key)
         return raw_graph
 
-    def serialize(self, file_handle: typing.TextIO):
+    def serialize(self, file_handle: typing.TextIO) -> None:
         raw_graph = self._to_dict()
         json.dump(raw_graph, file_handle, indent=2, default=str)
 
@@ -286,7 +286,7 @@ class DependencyGraph:
         download_url: str,
         pre_built: bool,
         constraint: Requirement | None,
-    ):
+    ) -> DependencyNode:
         new_node = DependencyNode(
             canonicalized_name=req_name,
             version=version,

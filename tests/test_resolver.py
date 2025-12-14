@@ -135,7 +135,7 @@ def test_provider_choose_wheel() -> None:
         assert str(candidate.version) == "1.3.2"
 
 
-def test_provider_cache_key_pypi(pypi_hydra_resolver) -> None:
+def test_provider_cache_key_pypi(pypi_hydra_resolver: typing.Any) -> None:
     req = Requirement("hydra-core<1.3")
 
     # fill the cache
@@ -157,14 +157,14 @@ def test_provider_cache_key_pypi(pypi_hydra_resolver) -> None:
     assert len(req_cache) == 7
 
 
-def test_provider_cache_key_gitlab(gitlab_decile_resolver) -> None:
+def test_provider_cache_key_gitlab(gitlab_decile_resolver: typing.Any) -> None:
     provider = gitlab_decile_resolver.provider
     assert (
         provider.cache_key == "https://gitlab.com/mirrors/github/decile-team/submodlib"
     )
 
 
-def test_provider_cache_key_github(github_fromager_resolver) -> None:
+def test_provider_cache_key_github(github_fromager_resolver: typing.Any) -> None:
     provider = github_fromager_resolver.provider
     assert provider.cache_key == "python-wheel-build/fromager"
 
@@ -1039,7 +1039,7 @@ def test_pep592_support_constraint_mismatch() -> None:
         ),
     ],
 )
-def test_extract_filename_from_url(url, filename) -> None:
+def test_extract_filename_from_url(url: str, filename: str) -> None:
     result = resolver.extract_filename_from_url(url)
     assert result == filename
 

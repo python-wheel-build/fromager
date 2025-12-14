@@ -1015,7 +1015,9 @@ class Bootstrapper:
             logger.debug(f"could not resolve {req} from {version_source}: {err}")
             return None
 
-    def _create_unpack_dir(self, req: Requirement, resolved_version: Version):
+    def _create_unpack_dir(
+        self, req: Requirement, resolved_version: Version
+    ) -> pathlib.Path:
         unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
         unpack_dir.mkdir(parents=True, exist_ok=True)
         return unpack_dir

@@ -133,7 +133,7 @@ def test_external_command_output_prefix(caplog: pytest.LogCaptureFixture) -> Non
         logging.setLogRecordFactory(old_factory)
 
 
-def test_external_commands_error_includes_package_name(caplog) -> None:
+def test_external_commands_error_includes_package_name(caplog: typing.Any) -> None:
     """Test that package name is included in error logs when context var is set"""
     logging.setLogRecordFactory(log.FromagerLogRecord)
 

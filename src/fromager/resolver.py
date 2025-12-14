@@ -754,7 +754,7 @@ class GenericProvider(BaseProvider):
     def cache_key(self) -> str:
         raise NotImplementedError("GenericProvider does not implement caching")
 
-    def find_candidates(self, identifier) -> Candidates:
+    def find_candidates(self, identifier: typing.Any) -> Candidates:
         candidates: list[Candidate] = []
         version: Version | None
         for item in self._version_source(identifier):
