@@ -546,19 +546,17 @@ class PackageSettings(pydantic.BaseModel):
         mode: str = "python",
         exclude_defaults: bool = True,
         exclude_unset: bool = True,
-        exclude: typing.Any = None,
+        exclude: set[str] | frozenset[str] = frozenset({"name", "has_config"}),
         **kwargs: typing.Any,
     ) -> dict[str, typing.Any]:
         """Serialize package configuration"""
-        if exclude is None:
-            exclude = {"name", "has_config"}
         return self.model_dump(
             mode=mode,
             # exclude defaults
             exclude_defaults=exclude_defaults,
             exclude_unset=exclude_unset,
             # name and has_config are not serialized
-            exclude=exclude,
+            exclude=set(exclude),
             **kwargs,
         )
 
