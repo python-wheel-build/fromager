@@ -36,6 +36,7 @@ those special cases directly into fromager.
    http-retry.md
    config-reference.rst
    cli.rst
+   glossary.rst
    develop.md
 
 What's with the name?
