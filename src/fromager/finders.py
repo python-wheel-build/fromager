@@ -50,7 +50,7 @@ def find_sdist(
     )
 
     if sdist_file_name:
-        sdist_file = downloads_dir / sdist_file_name
+        sdist_file: pathlib.Path = downloads_dir / sdist_file_name
         if sdist_file.exists():
             return sdist_file
 
@@ -148,7 +148,7 @@ def find_source_dir(
         source_dir_name = overrides.invoke(
             sdir_name_func, req=req, dist_version=dist_version
         )
-        source_dir = work_dir / source_dir_name
+        source_dir: pathlib.Path = work_dir / source_dir_name
         if source_dir.exists():
             return source_dir
         raise ValueError(f"looked for {source_dir} and did not find")

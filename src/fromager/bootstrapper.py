@@ -292,7 +292,7 @@ class Bootstrapper:
             self.ctx, self.ctx.sdists_builds, req, str(resolved_version)
         )
         if not find_sdist_result:
-            sdist_filename = sources.build_sdist(
+            sdist_filename: pathlib.Path = sources.build_sdist(
                 ctx=self.ctx,
                 req=req,
                 version=resolved_version,
