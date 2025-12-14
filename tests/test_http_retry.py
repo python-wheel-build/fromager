@@ -243,7 +243,7 @@ class TestRetryOnExceptionDecorator:
         """Test decorator when function succeeds on first attempt."""
 
         @http_retry.retry_on_exception(max_attempts=3)
-        def successful_function():
+        def successful_function() -> str:
             return "success"
 
         result = successful_function()
@@ -254,7 +254,7 @@ class TestRetryOnExceptionDecorator:
         call_count = 0
 
         @http_retry.retry_on_exception(max_attempts=3, backoff_factor=0.01)
-        def failing_then_succeeding_function():
+        def failing_then_succeeding_function() -> str:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -270,7 +270,7 @@ class TestRetryOnExceptionDecorator:
         """Test decorator when all retry attempts are exhausted."""
 
         @http_retry.retry_on_exception(max_attempts=2, backoff_factor=0.01)
-        def always_failing_function():
+        def always_failing_function() -> None:
             raise ConnectionError("Persistent failure")
 
         with patch("time.sleep"):
@@ -281,7 +281,7 @@ class TestRetryOnExceptionDecorator:
         """Test decorator with non-retryable exception."""
 
         @http_retry.retry_on_exception(exceptions=(ConnectionError,), max_attempts=3)
-        def function_with_non_retryable_exception():
+        def function_with_non_retryable_exception() -> None:
             raise ValueError("Non-retryable error")
 
         with pytest.raises(ValueError):
@@ -293,7 +293,7 @@ class TestRetryOnExceptionDecorator:
         @http_retry.retry_on_exception(
             exceptions=(ValueError, TypeError), max_attempts=2, backoff_factor=0.01
         )
-        def function_with_custom_exceptions():
+        def function_with_custom_exceptions() -> None:
             raise ValueError("Custom retryable error")
 
         with patch("time.sleep"):
@@ -304,7 +304,9 @@ class TestRetryOnExceptionDecorator:
         """Test decorator preserves function arguments."""
 
         @http_retry.retry_on_exception(max_attempts=2)
-        def function_with_args(arg1, arg2, kwarg1=None):
+        def function_with_args(
+            arg1: typing.Any, arg2: typing.Any, kwarg1: typing.Any = None
+        ) -> str:
             return f"{arg1}-{arg2}-{kwarg1}"
 
         result = function_with_args("a", "b", kwarg1="c")
@@ -439,7 +441,7 @@ def test_retry_decorator_backoff_timing(
     call_count = 0
 
     @http_retry.retry_on_exception(max_attempts=3, backoff_factor=2.0, max_backoff=10.0)
-    def failing_function():
+    def failing_function() -> str:
         nonlocal call_count
         call_count += 1
         if call_count < 3:

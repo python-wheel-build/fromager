@@ -131,7 +131,7 @@ class Annotations(Mapping):
     def __len__(self) -> int:
         return len(self._mapping)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self._mapping)
 
     def getbool(self, key: str) -> bool:
@@ -231,7 +231,7 @@ class DownloadSource(pydantic.BaseModel):
 
     @pydantic.field_validator("destination_filename")
     @classmethod
-    def validate_destination_filename(cls, v):
+    def validate_destination_filename(cls, v: str) -> str:
         if os.pathsep in v:
             raise ValueError(f"must not contain {os.pathsep}")
         return v

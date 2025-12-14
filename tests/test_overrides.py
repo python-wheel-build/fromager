@@ -1,3 +1,4 @@
+import typing
 from unittest import mock
 from unittest.mock import patch
 
@@ -7,21 +8,21 @@ from fromager import overrides
 
 
 def test_invoke_override_with_exact_args() -> None:
-    def foo(arg1, arg2):
+    def foo(arg1: typing.Any, arg2: typing.Any) -> bool:
         return arg1 is not None and arg2 is not None
 
     assert overrides.invoke(foo, arg1="value1", arg2="value2")
 
 
 def test_invoke_override_with_more_args_than_needed() -> None:
-    def foo(arg1, arg2):
+    def foo(arg1: typing.Any, arg2: typing.Any) -> bool:
         return arg1 is not None and arg2 is not None
 
     assert overrides.invoke(foo, arg1="value1", arg2="value2", arg3="value3")
 
 
 def test_invoke_override_with_not_enough_args() -> None:
-    def foo(arg1, arg2):
+    def foo(arg1: typing.Any, arg2: typing.Any) -> bool:
         return arg1 is not None and arg2 is not None
 
     with pytest.raises(TypeError):
@@ -32,7 +33,7 @@ def test_invoke_override_with_not_enough_args() -> None:
 def test_find_and_invoke(
     find_override_method: mock.Mock,
 ) -> None:
-    def default_foo(arg1):
+    def default_foo(arg1: typing.Any) -> bool:
         return arg1 is not None
 
     find_override_method.return_value = None

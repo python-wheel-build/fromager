@@ -191,7 +191,7 @@ mypy_path = ["src", "tests", "e2e"]
 # TODO: tighten type checks
 check_untyped_defs = true
 disallow_incomplete_defs = true
-# disallow_untyped_defs = true
+disallow_untyped_defs = true
 # warn_return_any = true
 
 # TODO: remove excludes and silent follow

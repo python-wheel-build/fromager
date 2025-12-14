@@ -5,7 +5,7 @@ import pathlib
 import sys
 import site
 
-def setup_coverage():
+def setup_coverage() -> None:
     """Create coverage.pth file for subprocess coverage collection."""
     # Get the virtual environment root
     venv_root = pathlib.Path(sys.prefix)

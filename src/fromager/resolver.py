@@ -146,13 +146,13 @@ class LogReporter(resolvelib.BaseReporter):
     def starting(self) -> None:
         self._report("looking for candidates for %r", self.req)
 
-    def rejecting_candidate(self, criterion, candidate):
+    def rejecting_candidate(self, criterion: typing.Any, candidate: typing.Any) -> None:
         self._report("resolver rejecting candidate %s: %s", candidate, criterion)
 
-    def pinning(self, candidate):
+    def pinning(self, candidate: typing.Any) -> None:
         self._report("selecting %s", candidate)
 
-    def ending(self, state):
+    def ending(self, state: typing.Any) -> None:
         self._report("successfully resolved %r", self.req)
 
 

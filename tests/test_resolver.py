@@ -56,7 +56,7 @@ _numpy_simple_response = """
 
 
 @pytest.fixture(autouse=True)
-def reset_cache():
+def reset_cache() -> None:
     resolver.BaseProvider.clear_cache()
 
 
@@ -770,7 +770,7 @@ def test_github_constraint_match() -> None:
 
 
 def test_resolve_generic() -> None:
-    def _versions(*args, **kwds):
+    def _versions(*args: typing.Any, **kwds: typing.Any) -> list[tuple[str, str]]:
         return [("url", "1.2"), ("url", "1.3"), ("url", "1.4.1")]
 
     provider = resolver.GenericProvider(version_source=_versions)
@@ -1080,7 +1080,9 @@ def test_custom_resolver_error_message_missing_tag() -> None:
 def test_custom_resolver_error_message_via_resolve() -> None:
     """Test error message when using resolve() function with custom resolver override."""
 
-    def custom_resolver_provider(*args, **kwargs):
+    def custom_resolver_provider(
+        *args: typing.Any, **kwargs: typing.Any
+    ) -> resolver.GitHubTagProvider:
         """Custom resolver that returns GitHubTagProvider."""
         return resolver.GitHubTagProvider(organization="test-org", repo="test-repo")
 

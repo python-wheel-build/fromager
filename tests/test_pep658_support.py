@@ -73,7 +73,7 @@ Requires-Dist: requests >= 2.0.0
         # Mock that metadata URL fails, then wheel URL succeeds
         responses = []
 
-        def side_effect(url):
+        def side_effect(url: str) -> typing.Any:
             if url.endswith(".metadata"):
                 # First call - metadata request fails
                 mock_response = Mock()
@@ -112,7 +112,7 @@ Requires-Dist: requests >= 2.0.0
         # Mock wheel request
         responses = []
 
-        def side_effect(url):
+        def side_effect(url: str) -> typing.Any:
             responses.append(("wheel", url))
             raise Exception("Wheel parsing intentionally mocked to fail")
 

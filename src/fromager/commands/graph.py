@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 @click.group()
-def graph():
+def graph() -> None:
     "Commands for working with graph files"
     pass
 
@@ -365,7 +365,7 @@ def write_dot(
     type=str,
 )
 @click.pass_obj
-def explain_duplicates(wkctx, graph_file):
+def explain_duplicates(wkctx: context.WorkContext, graph_file: str) -> None:
     "Report on duplicate installation requirements, and where they come from."
     graph = DependencyGraph.from_file(graph_file)
     show_explain_duplicates(graph)

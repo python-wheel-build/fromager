@@ -262,7 +262,7 @@ class DependencyGraph:
         # exclude ROOT
         return len(self.nodes) - 1
 
-    def _to_dict(self):
+    def _to_dict(self) -> dict[str, typing.Any]:
         raw_graph = {}
         stack = [self.nodes[ROOT]]
         visited = set()
