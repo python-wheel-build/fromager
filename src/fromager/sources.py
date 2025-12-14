@@ -204,6 +204,8 @@ def default_download_source(
     pbi = ctx.package_build_info(req)
     destination_filename = pbi.download_source_destination_filename(version=version)
     url = pbi.download_source_url(version=version, default=download_url)
+    if url is None:
+        raise ValueError(f"Could not determine download URL for {req}")
     source_filename = _download_source_check(
         req=req,
         destination_dir=sdists_downloads_dir,
@@ -256,7 +258,7 @@ def _download_source_check(
     destination_dir: pathlib.Path,
     url: str,
     destination_filename: str | None = None,
-) -> str:
+) -> pathlib.Path:
     source_filename = download_url(
         req=req,
         destination_dir=destination_dir,
@@ -310,7 +312,7 @@ def download_url(
     # Create a temporary file to avoid partial downloads
     temp_file = outfile.with_suffix(outfile.suffix + ".tmp")
 
-    def _download_with_retry():
+    def _download_with_retry() -> pathlib.Path:
         """Internal function that performs the actual download with retry logic."""
         logger.debug(f"reading from {url}")
         try:
@@ -352,11 +354,12 @@ def download_url(
         backoff_factor=1.5,
         max_backoff=120.0,
     )
-    def download_with_retry():
+    def download_with_retry() -> pathlib.Path:
         return _download_with_retry()
 
     try:
-        return download_with_retry()
+        result: pathlib.Path = download_with_retry()
+        return result
     except Exception:
         # Ensure temp file is cleaned up if it still exists
         if temp_file.exists():
@@ -447,16 +450,18 @@ def patch_source(
     # If no patch has been applied, call warn for old patch
     patchmap = pbi.get_all_patches()
     if not patch_count and patchmap:
-        for patchversion in sorted(patchmap):
+        for patchversion in sorted(v for v in patchmap if v is not None):
             logger.warning(
                 f"patch {patchversion} exists but will not be applied for version {version}"
             )
 
 
-def _apply_patch(req: Requirement, patch: pathlib.Path, source_root_dir: pathlib.Path):
+def _apply_patch(
+    req: Requirement, patch: pathlib.Path, source_root_dir: pathlib.Path
+) -> None:
     logger.info("applying patch file %s to %s", patch, source_root_dir)
     with open(patch, "r") as f:
-        external_commands.run(["patch", "-p1"], stdin=f, cwd=source_root_dir)
+        external_commands.run(["patch", "-p1"], stdin=f, cwd=str(source_root_dir))
 
 
 def write_build_meta(
@@ -479,10 +484,11 @@ def write_build_meta(
     return meta_file
 
 
-def read_build_meta(unpack_dir: pathlib.Path) -> dict:
+def read_build_meta(unpack_dir: pathlib.Path) -> dict[str, typing.Any]:
     meta_file = unpack_dir / "build-meta.json"
     with open(meta_file, "r") as f:
-        return json.load(f)
+        result: dict[str, typing.Any] = json.load(f)
+        return result
 
 
 @metrics.timeit(description="prepare source")
@@ -704,7 +710,7 @@ def pep517_build_sdist(
         build_env=build_env,
     )
     sdist_filename = hook_caller.build_sdist(
-        ctx.sdists_builds,
+        str(ctx.sdists_builds),
         config_settings=pbi.config_settings,
     )
     return ctx.sdists_builds / sdist_filename

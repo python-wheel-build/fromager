@@ -197,8 +197,6 @@ warn_return_any = true
 # TODO: remove excludes and silent follow
 follow_imports = "silent"
 exclude = [
-    "^src/fromager/sources\\.py$",
-    "^src/fromager/commands/build\\.py$",
     "^e2e/.*/build/.*$",
     "^e2e/pyo3_test/.*$",
 ]
