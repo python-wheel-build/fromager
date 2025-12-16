@@ -123,3 +123,4 @@ jobs:
           # https://github.com/super-linter/super-linter/blob/main/docs/run-linter-locally.md#share-environment-variables-between-environments
           VALIDATE_ALL_CODEBASE: false
           VALIDATE_MARKDOWN: true
+          VALIDATE_EDITORCONFIG: true
