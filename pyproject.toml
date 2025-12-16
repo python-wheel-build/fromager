@@ -244,12 +244,12 @@ check = [
   "ruff check src tests",
   "ruff format --check src tests",
   "python ./e2e/mergify_lint.py",
-  "pre-commit run --all-files",
 ]
 fix = [
   "ruff format src tests docs",
   "ruff check --fix src tests docs",
 ]
+precommit = "pre-commit run --all-files"
 install-hooks = "pre-commit install"
 pkglint = [
   "python -m build",

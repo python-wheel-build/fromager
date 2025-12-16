@@ -8,3 +8,19 @@ repos:
       - id: check-yaml               # Validates YAML syntax
       - id: check-merge-conflict     # Prevents merge conflict markers
       - id: check-toml               # Validates TOML syntax
+
+  - repo: local
+    hooks:
+      - id: hatch-lint
+        name: hatch lint check
+        entry: hatch run lint:check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-mypy
+        name: hatch mypy check
+        entry: hatch run mypy:check
+        language: system
+        types: [python]
+        pass_filenames: false
