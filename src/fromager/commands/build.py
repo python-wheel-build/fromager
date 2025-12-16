@@ -52,7 +52,7 @@ class BuildSequenceEntry:
     skipped: bool = dataclasses.field(default=False, compare=False)
 
     @staticmethod
-    def dict_factory(x):
+    def dict_factory(x: list[tuple[str, typing.Any]]) -> dict[str, typing.Any]:
         return {
             k: str(v) if isinstance(v, pathlib.Path | Version) else v for (k, v) in x
         }
@@ -286,7 +286,9 @@ def _summary(ctx: context.WorkContext, entries: list[BuildSequenceEntry]) -> Non
         )
 
 
-def _create_table(entries: list[BuildSequenceEntry], **table_kwargs) -> Table:
+def _create_table(
+    entries: list[BuildSequenceEntry], **table_kwargs: typing.Any
+) -> Table:
     table = Table(**table_kwargs)
     table.add_column("Name", justify="right", no_wrap=True)
     table.add_column("Version", no_wrap=True)

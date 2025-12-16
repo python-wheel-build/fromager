@@ -337,7 +337,7 @@ def build_wheel(
     validate_wheel_filename(req=req, version=version, wheel_file=tmp_wheel_file)
 
     # add extra metadata and validate again
-    new_wheel_file = add_extra_metadata_to_wheels(
+    new_wheel_file: pathlib.Path = add_extra_metadata_to_wheels(
         ctx=ctx,
         req=req,
         version=version,

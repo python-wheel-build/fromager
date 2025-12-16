@@ -1,5 +1,6 @@
 """Tests for PEP 658 metadata support."""
 
+import typing
 from unittest.mock import Mock, patch
 
 from packaging.version import Version
@@ -35,7 +36,7 @@ class TestPEP658Support:
         assert candidate.metadata_url is None
 
     @patch("fromager.candidate.session")
-    def test_get_metadata_with_pep658_success(self, mock_session) -> None:
+    def test_get_metadata_with_pep658_success(self, mock_session: typing.Any) -> None:
         """Test successful metadata retrieval via PEP 658 endpoint."""
         # Mock the metadata response
         mock_response = Mock()
@@ -65,12 +66,14 @@ Requires-Dist: requests >= 2.0.0
         mock_session.get.assert_called_once_with(metadata_url)
 
     @patch("fromager.candidate.session")
-    def test_get_metadata_pep658_fallback_behavior(self, mock_session) -> None:
+    def test_get_metadata_pep658_fallback_behavior(
+        self, mock_session: typing.Any
+    ) -> None:
         """Test that PEP 658 is tried first, then falls back to wheel download."""
         # Mock that metadata URL fails, then wheel URL succeeds
         responses = []
 
-        def side_effect(url):
+        def side_effect(url: str) -> typing.Any:
             if url.endswith(".metadata"):
                 # First call - metadata request fails
                 mock_response = Mock()
@@ -102,12 +105,14 @@ Requires-Dist: requests >= 2.0.0
         assert mock_session.get.call_count == 2
 
     @patch("fromager.candidate.session")
-    def test_get_metadata_without_pep658_behavior(self, mock_session) -> None:
+    def test_get_metadata_without_pep658_behavior(
+        self, mock_session: typing.Any
+    ) -> None:
         """Test that without PEP 658 metadata URL, only wheel URL is called."""
         # Mock wheel request
         responses = []
 
-        def side_effect(url):
+        def side_effect(url: str) -> typing.Any:
             responses.append(("wheel", url))
             raise Exception("Wheel parsing intentionally mocked to fail")
 

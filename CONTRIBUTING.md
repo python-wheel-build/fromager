@@ -44,6 +44,9 @@ git remote add upstream https://github.com/python-wheel-build/fromager.git
 
 # 4. Create development environment
 hatch env create
+
+# 5. Install pre-commit hook (optional but recommended)
+./scripts/setup-pre-commit-hook.sh
 ```
 
 ### Contribution Workflow
@@ -71,6 +74,25 @@ git push origin feat/<short-description>
 
 # 7. Create a pull request on GitHub
 ```
+
+### Pre-commit Hook (Recommended)
+
+To ensure quality checks run automatically before each commit, install the pre-commit hook that runs both linting and mypy type checking:
+
+```bash
+# Install the pre-commit hook (run once after cloning)
+./scripts/setup-pre-commit-hook.sh
+
+# The hook automatically runs before each commit:
+# - hatch run lint:check
+# - hatch run mypy:check
+
+# If the hook fails, it will prevent the commit and show helpful messages
+# You can fix issues automatically with:
+hatch run lint:fix
+```
+
+The pre-commit hook prevents commits that would fail CI quality checks, saving time and ensuring consistent code quality.
 
 ---
 

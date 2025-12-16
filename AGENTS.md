@@ -18,8 +18,6 @@
 
 ### Do
 
-- **Type annotations REQUIRED** on ALL functions including tests. Use syntax compatible with Python 3.11+
-- Use `X | None` not `Optional[X]`
 - Add docstrings on all public functions and classes
 - Use file-scoped commands for fast feedback (see below)
 - Follow existing patterns - search codebase for similar code
@@ -29,8 +27,6 @@
 
 ### Don't
 
-- Don't use `Optional[X]` syntax (use `X | None`)
-- Don't omit type annotations or return types
 - Don't run full test suite for small changes (use file-scoped)
 - Don't create temporary helper scripts or workarounds
 - Don't commit without running quality checks

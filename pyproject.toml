@@ -187,20 +187,18 @@ ignore = [
 known-first-party = ["fromager"]
 
 [tool.mypy]
-mypy_path = ["src"]
+mypy_path = ["src", "tests", "e2e"]
 # TODO: tighten type checks
-# check_untyped_defs = true
-# disallow_incomplete_defs = true
-# disallow_untyped_defs = true
-# warn_return_any = true
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+warn_return_any = true
 
 # TODO: remove excludes and silent follow
 follow_imports = "silent"
 exclude = [
-    "^src/fromager/sources\\.py$",
-    "^src/fromager/sdist\\.py$",
-    "^src/fromager/commands/build\\.py$",
-    "^src/fromager/settings\\.py$",
+    "^e2e/.*/build/.*$",
+    "^e2e/pyo3_test/.*$",
 ]
 
 [[tool.mypy.overrides]]
@@ -274,6 +272,7 @@ features = ["mypy"]
 check = [
   "mypy -p fromager",
   "mypy tests/",
+  "mypy e2e/",
 ]
 
 [tool.hatch.envs.docs]

@@ -292,7 +292,7 @@ class Bootstrapper:
             self.ctx, self.ctx.sdists_builds, req, str(resolved_version)
         )
         if not find_sdist_result:
-            sdist_filename = sources.build_sdist(
+            sdist_filename: pathlib.Path = sources.build_sdist(
                 ctx=self.ctx,
                 req=req,
                 version=resolved_version,
@@ -1015,7 +1015,9 @@ class Bootstrapper:
             logger.debug(f"could not resolve {req} from {version_source}: {err}")
             return None
 
-    def _create_unpack_dir(self, req: Requirement, resolved_version: Version):
+    def _create_unpack_dir(
+        self, req: Requirement, resolved_version: Version
+    ) -> pathlib.Path:
         unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
         unpack_dir.mkdir(parents=True, exist_ok=True)
         return unpack_dir

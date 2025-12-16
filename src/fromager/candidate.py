@@ -46,7 +46,7 @@ class Candidate:
         default=None, init=False, compare=False
     )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # force normalized name
         object.__setattr__(self, "name", canonicalize_name(self.name))
 

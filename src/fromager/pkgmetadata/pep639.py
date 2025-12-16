@@ -61,7 +61,7 @@ def license_from_metadata_values(
 _SPDX = get_spdx_licensing()
 
 
-def _parse_spdx(text: str, *, simplify=False) -> LicenseExpression:
+def _parse_spdx(text: str, *, simplify: bool = False) -> LicenseExpression:
     """Parse, validate, and simplify a SPDX license expression"""
     # LicenseRef are references to non-SPDX licenses
     validate = not text.startswith("LicenseRef-")

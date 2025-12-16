@@ -19,7 +19,7 @@ from fromager.dependency_graph import (
 from fromager.requirements_file import RequirementType
 
 
-def mknode(name: str, version: str = "1.0", **kwargs) -> DependencyNode:
+def mknode(name: str, version: str = "1.0", **kwargs: typing.Any) -> DependencyNode:
     return DependencyNode(canonicalize_name(name), Version(version), **kwargs)
 
 

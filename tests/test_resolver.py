@@ -56,7 +56,7 @@ _numpy_simple_response = """
 
 
 @pytest.fixture(autouse=True)
-def reset_cache():
+def reset_cache() -> None:
     resolver.BaseProvider.clear_cache()
 
 
@@ -135,7 +135,7 @@ def test_provider_choose_wheel() -> None:
         assert str(candidate.version) == "1.3.2"
 
 
-def test_provider_cache_key_pypi(pypi_hydra_resolver) -> None:
+def test_provider_cache_key_pypi(pypi_hydra_resolver: typing.Any) -> None:
     req = Requirement("hydra-core<1.3")
 
     # fill the cache
@@ -157,14 +157,14 @@ def test_provider_cache_key_pypi(pypi_hydra_resolver) -> None:
     assert len(req_cache) == 7
 
 
-def test_provider_cache_key_gitlab(gitlab_decile_resolver) -> None:
+def test_provider_cache_key_gitlab(gitlab_decile_resolver: typing.Any) -> None:
     provider = gitlab_decile_resolver.provider
     assert (
         provider.cache_key == "https://gitlab.com/mirrors/github/decile-team/submodlib"
     )
 
 
-def test_provider_cache_key_github(github_fromager_resolver) -> None:
+def test_provider_cache_key_github(github_fromager_resolver: typing.Any) -> None:
     provider = github_fromager_resolver.provider
     assert provider.cache_key == "python-wheel-build/fromager"
 
@@ -770,7 +770,7 @@ def test_github_constraint_match() -> None:
 
 
 def test_resolve_generic() -> None:
-    def _versions(*args, **kwds):
+    def _versions(*args: typing.Any, **kwds: typing.Any) -> list[tuple[str, str]]:
         return [("url", "1.2"), ("url", "1.3"), ("url", "1.4.1")]
 
     provider = resolver.GenericProvider(version_source=_versions)
@@ -1039,7 +1039,7 @@ def test_pep592_support_constraint_mismatch() -> None:
         ),
     ],
 )
-def test_extract_filename_from_url(url, filename) -> None:
+def test_extract_filename_from_url(url: str, filename: str) -> None:
     result = resolver.extract_filename_from_url(url)
     assert result == filename
 
@@ -1080,7 +1080,9 @@ def test_custom_resolver_error_message_missing_tag() -> None:
 def test_custom_resolver_error_message_via_resolve() -> None:
     """Test error message when using resolve() function with custom resolver override."""
 
-    def custom_resolver_provider(*args, **kwargs):
+    def custom_resolver_provider(
+        *args: typing.Any, **kwargs: typing.Any
+    ) -> resolver.GitHubTagProvider:
         """Custom resolver that returns GitHubTagProvider."""
         return resolver.GitHubTagProvider(organization="test-org", repo="test-repo")
 

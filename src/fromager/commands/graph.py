@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 @click.group()
-def graph():
+def graph() -> None:
     "Commands for working with graph files"
     pass
 
@@ -41,7 +41,9 @@ def graph():
     type=str,
 )
 @click.pass_obj
-def to_constraints(wkctx: context.WorkContext, graph_file: str, output: pathlib.Path):
+def to_constraints(
+    wkctx: context.WorkContext, graph_file: str, output: pathlib.Path
+) -> None:
     "Convert a graph file to a constraints file."
     graph: DependencyGraph = DependencyGraph.from_file(graph_file)
 
@@ -94,7 +96,7 @@ def to_dot(
     output: pathlib.Path | None,
     install_only: bool,
     overrides_only: bool,
-):
+) -> None:
     "Convert a graph file to a DOT file suitable to pass to graphviz."
     graph = DependencyGraph.from_file(graph_file)
     if output:
@@ -363,7 +365,7 @@ def write_dot(
     type=str,
 )
 @click.pass_obj
-def explain_duplicates(wkctx, graph_file):
+def explain_duplicates(wkctx: context.WorkContext, graph_file: str) -> None:
     "Report on duplicate installation requirements, and where they come from."
     graph = DependencyGraph.from_file(graph_file)
     show_explain_duplicates(graph)
@@ -447,7 +449,7 @@ def why(
     version: list[Version],
     depth: int,
     requirement_type: list[RequirementType],
-):
+) -> None:
     "Explain why a dependency shows up in the graph"
     graph = DependencyGraph.from_file(graph_file)
     package_nodes = graph.get_nodes_by_name(package_name)
@@ -537,7 +539,7 @@ def find_why(
 @click.pass_obj
 def migrate_graph(
     wkctx: context.WorkContext, graph_file: pathlib.Path, output: pathlib.Path
-):
+) -> None:
     "Convert a old graph file into the the new format"
     graph = DependencyGraph()
     with open(graph_file, "r") as f:
@@ -576,7 +578,7 @@ def migrate_graph(
 def build_graph(
     wkctx: context.WorkContext,
     graph_file: pathlib.Path,
-):
+) -> None:
     """Print build graph steps for parallel-build
 
     The build-graph command takes a graph.json file and analyzes in which

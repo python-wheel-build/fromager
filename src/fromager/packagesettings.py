@@ -131,7 +131,7 @@ class Annotations(Mapping):
     def __len__(self) -> int:
         return len(self._mapping)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self._mapping)
 
     def getbool(self, key: str) -> bool:
@@ -231,7 +231,7 @@ class DownloadSource(pydantic.BaseModel):
 
     @pydantic.field_validator("destination_filename")
     @classmethod
-    def validate_destination_filename(cls, v):
+    def validate_destination_filename(cls, v: str) -> str:
         if os.pathsep in v:
             raise ValueError(f"must not contain {os.pathsep}")
         return v
@@ -544,10 +544,10 @@ class PackageSettings(pydantic.BaseModel):
     def serialize(
         self,
         mode: str = "python",
-        exclude_defaults=True,
-        exclude_unset=True,
-        exclude=frozenset({"name", "has_config"}),
-        **kwargs,
+        exclude_defaults: bool = True,
+        exclude_unset: bool = True,
+        exclude: set[str] | frozenset[str] = frozenset({"name", "has_config"}),
+        **kwargs: typing.Any,
     ) -> dict[str, typing.Any]:
         """Serialize package configuration"""
         return self.model_dump(
@@ -556,7 +556,7 @@ class PackageSettings(pydantic.BaseModel):
             exclude_defaults=exclude_defaults,
             exclude_unset=exclude_unset,
             # name and has_config are not serialized
-            exclude=exclude,
+            exclude=set(exclude),
             **kwargs,
         )
 
@@ -986,7 +986,7 @@ class PackageBuildInfo:
         """Get the variant configuration for the current package"""
         return self._ps.variants
 
-    def serialize(self, **kwargs) -> dict[str, typing.Any]:
+    def serialize(self, **kwargs: typing.Any) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)
 
 

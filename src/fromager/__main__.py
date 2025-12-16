@@ -258,7 +258,7 @@ for cmd in commands.commands:
     main.add_command(cmd)
 
 
-def _format_exception(exc):
+def _format_exception(exc: BaseException) -> str:
     if exc.__cause__:
         cause = _format_exception(exc.__cause__)
         return f"{exc} because {cause}"
