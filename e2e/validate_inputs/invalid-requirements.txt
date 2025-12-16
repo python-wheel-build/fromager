@@ -1,4 +1,4 @@
-# This requirements file is invalid on purpose to test the lint-requirements 
+# This requirements file is invalid on purpose to test the lint-requirements
 # command of fromager. Do not attempt to fix this file
 
 foo==

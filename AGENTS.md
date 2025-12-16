@@ -36,6 +36,13 @@
 
 ## Commands (IMPORTANT: Use File-Scoped First)
 
+### Setup Commands (Run Once)
+
+```bash
+# Install pre-commit hooks for automatic file formatting
+hatch run lint:install-hooks
+```
+
 ### File-Scoped Commands (PREFER THESE)
 
 ```bash
@@ -61,8 +68,18 @@ hatch run test:test <filepath> --log-level DEBUG
 hatch run lint:fix      # Format all code
 hatch run test:test     # Full test suite (slow!)
 hatch run mypy:check    # Type check everything
-hatch run lint:check    # Final lint check
+hatch run lint:check    # Final lint check (includes pre-commit hooks)
 ```
+
+### Pre-commit Hooks
+
+The project uses pre-commit hooks to automatically check file formatting:
+- **File endings**: Ensures all files end with a single newline
+- **Whitespace**: Removes trailing whitespace
+- **Syntax**: Validates YAML/TOML files
+- **Conflicts**: Prevents committing merge conflict markers
+
+These run automatically on commit if installed with `hatch run lint:install-hooks`.
 
 ## Safety and Permissions
 

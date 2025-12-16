@@ -236,18 +236,21 @@ features = ["build"]
 dependencies = [
   "ruff",
   "packaging",
-  "check-python-versions"
+  "check-python-versions",
+  "pre-commit"
 ]
 [tool.hatch.envs.lint.scripts]
 check = [
   "ruff check src tests",
   "ruff format --check src tests",
   "python ./e2e/mergify_lint.py",
+  "pre-commit run --all-files",
 ]
 fix = [
   "ruff format src tests docs",
   "ruff check --fix src tests docs",
 ]
+install-hooks = "pre-commit install"
 pkglint = [
   "python -m build",
   "twine check dist/*.tar.gz dist/*.whl",

@@ -11,6 +11,6 @@
  ]
 -rust-version = "1.76"
 +rust-version = "1.75"
- 
+
  [dependencies]
  pyo3 = { version = "0.21.2", features = ["generate-import-lib", "num-bigint"] }
