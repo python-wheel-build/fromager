@@ -2,6 +2,7 @@
 
 import itertools
 import pathlib
+import re
 import sys
 
 import yaml
@@ -38,19 +39,53 @@ os_versions = list(sorted(matrix["os"]))
 os_versions.remove("macos-latest")
 
 e2e_dir = pathlib.Path("e2e")
-e2e_jobs = set(
+# Look for CI suite scripts instead of individual test scripts
+ci_suite_jobs = set(
+    script.name[:-len(".sh")] for script in e2e_dir.glob("ci_*_suite.sh")
+)
+print("found CI suite scripts:\n  ", "\n  ".join(sorted(ci_suite_jobs)), sep="")
+
+# Also find all individual e2e test scripts to ensure they're all covered
+individual_e2e_scripts = set(
     script.name[len("test_") : -len(".sh")] for script in e2e_dir.glob("test_*.sh")
 )
-print("found job scripts:\n  ", "\n  ".join(sorted(e2e_jobs)), sep="")
+print("found individual e2e scripts:\n  ", "\n  ".join(sorted(individual_e2e_scripts)), sep="")
 
 # Remember if we should fail so we can apply all of the rules and then
 # exit with an error.
 RC = 0
 
-# Require test jobs for every script.
-for script_name in sorted(e2e_jobs.difference(test_scripts)):
+# Require test jobs for every CI suite script.
+for script_name in sorted(ci_suite_jobs.difference(test_scripts)):
     print(f"ERROR: {script_name} not in the matrix in {github_actions_file}")
     RC = 1
+
+# Check that all individual e2e scripts are referenced in CI suite scripts
+print("\nChecking that all individual e2e tests are covered by CI suites...")
+referenced_scripts = set()
+for ci_suite_file in e2e_dir.glob("ci_*_suite.sh"):
+    content = ci_suite_file.read_text(encoding="utf8")
+    # Look for run_test "script_name" calls (excluding commented lines)
+    for line in content.split('\n'):
+        # Skip lines that start with # (comments)
+        stripped = line.strip()
+        if stripped.startswith('#'):
+            continue
+        for match in re.finditer(r'run_test\s+"([^"]+)"', line):
+            referenced_scripts.add(match.group(1))
+
+print("scripts referenced in CI suites:\n  ", "\n  ".join(sorted(referenced_scripts)), sep="")
+
+# Find any individual e2e scripts that aren't referenced in any CI suite
+unreferenced_scripts = individual_e2e_scripts.difference(referenced_scripts)
+if unreferenced_scripts:
+    print(f"\nERROR: The following e2e scripts are not referenced in any CI suite:")
+    for script in sorted(unreferenced_scripts):
+        print(f"  - {script}")
+    print(f"Please add these scripts to the appropriate CI suite script.")
+    RC = 1
+else:
+    print("✓ All individual e2e scripts are covered by CI suites!")
 
 # We expect a job for every combination of python version, rust
 # version, and test script.
