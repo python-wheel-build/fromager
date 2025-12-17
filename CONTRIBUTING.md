@@ -45,8 +45,8 @@ git remote add upstream https://github.com/python-wheel-build/fromager.git
 # 4. Create development environment
 hatch env create
 
-# 5. Install pre-commit hook (optional but recommended)
-./scripts/setup-pre-commit-hook.sh
+# 5. Install pre-commit hooks (optional but recommended)
+hatch run lint:install-hooks
 ```
 
 ### Contribution Workflow
@@ -64,7 +64,7 @@ git checkout -b feat/<short-description>
 hatch run test:test tests/test_<module>.py       # Test your specific changes
 
 # 4. Before committing, run full quality checks
-hatch run lint:fix && hatch run test:test && hatch run mypy:check && hatch run lint:check
+hatch run lint:precommit
 
 # 5. Commit using Conventional Commits
 git commit -m "feat(scope): short summary"
@@ -81,18 +81,16 @@ To ensure quality checks run automatically before each commit, install the pre-c
 
 ```bash
 # Install the pre-commit hook (run once after cloning)
-./scripts/setup-pre-commit-hook.sh
+hatch run lint:install-hooks
 
-# The hook automatically runs before each commit:
-# - hatch run lint:check
-# - hatch run mypy:check
+# The hook automatically runs a selection of linters before each commit.
 
 # If the hook fails, it will prevent the commit and show helpful messages
-# You can fix issues automatically with:
+# You can fix some issues automatically with:
 hatch run lint:fix
 ```
 
-The pre-commit hook prevents commits that would fail CI quality checks, saving time and ensuring consistent code quality.
+The pre-commit hook prevents commits that would fail some CI quality checks, saving time and ensuring consistent code quality.
 
 ---
 

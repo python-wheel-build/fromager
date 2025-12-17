@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: end-of-file-fixer        # Ensures single trailing newline
+      - id: trailing-whitespace      # Removes trailing spaces
+        args: [--markdown-linebreak-ext=md]  # Preserve markdown line breaks
+      - id: check-yaml               # Validates YAML syntax
+      - id: check-merge-conflict     # Prevents merge conflict markers
+      - id: check-toml               # Validates TOML syntax
+
+  - repo: local
+    hooks:
+      - id: hatch-lint
+        name: hatch lint check
+        entry: hatch run lint:check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-mypy
+        name: hatch mypy check
+        entry: hatch run mypy:check
+        language: system
+        types: [python]
+        pass_filenames: false
