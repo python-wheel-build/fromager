@@ -10,7 +10,11 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
-pip install e2e/flit_core_override
+pip install e2e/flit_core_override entry-point-inspector
+
+python3 --version
+epi group list
+epi group show fromager.project_overrides
 
 fromager \
   --verbose \
