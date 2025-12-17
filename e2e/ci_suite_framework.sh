@@ -27,7 +27,7 @@ init_suite() {
     echo "=========================================="
 }
 
-# Run a single test
+# Run a single test with clean environment
 # Usage: run_test "test_name_without_prefix"
 run_test() {
     local test_name="$1"
@@ -46,6 +46,10 @@ run_test() {
         return 1
     fi
 
+    # Clean environment before each test to prevent interference
+    clean_test_environment "$test_name"
+
+    # Run the test
     if "$test_script"; then
         echo "✓ PASSED: $test_name"
     else
@@ -54,6 +58,28 @@ run_test() {
         # Continue running other tests instead of exiting immediately
         # This provides more comprehensive feedback in CI
     fi
+}
+
+# Clean test environment before each test to prevent interference
+# Usage: clean_test_environment "test_name"
+clean_test_environment() {
+    local test_name="$1"
+
+    echo "🧹 Cleaning environment before test: $test_name"
+
+    # Remove e2e output directory
+    local outdir
+    outdir="$(dirname "$SCRIPTDIR")/e2e-output"
+    if [ -d "$outdir" ]; then
+        echo "Removing existing e2e-output directory..."
+        rm -rf "$outdir" || true
+    fi
+
+    # Remove and recreate hatch e2e environment to ensure clean state
+    echo "Removing hatch e2e environment..."
+    hatch env remove e2e 2>/dev/null || true
+
+    echo "✨ Environment cleaned for test: $test_name"
 }
 
 # Print a section header for organizing related tests
