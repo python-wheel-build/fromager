@@ -101,7 +101,7 @@ def _get_requirements_from_args(
     "test_mode",
     is_flag=True,
     default=False,
-    help="Test mode: mark failed packages as pre-built and continue, report failures at end",
+    help="Test mode: continue processing after failures, report failures at end",
 )
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
@@ -144,7 +144,7 @@ def bootstrap(
 
     if test_mode:
         logger.info(
-            "test mode enabled: will mark failed packages as pre-built and continue"
+            "test mode enabled: will continue processing after failures and report at end"
         )
 
     pre_built = wkctx.settings.list_pre_built()

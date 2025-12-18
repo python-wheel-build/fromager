@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import datetime
 import json
 import logging
 import operator
@@ -97,8 +98,8 @@ class Bootstrapper:
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
-        # Track failed packages in test mode (simple list of package names)
-        self.failed_packages: list[str] = []
+        # Track failed packages in test mode (list of dicts for JSON export)
+        self.failed_packages: list[dict[str, typing.Any]] = []
 
     def resolve_and_add_top_level(
         self,
@@ -143,7 +144,14 @@ class Bootstrapper:
             logger.error(
                 "test mode: failed to resolve %s: %s", req.name, err, exc_info=True
             )
-            self.failed_packages.append(str(req.name))
+            self.failed_packages.append(
+                {
+                    "package": str(req.name),
+                    "version": None,
+                    "exception_type": err.__class__.__name__,
+                    "exception_message": str(err),
+                }
+            )
             return None
 
     def resolve_version(
@@ -212,22 +220,30 @@ class Bootstrapper:
         except Exception as err:
             if not self.test_mode:
                 raise
+            # Get version from cache if available
+            cached = self._resolved_requirements.get(str(req))
+            if cached:
+                _source_url, resolved_version = cached
+                version = str(resolved_version)
+            else:
+                version = None
             logger.error(
                 "test mode: failed to bootstrap %s: %s", req.name, err, exc_info=True
             )
-            self.failed_packages.append(str(req.name))
+            self.failed_packages.append(
+                {
+                    "package": str(req.name),
+                    "version": version,
+                    "exception_type": err.__class__.__name__,
+                    "exception_message": str(err),
+                }
+            )
 
     def _bootstrap_impl(self, req: Requirement, req_type: RequirementType) -> None:
         """Internal implementation of bootstrap logic.
 
-        Error Handling:
-            Fatal errors (version resolution, source build, prebuilt download)
-            raise exceptions for bootstrap() to catch and record.
-
-            Non-fatal errors (post-hook, dependency extraction) are recorded
-            locally and processing continues. These are recorded here rather
-            than in bootstrap() because the package build succeeded - only
-            optional processing failed.
+        Errors raise exceptions for bootstrap() to catch and record in test mode.
+        In normal mode, exceptions propagate immediately (fail-fast).
         """
         logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
         constraint = self.ctx.constraints.get_constraint(req.name)
@@ -306,28 +322,17 @@ class Bootstrapper:
                     unpacked_cached_wheel=unpacked_cached_wheel,
                 )
 
-            # Run post-bootstrap hooks - in test mode, log and continue on failure
-            try:
-                hooks.run_post_bootstrap_hooks(
-                    ctx=self.ctx,
-                    req=req,
-                    dist_name=canonicalize_name(req.name),
-                    dist_version=str(resolved_version),
-                    sdist_filename=build_result.sdist_filename,
-                    wheel_filename=build_result.wheel_filename,
-                )
-            except Exception as hook_error:
-                if not self.test_mode:
-                    raise
-                logger.warning(
-                    "test mode: post-bootstrap hook failed for %s==%s: %s (continuing)",
-                    req.name,
-                    resolved_version,
-                    hook_error,
-                )
-                # Continue - hooks are not critical for dependency discovery
+            # Run post-bootstrap hooks
+            hooks.run_post_bootstrap_hooks(
+                ctx=self.ctx,
+                req=req,
+                dist_name=canonicalize_name(req.name),
+                dist_version=str(resolved_version),
+                sdist_filename=build_result.sdist_filename,
+                wheel_filename=build_result.wheel_filename,
+            )
 
-            # Extract install dependencies (handles test-mode internally)
+            # Extract install dependencies
             install_dependencies = self._get_install_dependencies(
                 req=req,
                 resolved_version=resolved_version,
@@ -578,58 +583,43 @@ class Bootstrapper:
     ) -> list[Requirement]:
         """Extract install dependencies from wheel or sdist.
 
-        In test mode, returns empty list on failure instead of raising.
-
         Returns:
-            List of install requirements (empty list on failure in test mode).
+            List of install requirements.
 
         Raises:
             RuntimeError: If both wheel_filename and sdist_filename are None.
-            Exception: In normal mode, re-raises any extraction error.
         """
-        try:
-            if wheel_filename is not None:
-                assert unpack_dir is not None
-                logger.debug(
-                    "get install dependencies of wheel %s",
-                    wheel_filename.name,
-                )
-                return list(
-                    dependencies.get_install_dependencies_of_wheel(
-                        req=req,
-                        wheel_filename=wheel_filename,
-                        requirements_file_dir=unpack_dir,
-                    )
-                )
-            elif sdist_filename is not None:
-                assert sdist_root_dir is not None
-                assert build_env is not None
-                logger.debug(
-                    "get install dependencies of sdist from directory %s",
-                    sdist_root_dir,
-                )
-                return list(
-                    dependencies.get_install_dependencies_of_sdist(
-                        ctx=self.ctx,
-                        req=req,
-                        version=resolved_version,
-                        sdist_root_dir=sdist_root_dir,
-                        build_env=build_env,
-                    )
-                )
-            else:
-                raise RuntimeError("wheel_filename and sdist_filename are None")
-
-        except Exception as err:
-            if not self.test_mode:
-                raise
-            logger.warning(
-                "test mode: failed to extract dependencies for %s==%s: %s (continuing)",
-                req.name,
-                resolved_version,
-                err,
+        if wheel_filename is not None:
+            assert unpack_dir is not None
+            logger.debug(
+                "get install dependencies of wheel %s",
+                wheel_filename.name,
             )
-            return []
+            return list(
+                dependencies.get_install_dependencies_of_wheel(
+                    req=req,
+                    wheel_filename=wheel_filename,
+                    requirements_file_dir=unpack_dir,
+                )
+            )
+        elif sdist_filename is not None:
+            assert sdist_root_dir is not None
+            assert build_env is not None
+            logger.debug(
+                "get install dependencies of sdist from directory %s",
+                sdist_root_dir,
+            )
+            return list(
+                dependencies.get_install_dependencies_of_sdist(
+                    ctx=self.ctx,
+                    req=req,
+                    version=resolved_version,
+                    sdist_root_dir=sdist_root_dir,
+                    build_env=build_env,
+                )
+            )
+        else:
+            raise RuntimeError("wheel_filename and sdist_filename are None")
 
     def _download_source(
         self,
@@ -1395,7 +1385,7 @@ class Bootstrapper:
     def finalize(self) -> int:
         """Finalize bootstrap and return exit code.
 
-        In test mode, logs summary and returns non-zero if there were failures.
+        In test mode, writes failure report and returns non-zero if there were failures.
 
         Returns:
             0 if all packages built successfully (or not in test mode)
@@ -1408,9 +1398,18 @@ class Bootstrapper:
             logger.info("test mode: all packages processed successfully")
             return 0
 
+        # Write JSON failure report with timestamp for uniqueness
+        timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d-%H%M%S-%f")
+        failures_file = self.ctx.work_dir / f"test-mode-failures-{timestamp}.json"
+        with open(failures_file, "w") as f:
+            json.dump({"failures": self.failed_packages}, f, indent=2)
+        logger.info("test mode: wrote failure report to %s", failures_file)
+
+        # Log summary
+        failed_names = [f["package"] for f in self.failed_packages]
         logger.error(
             "test mode: %d package(s) failed: %s",
             len(self.failed_packages),
-            ", ".join(self.failed_packages),
+            ", ".join(failed_names),
         )
         return 1

@@ -1,11 +1,13 @@
-"""Tests for --test-mode feature (Phase 1: Basic functionality).
+"""Tests for --test-mode feature (Phase 2: JSON Failure Reports).
 
-Tests the essential test mode functionality:
+Tests the test mode functionality:
 - Bootstrapper initialization with test_mode flag
 - Exception handling: catch errors, log, continue
 - Bootstrapper.finalize() exit codes
+- JSON failure report generation
 """
 
+import json
 import pathlib
 import tempfile
 import typing
@@ -85,7 +87,14 @@ class TestFinalizeExitCodes:
     ) -> None:
         """Test finalize returns 1 when there are failures in test mode."""
         bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=True)
-        bt.failed_packages.append("failing-pkg")
+        bt.failed_packages.append(
+            {
+                "package": "failing-pkg",
+                "version": "1.0.0",
+                "exception_type": "RuntimeError",
+                "exception_message": "Build failed",
+            }
+        )
         assert bt.finalize() == 1
 
     def test_finalize_not_in_test_mode_returns_zero(
@@ -94,7 +103,14 @@ class TestFinalizeExitCodes:
         """Test finalize returns 0 when not in test mode (regardless of failures)."""
         bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=False)
         # Even if we manually add failures (shouldn't happen), it returns 0
-        bt.failed_packages.append("some-pkg")
+        bt.failed_packages.append(
+            {
+                "package": "some-pkg",
+                "version": "1.0.0",
+                "exception_type": "RuntimeError",
+                "exception_message": "Error",
+            }
+        )
         assert bt.finalize() == 0
 
     def test_finalize_logs_failed_packages(
@@ -102,7 +118,28 @@ class TestFinalizeExitCodes:
     ) -> None:
         """Test finalize logs the list of failed packages."""
         bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=True)
-        bt.failed_packages.extend(["pkg-a", "pkg-b", "pkg-c"])
+        bt.failed_packages.extend(
+            [
+                {
+                    "package": "pkg-a",
+                    "version": "1.0",
+                    "exception_type": "E",
+                    "exception_message": "m",
+                },
+                {
+                    "package": "pkg-b",
+                    "version": "2.0",
+                    "exception_type": "E",
+                    "exception_message": "m",
+                },
+                {
+                    "package": "pkg-c",
+                    "version": "3.0",
+                    "exception_type": "E",
+                    "exception_message": "m",
+                },
+            ]
+        )
 
         exit_code = bt.finalize()
 
@@ -111,3 +148,112 @@ class TestFinalizeExitCodes:
         assert "pkg-a" in caplog.text
         assert "pkg-b" in caplog.text
         assert "pkg-c" in caplog.text
+
+
+def _find_failure_report(work_dir: pathlib.Path) -> pathlib.Path | None:
+    """Find the test-mode-failures-*.json file in work_dir."""
+    reports = list(work_dir.glob("test-mode-failures-*.json"))
+    return reports[0] if reports else None
+
+
+class TestJsonFailureReport:
+    """Test JSON failure report generation."""
+
+    def test_finalize_writes_json_report(
+        self, mock_context: context.WorkContext
+    ) -> None:
+        """Test finalize writes test-mode-failures-<timestamp>.json with failure details."""
+        bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=True)
+        bt.failed_packages.append(
+            {
+                "package": "failing-pkg",
+                "version": "1.0.0",
+                "exception_type": "CalledProcessError",
+                "exception_message": "Compilation failed",
+            }
+        )
+
+        bt.finalize()
+
+        report_path = _find_failure_report(mock_context.work_dir)
+        assert report_path is not None
+        assert report_path.name.startswith("test-mode-failures-")
+        assert report_path.name.endswith(".json")
+
+        with open(report_path) as f:
+            report = json.load(f)
+
+        assert "failures" in report
+        assert len(report["failures"]) == 1
+        assert report["failures"][0]["package"] == "failing-pkg"
+        assert report["failures"][0]["version"] == "1.0.0"
+        assert report["failures"][0]["exception_type"] == "CalledProcessError"
+        assert report["failures"][0]["exception_message"] == "Compilation failed"
+
+    def test_finalize_no_report_when_no_failures(
+        self, mock_context: context.WorkContext
+    ) -> None:
+        """Test finalize does not write report when there are no failures."""
+        bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=True)
+
+        bt.finalize()
+
+        report_path = _find_failure_report(mock_context.work_dir)
+        assert report_path is None
+
+    def test_finalize_report_with_null_version(
+        self, mock_context: context.WorkContext
+    ) -> None:
+        """Test finalize handles failures where version is None (resolution failure)."""
+        bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=True)
+        bt.failed_packages.append(
+            {
+                "package": "failed-to-resolve",
+                "version": None,
+                "exception_type": "ResolutionError",
+                "exception_message": "Could not resolve version",
+            }
+        )
+
+        bt.finalize()
+
+        report_path = _find_failure_report(mock_context.work_dir)
+        assert report_path is not None
+        with open(report_path) as f:
+            report = json.load(f)
+
+        assert report["failures"][0]["version"] is None
+
+    def test_finalize_report_multiple_failures(
+        self, mock_context: context.WorkContext
+    ) -> None:
+        """Test finalize correctly reports multiple failures."""
+        bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=True)
+        bt.failed_packages.extend(
+            [
+                {
+                    "package": "pkg-a",
+                    "version": "1.0.0",
+                    "exception_type": "BuildError",
+                    "exception_message": "Failed to compile",
+                },
+                {
+                    "package": "pkg-b",
+                    "version": "2.0.0",
+                    "exception_type": "ConnectionError",
+                    "exception_message": "Download failed",
+                },
+            ]
+        )
+
+        bt.finalize()
+
+        report_path = _find_failure_report(mock_context.work_dir)
+        assert report_path is not None
+        with open(report_path) as f:
+            report = json.load(f)
+
+        assert len(report["failures"]) == 2
+        packages = [f["package"] for f in report["failures"]]
+        assert "pkg-a" in packages
+        assert "pkg-b" in packages
