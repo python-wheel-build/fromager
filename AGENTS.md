@@ -121,10 +121,10 @@ These run automatically on commit if installed with `hatch run lint:install-hook
 
 ## Code Patterns
 
-**Import Guidelines:**
+**Import Guidelines (ALWAYS FOLLOW):**
 
-- **PEP 8: imports should be at the top**: All import statements must be placed at the top of the file, after module docstrings and before other code
-- **No local imports**: Do not place import statements inside functions, methods, or conditional blocks
+- **PEP 8: imports should be at the top**: All import statements MUST be placed at the top of the file, after module docstrings and before other code. This applies to ALL Python files in the project.
+- **No local imports**: Do not place import statements inside functions, methods, or conditional blocks under any circumstances
 
 ### Testing Pattern
 
