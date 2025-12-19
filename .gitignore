@@ -21,6 +21,7 @@ __pycache__/
 /package.json
 /e2e-output/
 /dist/
+/e2e/flit_core_override/build
 /e2e/fromager_hooks/build
 /e2e/fromager_hooks/dist
 /e2e/pyo3_test/.cargo

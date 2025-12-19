@@ -75,41 +75,12 @@ jobs:
           # RHEL 9.4 has rustc 1.75
           - "1.75"
         test-script:
-          - bootstrap
-          - bootstrap_extras
-          - bootstrap_build_tags
-          - bootstrap_prerelease
-          - bootstrap_conflicting_requirements
-          - bootstrap_constraints
-          - bootstrap_cache
-          - bootstrap_sdist_only
-          - bootstrap_git_url
-          - bootstrap_git_url_tag
-          - bootstrap_parallel
-          - bootstrap_parallel_git_url
-          - bootstrap_parallel_git_url_tag
-          - bootstrap_skip_constraints
-          - build
-          - build_order
-          - build_parallel
-          - build_sequence_git_url
-          - build_steps
-          - build_settings
-          - graph_to_constraints
-          - meson
-          - migrate_graph
-          - override
-          - pep517_build_sdist
-          - post_bootstrap_hook
-          - prebuilt_wheels_alt_server
-          - report_missing_dependency
-          - rust_vendor
-          - download_sequence
-          - optimize_build
-          - extra_metadata
-          - elfdeps
-          - prebuilt_wheel_hook
-          - lint_requirements
+          - ci_bootstrap_suite
+          - ci_bootstrap_parallel_suite
+          - ci_build_suite
+          - ci_config_suite
+          - ci_specialized_suite
+          - ci_workflow_suite
         os:
           - ubuntu-latest
           - macos-latest
@@ -147,7 +118,7 @@ jobs:
         run: python -m pip install hatch 'click!=8.3.0'
 
       - name: Run tests
-        run: ./e2e/test_${{ matrix.test-script }}.sh
+        run: HATCH_PYTHON=${{ matrix.python-version }} ./e2e/${{ matrix.test-script }}.sh
 
       - name: Upload logs for debugging
         if: ${{ failure() }}
