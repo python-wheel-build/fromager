@@ -58,6 +58,28 @@ class SourceBuildResult:
     source_type: SourceType
 
 
+# Valid failure types for test mode error recording
+FailureType = typing.Literal["resolution", "bootstrap", "hook", "dependency_extraction"]
+
+
+class FailureRecord(typing.TypedDict):
+    """Record of a package that failed during bootstrap in test mode.
+
+    Attributes:
+        package: The package name that failed.
+        version: The resolved version (None if resolution failed).
+        exception_type: The exception class name.
+        exception_message: The exception message string.
+        failure_type: Category of failure for analysis.
+    """
+
+    package: str
+    version: str | None
+    exception_type: str
+    exception_message: str
+    failure_type: FailureType
+
+
 class Bootstrapper:
     def __init__(
         self,
@@ -98,8 +120,8 @@ class Bootstrapper:
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
-        # Track failed packages in test mode (list of dicts for JSON export)
-        self.failed_packages: list[dict[str, typing.Any]] = []
+        # Track failed packages in test mode (list of typed dicts for JSON export)
+        self.failed_packages: list[FailureRecord] = []
 
     def resolve_and_add_top_level(
         self,
@@ -141,17 +163,7 @@ class Bootstrapper:
         except Exception as err:
             if not self.test_mode:
                 raise
-            logger.error(
-                "test mode: failed to resolve %s: %s", req.name, err, exc_info=True
-            )
-            self.failed_packages.append(
-                {
-                    "package": str(req.name),
-                    "version": None,
-                    "exception_type": err.__class__.__name__,
-                    "exception_message": str(err),
-                }
-            )
+            self._record_test_mode_failure(req, None, err, "resolution")
             return None
 
     def resolve_version(
@@ -227,23 +239,18 @@ class Bootstrapper:
                 version = str(resolved_version)
             else:
                 version = None
-            logger.error(
-                "test mode: failed to bootstrap %s: %s", req.name, err, exc_info=True
-            )
-            self.failed_packages.append(
-                {
-                    "package": str(req.name),
-                    "version": version,
-                    "exception_type": err.__class__.__name__,
-                    "exception_message": str(err),
-                }
-            )
+            self._record_test_mode_failure(req, version, err, "bootstrap")
 
     def _bootstrap_impl(self, req: Requirement, req_type: RequirementType) -> None:
         """Internal implementation of bootstrap logic.
 
-        Errors raise exceptions for bootstrap() to catch and record in test mode.
-        In normal mode, exceptions propagate immediately (fail-fast).
+        Error Handling:
+            Fatal errors (version resolution, source build, prebuilt download)
+            raise exceptions for bootstrap() to catch and record.
+
+            Non-fatal errors (post-hook, dependency extraction) are recorded
+            locally and processing continues. These are recorded here because
+            the package build succeeded - only optional post-processing failed.
         """
         logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
         constraint = self.ctx.constraints.get_constraint(req.name)
@@ -322,26 +329,45 @@ class Bootstrapper:
                     unpacked_cached_wheel=unpacked_cached_wheel,
                 )
 
-            # Run post-bootstrap hooks
-            hooks.run_post_bootstrap_hooks(
-                ctx=self.ctx,
-                req=req,
-                dist_name=canonicalize_name(req.name),
-                dist_version=str(resolved_version),
-                sdist_filename=build_result.sdist_filename,
-                wheel_filename=build_result.wheel_filename,
-            )
+            # Run post-bootstrap hooks (non-fatal in test mode)
+            try:
+                hooks.run_post_bootstrap_hooks(
+                    ctx=self.ctx,
+                    req=req,
+                    dist_name=canonicalize_name(req.name),
+                    dist_version=str(resolved_version),
+                    sdist_filename=build_result.sdist_filename,
+                    wheel_filename=build_result.wheel_filename,
+                )
+            except Exception as hook_error:
+                if not self.test_mode:
+                    raise
+                self._record_test_mode_failure(
+                    req, str(resolved_version), hook_error, "hook", "warning"
+                )
 
-            # Extract install dependencies
-            install_dependencies = self._get_install_dependencies(
-                req=req,
-                resolved_version=resolved_version,
-                wheel_filename=build_result.wheel_filename,
-                sdist_filename=build_result.sdist_filename,
-                sdist_root_dir=build_result.sdist_root_dir,
-                build_env=build_result.build_env,
-                unpack_dir=build_result.unpack_dir,
-            )
+            # Extract install dependencies (non-fatal in test mode)
+            try:
+                install_dependencies = self._get_install_dependencies(
+                    req=req,
+                    resolved_version=resolved_version,
+                    wheel_filename=build_result.wheel_filename,
+                    sdist_filename=build_result.sdist_filename,
+                    sdist_root_dir=build_result.sdist_root_dir,
+                    build_env=build_result.build_env,
+                    unpack_dir=build_result.unpack_dir,
+                )
+            except Exception as dep_error:
+                if not self.test_mode:
+                    raise
+                self._record_test_mode_failure(
+                    req,
+                    str(resolved_version),
+                    dep_error,
+                    "dependency_extraction",
+                    "warning",
+                )
+                install_dependencies = []
 
             logger.debug(
                 "install dependencies: %s",
@@ -387,6 +413,40 @@ class Bootstrapper:
             yield
         finally:
             self.why.pop()
+
+    def _record_test_mode_failure(
+        self,
+        req: Requirement,
+        version: str | None,
+        err: Exception,
+        failure_type: FailureType,
+        log_level: typing.Literal["error", "warning"] = "error",
+    ) -> None:
+        """Record a failure in test mode. Call this after checking test_mode.
+
+        Args:
+            req: The requirement that failed.
+            version: The version being processed (None if not yet resolved).
+            err: The exception that was raised.
+            failure_type: Category of failure for analysis.
+            log_level: Log at error (fatal) or warning (non-fatal, continuing).
+        """
+        version_str = f"=={version}" if version else ""
+        msg = f"test mode: {failure_type} failed for {req.name}{version_str}"
+        if log_level == "warning":
+            logger.warning("%s: %s (continuing)", msg, err)
+        else:
+            logger.error("%s: %s", msg, err, exc_info=True)
+
+        self.failed_packages.append(
+            {
+                "package": str(req.name),
+                "version": version,
+                "exception_type": err.__class__.__name__,
+                "exception_message": str(err),
+                "failure_type": failure_type,
+            }
+        )
 
     @property
     def _explain(self) -> str:

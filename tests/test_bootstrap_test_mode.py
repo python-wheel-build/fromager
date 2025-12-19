@@ -1,10 +1,11 @@
-"""Tests for --test-mode feature (Phase 2: JSON Failure Reports).
+"""Tests for --test-mode feature.
 
 Tests the test mode functionality:
 - Bootstrapper initialization with test_mode flag
 - Exception handling: catch errors, log, continue
 - Bootstrapper.finalize() exit codes
 - JSON failure report generation
+- failure_type field for categorizing failures
 """
 
 import json
@@ -93,6 +94,7 @@ class TestFinalizeExitCodes:
                 "version": "1.0.0",
                 "exception_type": "RuntimeError",
                 "exception_message": "Build failed",
+                "failure_type": "bootstrap",
             }
         )
         assert bt.finalize() == 1
@@ -109,6 +111,7 @@ class TestFinalizeExitCodes:
                 "version": "1.0.0",
                 "exception_type": "RuntimeError",
                 "exception_message": "Error",
+                "failure_type": "bootstrap",
             }
         )
         assert bt.finalize() == 0
@@ -125,18 +128,21 @@ class TestFinalizeExitCodes:
                     "version": "1.0",
                     "exception_type": "E",
                     "exception_message": "m",
+                    "failure_type": "bootstrap",
                 },
                 {
                     "package": "pkg-b",
                     "version": "2.0",
                     "exception_type": "E",
                     "exception_message": "m",
+                    "failure_type": "hook",
                 },
                 {
                     "package": "pkg-c",
                     "version": "3.0",
                     "exception_type": "E",
                     "exception_message": "m",
+                    "failure_type": "dependency_extraction",
                 },
             ]
         )
@@ -170,6 +176,7 @@ class TestJsonFailureReport:
                 "version": "1.0.0",
                 "exception_type": "CalledProcessError",
                 "exception_message": "Compilation failed",
+                "failure_type": "bootstrap",
             }
         )
 
@@ -189,6 +196,7 @@ class TestJsonFailureReport:
         assert report["failures"][0]["version"] == "1.0.0"
         assert report["failures"][0]["exception_type"] == "CalledProcessError"
         assert report["failures"][0]["exception_message"] == "Compilation failed"
+        assert report["failures"][0]["failure_type"] == "bootstrap"
 
     def test_finalize_no_report_when_no_failures(
         self, mock_context: context.WorkContext
@@ -212,6 +220,7 @@ class TestJsonFailureReport:
                 "version": None,
                 "exception_type": "ResolutionError",
                 "exception_message": "Could not resolve version",
+                "failure_type": "resolution",
             }
         )
 
@@ -223,11 +232,12 @@ class TestJsonFailureReport:
             report = json.load(f)
 
         assert report["failures"][0]["version"] is None
+        assert report["failures"][0]["failure_type"] == "resolution"
 
-    def test_finalize_report_multiple_failures(
+    def test_finalize_report_multiple_failure_types(
         self, mock_context: context.WorkContext
     ) -> None:
-        """Test finalize correctly reports multiple failures."""
+        """Test finalize correctly reports multiple failures with different types."""
         bt = bootstrapper.Bootstrapper(ctx=mock_context, test_mode=True)
         bt.failed_packages.extend(
             [
@@ -236,12 +246,21 @@ class TestJsonFailureReport:
                     "version": "1.0.0",
                     "exception_type": "BuildError",
                     "exception_message": "Failed to compile",
+                    "failure_type": "bootstrap",
                 },
                 {
                     "package": "pkg-b",
                     "version": "2.0.0",
-                    "exception_type": "ConnectionError",
-                    "exception_message": "Download failed",
+                    "exception_type": "HookError",
+                    "exception_message": "Validation failed",
+                    "failure_type": "hook",
+                },
+                {
+                    "package": "pkg-c",
+                    "version": "3.0.0",
+                    "exception_type": "MetadataError",
+                    "exception_message": "Could not read metadata",
+                    "failure_type": "dependency_extraction",
                 },
             ]
         )
@@ -253,7 +272,8 @@ class TestJsonFailureReport:
         with open(report_path) as f:
             report = json.load(f)
 
-        assert len(report["failures"]) == 2
-        packages = [f["package"] for f in report["failures"]]
-        assert "pkg-a" in packages
-        assert "pkg-b" in packages
+        assert len(report["failures"]) == 3
+        failure_types = [f["failure_type"] for f in report["failures"]]
+        assert "bootstrap" in failure_types
+        assert "hook" in failure_types
+        assert "dependency_extraction" in failure_types
