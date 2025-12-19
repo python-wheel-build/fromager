@@ -224,6 +224,9 @@ class Bootstrapper:
     def bootstrap(self, req: Requirement, req_type: RequirementType) -> None:
         """Bootstrap a package and its dependencies.
 
+        Handles setup, validation, and error handling. Delegates actual build
+        work to _bootstrap_impl().
+
         In test mode, catches build exceptions, records package name, and continues.
         In normal mode, raises exceptions immediately (fail-fast).
         """
@@ -248,11 +251,31 @@ class Bootstrapper:
             _, parent_req, parent_version = self.why[-1]
             parent = (parent_req, parent_version)
 
+        # Update dependency graph unconditionally (before seen check to capture all edges)
+        self._add_to_graph(req, req_type, resolved_version, source_url, parent)
+
+        # Build sdist-only (no wheel) if flag is set, unless this is a build
+        # requirement which always needs a full wheel.
+        build_sdist_only = self.sdist_only and not self._processing_build_requirement(
+            req_type
+        )
+
+        # Avoid cyclic dependencies and redundant processing.
+        if self._has_been_seen(req, resolved_version, build_sdist_only):
+            logger.debug(
+                f"redundant {req_type} dependency {req} "
+                f"({resolved_version}, sdist_only={build_sdist_only}) for {self._explain}"
+            )
+            return
+        self._mark_as_seen(req, resolved_version, build_sdist_only)
+
+        logger.info(f"new {req_type} dependency {req} resolves to {resolved_version}")
+
         # Track dependency chain - context manager ensures cleanup even on exception
         with self._track_why(req_type, req, resolved_version):
             try:
                 self._bootstrap_impl(
-                    req, req_type, source_url, resolved_version, parent
+                    req, req_type, source_url, resolved_version, build_sdist_only
                 )
             except Exception as err:
                 if not self.test_mode:
@@ -267,16 +290,18 @@ class Bootstrapper:
         req_type: RequirementType,
         source_url: str,
         resolved_version: Version,
-        parent: tuple[Requirement, Version] | None,
+        build_sdist_only: bool,
     ) -> None:
-        """Internal implementation of bootstrap logic.
+        """Internal implementation - performs the actual bootstrap work.
+
+        Called by bootstrap() after setup, validation, and seen-checking.
 
         Args:
             req: The requirement to bootstrap.
             req_type: The type of requirement.
             source_url: The resolved source URL.
             resolved_version: The resolved version.
-            parent: The parent (requirement, version) tuple, or None for top-level.
+            build_sdist_only: Whether to build only sdist (no wheel).
 
         Error Handling:
             Fatal errors (source build, prebuilt download) raise exceptions
@@ -293,33 +318,6 @@ class Bootstrapper:
             )
 
         pbi = self.ctx.package_build_info(req)
-
-        self._add_to_graph(req, req_type, resolved_version, source_url, parent)
-
-        # Is bootstrap going to create a wheel or just an sdist?
-        #
-        # Use fast sdist-only if flag is set and requirement is not a build
-        # requirement.
-        #
-        # An install requirement on a pre-built wheel treats the wheel as
-        # sdist-only in order to build its installation requirements sdist-only.
-        #
-        # When bootstrap encounters another package with a *build* requirement
-        # on a pre-built wheel, its installation dependencies are materialized.
-        build_sdist_only = self.sdist_only and not self._processing_build_requirement(
-            req_type
-        )
-
-        # Avoid cyclic dependencies and redundant processing.
-        if self._has_been_seen(req, resolved_version, build_sdist_only):
-            logger.debug(
-                f"redundant {req_type} dependency {req} "
-                f"({resolved_version}, sdist_only={build_sdist_only}) for {self._explain}"
-            )
-            return
-        self._mark_as_seen(req, resolved_version, build_sdist_only)
-
-        logger.info(f"new {req_type} dependency {req} resolves to {resolved_version}")
 
         cached_wheel_filename: pathlib.Path | None = None
         unpacked_cached_wheel: pathlib.Path | None = None
