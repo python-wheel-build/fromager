@@ -6,7 +6,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from fromager import bootstrapper
+from fromager import bootstrapper, requirements_file
 from fromager.context import WorkContext
 from fromager.dependency_graph import DependencyGraph
 from fromager.requirements_file import RequirementType, SourceType
@@ -495,6 +495,7 @@ def test_build_from_source_returns_dataclass(tmp_context: WorkContext) -> None:
             req=Requirement("test-package"),
             resolved_version=Version("1.0.0"),
             source_url="https://pypi.org/simple/test-package",
+            req_type=requirements_file.RequirementType.TOP_LEVEL,
             build_sdist_only=False,
             cached_wheel_filename=None,
             unpacked_cached_wheel=None,
