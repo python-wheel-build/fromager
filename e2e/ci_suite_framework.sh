@@ -51,9 +51,9 @@ run_test() {
 
     # Run the test
     if "$test_script"; then
-        echo "✓ PASSED: $test_name"
+        echo "PASSED: $test_name"
     else
-        echo "✗ FAILED: $test_name"
+        echo "FAILED: $test_name"
         FAILED_TESTS+=("$test_name")
         # Continue running other tests instead of exiting immediately
         # This provides more comprehensive feedback in CI
@@ -65,7 +65,7 @@ run_test() {
 clean_test_environment() {
     local test_name="$1"
 
-    echo "🧹 Cleaning environment before test: $test_name"
+    echo "Cleaning environment before test: $test_name"
 
     # Remove e2e output directory
     local outdir
@@ -79,7 +79,7 @@ clean_test_environment() {
     echo "Removing hatch e2e environment..."
     hatch env remove e2e 2>/dev/null || true
 
-    echo "✨ Environment cleaned for test: $test_name"
+    echo "Environment cleaned for test: $test_name"
 }
 
 # Print a section header for organizing related tests
@@ -114,6 +114,6 @@ finish_suite() {
         done
         exit 1
     else
-        echo "All tests in $SUITE_NAME passed! ✓"
+        echo "All tests in $SUITE_NAME passed!"
     fi
 }
