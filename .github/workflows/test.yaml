@@ -15,6 +15,8 @@ jobs:
         python-version:
           - "3.11"
           - "3.12"
+          - "3.13"
+          - "3.14"
         rust-version:
           # RHEL 9.4 has rustc 1.75
           - "1.75"
@@ -71,6 +73,8 @@ jobs:
         python-version:
           - "3.11"
           - "3.12"
+          - "3.13"
+          - "3.14"
         rust-version:
           # RHEL 9.4 has rustc 1.75
           - "1.75"
@@ -89,6 +93,10 @@ jobs:
           # only run macOS tests on latest stable Python version
           - os: macos-latest
             python-version: "3.11"
+          - os: macos-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.13"
 
     steps:
       - name: Get source

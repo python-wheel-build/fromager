@@ -24,6 +24,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Utilities",
 ]
@@ -254,7 +255,7 @@ install-hooks = "pre-commit install"
 pkglint = [
   "python -m build",
   "twine check dist/*.tar.gz dist/*.whl",
-  "check-python-versions --only pyproject.toml,.github/workflows/test.yml",
+  "check-python-versions --only pyproject.toml,.github/workflows/test.yaml",
 ]
 
 [tool.hatch.envs.e2e]
