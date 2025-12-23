@@ -26,6 +26,7 @@ those special cases directly into fromager.
 .. toctree::
    :maxdepth: 2
 
+   quickstart.rst
    using.md
    getting-started.rst
    customization.md
