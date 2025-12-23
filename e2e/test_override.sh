@@ -23,7 +23,7 @@ fromager \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
   --patches-dir "$SCRIPTDIR/flit_core_patches" \
-  bootstrap 'flit_core==3.9.0'
+  bootstrap 'flit_core==3.10.1'
 
 find "$OUTDIR/wheels-repo/simple/" -name '*.whl'
 
@@ -50,9 +50,9 @@ fi
 
 # Check for output files
 EXPECTED_FILES="
-wheels-repo/downloads/flit_core-3.9.0-0-py3-none-any.whl
+wheels-repo/downloads/flit_core-3.10.1-0-py3-none-any.whl
 
-sdists-repo/downloads/flit_core-3.9.0.tar.gz
+sdists-repo/downloads/flit_core-3.10.1.tar.gz
 "
 
 for f in $EXPECTED_FILES; do

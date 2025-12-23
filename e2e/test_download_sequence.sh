@@ -21,7 +21,7 @@ pass=true
 
 # Check for output files
 EXPECTED_FILES="
-sdists-repo/downloads/flit_core-3.9.0.tar.gz
+sdists-repo/downloads/flit_core-3.10.1.tar.gz
 sdists-repo/downloads/setuptools-70.0.0.tar.gz
 sdists-repo/downloads/simplejson-3.19.2.tar.gz
 sdists-repo/downloads/wheel-0.43.0.tar.gz

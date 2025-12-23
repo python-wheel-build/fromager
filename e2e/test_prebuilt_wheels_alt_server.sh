@@ -12,7 +12,7 @@ mkdir -p "$INIT"
 
 # What are we building?
 DIST="flit_core"
-VERSION="3.9.0"
+VERSION="3.10.1"
 
 # Get the wheel we need from PyPI
 fromager \
@@ -57,7 +57,7 @@ fromager \
 
 # Ensure we have both expected wheels
 EXPECTED_FILES="
-wheels-repo/prebuilt/flit_core-3.9.0-0-py3-none-any.whl
+wheels-repo/prebuilt/flit_core-3.10.1-0-py3-none-any.whl
 wheels-repo/downloads/wheel-0.43.0-0-py3-none-any.whl
 "
 
