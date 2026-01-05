@@ -1,0 +1,4 @@
+source:
+  provider: pypi-download
+  index_url: https://pypi.test/simple
+  download_url: https://download.test/test_pypidownload-{version}.tar.gz
