@@ -1,6 +1,10 @@
 Getting Started
 ===============
 
+.. note::
+
+   New to fromager? Start with :doc:`quickstart` for a simple first build.
+
 The basic process for using fromager to build a collection of wheels is
 
 1. Make a list of the top-level dependencies (applications, extension libraries,
