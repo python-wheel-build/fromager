@@ -1,0 +1,80 @@
+name: Nightly Integration Benchmarks
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # 2 AM UTC daily
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  integration-benchmark:
+    runs-on: ubuntu-latest
+
+    services:
+      local-pypi:
+        image: pypiserver/pypiserver:latest
+        ports:
+          - 8080:8080
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Download packages for local PyPI
+        run: |
+          mkdir -p packages
+          pip download -r benchmarks/requirements/packages.txt -d packages
+          # Note: In production, these would be copied to the pypiserver volume
+
+      - name: Run integration benchmarks with CodSpeed
+        uses: CodSpeedHQ/action@v3
+        env:
+          CODSPEED_VALGRIND_ARGS: "--trace-children=yes --trace-children-skip=/bin/sh,/usr/bin/git"
+          UV_INDEX_URL: "http://localhost:8080/simple"
+          UV_NO_PROGRESS: "1"
+        with:
+          token: ${{ secrets.CODSPEED_TOKEN }}
+          run: hatch run benchmark:run --codspeed -m "integration"
+
+      - name: Generate benchmark JSON (fallback)
+        if: always()
+        env:
+          UV_INDEX_URL: "http://localhost:8080/simple"
+          UV_NO_PROGRESS: "1"
+        run: |
+          hatch run benchmark:run \
+            --benchmark-only \
+            --benchmark-json=integration-benchmark-results.json \
+            -m "integration" || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-benchmark-results
+          path: integration-benchmark-results.json
+          retention-days: 90
+
+      - name: Run memory profiling on integration tests
+        if: always()
+        env:
+          UV_INDEX_URL: "http://localhost:8080/simple"
+          UV_NO_PROGRESS: "1"
+        run: |
+          hatch run benchmark:memory \
+            --memray-bin-path=integration-memray-results \
+            -m "integration" || true
+
+      - name: Upload memory results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-memory-results
+          path: integration-memray-results/
+          retention-days: 90
