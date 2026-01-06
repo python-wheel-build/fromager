@@ -1,0 +1,105 @@
+name: Benchmarks (Backfill)
+
+# CodSpeed uses Valgrind to count CPU instructions.
+# Valgrind wraps `hatch run` and traces child processes (hatch → uv → python → pytest).
+# Do NOT skip hatch/uv in Valgrind args. Skipping a parent process causes Valgrind to lose track of ALL children (no data captured).
+# See `benchmarks/README.md` for more information.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_commit:
+        description: 'Start commit SHA (older)'
+        required: true
+        type: string
+      to_commit:
+        description: 'End commit SHA (newer, default: HEAD)'
+        required: false
+        default: 'HEAD'
+        type: string
+      benchmark_set:
+        description: 'Benchmark set to run'
+        required: false
+        default: 'fast'
+        type: choice
+        options:
+          - fast
+          - full
+      force:
+        description: 'Force recalculation (reserved for future use)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      commits: ${{ steps.get-commits.outputs.commits }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commits between range
+        id: get-commits
+        run: |
+          FROM="${{ inputs.from_commit }}"
+          TO="${{ inputs.to_commit }}"
+
+          # Get list of commits from oldest to newest
+          COMMITS=$(git rev-list --reverse "$FROM^..$TO" | head -20)
+
+          # Convert to JSON array
+          JSON_COMMITS=$(echo "$COMMITS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "commits=$JSON_COMMITS" >> $GITHUB_OUTPUT
+          echo "Will benchmark these commits:"
+          echo "$COMMITS"
+
+  backfill:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 1  # Run sequentially to avoid overwhelming CodSpeed
+      matrix:
+        commit: ${{ fromJson(needs.prepare.outputs.commits) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          fetch-depth: 0
+
+      # Copy benchmarks from the workflow's source branch (to run up-to-date benchmarks on older commits)
+      - name: Ensure benchmarks directory exists
+        run: |
+          if [ ! -d "benchmarks" ]; then
+            echo "Benchmarks directory not found in commit ${{ matrix.commit }}"
+            echo "Fetching from workflow source..."
+            git fetch origin ${{ github.ref }}
+            git checkout FETCH_HEAD -- benchmarks/ || echo "No benchmarks to copy"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Run benchmarks with CodSpeed
+        uses: CodSpeedHQ/action@v4
+        with:
+          run: |
+            if [ "${{ inputs.benchmark_set }}" = "fast" ]; then
+              hatch run benchmark:run --codspeed -m "not slow"
+            else
+              hatch run benchmark:run --codspeed
+            fi

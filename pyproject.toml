@@ -86,6 +86,10 @@ docs = [
     "sphinx-rtd-theme",
     "autodoc-pydantic",
 ]
+benchmark = [
+    "pytest-benchmark>=4.0.0",
+    "pytest-codspeed>=3.0.0",
+]
 
 [project.urls]
 Repository = "https://github.com/python-wheel-build/fromager"
@@ -284,3 +288,13 @@ description = "Sphinx docs."
 features = ["docs"]
 [tool.hatch.envs.docs.scripts]
 build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
+
+[tool.hatch.envs.benchmark]
+description = "Run benchmarks."
+features = ["benchmark"]
+[tool.hatch.envs.benchmark.scripts]
+run = "pytest benchmarks/ {args}"
+fast = "pytest benchmarks/ -m \"not slow\" {args}"
+compare = "pytest benchmarks/ --benchmark-compare {args}"
+json = "pytest benchmarks/ --benchmark-json=results.json {args}"
+disable = "pytest benchmarks/ --benchmark-disable {args}"

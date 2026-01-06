@@ -1,0 +1,58 @@
+name: Benchmarks
+
+# CodSpeed uses Valgrind to count CPU instructions.
+# Valgrind wraps `hatch run` and traces child processes (hatch → uv → python → pytest).
+# Do NOT skip hatch/uv in Valgrind args. Skipping a parent process causes Valgrind to lose track of ALL children (no data captured).
+# See `benchmarks/README.md` for more information.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  benchmark-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for baseline comparison
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Run benchmarks with CodSpeed
+        uses: CodSpeedHQ/action@v4
+        env:
+          UV_NO_PROGRESS: "1"
+        with:
+          run: hatch run benchmark:run --codspeed -m "not slow"
+
+      - name: Generate benchmark JSON (fallback)
+        if: always()
+        env:
+          UV_NO_PROGRESS: "1"
+        run: |
+          hatch run benchmark:run \
+            --benchmark-only \
+            --benchmark-json=benchmark-results.json \
+            -m "not slow" || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmark-results.json
+          retention-days: 30
