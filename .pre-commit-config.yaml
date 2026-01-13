@@ -1,26 +1,66 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
-      - id: end-of-file-fixer        # Ensures single trailing newline
-      - id: trailing-whitespace      # Removes trailing spaces
-        args: [--markdown-linebreak-ext=md]  # Preserve markdown line breaks
-      - id: check-yaml               # Validates YAML syntax
-      - id: check-merge-conflict     # Prevents merge conflict markers
-      - id: check-toml               # Validates TOML syntax
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-toml
+
+  - repo: https://github.com/mgedmin/check-python-versions
+    rev: "0.24.0"
+    hooks:
+      - id: check-python-versions
+        args: ["--only", "pyproject.toml,.github/workflows/test.yaml"]
+
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: 3.2.1
+    hooks:
+      - id: editorconfig-checker
+        alias: ec
+        # Exclude files that are auto-generated or strictly formatted elsewhere
+        exclude: |
+          (?x)^(
+              LICENSE|
+              .*\.lock|
+              dist/.*
+          )$
 
   - repo: local
     hooks:
-      - id: hatch-lint
-        name: hatch lint check
-        entry: hatch run lint:check
+      - id: markdownlint
+        name: markdownlint
+        entry: python scripts/conditional_hook.py markdownlint-cli2
+        args: ["--fix"]
         language: system
-        types: [python]
-        pass_filenames: false
+        types: [markdown]
+        require_serial: true
+        verbose: true
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.11
+    hooks:
+      # Linter runs before formatter so fixes (like removing imports) get formatted
+      - id: ruff-check
+        args: [--fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  - repo: local
+    hooks:
       - id: hatch-mypy
         name: hatch mypy check
         entry: hatch run mypy:check
         language: system
         types: [python]
+        pass_filenames: false
+
+      - id: mergify-lint
+        name: mergify lint
+        entry: hatch run lint:mergify
+        language: system
+        files: ^\.mergify\.yml$
         pass_filenames: false
