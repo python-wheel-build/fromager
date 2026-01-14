@@ -38,6 +38,7 @@ those special cases directly into fromager.
    config-reference.rst
    cli.rst
    develop.md
+   glossary.md
 
 What's with the name?
 ---------------------
