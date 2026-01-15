@@ -344,14 +344,23 @@ def default_get_install_dependencies_of_sdist(
     return set(metadata.requires_dist)
 
 
-def parse_metadata(metadata_file: pathlib.Path, *, validate: bool = True) -> Metadata:
-    """Parse a dist-info/METADATA file
+def parse_metadata(
+    metadata_source: pathlib.Path | bytes, *, validate: bool = True
+) -> Metadata:
+    """Parse metadata from a file path or bytes.
 
-    The default parse mode is 'strict'. It even fails for a mismatch of field
-    and core metadata version, e.g. a package with metadata 2.2 and
-    license-expression field (added in 2.4).
+    Args:
+        metadata_source: Path to METADATA file or bytes containing metadata
+        validate: Whether to validate metadata (default: True)
+
+    Returns:
+        Parsed Metadata object
     """
-    return Metadata.from_email(metadata_file.read_bytes(), validate=validate)
+    if isinstance(metadata_source, pathlib.Path):
+        metadata_bytes = metadata_source.read_bytes()
+    else:
+        metadata_bytes = metadata_source
+    return Metadata.from_email(metadata_bytes, validate=validate)
 
 
 def pep517_metadata_of_sdist(
