@@ -47,9 +47,7 @@ def after_prebuilt_wheel(
     dist_version: str,
     wheel_filename: pathlib.Path,
 ) -> None:
-    logger.info(
-        f"running post build hook in {__name__} for {wheel_filename}"
-    )
+    logger.info(f"running post build hook in {__name__} for {wheel_filename}")
     test_file = ctx.work_dir / "test-prebuilt.txt"
     logger.info(f"prebuilt-wheel hook writing to {test_file}")
     test_file.write_text(f"{dist_name}=={dist_version}")
