@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import logging
 import os
 import pathlib
@@ -18,10 +19,10 @@ from packaging.version import Version
 from pydantic import Field
 from pydantic_core import CoreSchema, core_schema
 
-from . import overrides
+from . import overrides, resolver
 
 if typing.TYPE_CHECKING:
-    from . import build_environment, context
+    from . import build_environment, context, requirements_file
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +355,12 @@ class VariantInfo(pydantic.BaseModel):
     pre_built: bool = False
     """Use pre-built wheel from index server?"""
 
+    source: typing.Annotated[
+        SourceResolver | None,
+        pydantic.Field(default=None, discriminator="provider"),
+    ]
+    """Source resolver and downloader"""
+
 
 class GitOptions(pydantic.BaseModel):
     """Git repository cloning options
@@ -383,6 +390,320 @@ class GitOptions(pydantic.BaseModel):
     - ["third-party/openssl"]
     - ["vendor/lib1", "vendor/lib2"]
     """
+
+
+VERSION_QUOTED = "%7Bversion%7D"
+
+
+class BuildSDist(enum.StrEnum):
+    pep517 = "pep517"
+    tarball = "tarball"
+
+
+class AbstractResolver(pydantic.BaseModel):
+    model_config = MODEL_CONFIG
+
+    provider: str
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.BaseProvider:
+        raise NotImplementedError
+
+
+class PyPISDistResolver(AbstractResolver):
+    """Resolve version with PyPI, download sdist from PyPI
+
+    The ``pypi-sdist` provider uses :pep:`503` *Simple Repository API* or
+    :pep:`691` *JSON-based Simple API* to resolve packages on PyPI or a
+    PyPI-compatible index.
+
+    The provider downloads source distributions (tarballs) from the index.
+    It ignores releases that have only wheels and no sdist.
+    """
+
+    provider: typing.Literal["pypi-sdist"]
+
+    index_url: pydantic.HttpUrl = pydantic.Field(
+        default=pydantic.HttpUrl("https://pypi.org/simple/"),
+        description="Python Package Index URL",
+    )
+
+    # It is not safe to use PEP 517 to re-generate a source distribution.
+    # Some PEP 517 backends require VCS to generate correct sdist.
+    build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.PyPIProvider:
+        return resolver.PyPIProvider(
+            include_sdists=True,
+            include_wheels=False,
+            sdist_server_url=str(self.index_url),
+            constraints=ctx.constraints,
+            req_type=req_type,
+            ignore_platform=False,
+        )
+
+
+class PyPIPrebuiltResolver(AbstractResolver):
+    """Resolve version with PyPI, download pre-built wheel from PyPI
+
+    The ``pypi-prebuilt` provider uses :pep:`503` *Simple Repository API* or
+    :pep:`691` *JSON-based Simple API* to resolve packages on PyPI or a
+    PyPI-compatible index.
+
+    The provider downloads pre-built wheels from the index. It ignores
+    versions that have no compatible wheels (sdist-only or incompatible
+    OS, CPU arch, or glibc version).
+    """
+
+    provider: typing.Literal["pypi-prebuilt"]
+
+    index_url: pydantic.HttpUrl = pydantic.Field(
+        default=pydantic.HttpUrl("https://pypi.org/simple/"),
+        description="Python Package Index URL",
+    )
+
+    build_sdist: typing.ClassVar[BuildSDist | None] = None
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.PyPIProvider:
+        return resolver.PyPIProvider(
+            include_sdists=False,
+            include_wheels=True,
+            sdist_server_url=str(self.index_url),
+            constraints=ctx.constraints,
+            req_type=req_type,
+            ignore_platform=False,
+        )
+
+
+class PyPIDownloadResolver(AbstractResolver):
+    """Resolve version with PyPI, download sdist from arbitrary URL
+
+    The ``pypi-download` provider uses :pep:`503` *Simple Repository API* or
+    :pep:`691` *JSON-based Simple API* to resolve packages on PyPI or a
+    PyPI-compatible index.
+
+    The provider takes all releases into account (sdist-only, wheel-only,
+    even incompatible wheels).
+
+    It downloads tarball from an alternative download location. The download
+    URL must contain a ``{version}`` template, e.g.
+    ``https://download.example/mypackage-{version}.tar.gz``.
+    """
+
+    provider: typing.Literal["pypi-download"]
+
+    index_url: pydantic.HttpUrl = pydantic.Field(
+        default=pydantic.HttpUrl("https://pypi.org/simple/"),
+        description="Python Package Index URL",
+    )
+
+    download_url: pydantic.HttpUrl
+    """Remote download URL
+
+    URL must contain '{version}' template string.
+    """
+
+    build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
+
+    @pydantic.field_validator("download_url", mode="after")
+    @classmethod
+    def validate_download_url(cls, value: pydantic.HttpUrl) -> pydantic.HttpUrl:
+        if not value.path:
+            raise ValueError(f"url {value} has an empty path")
+        if VERSION_QUOTED not in value.path:
+            raise ValueError(f"missing '{{version}}' in url {value}")
+        return value
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.PyPIProvider:
+        return resolver.PyPIProvider(
+            include_sdists=True,
+            include_wheels=True,
+            sdist_server_url=str(self.index_url),
+            constraints=ctx.constraints,
+            req_type=req_type,
+            ignore_platform=True,
+            override_download_url=str(self.download_url).replace(
+                VERSION_QUOTED, "{version}"
+            ),
+        )
+
+
+class PyPIGitResolver(AbstractResolver):
+    """Resolve version with PyPI, build sdist from git clone
+
+    The ``pypi-git` provider uses :pep:`503` *Simple Repository API* or
+    :pep:`691` *JSON-based Simple API* to resolve packages on PyPI or a
+    PyPI-compatible index.
+
+    The provider takes all releases into account (sdist-only, wheel-only,
+    even incompatible wheels).
+
+    It clones and retrieves a git repo + recursive submodules at a specific
+    tag. The tag must contain ``{version}`` template.
+
+    """
+
+    provider: typing.Literal["pypi-git"]
+
+    index_url: pydantic.HttpUrl = pydantic.Field(
+        default=pydantic.HttpUrl("https://pypi.org/simple/"),
+        description="Python Package Index URL",
+    )
+
+    clone_url: pydantic.AnyUrl
+    """git clone URL
+
+    https://git.test/repo.git
+    """
+
+    tag: str
+
+    build_sdist: BuildSDist = BuildSDist.pep517
+    """Source distribution build method"""
+
+    @pydantic.field_validator("clone_url", mode="after")
+    @classmethod
+    def validate_clone_url(cls, value: pydantic.AnyUrl) -> pydantic.AnyUrl:
+        if value.scheme not in {"https", "ssh"}:
+            raise ValueError(f"invalid scheme in url {value}")
+        if not value.path:
+            raise ValueError(f"url {value} has an empty path")
+        return value
+
+    @pydantic.field_validator("tag", mode="after")
+    @classmethod
+    def validate_tag(cls, value: str) -> str:
+        if "{version}" not in value:
+            raise ValueError(f"missing '{{version}}' in tag {value}")
+        return value
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.PyPIProvider:
+        download_url = f"git+{self.clone_url}@{self.tag}"
+        return resolver.PyPIProvider(
+            include_sdists=True,
+            include_wheels=True,
+            sdist_server_url=str(self.index_url),
+            constraints=ctx.constraints,
+            req_type=req_type,
+            ignore_platform=True,
+            override_download_url=download_url,
+        )
+
+
+class GithubSourceResolver(AbstractResolver):
+    """Resolve version from Github tags, build sdist from tarball or git clone
+
+    The `github` provider uses GitHub's REST API to resolve versions from tags.
+
+    It can either directly download a tarball bundle or git clone a repository.
+    """
+
+    provider: typing.Literal["github"]
+
+    url: pydantic.HttpUrl
+    """Full GitHub project URL"""
+
+    tag_pattern: re.Pattern = re.compile(r"v?(\d+\..*)")
+    """Regular expression matching the tag"""
+
+    retrieve_method: resolver.RetrieveMethod = resolver.RetrieveMethod.git_https
+    """Retrieve method (tar bundle, git clone)"""
+
+    build_sdist: BuildSDist = BuildSDist.pep517
+    """Source distribution build method"""
+
+    @pydantic.field_validator("url", mode="after")
+    @classmethod
+    def validate_url(cls, value: pydantic.HttpUrl) -> pydantic.HttpUrl:
+        if value.host != "github.com":
+            raise ValueError(f"Expected 'github.com' in {value}")
+        if not value.path or value.path.count("/") != 2:
+            raise ValueError(f"Invalid path in {value}, expected two elements")
+        return value
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.GitHubTagProvider:
+        path = self.url.path
+        assert path is not None  # for type checker
+        path = path.lstrip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        organization, repo = path.split("/")
+        return resolver.GitHubTagProvider(
+            organization=organization,
+            repo=repo,
+            constraints=ctx.constraints,
+            matcher=self.tag_pattern,
+            req_type=req_type,
+            retrieve_method=self.retrieve_method,
+        )
+
+
+class GitlabSourceResolver(AbstractResolver):
+    """Resolve version from Gitlab tags, build sdist from download or clone
+
+    The `gitlab` provider uses Gitlab's REST API to resolve versions from tags.
+
+    It can either directly download a tarball bundle or git clone a repository.
+    """
+
+    provider: typing.Literal["gitlab"]
+
+    url: pydantic.HttpUrl
+    """Full GitLab project URL"""
+
+    tag_pattern: re.Pattern = re.compile(r"v?(\d+\..*)")
+    """Regular expression matching the tag"""
+
+    retrieve_method: resolver.RetrieveMethod = resolver.RetrieveMethod.git_https
+    """Retrieve method (tar bundle, git clone)"""
+
+    build_sdist: BuildSDist = BuildSDist.pep517
+    """Source distribution build method"""
+
+    @pydantic.field_validator("url", mode="after")
+    @classmethod
+    def validate_url(cls, value: pydantic.HttpUrl) -> pydantic.HttpUrl:
+        if value.scheme != "https" or not value.host or not value.path:
+            raise ValueError(f"invalid url {value}")
+        return value
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.GitLabTagProvider:
+        path = self.url.path
+        assert path is not None  # for type checker
+        path = path.lstrip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        return resolver.GitLabTagProvider(
+            project_path=path,
+            server_url=f"https://{self.url.host}",
+            constraints=ctx.constraints,
+            matcher=self.tag_pattern,
+            req_type=req_type,
+            retrieve_method=self.retrieve_method,
+        )
+
+
+SourceResolver = (
+    PyPISDistResolver
+    | PyPIPrebuiltResolver
+    | PyPIDownloadResolver
+    | PyPIGitResolver
+    | GithubSourceResolver
+    | GitlabSourceResolver
+)
 
 
 _DictStrAny = dict[str, typing.Any]
@@ -452,6 +773,12 @@ class PackageSettings(pydantic.BaseModel):
 
     env: EnvVars = Field(default_factory=dict)
     """Common env var for all variants"""
+
+    source: typing.Annotated[
+        SourceResolver | None,
+        pydantic.Field(default=None, discriminator="provider"),
+    ]
+    """Source resolver and downloader"""
 
     download_source: DownloadSource = Field(default_factory=DownloadSource)
     """Alternative source download settings"""
@@ -985,6 +1312,14 @@ class PackageBuildInfo:
     def variants(self) -> Mapping[Variant, VariantInfo]:
         """Get the variant configuration for the current package"""
         return self._ps.variants
+
+    @property
+    def source_resolver(self) -> SourceResolver | None:
+        """Get source resolver settings (variant or global)"""
+        vi = self._ps.variants.get(self.variant)
+        if vi is not None and vi.source is not None:
+            return vi.source
+        return self._ps.source
 
     def serialize(self, **kwargs: typing.Any) -> dict[str, typing.Any]:
         return self._ps.serialize(**kwargs)

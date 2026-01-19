@@ -1,0 +1,6 @@
+source:
+  provider: github
+  url: https://github.com/python-wheel-build/fromager
+  tag_pattern: "(\\d.*)"
+  retrieve_method: git+https
+  build_sdist: pep517
