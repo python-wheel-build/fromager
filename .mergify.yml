@@ -7,7 +7,7 @@ pull_request_rules:
           - "title~=^e2e:"
           - files~=pyproject.toml
           - files~=.github/
-          - files~=.markdownlint-config.yaml
+          - files~=.mdformat.toml
           - files~=tests/
           - files~=e2e/
     actions:

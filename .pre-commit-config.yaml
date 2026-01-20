@@ -28,22 +28,13 @@ repos:
               dist/.*
           )$
 
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.39.0
+  - repo: https://github.com/hukkin/mdformat
+    rev: 1.0.0
     hooks:
-      - id: markdownlint
-        args: [--config, .markdownlint-config.yaml]
-
-  - repo: local
-    hooks:
-      - id: markdownlint
-        name: markdownlint
-        entry: python scripts/conditional_hook.py markdownlint-cli2
-        args: ["--fix"]
-        language: system
-        types: [markdown]
-        require_serial: true
-        verbose: true
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm  # GitHub Flavored Markdown support (tables, autolinks, etc.)
+          - mdformat-simple-breaks  # Use --- for thematic breaks instead of 70 underscores
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.11
