@@ -2,8 +2,9 @@
 """Simple coverage setup for E2E tests."""
 
 import pathlib
-import sys
 import site
+import sys
+
 
 def setup_coverage() -> None:
     """Create coverage.pth file for subprocess coverage collection."""
@@ -29,6 +30,7 @@ def setup_coverage() -> None:
     cov_pth.write_text("import coverage; coverage.process_startup()")
 
     print(f"Coverage setup complete: {cov_pth}")
+
 
 if __name__ == "__main__":
     setup_coverage()
