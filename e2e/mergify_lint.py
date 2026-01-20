@@ -41,7 +41,7 @@ os_versions.remove("macos-latest")
 e2e_dir = pathlib.Path("e2e")
 # Look for CI suite scripts instead of individual test scripts
 ci_suite_jobs = set(
-    script.name[:-len(".sh")] for script in e2e_dir.glob("ci_*_suite.sh")
+    script.name[: -len(".sh")] for script in e2e_dir.glob("ci_*_suite.sh")
 )
 print("found CI suite scripts:\n  ", "\n  ".join(sorted(ci_suite_jobs)), sep="")
 
@@ -49,7 +49,11 @@ print("found CI suite scripts:\n  ", "\n  ".join(sorted(ci_suite_jobs)), sep="")
 individual_e2e_scripts = set(
     script.name[len("test_") : -len(".sh")] for script in e2e_dir.glob("test_*.sh")
 )
-print("found individual e2e scripts:\n  ", "\n  ".join(sorted(individual_e2e_scripts)), sep="")
+print(
+    "found individual e2e scripts:\n  ",
+    "\n  ".join(sorted(individual_e2e_scripts)),
+    sep="",
+)
 
 # Remember if we should fail so we can apply all of the rules and then
 # exit with an error.
@@ -66,23 +70,27 @@ referenced_scripts = set()
 for ci_suite_file in e2e_dir.glob("ci_*_suite.sh"):
     content = ci_suite_file.read_text(encoding="utf8")
     # Look for run_test "script_name" calls (excluding commented lines)
-    for line in content.split('\n'):
+    for line in content.split("\n"):
         # Skip lines that start with # (comments)
         stripped = line.strip()
-        if stripped.startswith('#'):
+        if stripped.startswith("#"):
             continue
         for match in re.finditer(r'run_test\s+"([^"]+)"', line):
             referenced_scripts.add(match.group(1))
 
-print("scripts referenced in CI suites:\n  ", "\n  ".join(sorted(referenced_scripts)), sep="")
+print(
+    "scripts referenced in CI suites:\n  ",
+    "\n  ".join(sorted(referenced_scripts)),
+    sep="",
+)
 
 # Find any individual e2e scripts that aren't referenced in any CI suite
 unreferenced_scripts = individual_e2e_scripts.difference(referenced_scripts)
 if unreferenced_scripts:
-    print(f"\nERROR: The following e2e scripts are not referenced in any CI suite:")
+    print("\nERROR: The following e2e scripts are not referenced in any CI suite:")
     for script in sorted(unreferenced_scripts):
         print(f"  - {script}")
-    print(f"Please add these scripts to the appropriate CI suite script.")
+    print("Please add these scripts to the appropriate CI suite script.")
     RC = 1
 else:
     print("✓ All individual e2e scripts are covered by CI suites!")
@@ -99,15 +107,17 @@ expected_jobs = set(
     )
 )
 # for macOS, only expect latest Python version and latest Rust version
-expected_jobs.update(set(
-    str(combo).replace("'", "")
-    for combo in itertools.product(
-        python_versions[-1:],
-        rust_versions[-1:],
-        test_scripts,
-        ["macos-latest"],
+expected_jobs.update(
+    set(
+        str(combo).replace("'", "")
+        for combo in itertools.product(
+            python_versions[-1:],
+            rust_versions[-1:],
+            test_scripts,
+            ["macos-latest"],
+        )
     )
-))
+)
 if not expected_jobs.difference(existing_jobs):
     print("found rules for all expected jobs!")
 for job_name in sorted(expected_jobs.difference(existing_jobs)):
