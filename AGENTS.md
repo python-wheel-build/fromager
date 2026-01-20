@@ -82,7 +82,7 @@ hatch run lint:precommit    # Run all hooks manually
 
 Pre-commit runs automatically on commit after installation with `hatch run lint:install-hooks`.
 
-**Conditional hooks:** The markdownlint hook skips with a warning when Node.js is unavailable locally. In CI, missing Node.js fails the build.
+**Markdown formatting:** The mdformat hook formats Markdown files using a pure Python formatter with GitHub Flavored Markdown support.
 
 ## Safety and Permissions
 
