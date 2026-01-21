@@ -468,3 +468,78 @@ def test_tracking_topology_sorter_empty_graph() -> None:
     with pytest.raises(ValueError) as excinfo:
         topo.get_available()
     assert "topology is not active" in str(excinfo.value)
+
+
+def test_max_parallelism_calculation() -> None:
+    """Test that max parallelism can be calculated from static_batches.
+
+    This test validates the approach used in build_parallel to optimize
+    max_workers based on graph structure.
+    """
+    a = mknode("a")
+    b = mknode("b")
+    c = mknode("c")
+    d = mknode("d")
+    e = mknode("e")
+    f = mknode("f")
+
+    # Graph: a->[b,c], b->[c,d], d->[e], f->[d] => batches {c,e}, {d}, {b,f}, {a}
+    graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+    graph = {
+        a: [b, c],
+        b: [c, d],
+        d: [e],
+        f: [d],
+    }
+
+    topo = TrackingTopologicalSorter(graph)
+    batches = list(topo.static_batches())
+
+    # Calculate max parallelism - the largest batch size
+    max_parallelism = max(len(batch) for batch in batches)
+
+    # Expected batches: {c, e}, {d}, {b, f}, {a}
+    # Max parallelism should be 2 (from {c, e} or {b, f})
+    assert max_parallelism == 2
+
+
+def test_max_parallelism_highly_parallel_graph() -> None:
+    """Test max parallelism with a highly parallel graph (no dependencies)."""
+    nodes = [mknode(f"node_{i}") for i in range(10)]
+
+    # No dependencies - all nodes can build in parallel
+    graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+    graph = {node: [] for node in nodes}
+
+    topo = TrackingTopologicalSorter(graph)
+    batches = list(topo.static_batches())
+
+    # All 10 nodes should be in one batch
+    assert len(batches) == 1
+    max_parallelism = max(len(batch) for batch in batches)
+    assert max_parallelism == 10
+
+
+def test_max_parallelism_sequential_graph() -> None:
+    """Test max parallelism with a fully sequential graph."""
+    a = mknode("a")
+    b = mknode("b")
+    c = mknode("c")
+    d = mknode("d")
+
+    # Fully sequential: a -> b -> c -> d
+    graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+    graph = {
+        a: [b],
+        b: [c],
+        c: [d],
+        d: [],
+    }
+
+    topo = TrackingTopologicalSorter(graph)
+    batches = list(topo.static_batches())
+
+    # Each batch should have exactly 1 node
+    assert len(batches) == 4
+    max_parallelism = max(len(batch) for batch in batches)
+    assert max_parallelism == 1  # Only 1 worker needed for fully sequential
