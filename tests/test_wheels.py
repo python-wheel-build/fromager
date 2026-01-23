@@ -3,7 +3,7 @@ import zipfile
 from unittest.mock import Mock, patch
 
 import pytest
-import wheel.cli  # type: ignore
+import wheel.wheelfile  # type: ignore
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -21,7 +21,7 @@ def test_invalid_wheel_file_exception(
     text_file = fake_dir / "fake_wheel.txt"
     text_file.write_text("This is a test file")
     req = Requirement("test_pkg")
-    with pytest.raises(wheel.cli.WheelError):
+    with pytest.raises(wheel.wheelfile.WheelError):
         wheels._download_wheel_check(req, fake_dir, fake_url)
 
 
