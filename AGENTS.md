@@ -74,15 +74,15 @@ hatch run lint:precommit # All linters and other pre-commit hooks
 
 ### Pre-commit Hooks
 
-The project uses pre-commit hooks to automatically check file formatting:
+Run all linters and formatters via pre-commit:
 
-- **File endings**: Ensures all files end with a single newline
-- **Whitespace**: Removes trailing whitespace
-- **Syntax**: Validates YAML/TOML files
-- **Conflicts**: Prevents committing merge conflict markers
-- **Linters**: Runs the `mypy` and `ruff` linters
+```bash
+hatch run lint:precommit    # Run all hooks manually
+```
 
-These run automatically on commit if installed with `hatch run lint:install-hooks`.
+Pre-commit runs automatically on commit after installation with `hatch run lint:install-hooks`.
+
+**Markdown formatting:** The mdformat hook formats Markdown files using a pure Python formatter with GitHub Flavored Markdown support.
 
 ## Safety and Permissions
 

@@ -7,8 +7,11 @@ Fromager includes enhanced HTTP retry functionality to handle network failures, 
 The retry system provides:
 
 - **Exponential backoff with jitter** to avoid thundering herd problems
+
 - **Configurable retry attempts** (default: 8 retries)
+
 - **Smart error handling** for common network issues:
+
   - HTTP 5xx server errors (500, 502, 503, 504)
   - HTTP 429 rate limiting
   - Connection timeouts and broken connections
@@ -16,7 +19,9 @@ The retry system provides:
   - DNS resolution failures
 
 - **GitHub API rate limit handling** with proper reset time detection
+
 - **GitHub authentication** automatically applied for GitHub API requests via `GITHUB_TOKEN` environment variable
+
 - **Temporary file handling** to prevent partial downloads
 
 ## Configuration

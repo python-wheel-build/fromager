@@ -1,5 +1,32 @@
 # Developing these tools
 
+## Pre-commit hooks
+
+The project uses [pre-commit](https://pre-commit.com/) to run linters and formatters automatically on each commit. This ensures consistent code quality across all contributions.
+
+### Setup
+
+Install the hooks once after cloning:
+
+```bash
+hatch run lint:install-hooks
+```
+
+### Running hooks
+
+Hooks run automatically when you commit. To run all hooks manually:
+
+```bash
+hatch run lint:precommit
+```
+
+### What the hooks check
+
+- **File formatting**: Trailing whitespace, final newlines, YAML/TOML syntax
+- **Python**: Ruff (linting + formatting), mypy (type checking)
+- **Markdown**: mdformat (formatting with GitHub Flavored Markdown support)
+- **Config validation**: EditorConfig, Mergify, Python version consistency
+
 ## Unit tests and linter
 
 The unit tests and linter now use [Hatch](https://hatch.pypa.io/) and a

@@ -1,0 +1,9 @@
+# Use consecutive numbering for ordered lists (1, 2, 3 instead of 1, 1, 1)
+number = true
+
+# Preserve original line wrapping
+wrap = "keep"
+
+[plugin.tables]
+# Strip extra spaces from GFM tables (don't pad columns for alignment)
+compact_tables = true
