@@ -1,0 +1,54 @@
+name: Benchmarks (Component)
+
+# Runs fast component benchmarks on PRs and main using CPU simulation.
+# Integration benchmarks run separately with walltime mode.
+# See benchmarks/README.md for details.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  benchmark-component:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Run component benchmarks with CodSpeed
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: simulation
+          run: hatch run benchmark:run --codspeed -m "not slow and not integration"
+
+      - name: Generate benchmark JSON (fallback)
+        if: always()
+        run: |
+          hatch run benchmark:run \
+            --benchmark-only \
+            --benchmark-json=benchmark-results.json \
+            -m "not slow and not integration" || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-component
+          path: benchmark-results.json
+          retention-days: 30
