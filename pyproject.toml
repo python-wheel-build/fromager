@@ -36,7 +36,6 @@ dependencies = [
     "elfdeps>=0.2.0",
     "license-expression",
     "packaging",
-    "pkginfo",
     "psutil",
     "pydantic",
     "pypi_simple",
@@ -204,7 +203,7 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["license_expression", "pyproject_hooks", "requests_mock", "resolver", "stevedore"]
+module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "stevedore"]
 ignore_missing_imports = true
 
 [tool.basedpyright]
