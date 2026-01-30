@@ -25,6 +25,7 @@ test_section "bootstrap configuration tests"
 run_test "bootstrap_prerelease"
 run_test "bootstrap_cache"
 run_test "bootstrap_sdist_only"
+run_test "bootstrap_all_versions"
 
 test_section "bootstrap git URL tests"
 run_test "bootstrap_git_url"

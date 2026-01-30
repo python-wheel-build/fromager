@@ -89,6 +89,7 @@ class Bootstrapper:
         cache_wheel_server_url: str | None = None,
         sdist_only: bool = False,
         test_mode: bool = False,
+        all_versions: bool = False,
     ) -> None:
         if test_mode and sdist_only:
             raise ValueError(
@@ -101,6 +102,10 @@ class Bootstrapper:
         self.cache_wheel_server_url = cache_wheel_server_url or ctx.wheel_server_url
         self.sdist_only = sdist_only
         self.test_mode = test_mode
+        # When all_versions is True, we build all matching versions of top-level
+        # packages instead of just the newest version. This is used for populating
+        # general-purpose package indices with historical versions.
+        self.all_versions = all_versions
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -166,6 +171,184 @@ class Bootstrapper:
             self._record_test_mode_failure(req, None, err, "resolution")
             return None
 
+    def resolve_and_add_top_level_all_versions(
+        self,
+        req: Requirement,
+    ) -> list[tuple[str, Version]]:
+        """Resolve all matching versions of a top-level requirement.
+
+        This method is used by the --all-versions mode to build multiple versions
+        of each top-level package. It resolves all versions that match the
+        requirement specifier and constraints, filters out versions that already
+        exist in the cache server, and adds each version to the dependency graph.
+
+        Args:
+            req: The top-level requirement to resolve. May include version
+                 specifiers like "requests>=2.20,<3.0".
+
+        Returns:
+            List of (source_url, version) tuples for all versions that should be
+            built. Versions already in the cache are excluded from this list.
+
+        Note:
+            This method uses the resolver's resolve_all_versions() function which
+            returns candidates sorted by version descending (newest first).
+            Existing cached versions are filtered out to avoid redundant builds.
+        """
+        pbi = self.ctx.package_build_info(req)
+        results: list[tuple[str, Version]] = []
+
+        try:
+            if pbi.pre_built:
+                # For pre-built packages, we typically only want the newest
+                # version since we're downloading wheels, not building them.
+                # Fall back to single version resolution.
+                single_result = self.resolve_and_add_top_level(req)
+                if single_result is not None:
+                    results.append(single_result)
+                return results
+
+            # Use the new resolver function to get all matching sdist versions.
+            # This applies the same constraints and specifier filtering as
+            # regular resolution but returns all matches, not just the best.
+            all_candidates = resolver.resolve_all_versions(
+                ctx=self.ctx,
+                req=req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
+                include_sdists=True,
+                include_wheels=False,  # We want to build from source
+                req_type=RequirementType.TOP_LEVEL,
+            )
+
+            if not all_candidates:
+                logger.warning("no matching versions found for %s", req)
+                return results
+
+            logger.info(
+                "found %d matching versions for %s (before cache filtering)",
+                len(all_candidates),
+                req,
+            )
+
+            # Filter out versions that already exist in the cache server.
+            # This is a key optimization: we skip building versions that have
+            # already been built and uploaded to the cache server.
+            for candidate in all_candidates:
+                version = candidate.version
+                source_url = candidate.url
+
+                # Check if this version already exists in the cache server.
+                # If it does, we can skip bootstrapping it entirely.
+                if self._version_exists_in_cache(req, version):
+                    logger.info(
+                        "skipping %s==%s: already exists in cache server",
+                        req.name,
+                        version,
+                    )
+                    continue
+
+                # Add to dependency graph
+                logger.info("including %s==%s for build", req.name, version)
+                self.ctx.dependency_graph.add_dependency(
+                    parent_name=None,
+                    parent_version=None,
+                    req_type=RequirementType.TOP_LEVEL,
+                    req=req,
+                    req_version=version,
+                    download_url=source_url,
+                    pre_built=pbi.pre_built,
+                    constraint=self.ctx.constraints.get_constraint(req.name),
+                )
+                results.append((source_url, version))
+
+            logger.info(
+                "%d versions of %s will be built (after cache filtering)",
+                len(results),
+                req,
+            )
+
+        except Exception as err:
+            if not self.test_mode:
+                raise
+            self._record_test_mode_failure(req, None, err, "resolution")
+
+        return results
+
+    def _version_exists_in_cache(
+        self,
+        req: Requirement,
+        version: Version,
+    ) -> bool:
+        """Check if a specific version of a package exists in the cache server.
+
+        This is used by all-versions mode to skip building versions that have
+        already been built and uploaded to the cache server. Checking the cache
+        before building is more efficient than relying on the bootstrapper to
+        detect cached wheels during the build process.
+
+        Args:
+            req: The requirement being checked.
+            version: The specific version to check for.
+
+        Returns:
+            True if the version exists in the cache server, False otherwise.
+
+        Note:
+            This uses the same resolution logic as _download_wheel_from_cache()
+            but only checks for existence, not downloading the wheel.
+        """
+        if not self.cache_wheel_server_url:
+            return False
+
+        try:
+            # Create a pinned requirement for the specific version
+            pinned_req = Requirement(f"{req.name}=={version}")
+            pbi = self.ctx.package_build_info(req)
+            expected_build_tag = pbi.build_tag(version)
+
+            # Try to resolve this exact version from the cache server
+            wheel_url, resolved_version = resolver.resolve(
+                ctx=self.ctx,
+                req=pinned_req,
+                sdist_server_url=self.cache_wheel_server_url,
+                include_sdists=False,
+                include_wheels=True,
+            )
+
+            # Verify the build tag matches our expected tag
+            from urllib.parse import urlparse
+
+            wheelfile_name = pathlib.Path(urlparse(wheel_url).path)
+            _, _, build_tag, _ = wheels.extract_info_from_wheel_file(
+                req, wheelfile_name
+            )
+
+            if expected_build_tag and expected_build_tag != build_tag:
+                logger.debug(
+                    "cache has %s==%s but build tag mismatch: expected %s, got %s",
+                    req.name,
+                    version,
+                    expected_build_tag,
+                    build_tag,
+                )
+                return False
+
+            logger.debug(
+                "found %s==%s in cache server with matching build tag",
+                req.name,
+                version,
+            )
+            return True
+
+        except Exception:
+            # Any failure means the version is not in the cache
+            logger.debug(
+                "version %s==%s not found in cache server",
+                req.name,
+                version,
+            )
+            return False
+
     def resolve_version(
         self,
         req: Requirement,
@@ -221,7 +404,12 @@ class Bootstrapper:
         logger.debug("is not a build requirement")
         return False
 
-    def bootstrap(self, req: Requirement, req_type: RequirementType) -> None:
+    def bootstrap(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+        resolved_version: Version | None = None,
+    ) -> None:
         """Bootstrap a package and its dependencies.
 
         Handles setup, validation, and error handling. Delegates actual build
@@ -229,21 +417,50 @@ class Bootstrapper:
 
         In test mode, catches build exceptions, records package name, and continues.
         In normal mode, raises exceptions immediately (fail-fast).
+
+        Args:
+            req: The requirement to bootstrap.
+            req_type: The type of requirement (TOP_LEVEL, INSTALL, BUILD_*, etc.).
+            resolved_version: Optional pre-resolved version. When provided (typically
+                in all-versions mode), this version is used instead of resolving.
+                This is necessary because in all-versions mode, we've already
+                resolved all versions during the pre-resolution phase.
         """
         logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
 
         # Resolve version first so we have it for error reporting.
-        # In test mode, record resolution failures and continue.
-        try:
-            source_url, resolved_version = self.resolve_version(
-                req=req,
-                req_type=req_type,
-            )
-        except Exception as err:
-            if not self.test_mode:
-                raise
-            self._record_test_mode_failure(req, None, err, "resolution")
-            return
+        # If a resolved_version was provided (all-versions mode), use it directly
+        # instead of re-resolving. This is important because in all-versions mode,
+        # we want to build a specific version, not re-resolve to the newest.
+        if resolved_version is not None:
+            # In all-versions mode, we already know the version. Look up the
+            # source URL from the resolved requirements cache or resolve again.
+            try:
+                # Create a pinned requirement to get the source URL
+                pinned_req = Requirement(f"{req.name}=={resolved_version}")
+                source_url, _ = self.resolve_version(
+                    req=pinned_req,
+                    req_type=req_type,
+                )
+            except Exception as err:
+                if not self.test_mode:
+                    raise
+                self._record_test_mode_failure(
+                    req, str(resolved_version), err, "resolution"
+                )
+                return
+        else:
+            # Normal resolution: find the best matching version
+            try:
+                source_url, resolved_version = self.resolve_version(
+                    req=req,
+                    req_type=req_type,
+                )
+            except Exception as err:
+                if not self.test_mode:
+                    raise
+                self._record_test_mode_failure(req, None, err, "resolution")
+                return
 
         # Capture parent before _track_why pushes current package onto the stack
         parent: tuple[Requirement, Version] | None = None
@@ -408,16 +625,148 @@ class Bootstrapper:
             constraint=constraint,
         )
 
-        self.progressbar.update_total(len(install_dependencies))
-        for dep in self._sort_requirements(install_dependencies):
-            with req_ctxvar_context(dep):
-                # In test mode, bootstrap() catches and records failures internally.
-                # In normal mode, it raises immediately which we propagate.
-                self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
-            self.progressbar.update()
+        # Process install dependencies. In all_versions mode, we resolve and
+        # bootstrap ALL matching versions of each dependency, not just the newest.
+        # This is key to building a complete package index with all historical versions.
+        if self.all_versions:
+            self._bootstrap_all_dependency_versions(install_dependencies)
+        else:
+            # Normal mode: bootstrap only the newest matching version of each dependency
+            self.progressbar.update_total(len(install_dependencies))
+            for dep in self._sort_requirements(install_dependencies):
+                with req_ctxvar_context(dep):
+                    # In test mode, bootstrap() catches and records failures internally.
+                    # In normal mode, it raises immediately which we propagate.
+                    self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
+                self.progressbar.update()
 
         # Clean up build directories
         self.ctx.clean_build_dirs(build_result.sdist_root_dir, build_result.build_env)
+
+    def _bootstrap_all_dependency_versions(
+        self,
+        install_dependencies: list[Requirement],
+    ) -> None:
+        """Bootstrap all matching versions of each install dependency.
+
+        This method is used in all_versions mode to build every version of each
+        dependency that matches the requirement specifier, not just the newest.
+        This is essential for populating a complete package index with historical
+        versions.
+
+        The key optimization (per issue #878) is that versions already present in
+        the cache server are skipped completely - neither their build nor install
+        dependencies are processed. This filtering happens upfront to avoid
+        expensive recursive bootstrapping of already-built packages.
+
+        Args:
+            install_dependencies: List of install dependency requirements extracted
+                from the package being bootstrapped.
+
+        Note:
+            Pre-built packages only have their newest version bootstrapped, as
+            we're downloading wheels rather than building from source.
+        """
+        for dep in self._sort_requirements(install_dependencies):
+            with req_ctxvar_context(dep):
+                pbi = self.ctx.package_build_info(dep)
+
+                # For pre-built packages, we only want the newest version since
+                # we're downloading wheels, not building them.
+                if pbi.pre_built:
+                    logger.debug(
+                        "%s is pre-built, bootstrapping newest version only",
+                        dep.name,
+                    )
+                    self.progressbar.update_total(1)
+                    self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
+                    self.progressbar.update()
+                    continue
+
+                # Resolve ALL versions matching this dependency's specifier.
+                # This uses the same resolution logic as top-level packages.
+                try:
+                    all_candidates = resolver.resolve_all_versions(
+                        ctx=self.ctx,
+                        req=dep,
+                        sdist_server_url=resolver.PYPI_SERVER_URL,
+                        include_sdists=True,
+                        include_wheels=False,  # Build from source
+                        req_type=RequirementType.INSTALL,
+                    )
+                except Exception as err:
+                    if not self.test_mode:
+                        raise
+                    self._record_test_mode_failure(dep, None, err, "resolution")
+                    continue
+
+                if not all_candidates:
+                    logger.warning("no matching versions found for dependency %s", dep)
+                    continue
+
+                logger.info(
+                    "all-versions mode: found %d matching versions for dependency %s",
+                    len(all_candidates),
+                    dep,
+                )
+
+                # Filter out versions that already exist in the cache server.
+                # This is the key optimization: we skip building versions that
+                # have already been built and uploaded to the cache server.
+                versions_to_build: list[tuple[str, Version]] = []
+                for candidate in all_candidates:
+                    version = candidate.version
+                    source_url = candidate.url
+
+                    # Check if this version already exists in the cache server.
+                    if self._version_exists_in_cache(dep, version):
+                        logger.info(
+                            "skipping dependency %s==%s: already exists in cache server",
+                            dep.name,
+                            version,
+                        )
+                        continue
+
+                    versions_to_build.append((source_url, version))
+
+                logger.info(
+                    "all-versions mode: %d versions of %s will be built (after cache filtering)",
+                    len(versions_to_build),
+                    dep.name,
+                )
+
+                # Update progress bar and bootstrap each version
+                self.progressbar.update_total(len(versions_to_build))
+                for source_url, version in versions_to_build:
+                    # Log that we're including this dependency version for build
+                    logger.info("including %s==%s for build", dep.name, version)
+
+                    # Add to dependency graph before bootstrapping
+                    parent: tuple[Requirement, Version] | None = None
+                    if self.why:
+                        _, parent_req, parent_version = self.why[-1]
+                        parent = (parent_req, parent_version)
+
+                    self.ctx.dependency_graph.add_dependency(
+                        parent_name=canonicalize_name(parent[0].name)
+                        if parent
+                        else None,
+                        parent_version=parent[1] if parent else None,
+                        req_type=RequirementType.INSTALL,
+                        req=dep,
+                        req_version=version,
+                        download_url=source_url,
+                        pre_built=pbi.pre_built,
+                        constraint=self.ctx.constraints.get_constraint(dep.name),
+                    )
+
+                    # Bootstrap this specific version
+                    self.bootstrap(
+                        req=dep,
+                        req_type=RequirementType.INSTALL,
+                        resolved_version=version,
+                    )
+                    self.progressbar.update()
 
     @contextlib.contextmanager
     def _track_why(
