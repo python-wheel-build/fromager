@@ -1109,3 +1109,172 @@ def test_custom_resolver_error_message_via_resolve() -> None:
         assert "pypi.org" not in error_message.lower(), (
             f"Error message incorrectly mentions PyPI when using GitHub resolver: {error_message}"
         )
+
+
+# =============================================================================
+# Tests for resolve_all_versions() and get_all_matching_candidates()
+#
+# These tests verify the "all-versions" mode functionality added for Issue #878
+# which allows building multiple versions of packages instead of just the newest.
+# =============================================================================
+
+
+def test_get_all_matching_candidates_returns_all_versions() -> None:
+    """Verify get_all_matching_candidates returns all matching versions.
+
+    When building multiple versions of a package, we need ALL versions that match
+    the requirement specifier, not just the newest one. This test ensures the
+    function correctly returns all candidates that satisfy the requirement.
+    """
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/numpy/",
+            text=_numpy_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_sdists=False)
+        candidates = resolver.get_all_matching_candidates(
+            provider, Requirement("numpy>=1.24,<2.1")
+        )
+
+        # Should get all 3 versions that match >=1.24,<2.1
+        # (excludes 2.2.0 which is >= 2.1)
+        versions = [c.version for c in candidates]
+        assert Version("1.24.0") in versions
+        assert Version("1.26.4") in versions
+        assert Version("2.0.0") in versions
+        assert Version("2.2.0") not in versions
+
+        # Verify sorted by version descending (newest first)
+        assert versions == sorted(versions, reverse=True)
+
+
+def test_get_all_matching_candidates_with_constraint() -> None:
+    """Verify constraints are honored when getting all matching candidates.
+
+    When using --all-versions mode, constraints should still filter out versions
+    that don't match the project's constraints file.
+    """
+    constraint = constraints.Constraints()
+    constraint.add_constraint("hydra-core>=1.3,<1.4")
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_sdists=True, constraints=constraint)
+        candidates = resolver.get_all_matching_candidates(
+            provider, Requirement("hydra-core")
+        )
+
+        # With constraint >=1.3,<1.4, only 1.3.x versions should match
+        versions = [str(c.version) for c in candidates]
+        assert "1.3.2" in versions
+        assert "1.2.2" not in versions  # Excluded by >=1.3 constraint
+
+
+def test_get_all_matching_candidates_empty_result() -> None:
+    """Verify empty result when no candidates match the requirement.
+
+    When constraints or specifiers exclude all versions, the function should
+    return an empty list rather than raising an exception.
+    """
+    constraint = constraints.Constraints()
+    constraint.add_constraint("hydra-core>=99.0")
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_sdists=True, constraints=constraint)
+        candidates = resolver.get_all_matching_candidates(
+            provider, Requirement("hydra-core")
+        )
+
+        # No versions match >=99.0, should return empty list
+        assert candidates == []
+
+
+def test_get_all_matching_candidates_sdist_only() -> None:
+    """Verify only sdist candidates are returned when wheels are excluded.
+
+    In --all-versions mode for building from source, we typically want only
+    sdists so we can build wheels ourselves.
+    """
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        # include_sdists=True, include_wheels=False to get only sdists
+        provider = resolver.PyPIProvider(include_sdists=True, include_wheels=False)
+        candidates = resolver.get_all_matching_candidates(
+            provider, Requirement("hydra-core")
+        )
+
+        # Should only return sdist candidates
+        for candidate in candidates:
+            assert candidate.is_sdist is True
+
+        # Verify we get the expected versions (only sdists exist for 1.2.2 and 1.3.2)
+        versions = [str(c.version) for c in candidates]
+        assert "1.2.2" in versions
+        assert "1.3.2" in versions
+
+
+def test_get_all_matching_candidates_github_provider() -> None:
+    """Verify get_all_matching_candidates works with GitHubTagProvider.
+
+    The all-versions mode should work with custom providers, not just PyPI.
+    """
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            text=_github_fromager_tag_response,
+        )
+
+        provider = resolver.GitHubTagProvider(
+            organization="python-wheel-build", repo="fromager"
+        )
+        candidates = resolver.get_all_matching_candidates(
+            provider, Requirement("fromager>=0.5,<0.9")
+        )
+
+        # Should get versions 0.5.0 through 0.8.1 (5 versions)
+        versions = [str(c.version) for c in candidates]
+        assert "0.5.0" in versions
+        assert "0.6.0" in versions
+        assert "0.7.0" in versions
+        assert "0.8.0" in versions
+        assert "0.8.1" in versions
+        assert "0.9.0" not in versions  # Excluded by <0.9
+        assert "0.4.0" not in versions  # Excluded by >=0.5
+
+
+def test_get_all_matching_candidates_respects_order() -> None:
+    """Verify candidates are sorted by version descending (newest first).
+
+    This ordering is important for the --all-versions mode because it allows
+    users to see the most recent versions first and ensures consistent behavior.
+    """
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/numpy/",
+            text=_numpy_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_sdists=False)
+        candidates = resolver.get_all_matching_candidates(
+            provider, Requirement("numpy")
+        )
+
+        versions = [c.version for c in candidates]
+        # Should be in descending order (newest first)
+        assert versions == sorted(versions, reverse=True)
+        assert versions[0] == Version("2.2.0")  # Newest first
+        assert versions[-1] == Version("1.24.0")  # Oldest last

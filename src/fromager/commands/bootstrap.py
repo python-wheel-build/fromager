@@ -103,6 +103,17 @@ def _get_requirements_from_args(
     default=False,
     help="Test mode: continue processing after failures, report failures at end",
 )
+@click.option(
+    "--all-versions",
+    "all_versions",
+    is_flag=True,
+    default=False,
+    help=(
+        "Build all versions of packages that match the requirements, not just the "
+        "newest. Versions already in the cache server are skipped automatically. "
+        "Use with --skip-constraints since multiple versions cannot be unified."
+    ),
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -113,12 +124,17 @@ def bootstrap(
     sdist_only: bool,
     skip_constraints: bool,
     test_mode: bool,
+    all_versions: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
 
     TOPLEVEL is a requirements specification, including a package name
     and optional version constraints.
+
+    When --all-versions is specified, builds all matching versions of top-level
+    packages instead of just the newest version. This is useful for populating
+    a general-purpose package index with historical versions.
 
     """
     logger.info(f"cache wheel server url: {cache_wheel_server_url}")
@@ -147,6 +163,21 @@ def bootstrap(
             "test mode enabled: will continue processing after failures and report at end"
         )
 
+    # When all_versions mode is enabled, we build every version of each package
+    # that matches the requirements, not just the newest version. This is useful
+    # for populating a general-purpose package index.
+    if all_versions:
+        logger.info(
+            "all-versions mode enabled: building all matching versions of top-level packages"
+        )
+        # Warn if skip_constraints is not also enabled, since multiple versions
+        # of the same package cannot be unified into a single constraints file.
+        if not skip_constraints:
+            logger.warning(
+                "all-versions mode works best with --skip-constraints since "
+                "multiple versions cannot be unified into constraints.txt"
+            )
+
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
         logger.info("treating %s as pre-built wheels", sorted(pre_built))
@@ -161,6 +192,7 @@ def bootstrap(
             cache_wheel_server_url,
             sdist_only=sdist_only,
             test_mode=test_mode,
+            all_versions=all_versions,
         )
 
         # Pre-resolution phase: Resolve all top-level dependencies before recursive
@@ -169,20 +201,39 @@ def bootstrap(
         # - In test-mode: exceptions are caught inside resolve_and_add_top_level()
         # - In normal mode: exceptions should propagate with context preserved for logging
         logger.info("resolving top-level dependencies before building")
-        resolved_reqs: list[Requirement] = []
+
+        # When all_versions mode is enabled, we need to track all resolved
+        # (requirement, version) pairs for bootstrapping, not just requirements.
+        # Each top-level requirement may resolve to multiple versions.
+        resolved_req_versions: list[tuple[Requirement, Version]] = []
+
         for req in to_build:
             token = requirement_ctxvar.set(req)
-            result = bt.resolve_and_add_top_level(req)
-            if result is not None:
-                resolved_reqs.append(req)
+            if all_versions:
+                # In all-versions mode, resolve all matching versions for each
+                # top-level requirement. This returns a list of (url, version) pairs.
+                results = bt.resolve_and_add_top_level_all_versions(req)
+                for _, version in results:
+                    resolved_req_versions.append((req, version))
+                    progressbar.update_total(1)
+            else:
+                # Normal mode: resolve only the newest matching version.
+                result = bt.resolve_and_add_top_level(req)
+                if result is not None:
+                    _, version = result
+                    resolved_req_versions.append((req, version))
             # If result is None, test_mode recorded the failure and we continue
             requirement_ctxvar.reset(token)
 
-        # Bootstrap only packages that were successfully resolved
-        # Note: Same pattern - no try/finally to preserve context for error logging
-        for req in resolved_reqs:
+        # Bootstrap only packages that were successfully resolved.
+        # In all_versions mode, we may have multiple versions per requirement.
+        for req, version in resolved_req_versions:
             token = requirement_ctxvar.set(req)
-            bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
+            bt.bootstrap(
+                req,
+                requirements_file.RequirementType.TOP_LEVEL,
+                resolved_version=version if all_versions else None,
+            )
             progressbar.update()
             requirement_ctxvar.reset(token)
 
@@ -463,6 +514,17 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     default=None,
     help="maximum number of parallel workers to run (default: unlimited)",
 )
+@click.option(
+    "--all-versions",
+    "all_versions",
+    is_flag=True,
+    default=False,
+    help=(
+        "Build all versions of packages that match the requirements, not just the "
+        "newest. Versions already in the cache server are skipped automatically. "
+        "Use with --skip-constraints since multiple versions cannot be unified."
+    ),
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 @click.pass_context
@@ -476,6 +538,7 @@ def bootstrap_parallel(
     skip_constraints: bool,
     force: bool,
     max_workers: int | None,
+    all_versions: bool,
     toplevel: list[str],
 ) -> None:
     """Bootstrap and build-parallel
@@ -502,6 +565,7 @@ def bootstrap_parallel(
         cache_wheel_server_url=cache_wheel_server_url,
         sdist_only=True,
         skip_constraints=skip_constraints,
+        all_versions=all_versions,
         toplevel=toplevel,
     )
 

@@ -511,3 +511,366 @@ def test_build_from_source_returns_dataclass(tmp_context: WorkContext) -> None:
         assert result.sdist_root_dir == mock_sdist_root
         assert result.build_env is not None
         assert result.source_type == SourceType.SDIST
+
+
+# =============================================================================
+# Tests for all_versions mode (Issue #878)
+#
+# These tests verify the "all-versions" mode functionality which allows
+# building multiple versions of packages instead of just the newest.
+# =============================================================================
+
+
+def test_bootstrapper_all_versions_flag(tmp_context: WorkContext) -> None:
+    """Verify Bootstrapper accepts all_versions parameter.
+
+    The all_versions flag should be stored and accessible on the
+    Bootstrapper instance.
+    """
+    # Default is False
+    bt1 = bootstrapper.Bootstrapper(tmp_context)
+    assert bt1.all_versions is False
+
+    # Can be explicitly set to True
+    bt2 = bootstrapper.Bootstrapper(tmp_context, all_versions=True)
+    assert bt2.all_versions is True
+
+
+def test_version_exists_in_cache_no_cache_url(tmp_context: WorkContext) -> None:
+    """Verify _version_exists_in_cache returns False when no cache URL is set.
+
+    When there's no cache wheel server URL configured, the function should
+    return False immediately without attempting any network operations.
+    """
+    bt = bootstrapper.Bootstrapper(tmp_context, cache_wheel_server_url=None)
+    # Override to ensure no cache URL
+    bt.cache_wheel_server_url = ""
+
+    result = bt._version_exists_in_cache(
+        req=Requirement("test-package"),
+        version=Version("1.0.0"),
+    )
+
+    assert result is False
+
+
+def test_version_exists_in_cache_not_found(tmp_context: WorkContext) -> None:
+    """Verify _version_exists_in_cache returns False when version not in cache.
+
+    When the cache server doesn't have the requested version, the function
+    should catch the resolution exception and return False.
+    """
+    bt = bootstrapper.Bootstrapper(
+        tmp_context, cache_wheel_server_url="http://cache.example.com/simple"
+    )
+
+    # Mock the resolver to raise an exception (version not found)
+    with patch("fromager.resolver.resolve", side_effect=Exception("Not found")):
+        result = bt._version_exists_in_cache(
+            req=Requirement("test-package"),
+            version=Version("1.0.0"),
+        )
+
+    assert result is False
+
+
+def test_version_exists_in_cache_found(tmp_context: WorkContext) -> None:
+    """Verify _version_exists_in_cache returns True when version is in cache.
+
+    When the cache server has the requested version with a matching build tag,
+    the function should return True.
+    """
+    from fromager import wheels
+
+    bt = bootstrapper.Bootstrapper(
+        tmp_context, cache_wheel_server_url="http://cache.example.com/simple"
+    )
+
+    # Mock the resolver to return a successful result
+    mock_url = "http://cache.example.com/simple/test-package/test_package-1.0.0-py3-none-any.whl"
+    with (
+        patch("fromager.resolver.resolve", return_value=(mock_url, Version("1.0.0"))),
+        patch.object(
+            wheels,
+            "extract_info_from_wheel_file",
+            return_value=("test-package", Version("1.0.0"), None, None),
+        ),
+    ):
+        result = bt._version_exists_in_cache(
+            req=Requirement("test-package"),
+            version=Version("1.0.0"),
+        )
+
+    assert result is True
+
+
+def test_resolve_and_add_top_level_all_versions_returns_list(
+    tmp_context: WorkContext,
+) -> None:
+    """Verify resolve_and_add_top_level_all_versions returns a list of versions.
+
+    This method should return a list of (url, version) tuples for all matching
+    versions of the requirement.
+    """
+    from fromager import resolver
+    from fromager.candidate import Candidate
+
+    bt = bootstrapper.Bootstrapper(tmp_context, all_versions=True)
+
+    # Create mock candidates
+    mock_candidates = [
+        Candidate(
+            name="test-package",
+            version=Version("2.0.0"),
+            url="http://pypi.org/simple/test-package/test-package-2.0.0.tar.gz",
+            is_sdist=True,
+        ),
+        Candidate(
+            name="test-package",
+            version=Version("1.5.0"),
+            url="http://pypi.org/simple/test-package/test-package-1.5.0.tar.gz",
+            is_sdist=True,
+        ),
+        Candidate(
+            name="test-package",
+            version=Version("1.0.0"),
+            url="http://pypi.org/simple/test-package/test-package-1.0.0.tar.gz",
+            is_sdist=True,
+        ),
+    ]
+
+    with (
+        patch.object(resolver, "resolve_all_versions", return_value=mock_candidates),
+        patch.object(bt, "_version_exists_in_cache", return_value=False),
+    ):
+        results = bt.resolve_and_add_top_level_all_versions(
+            Requirement("test-package>=1.0")
+        )
+
+    # Should return all 3 versions
+    assert len(results) == 3
+    versions = [v for _, v in results]
+    assert Version("2.0.0") in versions
+    assert Version("1.5.0") in versions
+    assert Version("1.0.0") in versions
+
+
+def test_resolve_and_add_top_level_all_versions_filters_cached(
+    tmp_context: WorkContext,
+) -> None:
+    """Verify resolve_and_add_top_level_all_versions filters out cached versions.
+
+    Versions that already exist in the cache server should be excluded from
+    the returned list to avoid redundant builds.
+    """
+    from fromager import resolver
+    from fromager.candidate import Candidate
+
+    bt = bootstrapper.Bootstrapper(
+        tmp_context,
+        all_versions=True,
+        cache_wheel_server_url="http://cache.example.com/simple",
+    )
+
+    # Create mock candidates
+    mock_candidates = [
+        Candidate(
+            name="test-package",
+            version=Version("2.0.0"),
+            url="http://pypi.org/simple/test-package/test-package-2.0.0.tar.gz",
+            is_sdist=True,
+        ),
+        Candidate(
+            name="test-package",
+            version=Version("1.0.0"),
+            url="http://pypi.org/simple/test-package/test-package-1.0.0.tar.gz",
+            is_sdist=True,
+        ),
+    ]
+
+    def mock_cache_check(req: Requirement, version: Version) -> bool:
+        # Version 1.0.0 is already in cache, 2.0.0 is not
+        return version == Version("1.0.0")
+
+    with (
+        patch.object(resolver, "resolve_all_versions", return_value=mock_candidates),
+        patch.object(bt, "_version_exists_in_cache", side_effect=mock_cache_check),
+    ):
+        results = bt.resolve_and_add_top_level_all_versions(
+            Requirement("test-package>=1.0")
+        )
+
+    # Should only return version 2.0.0 (1.0.0 is cached)
+    assert len(results) == 1
+    _, version = results[0]
+    assert version == Version("2.0.0")
+
+
+def test_bootstrap_with_resolved_version(tmp_context: WorkContext) -> None:
+    """Verify bootstrap() accepts optional resolved_version parameter.
+
+    In all-versions mode, the version is already known from pre-resolution,
+    so bootstrap() should use that version directly instead of re-resolving.
+    """
+    bt = bootstrapper.Bootstrapper(tmp_context, all_versions=True)
+
+    # Mark a version as seen so bootstrap exits early (avoiding full build)
+    version = Version("1.5.0")
+    bt._mark_as_seen(Requirement("test-package"), version, sdist_only=False)
+
+    # Mock resolve_version to track if it's called with the pinned requirement
+    resolve_calls: list[Requirement] = []
+
+    def mock_resolve(
+        req: Requirement, req_type: RequirementType
+    ) -> tuple[str, Version]:
+        resolve_calls.append(req)
+        return ("http://example.com/url", version)
+
+    with patch.object(bt, "resolve_version", side_effect=mock_resolve):
+        # Call bootstrap with a pre-resolved version
+        bt.bootstrap(
+            Requirement("test-package>=1.0"),
+            RequirementType.TOP_LEVEL,
+            resolved_version=version,
+        )
+
+    # Verify resolve_version was called with a pinned requirement
+    assert len(resolve_calls) == 1
+    assert "==1.5.0" in str(resolve_calls[0])
+
+
+def test_bootstrap_all_dependency_versions(tmp_context: WorkContext) -> None:
+    """Verify _bootstrap_all_dependency_versions resolves all versions of dependencies.
+
+    In all-versions mode, the bootstrapper should resolve and build ALL matching
+    versions of each install dependency, not just the newest version.
+    """
+    from fromager import resolver
+    from fromager.candidate import Candidate
+
+    bt = bootstrapper.Bootstrapper(tmp_context, all_versions=True)
+
+    # Set up the why stack to simulate being inside a package bootstrap
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("parent-pkg"), Version("1.0.0"))]
+
+    # Add the parent node to the dependency graph (required before adding children)
+    tmp_context.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("parent-pkg"),
+        req_version=Version("1.0.0"),
+    )
+
+    # Create mock candidates for the dependency
+    mock_candidates = [
+        Candidate(
+            name="dep-package",
+            version=Version("2.0.0"),
+            url="http://pypi.org/simple/dep-package/dep-package-2.0.0.tar.gz",
+            is_sdist=True,
+        ),
+        Candidate(
+            name="dep-package",
+            version=Version("1.5.0"),
+            url="http://pypi.org/simple/dep-package/dep-package-1.5.0.tar.gz",
+            is_sdist=True,
+        ),
+    ]
+
+    # Track which versions get bootstrapped
+    bootstrapped_versions: list[Version] = []
+
+    def mock_bootstrap(
+        req: Requirement,
+        req_type: RequirementType,
+        resolved_version: Version | None = None,
+    ) -> None:
+        if resolved_version:
+            bootstrapped_versions.append(resolved_version)
+
+    with (
+        patch.object(resolver, "resolve_all_versions", return_value=mock_candidates),
+        patch.object(bt, "_version_exists_in_cache", return_value=False),
+        patch.object(bt, "bootstrap", side_effect=mock_bootstrap),
+    ):
+        install_deps = [Requirement("dep-package>=1.0")]
+        bt._bootstrap_all_dependency_versions(install_deps)
+
+    # Both versions should be bootstrapped
+    assert len(bootstrapped_versions) == 2
+    assert Version("2.0.0") in bootstrapped_versions
+    assert Version("1.5.0") in bootstrapped_versions
+
+
+def test_bootstrap_all_dependency_versions_filters_cached(
+    tmp_context: WorkContext,
+) -> None:
+    """Verify _bootstrap_all_dependency_versions filters out cached versions.
+
+    Versions of dependencies that already exist in the cache server should
+    be skipped to avoid redundant builds.
+    """
+    from fromager import resolver
+    from fromager.candidate import Candidate
+
+    bt = bootstrapper.Bootstrapper(
+        tmp_context,
+        all_versions=True,
+        cache_wheel_server_url="http://cache.example.com/simple",
+    )
+
+    # Set up the why stack
+    bt.why = [(RequirementType.TOP_LEVEL, Requirement("parent-pkg"), Version("1.0.0"))]
+
+    # Add the parent node to the dependency graph (required before adding children)
+    tmp_context.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("parent-pkg"),
+        req_version=Version("1.0.0"),
+    )
+
+    # Create mock candidates
+    mock_candidates = [
+        Candidate(
+            name="dep-package",
+            version=Version("2.0.0"),
+            url="http://pypi.org/simple/dep-package/dep-package-2.0.0.tar.gz",
+            is_sdist=True,
+        ),
+        Candidate(
+            name="dep-package",
+            version=Version("1.0.0"),
+            url="http://pypi.org/simple/dep-package/dep-package-1.0.0.tar.gz",
+            is_sdist=True,
+        ),
+    ]
+
+    def mock_cache_check(req: Requirement, version: Version) -> bool:
+        # Version 1.0.0 is cached, 2.0.0 is not
+        return version == Version("1.0.0")
+
+    bootstrapped_versions: list[Version] = []
+
+    def mock_bootstrap(
+        req: Requirement,
+        req_type: RequirementType,
+        resolved_version: Version | None = None,
+    ) -> None:
+        if resolved_version:
+            bootstrapped_versions.append(resolved_version)
+
+    with (
+        patch.object(resolver, "resolve_all_versions", return_value=mock_candidates),
+        patch.object(bt, "_version_exists_in_cache", side_effect=mock_cache_check),
+        patch.object(bt, "bootstrap", side_effect=mock_bootstrap),
+    ):
+        install_deps = [Requirement("dep-package>=1.0")]
+        bt._bootstrap_all_dependency_versions(install_deps)
+
+    # Only version 2.0.0 should be bootstrapped (1.0.0 is cached)
+    assert len(bootstrapped_versions) == 1
+    assert bootstrapped_versions[0] == Version("2.0.0")
