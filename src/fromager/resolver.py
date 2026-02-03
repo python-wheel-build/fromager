@@ -101,6 +101,127 @@ def resolve(
     return resolve_from_provider(provider, req)
 
 
+def resolve_all_versions(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    include_sdists: bool = True,
+    include_wheels: bool = True,
+    req_type: RequirementType | None = None,
+    ignore_platform: bool = False,
+) -> list[Candidate]:
+    """Resolve all versions of a package that match the requirement.
+
+    Unlike resolve() which returns only the best matching version, this function
+    returns ALL versions that satisfy the requirement specifier and constraints.
+    This is used by the "all-versions" mode of the bootstrap command to build
+    multiple versions of each package.
+
+    The returned candidates are sorted by version in descending order (newest first),
+    which matches the default resolution behavior.
+
+    Args:
+        ctx: The work context containing constraints and settings.
+        req: The requirement to resolve (e.g., "requests>=2.0,<3.0").
+        sdist_server_url: The URL of the package server to query.
+        include_sdists: Whether to include sdist distributions in results.
+        include_wheels: Whether to include wheel distributions in results.
+        req_type: The type of requirement (TOP_LEVEL, INSTALL, BUILD_*, etc.).
+        ignore_platform: Whether to ignore platform-specific wheel filtering.
+
+    Returns:
+        A list of Candidate objects representing all matching versions,
+        sorted by version descending. Each candidate contains the download URL
+        and version information needed for bootstrapping.
+
+    Example:
+        >>> candidates = resolve_all_versions(
+        ...     ctx=work_ctx,
+        ...     req=Requirement("numpy>=1.20,<2.0"),
+        ...     sdist_server_url="https://pypi.org/simple",
+        ... )
+        >>> for c in candidates:
+        ...     print(f"{c.name}=={c.version}")
+        numpy==1.26.4
+        numpy==1.25.2
+        numpy==1.24.3
+        ...
+    """
+    # Create the provider using the same override mechanism as regular resolution.
+    # This ensures consistent behavior with any package-specific resolution plugins.
+    provider = overrides.find_and_invoke(
+        req.name,
+        "get_resolver_provider",
+        default_resolver_provider,
+        ctx=ctx,
+        req=req,
+        include_sdists=include_sdists,
+        include_wheels=include_wheels,
+        sdist_server_url=sdist_server_url,
+        req_type=req_type,
+        ignore_platform=ignore_platform,
+    )
+    return get_all_matching_candidates(provider, req)
+
+
+def get_all_matching_candidates(
+    provider: BaseProvider, req: Requirement
+) -> list[Candidate]:
+    """Get all candidates that match a requirement from a provider.
+
+    This function bypasses the resolvelib resolver and directly queries the
+    provider for all candidates that satisfy the requirement. It applies the
+    same filtering as normal resolution (constraints, specifiers, etc.) but
+    returns all matches instead of just the best one.
+
+    Args:
+        provider: The resolver provider (PyPIProvider, GitHubTagProvider, etc.)
+        req: The requirement to match against.
+
+    Returns:
+        List of matching Candidate objects, sorted by version descending.
+
+    Note:
+        This function is designed to support the "all-versions" bootstrap mode.
+        It reuses the provider's validation logic to ensure consistency with
+        normal resolution behavior.
+    """
+    identifier = provider.identify(req)
+
+    # Get all unfiltered candidates from the provider. We use the internal
+    # _find_cached_candidates method to leverage the provider's caching.
+    unfiltered_candidates = list(provider._find_cached_candidates(identifier))
+
+    # Apply the same filtering that would be applied during normal resolution.
+    # We pass empty incompatibilities since we're not doing backtracking.
+    requirements_map: dict[str, list[Requirement]] = {identifier: [req]}
+    incompatibilities_map: dict[str, list[Candidate]] = {identifier: []}
+
+    matching_candidates: list[Candidate] = []
+    for candidate in unfiltered_candidates:
+        if provider.validate_candidate(
+            identifier, requirements_map, incompatibilities_map, candidate
+        ):
+            matching_candidates.append(candidate)
+
+    if not matching_candidates:
+        logger.warning("resolve_all_versions: no matching candidates found for %s", req)
+        return []
+
+    # Sort by version descending (newest first), then by build tag.
+    # This matches the ordering used by find_matches() in normal resolution.
+    matching_candidates.sort(key=attrgetter("version", "build_tag"), reverse=True)
+
+    logger.info(
+        "resolve_all_versions: found %d matching versions for %s",
+        len(matching_candidates),
+        req,
+    )
+
+    return matching_candidates
+
+
 def default_resolver_provider(
     ctx: context.WorkContext,
     req: Requirement,
