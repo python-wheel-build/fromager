@@ -66,29 +66,15 @@ else:
     help="save error messages to a file",
 )
 @click.option(
-    "-o",
-    "--sdists-repo",
-    default=pathlib.Path("sdists-repo"),
-    type=clickext.ClickPath(),
-    help="location to manage source distributions",
-)
-@click.option(
-    "-w",
-    "--wheels-repo",
-    default=pathlib.Path("wheels-repo"),
-    type=clickext.ClickPath(),
-    help="location to manage wheel repository",
-)
-@click.option(
     "--build-wheel-server-url",
     help="An optional URL for external web server for building wheels, to replace the built-in server. Must be configured to serve the path specified for --wheels-repo.",
 )
 @click.option(
-    "-t",
-    "--work-dir",
-    default=pathlib.Path("work-dir"),
+    "-d",
+    "--output-dir",
+    default=None,
     type=clickext.ClickPath(),
-    help="location to manage working files, including builds and logs",
+    help="Location where sdists-repo, wheels-repo, and work-dir are created for logs, working files, source dists, and wheel repository",
 )
 @click.option(
     "-p",
@@ -143,6 +129,31 @@ else:
     help="Build sdist and wheen with network isolation (unshare -cn)",
     show_default=True,
 )
+# hidden in favor of -d, --output-dir
+@click.option(
+    "-o",
+    "--sdists-repo",
+    type=clickext.ClickPath(),
+    default=pathlib.Path("sdists-repo"),
+    help="location to manage source distributions",
+    hidden=True,
+)
+@click.option(
+    "-w",
+    "--wheels-repo",
+    type=clickext.ClickPath(),
+    default=pathlib.Path("wheels-repo"),
+    help="location to manage wheel repository",
+    hidden=True,
+)
+@click.option(
+    "-t",
+    "--work-dir",
+    type=clickext.ClickPath(),
+    default=pathlib.Path("work-dir"),
+    help="location to manage working files, including builds and logs",
+    hidden=True,
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -151,10 +162,11 @@ def main(
     log_file: pathlib.Path,
     log_format: str,
     error_log_file: pathlib.Path,
+    output_dir: pathlib.Path,
     sdists_repo: pathlib.Path,
     wheels_repo: pathlib.Path,
-    build_wheel_server_url: str,
     work_dir: pathlib.Path,
+    build_wheel_server_url: str,
     patches_dir: pathlib.Path,
     settings_file: pathlib.Path,
     settings_dir: pathlib.Path,
@@ -229,7 +241,6 @@ def main(
 
     if network_isolation and not SUPPORTS_NETWORK_ISOLATION:
         ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
-
     wkctx = context.WorkContext(
         active_settings=packagesettings.Settings.from_files(
             settings_file=settings_file,
@@ -240,10 +251,11 @@ def main(
         ),
         constraints_file=constraints_file,
         patches_dir=patches_dir,
+        output_dir=output_dir,
         sdists_repo=sdists_repo,
         wheels_repo=wheels_repo,
-        wheel_server_url=build_wheel_server_url,
         work_dir=work_dir,
+        wheel_server_url=build_wheel_server_url,
         cleanup=cleanup,
         variant=variant,
         network_isolation=network_isolation,

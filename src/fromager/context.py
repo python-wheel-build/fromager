@@ -42,6 +42,7 @@ class WorkContext:
         work_dir: pathlib.Path,
         cleanup: bool = True,
         variant: str = "cpu",
+        output_dir: pathlib.Path | None = None,
         network_isolation: bool = False,
         max_jobs: int | None = None,
         settings_dir: pathlib.Path | None = None,
@@ -63,6 +64,10 @@ class WorkContext:
             self.constraints.load_constraints_file(constraints_file)
         else:
             self.input_constraints_uri = None
+        if output_dir is not None:
+            sdists_repo = output_dir / "sdists-repo"
+            work_dir = output_dir / "work-dir"
+            wheels_repo = output_dir / "wheels-repo"
         self.sdists_repo = pathlib.Path(sdists_repo).resolve()
         self.sdists_downloads = self.sdists_repo / "downloads"
         self.sdists_builds = self.sdists_repo / "builds"
