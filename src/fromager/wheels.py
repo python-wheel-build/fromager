@@ -117,7 +117,7 @@ def _extra_metadata_elfdeps(
     return elfinfos
 
 
-def extract_info_from_wheel_file(
+def default_extract_info_from_wheel_file(
     req: Requirement, wheel_file: pathlib.Path
 ) -> tuple[str, Version, BuildTag, frozenset[Tag]]:
     # parse_wheel_filename normalizes the dist name, however the dist-info
@@ -131,6 +131,23 @@ def extract_info_from_wheel_file(
         # sanity check, should never fail
         raise ValueError(f"{dist_name_normalized} does not match {dist_name}")
     return (dist_name, dist_version, build_tag, wheel_tags)
+
+
+def extract_info_from_wheel_file(
+    req: Requirement, wheel_file: pathlib.Path
+) -> tuple[str, Version, BuildTag, frozenset[Tag]]:
+
+    wheel_info: tuple[str, Version, BuildTag, frozenset[Tag]] = (
+        overrides.find_and_invoke(
+            req.name,
+            "extract_info_from_wheel_file",
+            default_extract_info_from_wheel_file,
+            req=req,
+            wheel_file=wheel_file,
+        )
+    )
+
+    return wheel_info
 
 
 def default_add_extra_metadata_to_wheels(
