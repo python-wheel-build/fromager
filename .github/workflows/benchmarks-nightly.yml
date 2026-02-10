@@ -1,0 +1,143 @@
+name: Benchmarks (Nightly)
+
+# Runs full benchmark suite nightly or on PRs with 'run-benchmarks' label.
+# Component benchmarks use CPU simulation, integration benchmarks use walltime.
+# Skips if no commits in 24 hours. See benchmarks/README.md for details.
+
+# ##############################################################################
+# DISABLED: No slow benchmarks exist yet. All current benchmarks run in the
+# regular CI workflow. To enable: uncomment the schedule and pull_request
+# triggers below when slow benchmarks are added.
+# ##############################################################################
+
+on:
+  # schedule:
+  #   - cron: "0 2 * * *" # 2 AM UTC daily
+  # pull_request:
+  #   types: [labeled]
+  workflow_dispatch: # Manual trigger only until slow benchmarks exist
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if should run
+        id: check
+        run: |
+          # Always run for label triggers and manual dispatch
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # For scheduled runs, skip if HEAD hasn't changed in 24 hours
+          LAST_COMMIT_TIME=$(git log -1 --format=%ct)
+          NOW=$(date +%s)
+          HOURS_AGO=$(( (NOW - LAST_COMMIT_TIME) / 3600 ))
+
+          if [ "$HOURS_AGO" -gt 24 ]; then
+            echo "No commits in the last 24 hours, skipping nightly benchmark"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
+  # Component benchmarks: CPU-bound, pure Python operations
+  # Uses CPU simulation for deterministic, hardware-independent measurements
+  component-benchmarks:
+    needs: check-changes
+    if: |
+      needs.check-changes.outputs.should_run == 'true' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-benchmarks'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Run component benchmarks with CodSpeed
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: simulation
+          run: hatch run benchmark:run --codspeed -m "not integration"
+
+      - name: Generate benchmark JSON (fallback)
+        if: always()
+        run: |
+          hatch run benchmark:run \
+            --benchmark-only \
+            --benchmark-json=benchmark-results-component.json \
+            -m "not integration" || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-nightly-component
+          path: benchmark-results-component.json
+          retention-days: 90
+
+  # Integration benchmarks: I/O-bound operations with network and file access
+  # Uses walltime on Macro Runners for accurate real-world measurements
+  integration-benchmarks:
+    needs: check-changes
+    if: |
+      needs.check-changes.outputs.should_run == 'true' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-benchmarks'))
+    runs-on: codspeed-macro
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Run integration benchmarks with CodSpeed (walltime)
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: walltime
+          run: hatch run benchmark:run --codspeed -m "integration"
+
+      - name: Generate benchmark JSON (fallback)
+        if: always()
+        run: |
+          hatch run benchmark:run \
+            --benchmark-only \
+            --benchmark-json=benchmark-results-integration.json \
+            -m "integration" || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-nightly-integration
+          path: benchmark-results-integration.json
+          retention-days: 90
