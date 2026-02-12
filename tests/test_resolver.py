@@ -370,6 +370,26 @@ def test_provider_constraint_match() -> None:
         assert str(candidate.version) == "1.2.2"
 
 
+def test_provider_override_download_url() -> None:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(
+            override_download_url="https://server.test/hydr_core-{version}.tar.gz"
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("hydra-core")])
+        assert "hydra-core" in result.mapping
+
+        candidate = result.mapping["hydra-core"]
+        assert candidate.url == "https://server.test/hydr_core-1.3.2.tar.gz"
+
+
 _ignore_platform_simple_response = """
 <!DOCTYPE html>
 <html>
@@ -715,6 +735,51 @@ def test_resolve_github() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ["retrieve_method", "expected_url"],
+    [
+        (
+            resolver.RetrieveMethod.tarball,
+            "https://api.github.com/repos/python-wheel-build/fromager/tarball/refs/tags/0.9.0",
+        ),
+        (
+            resolver.RetrieveMethod.git_https,
+            "git+https://github.com:443/python-wheel-build/fromager.git@0.9.0",
+        ),
+        (
+            resolver.RetrieveMethod.git_ssh,
+            "git+ssh://git@github.com:443/python-wheel-build/fromager.git@0.9.0",
+        ),
+    ],
+)
+def test_resolve_github_retrieve_method(
+    retrieve_method: resolver.RetrieveMethod, expected_url: str
+) -> None:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            text=_github_fromager_repo_response,
+        )
+        r.get(
+            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            text=_github_fromager_tag_response,
+        )
+
+        provider = resolver.GitHubTagProvider(
+            organization="python-wheel-build",
+            repo="fromager",
+            retrieve_method=retrieve_method,
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("fromager")])
+        assert "fromager" in result.mapping
+
+        candidate = result.mapping["fromager"]
+        assert candidate.url == expected_url
+
+
 def test_github_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("fromager>=1.0")
@@ -922,6 +987,49 @@ def test_resolve_gitlab() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ["retrieve_method", "expected_url"],
+    [
+        (
+            resolver.RetrieveMethod.tarball,
+            "https://gitlab.com/mirrors/github/decile-team/submodlib/-/archive/v0.0.3/submodlib-v0.0.3.tar.gz",
+        ),
+        (
+            resolver.RetrieveMethod.git_https,
+            "git+https://gitlab.com/mirrors/github/decile-team/submodlib.git@v0.0.3",
+        ),
+        (
+            resolver.RetrieveMethod.git_ssh,
+            "git+ssh://git@gitlab.com/mirrors/github/decile-team/submodlib.git@v0.0.3",
+        ),
+    ],
+)
+def test_resolve_gitlab_retrieve_method(
+    retrieve_method: resolver.RetrieveMethod, expected_url: str
+) -> None:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
+            text=_gitlab_submodlib_repo_response,
+        )
+
+        provider = resolver.GitLabTagProvider(
+            project_path="mirrors/github/decile-team/submodlib",
+            server_url="https://gitlab.com",
+            retrieve_method=retrieve_method,
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("submodlib")])
+        assert "submodlib" in result.mapping
+
+        candidate = result.mapping["submodlib"]
+        assert str(candidate.version) == "0.0.3"
+
+        assert candidate.url == expected_url
+
+
 def test_gitlab_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("submodlib>=1.0")
@@ -1109,3 +1217,53 @@ def test_custom_resolver_error_message_via_resolve() -> None:
         assert "pypi.org" not in error_message.lower(), (
             f"Error message incorrectly mentions PyPI when using GitHub resolver: {error_message}"
         )
+
+
+@pytest.mark.parametrize(
+    ["download_url", "expected_method", "expected_url", "expected_ref"],
+    [
+        (
+            "https://api.github.com/repos/python-wheel-build/fromager/tarball/refs/tags/0.9.0",
+            resolver.RetrieveMethod.tarball,
+            "https://api.github.com/repos/python-wheel-build/fromager/tarball/refs/tags/0.9.0",
+            None,
+        ),
+        (
+            "git+https://github.com:443/python-wheel-build/fromager.git@0.9.0",
+            resolver.RetrieveMethod.git_https,
+            "https://github.com:443/python-wheel-build/fromager.git",
+            "0.9.0",
+        ),
+        (
+            "git+ssh://git@github.com:443/python-wheel-build/fromager.git@0.9.0",
+            resolver.RetrieveMethod.git_ssh,
+            "ssh://git@github.com:443/python-wheel-build/fromager.git",
+            "0.9.0",
+        ),
+    ],
+)
+def test_retrieve_method_from_url(
+    download_url: str,
+    expected_method: resolver.RetrieveMethod,
+    expected_url: str,
+    expected_ref: str | None,
+) -> None:
+    assert resolver.RetrieveMethod.from_url(download_url) == (
+        expected_method,
+        expected_url,
+        expected_ref,
+    )
+
+
+@pytest.mark.parametrize(
+    ["download_url"],
+    [
+        ["http://insecure.test"],
+        ["hg+ssh://mercurial.test"],
+    ],
+)
+def test_retrieve_method_from_url_error(
+    download_url: str,
+) -> None:
+    with pytest.raises(ValueError):
+        resolver.RetrieveMethod.from_url(download_url)
