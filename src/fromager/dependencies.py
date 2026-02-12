@@ -6,13 +6,13 @@ import os
 import pathlib
 import tempfile
 import typing
+import zipfile
 
-import pkginfo
 import pyproject_hooks
 import tomlkit
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
-from packaging.utils import NormalizedName, canonicalize_name
+from packaging.utils import NormalizedName, canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 from . import (
@@ -344,14 +344,23 @@ def default_get_install_dependencies_of_sdist(
     return set(metadata.requires_dist)
 
 
-def parse_metadata(metadata_file: pathlib.Path, *, validate: bool = True) -> Metadata:
-    """Parse a dist-info/METADATA file
+def parse_metadata(
+    metadata_source: pathlib.Path | bytes, *, validate: bool = True
+) -> Metadata:
+    """Parse metadata from a file path or bytes.
 
-    The default parse mode is 'strict'. It even fails for a mismatch of field
-    and core metadata version, e.g. a package with metadata 2.2 and
-    license-expression field (added in 2.4).
+    Args:
+        metadata_source: Path to METADATA file or bytes containing metadata
+        validate: Whether to validate metadata (default: True)
+
+    Returns:
+        Parsed Metadata object
     """
-    return Metadata.from_email(metadata_file.read_bytes(), validate=validate)
+    if isinstance(metadata_source, pathlib.Path):
+        metadata_bytes = metadata_source.read_bytes()
+    else:
+        metadata_bytes = metadata_source
+    return Metadata.from_email(metadata_bytes, validate=validate)
 
 
 def pep517_metadata_of_sdist(
@@ -418,14 +427,63 @@ def validate_dist_name_version(
 def get_install_dependencies_of_wheel(
     req: Requirement, wheel_filename: pathlib.Path, requirements_file_dir: pathlib.Path
 ) -> set[Requirement]:
+    """Get install dependencies from a wheel file.
+
+    Extracts and parses the METADATA file from the wheel to get the
+    Requires-Dist entries.
+
+    Args:
+        req: The requirement being processed
+        wheel_filename: Path to the wheel file
+        requirements_file_dir: Directory to write the requirements file
+
+    Returns:
+        Set of requirements from the wheel's metadata
+    """
     logger.info(f"getting installation dependencies from {wheel_filename}")
-    wheel = pkginfo.Wheel(str(wheel_filename))
-    deps = _filter_requirements(req, wheel.requires_dist)
+    # Disable validation because many third-party packages have metadata version
+    # mismatches (e.g., setuptools declares Metadata-Version: 2.2 but uses
+    # license-file which was introduced in 2.4). The old pkginfo library
+    # didn't validate this, so we maintain backward compatibility.
+    metadata = _get_metadata_from_wheel(wheel_filename, validate=False)
+    requires_dist = metadata.requires_dist or []
+    deps = _filter_requirements(req, requires_dist)
     _write_requirements_file(
         deps,
         requirements_file_dir / INSTALL_REQ_FILE_NAME,
     )
     return deps
+
+
+def _get_metadata_from_wheel(
+    wheel_filename: pathlib.Path, *, validate: bool = True
+) -> Metadata:
+    """Extract and parse METADATA from a wheel file.
+
+    Args:
+        wheel_filename: Path to the wheel file
+        validate: Whether to validate metadata (default: True)
+
+    Returns:
+        Parsed Metadata object
+
+    Raises:
+        ValueError: If no METADATA file is found in the wheel
+    """
+    # Get dist-info path from wheel filename.
+    # Uses same pattern as wheels.extract_info_from_wheel_file:
+    _, dist_version, _, _ = parse_wheel_filename(wheel_filename.name)
+    dist_name = wheel_filename.name.split("-", 1)[0]
+    metadata_path = f"{dist_name}-{dist_version}.dist-info/METADATA"
+
+    with zipfile.ZipFile(wheel_filename) as whl:
+        try:
+            metadata_content = whl.read(metadata_path)
+        except KeyError:
+            raise ValueError(
+                f"Could not find METADATA file in wheel: {wheel_filename}"
+            ) from None
+        return parse_metadata(metadata_content, validate=validate)
 
 
 def get_pyproject_contents(sdist_root_dir: pathlib.Path) -> dict[str, typing.Any]:

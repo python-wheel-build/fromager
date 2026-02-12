@@ -2,12 +2,10 @@ import dataclasses
 import datetime
 import logging
 import typing
-from email.message import EmailMessage, Message
-from email.parser import BytesParser
 from io import BytesIO
-from typing import TYPE_CHECKING
 from zipfile import ZipFile
 
+from packaging.metadata import Metadata
 from packaging.requirements import Requirement
 from packaging.utils import BuildTag, canonicalize_name
 from packaging.version import Version
@@ -15,13 +13,6 @@ from packaging.version import Version
 from .request_session import session
 
 logger = logging.getLogger(__name__)
-
-# fix for runtime errors caused by inheriting classes that are generic in stubs but not runtime
-# https://mypy.readthedocs.io/en/latest/runtime_troubles.html#using-classes-that-are-generic-in-stubs-but-not-at-runtime
-if TYPE_CHECKING:
-    Metadata = Message[str, str]
-else:
-    Metadata = Message
 
 
 @dataclasses.dataclass(frozen=True, order=True, slots=True, repr=False, kw_only=True)
@@ -73,11 +64,10 @@ class Candidate:
         return self._metadata
 
     def _get_dependencies(self) -> typing.Iterable[Requirement]:
-        deps = self.metadata.get_all("Requires-Dist", [])
+        deps = self.metadata.requires_dist or []
         extras = self.extras if self.extras else [""]
 
-        for d in deps:
-            r = Requirement(d)
+        for r in deps:
             if r.marker is None:
                 yield r
             else:
@@ -95,19 +85,22 @@ class Candidate:
 
     @property
     def requires_python(self) -> str | None:
-        return self.metadata.get("Requires-Python")
+        spec = self.metadata.requires_python
+        return str(spec) if spec is not None else None
 
 
-def get_metadata_for_wheel(url: str, metadata_url: str | None = None) -> Metadata:
-    """
-    Get metadata for a wheel, supporting PEP 658 metadata endpoints.
+def get_metadata_for_wheel(
+    url: str, metadata_url: str | None = None, *, validate: bool = True
+) -> Metadata:
+    """Get metadata for a wheel, supporting PEP 658 metadata endpoints.
 
     Args:
         url: URL of the wheel file
         metadata_url: Optional URL of the metadata file (PEP 658)
+        validate: Whether to validate metadata (default: True)
 
     Returns:
-        Parsed metadata as a Message object
+        Parsed metadata as a Metadata object
     """
     # Try PEP 658 metadata endpoint first if available
     if metadata_url:
@@ -118,9 +111,9 @@ def get_metadata_for_wheel(url: str, metadata_url: str | None = None) -> Metadat
             response = session.get(metadata_url)
             response.raise_for_status()
 
-            # Parse metadata directly from the response content
-            p = BytesParser()
-            metadata = p.parse(BytesIO(response.content), headersonly=True)
+            # Parse metadata directly using packaging.metadata.Metadata
+            # (avoiding circular import with dependencies module)
+            metadata = Metadata.from_email(response.content, validate=validate)
             logger.debug(f"Successfully retrieved metadata via PEP 658 for {url}")
             return metadata
 
@@ -136,8 +129,10 @@ def get_metadata_for_wheel(url: str, metadata_url: str | None = None) -> Metadat
     with ZipFile(BytesIO(data)) as z:
         for n in z.namelist():
             if n.endswith(".dist-info/METADATA"):
-                p = BytesParser()
-                return p.parse(z.open(n), headersonly=True)
+                metadata_content = z.read(n)
+                # Parse metadata directly using packaging.metadata.Metadata
+                # (avoiding circular import with dependencies module)
+                return Metadata.from_email(metadata_content, validate=validate)
 
-    # If we didn't find the metadata, return an empty dict
-    return EmailMessage()
+    # If we didn't find the metadata, raise an error
+    raise ValueError(f"Could not find METADATA file in wheel: {url}")
