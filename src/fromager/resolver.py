@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import datetime
+import enum
 import functools
 import logging
 import os
@@ -14,7 +15,7 @@ import typing
 from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
-from urllib.parse import quote, unquote, urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse, urlsplit, urlunsplit
 
 import pypi_simple
 import resolvelib
@@ -178,6 +179,35 @@ def resolve_from_provider(
     for candidate in result.mapping.values():
         return candidate.url, candidate.version
     raise ValueError(f"Unable to resolve {req}")
+
+
+class RetrieveMethod(enum.StrEnum):
+    tarball = "tarball"
+    git_https = "git+https"
+    git_ssh = "git+ssh"
+
+    @classmethod
+    def from_url(cls, download_url: str) -> tuple[RetrieveMethod, str, str | None]:
+        """Parse a download URL into method, url, reference"""
+        scheme, netloc, path, query, fragment = urlsplit(
+            download_url, allow_fragments=False
+        )
+        match scheme:
+            case "https":
+                return RetrieveMethod.tarball, download_url, None
+            case "git+https":
+                method = RetrieveMethod.git_https
+            case "git+ssh":
+                method = RetrieveMethod.git_ssh
+            case _:
+                raise ValueError(f"unsupported download URL {download_url!r}")
+        # remove git+
+        scheme = scheme[4:]
+        # split off @ revision
+        if "@" not in path:
+            raise ValueError(f"git download url {download_url!r} is missing '@ref'")
+        path, ref = path.rsplit("@", 1)
+        return method, urlunsplit((scheme, netloc, path, query, fragment)), ref
 
 
 def get_project_from_pypi(
@@ -603,6 +633,7 @@ class PyPIProvider(BaseProvider):
         ignore_platform: bool = False,
         *,
         use_resolver_cache: bool = True,
+        override_download_url: str | None = None,
     ):
         super().__init__(
             constraints=constraints,
@@ -613,6 +644,7 @@ class PyPIProvider(BaseProvider):
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
         self.ignore_platform = ignore_platform
+        self.override_download_url = override_download_url
 
     @property
     def cache_key(self) -> str:
@@ -623,12 +655,24 @@ class PyPIProvider(BaseProvider):
             return self.sdist_server_url
 
     def find_candidates(self, identifier: str) -> Candidates:
-        return get_project_from_pypi(
+        candidates = get_project_from_pypi(
             identifier,
-            set(),
-            self.sdist_server_url,
-            self.ignore_platform,
+            extras=set(),
+            sdist_server_url=self.sdist_server_url,
+            ignore_platform=self.ignore_platform,
         )
+        if self.override_download_url is None:
+            yield from candidates
+        else:
+            for candidate in candidates:
+                yield Candidate(
+                    name=candidate.name,
+                    version=candidate.version,
+                    url=self.override_download_url.format(version=candidate.version),
+                    # release time of external download is most likely
+                    # similar to PyPI release time.
+                    upload_time=candidate.upload_time,
+                )
 
     def validate_candidate(
         self,
@@ -803,6 +847,7 @@ class GitHubTagProvider(GenericProvider):
         *,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
+        retrieve_method: RetrieveMethod = RetrieveMethod.tarball,
     ):
         super().__init__(
             constraints=constraints,
@@ -813,6 +858,7 @@ class GitHubTagProvider(GenericProvider):
         )
         self.organization = organization
         self.repo = repo
+        self.retrieve_method = retrieve_method
 
     @property
     def cache_key(self) -> str:
@@ -847,7 +893,14 @@ class GitHubTagProvider(GenericProvider):
                     logger.debug(f"{identifier}: match function ignores {tagname}")
                     continue
                 assert isinstance(version, Version)
-                url = entry["tarball_url"]
+
+                match self.retrieve_method:
+                    case RetrieveMethod.tarball:
+                        url = entry["tarball_url"]
+                    case RetrieveMethod.git_https:
+                        url = f"git+https://{self.host}/{self.organization}/{self.repo}.git@{tagname}"
+                    case RetrieveMethod.git_ssh:
+                        url = f"git+ssh://git@{self.host}/{self.organization}/{self.repo}.git@{tagname}"
 
                 # Github tag API endpoint does not include commit date information.
                 # It would be too expensive to query every commit API endpoint.
@@ -880,6 +933,7 @@ class GitLabTagProvider(GenericProvider):
         *,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
+        retrieve_method: RetrieveMethod = RetrieveMethod.tarball,
     ) -> None:
         super().__init__(
             constraints=constraints,
@@ -889,6 +943,9 @@ class GitLabTagProvider(GenericProvider):
             matcher=matcher,
         )
         self.server_url = server_url.rstrip("/")
+        self.server_hostname = urlparse(server_url).hostname
+        if not self.server_hostname:
+            raise ValueError(f"invalid {server_url=}")
         self.project_path = project_path.lstrip("/")
         # URL-encode the project path as required by GitLab API.
         # The safe="" parameter tells quote() to encode ALL characters,
@@ -899,6 +956,7 @@ class GitLabTagProvider(GenericProvider):
         self.api_url = (
             f"{self.server_url}/api/v4/projects/{encoded_path}/repository/tags"
         )
+        self.retrieve_method = retrieve_method
 
     @property
     def cache_key(self) -> str:
@@ -927,8 +985,14 @@ class GitLabTagProvider(GenericProvider):
                     continue
                 assert isinstance(version, Version)
 
-                archive_path: str = f"{self.project_path}/-/archive/{tagname}/{self.project_path.split('/')[-1]}-{tagname}.tar.gz"
-                url = urljoin(self.server_url, archive_path)
+                match self.retrieve_method:
+                    case RetrieveMethod.tarball:
+                        archive_path: str = f"{self.project_path}/-/archive/{tagname}/{self.project_path.split('/')[-1]}-{tagname}.tar.gz"
+                        url = urljoin(self.server_url, archive_path)
+                    case RetrieveMethod.git_https:
+                        url = f"git+https://{self.server_hostname}/{self.project_path}.git@{tagname}"
+                    case RetrieveMethod.git_ssh:
+                        url = f"git+ssh://git@{self.server_hostname}/{self.project_path}.git@{tagname}"
 
                 # get tag creation time, fall back to commit creation time
                 created_at_str: str | None = entry.get("created_at")
