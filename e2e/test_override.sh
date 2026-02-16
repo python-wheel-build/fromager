@@ -10,7 +10,9 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
-pip install e2e/flit_core_override entry-point-inspector
+# Pin setuptools <75 because entry-point-inspector depends on pkg_resources
+# which was removed from setuptools starting in version 75.0.0
+pip install "setuptools<75" e2e/flit_core_override entry-point-inspector
 
 python3 --version
 epi group list
