@@ -13,7 +13,7 @@ source "$SCRIPTDIR/common.sh"
 # expected pbr version
 constraints_file=$(mktemp)
 trap "rm -f $constraints_file" EXIT
-echo "pbr==6.1.1" > "$constraints_file"
+echo "pbr==7.0.3" > "$constraints_file"
 
 # passing settings to bootstrap but should have 0 effect on it
 fromager \
@@ -47,7 +47,7 @@ $pass
 # packages should be written to the constraints file. Conflicting packages
 # (stevedore versions) should be excluded entirely.
 EXPECTED_LINES="
-pbr==6.1.1
+pbr==7.0.3
 "
 
 SHOULD_NOT_BE_PRESENT="

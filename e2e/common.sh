@@ -73,11 +73,11 @@ start_local_wheel_server() {
     python3 -m http.server --directory "$serve_dir" 9999 &
     HTTP_SERVER_PID=$!
     if which ip 2>&1 >/dev/null; then
-        # Linux
+        # Linux: need host IP because podman can't reach localhost
         IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
     else
-        # macOS
-        IP=$(ipconfig getifaddr en0)
+        # macOS: no network isolation, localhost works
+        IP=127.0.0.1
     fi
     export WHEEL_SERVER_URL="http://${IP}:9999/simple"
 }
