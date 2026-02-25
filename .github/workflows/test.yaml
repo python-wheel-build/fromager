@@ -133,7 +133,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
-          path: e2e-output
+          path: |
+            e2e-output
+            e2e-failed-*
 
       - name: Upload coverage
         uses: actions/upload-artifact@v6

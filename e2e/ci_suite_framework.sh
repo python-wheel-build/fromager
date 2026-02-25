@@ -54,6 +54,14 @@ run_test() {
         echo "PASSED: $test_name"
     else
         echo "FAILED: $test_name"
+        # Preserve output for debugging before next test cleans it up
+        local outdir
+        outdir="$(dirname "$SCRIPTDIR")/e2e-output"
+        local failed_dir
+        failed_dir="$(dirname "$SCRIPTDIR")/e2e-failed-${test_name}"
+        if [ -d "$outdir" ]; then
+            mv "$outdir" "$failed_dir" || true
+        fi
         FAILED_TESTS+=("$test_name")
         # Continue running other tests instead of exiting immediately
         # This provides more comprehensive feedback in CI
