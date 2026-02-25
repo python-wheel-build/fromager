@@ -66,29 +66,23 @@ on_exit() {
 trap on_exit EXIT SIGINT SIGTERM
 
 start_local_wheel_server() {
-    local serve_dir="${1:-$OUTDIR/wheels-repo/}"
-    # Determine the bind address and the URL that clients will use.
-    # On Linux podman can't reach localhost, so we bind to 0.0.0.0 and
-    # advertise the host's routable IP.  On macOS there is no network
-    # isolation; we bind explicitly to 127.0.0.1 to avoid IPv6-only
-    # sockets that python3 -m http.server may create by default.
-    if command -v ip >/dev/null 2>&1; then
-        local BIND_ADDR="0.0.0.0"
-        IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
-    else
-        local BIND_ADDR="127.0.0.1"
-        IP=127.0.0.1
-    fi
-    python3 -m http.server --bind "$BIND_ADDR" --directory "$serve_dir" 9999 &
+    local serve_dir="${1:-$OUTDIR/wheels-repo}"
+    # Use the builtin fromager wheel-server (Starlette/uvicorn) instead of
+    # stdlib http.server.  Binding to 127.0.0.1 is safe on all platforms
+    # because uv pip install always runs on the host without network
+    # isolation (build_environment.py hardcodes network_isolation=False).
+    fromager \
+        --wheels-repo="$serve_dir" \
+        wheel-server --port 9999 --address 127.0.0.1 &
     HTTP_SERVER_PID=$!
-    export WHEEL_SERVER_URL="http://${IP}:9999/simple"
+    export WHEEL_SERVER_URL="http://127.0.0.1:9999/simple"
 
     # Wait for the server to accept connections (up to 15 s).
     { set +x; } 2>/dev/null
     local ready=false
     for _ in $(seq 1 30); do
         kill -0 "$HTTP_SERVER_PID" 2>/dev/null || break
-        curl -sf "http://${IP}:9999/" >/dev/null 2>&1 && { ready=true; break; }
+        curl -sf "http://127.0.0.1:9999/simple" >/dev/null 2>&1 && { ready=true; break; }
         sleep 0.5
     done
     set -x
