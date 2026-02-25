@@ -155,10 +155,15 @@ def vendor_rust(
         return False
 
     backend = _detect_rust_build_backend(req, pyproject_toml)
+    rust_root_dir = project_dir
+    root_cargo_toml = project_dir / "Cargo.toml"
+    rust_cargo_toml = project_dir / "rust" / "Cargo.toml"
     manifests: list[pathlib.Path] = []
     # By default, maturin and setuptools-rust use Cargo.toml from project
     # root directory. Projects can specify a different file in optional
-    # "tool.setuptools-rust" or "tool.maturin" entries.
+    # "tool.setuptools-rust" or "tool.maturin" entries. Maturin also supports
+    # an alternate src layout with "rust/Cargo.toml" and "rust/.cargo"
+    # directory, https://www.maturin.rs/project_layout.html#alternate-python-source-directory-src-layout
     match backend:
         case RustBuildSystem.maturin:
             try:
@@ -168,6 +173,13 @@ def vendor_rust(
             else:
                 if "manifest-path" in tool_maturin:
                     manifests.append(project_dir / tool_maturin["manifest-path"])
+                elif not root_cargo_toml.is_file() and rust_cargo_toml.is_file():
+                    manifests.append(rust_cargo_toml)
+                    rust_root_dir = rust_cargo_toml.parent.resolve()
+                    logger.info(
+                        "Use maturin's alternative src layout and alt rust root dir %s",
+                        rust_root_dir,
+                    )
         case RustBuildSystem.setuptools_rust:
             ext_modules: list[dict[str, typing.Any]]
             try:
@@ -186,7 +198,6 @@ def vendor_rust(
 
     if not manifests:
         # check for Cargo.toml in project root
-        root_cargo_toml = project_dir / "Cargo.toml"
         if root_cargo_toml.is_file():
             manifests.append(root_cargo_toml)
         else:
@@ -199,7 +210,7 @@ def vendor_rust(
     logger.debug(f"{project_dir} has cargo manifests: {the_manifests}")
 
     vendor_generic_rust_package(
-        req, manifests, project_dir, shrink_vendored=shrink_vendored
+        req, manifests, rust_root_dir, shrink_vendored=shrink_vendored
     )
 
     return True
