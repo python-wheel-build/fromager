@@ -80,4 +80,21 @@ start_local_wheel_server() {
         IP=127.0.0.1
     fi
     export WHEEL_SERVER_URL="http://${IP}:9999/simple"
+
+    # Wait for the server to accept connections (up to 15 s).
+    { set +x; } 2>/dev/null
+    local ready=false
+    for _ in $(seq 1 30); do
+        kill -0 "$HTTP_SERVER_PID" 2>/dev/null || break
+        curl -sf "http://${IP}:9999/" >/dev/null 2>&1 && { ready=true; break; }
+        sleep 0.5
+    done
+    set -x
+
+    if $ready; then
+        echo "Wheel server is ready"
+        return 0
+    fi
+    echo "ERROR: wheel server did not become ready" >&2
+    return 1
 }
