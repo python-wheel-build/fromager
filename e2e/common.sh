@@ -67,17 +67,36 @@ trap on_exit EXIT SIGINT SIGTERM
 
 start_local_wheel_server() {
     local serve_dir="${1:-$OUTDIR/wheels-repo/}"
-    # Start a web server for the wheels-repo. We remember the PID so we
-    # can stop it later, and we determine the primary IP of the host
-    # because podman won't see the server via localhost.
-    python3 -m http.server --directory "$serve_dir" 9999 &
-    HTTP_SERVER_PID=$!
-    if which ip 2>&1 >/dev/null; then
-        # Linux: need host IP because podman can't reach localhost
+    # Determine the bind address and the URL that clients will use.
+    # On Linux podman can't reach localhost, so we bind to 0.0.0.0 and
+    # advertise the host's routable IP.  On macOS there is no network
+    # isolation; we bind explicitly to 127.0.0.1 to avoid IPv6-only
+    # sockets that python3 -m http.server may create by default.
+    if command -v ip >/dev/null 2>&1; then
+        local BIND_ADDR="0.0.0.0"
         IP=$(ip route get 1.1.1.1 | grep 1.1.1.1 | awk '{print $7}')
     else
-        # macOS: no network isolation, localhost works
+        local BIND_ADDR="127.0.0.1"
         IP=127.0.0.1
     fi
+    python3 -m http.server --bind "$BIND_ADDR" --directory "$serve_dir" 9999 &
+    HTTP_SERVER_PID=$!
     export WHEEL_SERVER_URL="http://${IP}:9999/simple"
+
+    # Wait for the server to accept connections (up to 15 s).
+    { set +x; } 2>/dev/null
+    local ready=false
+    for _ in $(seq 1 30); do
+        kill -0 "$HTTP_SERVER_PID" 2>/dev/null || break
+        curl -sf "http://${IP}:9999/" >/dev/null 2>&1 && { ready=true; break; }
+        sleep 0.5
+    done
+    set -x
+
+    if $ready; then
+        echo "Wheel server is ready"
+        return 0
+    fi
+    echo "ERROR: wheel server did not become ready" >&2
+    return 1
 }
