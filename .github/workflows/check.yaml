@@ -21,7 +21,7 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install hatch 'click!=8.3.0'
+        run: python -m pip install hatch 'click!=8.3.0' 'virtualenv<21'
 
       - name: Run pre-commit hooks
         run: hatch run lint:install-hooks && hatch run lint:precommit
@@ -42,7 +42,7 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install hatch 'click!=8.3.0'
+        run: python -m pip install hatch 'click!=8.3.0' 'virtualenv<21'
 
       - name: Run
         run: hatch run lint:check
@@ -63,7 +63,7 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install hatch 'click!=8.3.0'
+        run: python -m pip install hatch 'click!=8.3.0' 'virtualenv<21'
 
       - name: Check MyPy
         run: hatch run mypy:check
@@ -84,7 +84,7 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install hatch 'click!=8.3.0'
+        run: python -m pip install hatch 'click!=8.3.0' 'virtualenv<21'
 
       - name: Run
         run: hatch run lint:pkglint
@@ -121,7 +121,7 @@ jobs:
           python-version: "3.11"  # minimum supported lang version
 
       - name: Install dependencies
-        run: python -m pip install hatch 'click!=8.3.0'
+        run: python -m pip install hatch 'click!=8.3.0' 'virtualenv<21'
 
       - name: Run
         run: hatch run docs:build
