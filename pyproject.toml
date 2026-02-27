@@ -85,6 +85,7 @@ docs = [
     "myst-parser",
     "sphinx-rtd-theme",
     "autodoc-pydantic",
+    "sphinxcontrib.spelling",
 ]
 
 [project.urls]
