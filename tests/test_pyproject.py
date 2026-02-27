@@ -177,3 +177,151 @@ def test_pyproject_override_multiple_requires(tmp_path: pathlib.Path) -> None:
             "setuptools",
         ]
     ]
+
+
+# --- Tests for install_requires (project dependencies) ---
+
+PYPROJECT_WITH_DEPS = """
+[build-system]
+requires = ["setuptools"]
+
+[project]
+name = "testproject"
+dependencies = [
+    "requests>=2.28",
+    "numpy>=1.24",
+    "nvidia-cublas-cu12",
+    "nvidia-cuda-runtime-cu12",
+    "torch>=2.3.0",
+]
+"""
+
+
+def test_pyproject_remove_install_requires(tmp_path: pathlib.Path) -> None:
+    """Verify dependencies can be removed from [project] dependencies."""
+    tmp_path.joinpath("pyproject.toml").write_text(PYPROJECT_WITH_DEPS)
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        remove_install_requires=[
+            canonicalize_name("nvidia-cublas-cu12"),
+            canonicalize_name("nvidia-cuda-runtime-cu12"),
+        ],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    project = doc["project"]
+    assert isinstance(project, dict)
+    deps = list(project["dependencies"])
+    assert "nvidia-cublas-cu12" not in deps
+    assert "nvidia-cuda-runtime-cu12" not in deps
+    assert str(Requirement("numpy>=1.24")) in deps
+    assert str(Requirement("requests>=2.28")) in deps
+    assert str(Requirement("torch>=2.3.0")) in deps
+
+
+def test_pyproject_update_install_requires(tmp_path: pathlib.Path) -> None:
+    """Verify dependencies can be added/updated in [project] dependencies."""
+    tmp_path.joinpath("pyproject.toml").write_text(PYPROJECT_WITH_DEPS)
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        update_install_requires=["torch>=2.4.0", "click>=8.0"],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    project = doc["project"]
+    assert isinstance(project, dict)
+    deps = list(project["dependencies"])
+    # torch should be replaced, click should be added
+    assert str(Requirement("torch>=2.4.0")) in deps
+    assert str(Requirement("click>=8.0")) in deps
+    # original torch version should be gone
+    assert str(Requirement("torch>=2.3.0")) not in deps
+
+
+def test_pyproject_install_requires_no_project_section(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify install_requires changes are skipped when no [project] section."""
+    tmp_path.joinpath("pyproject.toml").write_text(
+        textwrap.dedent("""
+            [build-system]
+            requires = ["setuptools"]
+        """)
+    )
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        remove_install_requires=[canonicalize_name("nvidia-cublas-cu12")],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    assert "project" not in doc
+
+
+def test_pyproject_install_requires_no_dependencies_key(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify install_requires changes are skipped when no dependencies key."""
+    tmp_path.joinpath("pyproject.toml").write_text(
+        textwrap.dedent("""
+            [build-system]
+            requires = ["setuptools"]
+
+            [project]
+            name = "testproject"
+        """)
+    )
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        remove_install_requires=[canonicalize_name("nvidia-cublas-cu12")],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    project = doc["project"]
+    assert isinstance(project, dict)
+    assert "dependencies" not in project
+
+
+def test_pyproject_install_requires_remove_and_update(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify combination of remove + update on [project] dependencies."""
+    tmp_path.joinpath("pyproject.toml").write_text(PYPROJECT_WITH_DEPS)
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        remove_install_requires=[
+            canonicalize_name("nvidia-cublas-cu12"),
+            canonicalize_name("nvidia-cuda-runtime-cu12"),
+        ],
+        update_install_requires=["torch>=2.4.0"],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    project = doc["project"]
+    assert isinstance(project, dict)
+    deps = list(project["dependencies"])
+    assert "nvidia-cublas-cu12" not in deps
+    assert "nvidia-cuda-runtime-cu12" not in deps
+    assert str(Requirement("torch>=2.4.0")) in deps
+    assert str(Requirement("torch>=2.3.0")) not in deps
+    assert str(Requirement("numpy>=1.24")) in deps
+    assert str(Requirement("requests>=2.28")) in deps
