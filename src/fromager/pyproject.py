@@ -22,20 +22,30 @@ TomlDict = dict[str, typing.Any]
 BUILD_SYSTEM = "build-system"
 BUILD_BACKEND = "build-backend"
 BUILD_REQUIRES = "requires"
+PROJECT = "project"
+DEPENDENCIES = "dependencies"
 
 
 class PyprojectFix:
     """Auto-fixer for pyproject.toml settings
 
     - add missing pyproject.toml
-    - add or update `[build-system] requires`
+    - add or update ``[build-system] requires``
+    - add, update, or remove ``[project] dependencies``
 
     Requirements in `update_build_requires` are added to
-    `[build-system] requires`. If a requirement name matches an existing
+    ``[build-system] requires``. If a requirement name matches an existing
     name, then the requirement is replaced.
 
     Requirements in `remove_build_requires` are removed from
-    `[build-system] requires`.
+    ``[build-system] requires``.
+
+    Requirements in `update_install_requires` are added to
+    ``[project] dependencies``. If a requirement name matches an existing
+    name, then the requirement is replaced.
+
+    Requirements in `remove_install_requires` are removed from
+    ``[project] dependencies``.
     """
 
     def __init__(
@@ -45,18 +55,24 @@ class PyprojectFix:
         build_dir: pathlib.Path,
         update_build_requires: list[str],
         remove_build_requires: list[NormalizedName],
+        update_install_requires: list[str] | None = None,
+        remove_install_requires: list[NormalizedName] | None = None,
     ) -> None:
         self.req = req
         self.build_dir = build_dir
         self.update_requirements = update_build_requires
         self.remove_requirements = remove_build_requires
+        self.update_install_requirements = update_install_requires or []
+        self.remove_install_requirements = remove_install_requires or []
         self.pyproject_toml = self.build_dir / "pyproject.toml"
         self.setup_py = self.build_dir / "setup.py"
 
     def run(self) -> None:
+        """Load, fix, and save pyproject.toml."""
         doc = self._load()
         build_system = self._default_build_system(doc)
         self._update_build_requires(build_system)
+        self._update_install_requires(doc)
         logger.debug(
             "pyproject.toml %s: %s=%r, %s=%r",
             BUILD_SYSTEM,
@@ -126,18 +142,70 @@ class PyprojectFix:
                 new_requires,
             )
 
+    def _update_install_requires(self, doc: tomlkit.TOMLDocument) -> None:
+        """Update ``[project] dependencies``."""
+        if (
+            not self.update_install_requirements
+            and not self.remove_install_requirements
+        ):
+            return
+
+        project: TomlDict | None = doc.get(PROJECT)
+        if project is None:
+            logger.debug("no [project] section, skipping install_requires changes")
+            return
+
+        old_deps: list[str] = list(project.get(DEPENDENCIES, []))
+        # Build a map of canonicalized name -> list of Requirement strings
+        dep_map: dict[NormalizedName, list[Requirement]] = {}
+        for depstr in old_deps:
+            dep = Requirement(depstr)
+            dep_map.setdefault(canonicalize_name(dep.name), []).append(dep)
+
+        # Remove unwanted
+        for name in self.remove_install_requirements:
+            dep_map.pop(canonicalize_name(name), None)
+
+        # Add / update
+        update_map: dict[NormalizedName, list[Requirement]] = {}
+        for depstr in self.update_install_requirements:
+            dep = Requirement(depstr)
+            update_map.setdefault(canonicalize_name(dep.name), []).append(dep)
+        dep_map.update(update_map)
+
+        new_deps = sorted(
+            itertools.chain.from_iterable(
+                [str(dep) for dep in deps] for deps in dep_map.values()
+            )
+        )
+        if set(new_deps) != set(old_deps):
+            project[DEPENDENCIES] = new_deps
+            logger.info(
+                "changed project dependencies from %r to %r",
+                old_deps,
+                new_deps,
+            )
+
 
 def apply_project_override(
     ctx: context.WorkContext, req: Requirement, sdist_root_dir: pathlib.Path
 ) -> None:
-    """Apply project_overrides"""
+    """Apply project_overrides."""
     pbi = ctx.package_build_info(req)
     update_build_requires = pbi.project_override.update_build_requires
     remove_build_requires = pbi.project_override.remove_build_requires
-    if update_build_requires or remove_build_requires:
+    update_install_requires = pbi.project_override.update_install_requires
+    remove_install_requires = pbi.project_override.remove_install_requires
+    if (
+        update_build_requires
+        or remove_build_requires
+        or update_install_requires
+        or remove_install_requires
+    ):
         logger.debug(
             f"applying project_override: "
-            f"{update_build_requires=}, {remove_build_requires=}"
+            f"{update_build_requires=}, {remove_build_requires=}, "
+            f"{update_install_requires=}, {remove_install_requires=}"
         )
         build_dir = pbi.build_dir(sdist_root_dir)
         PyprojectFix(
@@ -145,6 +213,8 @@ def apply_project_override(
             build_dir=build_dir,
             update_build_requires=update_build_requires,
             remove_build_requires=remove_build_requires,
+            update_install_requires=update_install_requires,
+            remove_install_requires=remove_install_requires,
         ).run()
     else:
         logger.debug("no project_override")

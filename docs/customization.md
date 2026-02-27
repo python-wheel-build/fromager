@@ -97,9 +97,47 @@ support templating. The only supported template variable are:
 ### Resolver dist
 
 The source distribution index server used by the package resolver can
-be overriden for a particular package. The resolver can also be told
+be overridden for a particular package. The resolver can also be told
 to whether include wheels or sdist sources while trying to resolve
 the package. Templating is not supported here.
+
+#### Alternative resolver providers
+
+By default, fromager resolves package versions from PyPI. The `resolver_dist`
+section also supports resolving versions from GitHub releases or GitLab
+tags using the `provider` field.
+
+**GitHub provider:**
+
+```yaml
+resolver_dist:
+    provider: github
+    organization: openssl
+    repo: openssl
+    tag_matcher: "openssl-(.*)"
+```
+
+The `organization` and `repo` fields are required for the GitHub provider.
+
+**GitLab provider:**
+
+```yaml
+resolver_dist:
+    provider: gitlab
+    project_path: group/subgroup/project
+    server_url: https://gitlab.example.com
+    tag_matcher: "v(.*)"
+```
+
+For GitLab, you can use either `project_path` (which takes precedence) or
+`organization` and `repo`. The `server_url` defaults to `https://gitlab.com`.
+
+**`tag_matcher`:**
+
+The `tag_matcher` field is a regular expression pattern used to extract
+version numbers from git tags. It must contain exactly one capturing group.
+For example, `"v(.*)"` matches tags like `v1.2.3` and extracts `1.2.3` as
+the version. This field works with all providers.
 
 ### Git submodules
 
@@ -229,6 +267,80 @@ variants:
             PATH: "/cpu/bin:$PATH"
 ```
 
+#### Version template variables
+
+When a resolved version is available, `env` values can reference version
+template variables:
+
+- `${version}` - the full version string (e.g., `1.2.3.post1`)
+- `${version_base_version}` - the base version without pre/post/dev
+  suffixes (e.g., `1.2.3`)
+- `${version_post}` - the post release number as a string, or empty
+  string if there is no post release
+
+These are useful for packages that need version information passed at build
+time.
+
+```yaml
+env:
+    BUILD_VERSION: "${version}"
+    PYTORCH_BUILD_VERSION: "${version_base_version}"
+    POST_RELEASE: "${version_post}"
+```
+
+Note that actual environment variables with the same name take precedence
+over these template variables.
+
+### Automatic PKG-INFO creation
+
+When preparing new source trees, fromager automatically creates a
+`PKG-INFO` file if one is missing. Every sdist must have a `PKG-INFO`
+file in the root directory. This is done automatically and does not
+require any YAML configuration. If the package has a non-standard
+`build_dir`, the `PKG-INFO` file is also created in that directory.
+
+This behavior replaces the need to call `ensure_pkg_info()` manually
+in override plugins for most use cases.
+
+### Creating files in the source tree
+
+The `create_files` setting allows you to create files in the source tree
+before building. This is useful for adding missing files that some sdists
+are lacking, such as `__init__.py`, `version.py`, or empty requirements
+files.
+
+Each entry requires a `path` (relative to the source root) and an optional
+`content`. The `content` field supports template substitution with the
+same version variables available in `env` settings: `${version}`,
+`${version_base_version}`, and `${version_post}`.
+
+```yaml
+create_files:
+    - path: requirements-dev.txt
+      content: ""
+    - path: src/mypackage/_version.py
+      content: |
+        __version__ = "${version}"
+```
+
+Paths must be relative and must not contain `..` components.
+
+### Rust vendor ordering
+
+By default, fromager vendors Rust crate dependencies after applying
+patches. If your patches modify vendored `Cargo.lock` or `Cargo.toml`
+files, you may need to vendor Rust crates first and then apply patches
+on top of the vendored sources.
+
+Set `vendor_rust_before_patch` to `true` to change the ordering:
+
+```yaml
+vendor_rust_before_patch: true
+```
+
+When enabled, `cargo vendor` runs before patches are applied instead of
+after. The default is `false`.
+
 ## Patching source
 
 The `--patches-dir` command line argument specifies a directory containing
@@ -291,6 +403,8 @@ The `project_override` configures the `pyproject.toml` auto-fixer. It can
 automatically create a missing `pyproject.toml` or modify an existing file.
 Packages are matched by canonical name.
 
+### Build requirements
+
 - `remove_build_requires` is a list of package names. Any build requirement
   in the list is removed
 - `update_build_requires` a list of requirement specifiers. Existing specs
@@ -320,6 +434,29 @@ Output:
 [build-system]
 requires = ["setuptools>=68.0.0", "torch", "triton"]
 ```
+
+### Install dependencies
+
+The `project_override` section also supports modifying the `[project]
+dependencies` (install requirements) in `pyproject.toml`:
+
+- `remove_install_requires` is a list of package names. Any install
+  dependency matching the name is removed.
+- `update_install_requires` is a list of requirement specifiers. Existing
+  specs are replaced and missing specs are added.
+
+```yaml
+project_override:
+    remove_install_requires:
+        - easyocr
+        - rapidocr-onnxruntime
+    update_install_requires:
+        - "torch>=2.3.0"
+```
+
+This is useful for removing optional or platform-specific dependencies that
+are not needed in your build environment, or for pinning specific versions
+of install dependencies.
 
 ## Override plugins
 
