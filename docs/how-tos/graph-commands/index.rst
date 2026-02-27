@@ -9,17 +9,18 @@ All examples use the sample graph file ``e2e/build-parallel/graph.json`` which c
    :maxdepth: 1
    :glob:
 
-   [uvw]*
+   [euvw]*
 
 Overview of Graph Commands
 --------------------------
 
 The ``fromager graph`` command group provides several subcommands for analyzing dependency graphs:
 
+- ``subset``: Extract a focused subgraph containing only dependencies and dependents of a specific package
 - ``why``: Understand why a package appears in the dependency graph
 - ``to-dot``: Convert graph to DOT format for visualization with Graphviz
 - ``explain-duplicates``: Analyze multiple versions of packages in the graph
 - ``to-constraints``: Convert graph to constraints file format
 - ``migrate-graph``: Convert old graph formats to the current format
 
-These tools help you understand complex dependency relationships, debug unexpected dependencies, and create visual representations of your build requirements.
+These tools help you understand complex dependency relationships, debug unexpected dependencies, create focused subgraphs for analysis, and create visual representations of your build requirements.

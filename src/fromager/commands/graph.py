@@ -459,6 +459,190 @@ def why(
         find_why(graph, node, depth, 0, requirement_type)
 
 
+@graph.command()
+@click.option(
+    "-o",
+    "--output",
+    type=clickext.ClickPath(),
+    help="Output file path for the subset graph",
+)
+@click.option(
+    "--version",
+    type=clickext.PackageVersion(),
+    help="Limit subset to specific version of the package",
+)
+@click.argument(
+    "graph-file",
+    type=str,
+)
+@click.argument("package-name", type=str)
+@click.pass_obj
+def subset(
+    wkctx: context.WorkContext,
+    graph_file: str,
+    package_name: str,
+    output: pathlib.Path | None,
+    version: Version | None,
+) -> None:
+    """Extract a subset of a build graph related to a specific package.
+
+    Creates a new graph containing only nodes that depend on the specified package
+    and the dependencies of that package. By default includes all versions of the
+    package, but can be limited to a specific version with --version.
+    """
+    try:
+        graph = DependencyGraph.from_file(graph_file)
+        subset_graph = extract_package_subset(graph, package_name, version)
+
+        if output:
+            with open(output, "w") as f:
+                subset_graph.serialize(f)
+        else:
+            subset_graph.serialize(sys.stdout)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+
+def extract_package_subset(
+    graph: DependencyGraph,
+    package_name: str,
+    version: Version | None = None,
+) -> DependencyGraph:
+    """Extract a subset of the graph containing nodes related to a specific package.
+
+    Creates a new graph containing:
+    - All nodes matching the package name (optionally filtered by version)
+    - All nodes that depend on the target package (dependents)
+    - All dependencies of the target package
+
+    Args:
+        graph: The source dependency graph
+        package_name: Name of the package to extract subset for
+        version: Optional version to filter target nodes
+
+    Returns:
+        A new DependencyGraph containing only the related nodes
+
+    Raises:
+        ValueError: If package not found in graph
+    """
+    # Find target nodes matching the package name
+    target_nodes = graph.get_nodes_by_name(package_name)
+    if version:
+        target_nodes = [node for node in target_nodes if node.version == version]
+
+    if not target_nodes:
+        version_msg = f" version {version}" if version else ""
+        raise ValueError(f"Package {package_name}{version_msg} not found in graph")
+
+    # Collect all related nodes
+    related_nodes: set[str] = set()
+
+    # Add target nodes
+    for node in target_nodes:
+        related_nodes.add(node.key)
+
+    # Traverse up to find dependents (what depends on our package)
+    visited_up: set[str] = set()
+    for target_node in target_nodes:
+        _collect_dependents(target_node, related_nodes, visited_up)
+
+    # Traverse down to find dependencies (what our package depends on)
+    visited_down: set[str] = set()
+    for target_node in target_nodes:
+        _collect_dependencies(target_node, related_nodes, visited_down)
+
+    # Always include ROOT if any target nodes are top-level dependencies
+    for target_node in target_nodes:
+        for parent_edge in target_node.parents:
+            if parent_edge.destination_node.key == ROOT:
+                related_nodes.add(ROOT)
+                break
+
+    # Create new graph with only related nodes
+    subset_graph = DependencyGraph()
+    _build_subset_graph(graph, subset_graph, related_nodes)
+
+    return subset_graph
+
+
+def _collect_dependents(
+    node: DependencyNode,
+    related_nodes: set[str],
+    visited: set[str],
+) -> None:
+    """Recursively collect all nodes that depend on the given node."""
+    if node.key in visited:
+        return
+    visited.add(node.key)
+
+    for parent_edge in node.parents:
+        parent_node = parent_edge.destination_node
+        related_nodes.add(parent_node.key)
+        _collect_dependents(parent_node, related_nodes, visited)
+
+
+def _collect_dependencies(
+    node: DependencyNode,
+    related_nodes: set[str],
+    visited: set[str],
+) -> None:
+    """Recursively collect all dependencies of the given node."""
+    if node.key in visited:
+        return
+    visited.add(node.key)
+
+    for child_edge in node.children:
+        child_node = child_edge.destination_node
+        related_nodes.add(child_node.key)
+        _collect_dependencies(child_node, related_nodes, visited)
+
+
+def _build_subset_graph(
+    source_graph: DependencyGraph,
+    target_graph: DependencyGraph,
+    included_nodes: set[str],
+) -> None:
+    """Build the subset graph with only the included nodes and their edges."""
+    # First pass: add all included nodes
+    for node_key in included_nodes:
+        source_node = source_graph.nodes[node_key]
+        if node_key == ROOT:
+            continue  # ROOT is already created in the new graph
+
+        # Add the node to target graph
+        target_graph._add_node(
+            req_name=source_node.canonicalized_name,
+            version=source_node.version,
+            download_url=source_node.download_url,
+            pre_built=source_node.pre_built,
+            constraint=source_node.constraint,
+        )
+
+    # Second pass: add edges between included nodes
+    for node_key in included_nodes:
+        source_node = source_graph.nodes[node_key]
+        for child_edge in source_node.children:
+            child_key = child_edge.destination_node.key
+            # Only add edge if both parent and child are in the subset
+            if child_key in included_nodes:
+                child_node = child_edge.destination_node
+                target_graph.add_dependency(
+                    parent_name=source_node.canonicalized_name
+                    if source_node.canonicalized_name
+                    else None,
+                    parent_version=source_node.version
+                    if source_node.canonicalized_name
+                    else None,
+                    req_type=child_edge.req_type,
+                    req=child_edge.req,
+                    req_version=child_node.version,
+                    download_url=child_node.download_url,
+                    pre_built=child_node.pre_built,
+                    constraint=child_node.constraint,
+                )
+
+
 def find_why(
     graph: DependencyGraph,
     node: DependencyNode,
