@@ -49,6 +49,8 @@ class RequirementResolver:
         """
         self.ctx = ctx
         self.prev_graph = prev_graph
+        # Session-level resolution cache to avoid re-resolving same requirements
+        self._resolved_requirements: dict[str, tuple[str, Version]] = {}
 
     def resolve_source(
         self,
@@ -59,8 +61,9 @@ class RequirementResolver:
         """Resolve source package (sdist).
 
         Tries resolution strategies in order:
-        1. Previous dependency graph
-        2. PyPI source resolution
+        1. Session cache (if previously resolved)
+        2. Previous dependency graph
+        3. PyPI source resolution
 
         Args:
             req: Package requirement (must NOT have URL)
@@ -78,7 +81,13 @@ class RequirementResolver:
                 f"Git URL requirements must be handled by Bootstrapper: {req}"
             )
 
-        # Try graph first
+        # Check session cache first
+        req_str = str(req)
+        if req_str in self._resolved_requirements:
+            logger.debug(f"resolved {req_str} from cache")
+            return self._resolved_requirements[req_str]
+
+        # Try graph
         cached_resolution = self._resolve_from_graph(
             req=req,
             req_type=req_type,
@@ -88,15 +97,17 @@ class RequirementResolver:
         if cached_resolution:
             source_url, resolved_version = cached_resolution
             logger.debug(f"resolved from previous bootstrap to {resolved_version}")
-            return source_url, resolved_version
+        else:
+            # Fallback to PyPI
+            source_url, resolved_version = sources.resolve_source(
+                ctx=self.ctx,
+                req=req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
+                req_type=req_type,
+            )
 
-        # Fallback to PyPI
-        source_url, resolved_version = sources.resolve_source(
-            ctx=self.ctx,
-            req=req,
-            sdist_server_url=resolver.PYPI_SERVER_URL,
-            req_type=req_type,
-        )
+        # Cache the result
+        self._resolved_requirements[req_str] = (source_url, resolved_version)
         return source_url, resolved_version
 
     def resolve_prebuilt(
@@ -108,8 +119,9 @@ class RequirementResolver:
         """Resolve pre-built package (wheels only).
 
         Tries resolution strategies in order:
-        1. Previous dependency graph
-        2. PyPI wheel resolution
+        1. Session cache (if previously resolved)
+        2. Previous dependency graph
+        3. PyPI wheel resolution
 
         Args:
             req: Package requirement
@@ -122,7 +134,13 @@ class RequirementResolver:
         Raises:
             ValueError: If unable to resolve
         """
-        # Try graph first
+        # Check session cache first
+        req_str = str(req)
+        if req_str in self._resolved_requirements:
+            logger.debug(f"resolved {req_str} from cache")
+            return self._resolved_requirements[req_str]
+
+        # Try graph
         cached_resolution = self._resolve_from_graph(
             req=req,
             req_type=req_type,
@@ -133,16 +151,34 @@ class RequirementResolver:
         if cached_resolution and not req.url:
             wheel_url, resolved_version = cached_resolution
             logger.debug(f"resolved from previous bootstrap to {resolved_version}")
-            return wheel_url, resolved_version
+        else:
+            # Fallback to PyPI prebuilt resolution
+            servers = wheels.get_wheel_server_urls(
+                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
+            )
+            wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
+                ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
+            )
 
-        # Fallback to PyPI prebuilt resolution
-        servers = wheels.get_wheel_server_urls(
-            self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
-        )
-        wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
-            ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
-        )
+        # Cache the result
+        self._resolved_requirements[req_str] = (wheel_url, resolved_version)
         return wheel_url, resolved_version
+
+    def cache_resolution(
+        self,
+        req_str: str,
+        result: tuple[str, Version],
+    ) -> None:
+        """Cache a resolution result.
+
+        Used by Bootstrapper to cache git URL resolutions that are
+        handled externally (outside this resolver).
+
+        Args:
+            req_str: String representation of the requirement
+            result: Tuple of (source_url, resolved_version)
+        """
+        self._resolved_requirements[req_str] = result
 
     def _resolve_from_graph(
         self,
