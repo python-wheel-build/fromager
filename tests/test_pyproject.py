@@ -213,9 +213,8 @@ def test_pyproject_remove_install_requires(tmp_path: pathlib.Path) -> None:
     )
     fixer.run()
     doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
-    project = doc["project"]
-    assert isinstance(project, dict)
-    deps = list(project["dependencies"])
+    project = dict(doc["project"].items())  # type: ignore[union-attr]
+    deps: list[str] = list(project["dependencies"])
     assert "nvidia-cublas-cu12" not in deps
     assert "nvidia-cuda-runtime-cu12" not in deps
     assert str(Requirement("numpy>=1.24")) in deps
@@ -236,9 +235,8 @@ def test_pyproject_update_install_requires(tmp_path: pathlib.Path) -> None:
     )
     fixer.run()
     doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
-    project = doc["project"]
-    assert isinstance(project, dict)
-    deps = list(project["dependencies"])
+    project = dict(doc["project"].items())  # type: ignore[union-attr]
+    deps: list[str] = list(project["dependencies"])
     # torch should be replaced, click should be added
     assert str(Requirement("torch>=2.4.0")) in deps
     assert str(Requirement("click>=8.0")) in deps
@@ -292,8 +290,7 @@ def test_pyproject_install_requires_no_dependencies_key(
     )
     fixer.run()
     doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
-    project = doc["project"]
-    assert isinstance(project, dict)
+    project = dict(doc["project"].items())  # type: ignore[union-attr]
     assert "dependencies" not in project
 
 
@@ -316,9 +313,8 @@ def test_pyproject_install_requires_remove_and_update(
     )
     fixer.run()
     doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
-    project = doc["project"]
-    assert isinstance(project, dict)
-    deps = list(project["dependencies"])
+    project = dict(doc["project"].items())  # type: ignore[union-attr]
+    deps: list[str] = list(project["dependencies"])
     assert "nvidia-cublas-cu12" not in deps
     assert "nvidia-cuda-runtime-cu12" not in deps
     assert str(Requirement("torch>=2.4.0")) in deps

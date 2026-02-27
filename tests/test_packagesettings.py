@@ -1051,11 +1051,11 @@ def test_resolver_dist_github_provider() -> None:
 
 def test_resolver_dist_github_provider_missing_fields() -> None:
     """Verify github provider requires organization and repo."""
-    with pytest.raises(pydantic.ValidationError, match="organization.*repo"):
+    with pytest.raises(pydantic.ValidationError, match=r"organization.*repo"):
         ResolverDist(provider="github", organization="myorg")
-    with pytest.raises(pydantic.ValidationError, match="organization.*repo"):
+    with pytest.raises(pydantic.ValidationError, match=r"organization.*repo"):
         ResolverDist(provider="github", repo="myrepo")
-    with pytest.raises(pydantic.ValidationError, match="organization.*repo"):
+    with pytest.raises(pydantic.ValidationError, match=r"organization.*repo"):
         ResolverDist(provider="github")
 
 
