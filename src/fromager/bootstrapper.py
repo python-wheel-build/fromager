@@ -122,9 +122,6 @@ class Bootstrapper:
         # package.
         self._seen_requirements: set[SeenKey] = set()
 
-        # Track requirements we have already resolved so we don't resolve them again.
-        self._resolved_requirements: dict[str, tuple[str, Version]] = {}
-
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
 
         # Track failed packages in test mode (list of typed dicts for JSON export)
@@ -186,40 +183,41 @@ class Bootstrapper:
         build orchestration (BuildEnvironment, build dependencies).
         Delegates PyPI/graph resolution to RequirementResolver.
         """
-        req_str = str(req)
-        if req_str in self._resolved_requirements:
-            logger.debug(f"resolved {req_str} from cache")
-            return self._resolved_requirements[req_str]
-
         if req.url:
+            # Git URLs must be resolved in Bootstrapper (orchestration concern)
             if req_type != RequirementType.TOP_LEVEL:
                 raise ValueError(
                     f"{req} includes a URL, but is not a top-level dependency"
                 )
+
+            # Check cache first to avoid re-resolving
+            cached_result = self._resolver.get_cached_resolution(req)
+            if cached_result is not None:
+                logger.debug(f"resolved {req} from cache")
+                return cached_result
+
             logger.info("resolving source via URL, ignoring any plugins")
             source_url, resolved_version = self._resolve_version_from_git_url(req=req)
-            self._resolved_requirements[req_str] = (source_url, resolved_version)
+            # Cache the git URL resolution
+            self._resolver.cache_resolution(req, (source_url, resolved_version))
             return source_url, resolved_version
 
-        # Delegate to RequirementResolver
+        # Delegate to RequirementResolver (handles caching internally)
         parent_req = self.why[-1][1] if self.why else None
         pbi = self.ctx.package_build_info(req)
 
         if pbi.pre_built:
-            source_url, resolved_version = self._resolver.resolve_prebuilt(
+            return self._resolver.resolve_prebuilt(
                 req=req,
                 req_type=req_type,
                 parent_req=parent_req,
             )
         else:
-            source_url, resolved_version = self._resolver.resolve_source(
+            return self._resolver.resolve_source(
                 req=req,
                 req_type=req_type,
                 parent_req=parent_req,
             )
-
-        self._resolved_requirements[req_str] = (source_url, resolved_version)
-        return source_url, resolved_version
 
     def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
         """Are we currently processing a build requirement?
