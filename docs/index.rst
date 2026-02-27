@@ -39,6 +39,7 @@ those special cases directly into fromager.
    cli.rst
    glossary.rst
    develop.md
+   proposals/index.rst
 
 What's with the name?
 ---------------------
