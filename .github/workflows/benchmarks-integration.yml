@@ -1,0 +1,54 @@
+name: Benchmarks (Integration)
+
+# Runs integration benchmarks on PRs and main using walltime mode on CodSpeed
+# Macro Runners. Walltime accurately measures I/O, network, and system calls.
+# See benchmarks/README.md for details.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  benchmark-integration:
+    runs-on: codspeed-macro
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Run integration benchmarks with CodSpeed (walltime)
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: walltime
+          run: hatch run benchmark:run --codspeed -m "integration and not slow"
+
+      - name: Generate benchmark JSON (fallback)
+        if: always()
+        run: |
+          hatch run benchmark:run \
+            --benchmark-only \
+            --benchmark-json=benchmark-results-integration.json \
+            -m "integration and not slow" || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-integration
+          path: benchmark-results-integration.json
+          retention-days: 30
