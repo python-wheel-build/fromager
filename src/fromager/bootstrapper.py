@@ -25,6 +25,7 @@ from . import (
     finders,
     hooks,
     progress,
+    requirement_resolver,
     resolver,
     server,
     sources,
@@ -102,6 +103,12 @@ class Bootstrapper:
         self.sdist_only = sdist_only
         self.test_mode = test_mode
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
+
+        # Delegate resolution to RequirementResolver
+        self._resolver = requirement_resolver.RequirementResolver(
+            ctx=ctx,
+            prev_graph=prev_graph,
+        )
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
         # be built in order.
@@ -174,22 +181,41 @@ class Bootstrapper:
         """Resolve the version of a requirement.
 
         Returns the source URL and the version of the requirement.
+
+        Git URL resolution stays in Bootstrapper because it requires
+        build orchestration (BuildEnvironment, build dependencies).
+        Delegates PyPI/graph resolution to RequirementResolver.
         """
         req_str = str(req)
         if req_str in self._resolved_requirements:
             logger.debug(f"resolved {req_str} from cache")
             return self._resolved_requirements[req_str]
 
+        if req.url:
+            if req_type != RequirementType.TOP_LEVEL:
+                raise ValueError(
+                    f"{req} includes a URL, but is not a top-level dependency"
+                )
+            logger.info("resolving source via URL, ignoring any plugins")
+            source_url, resolved_version = self._resolve_version_from_git_url(req=req)
+            self._resolved_requirements[req_str] = (source_url, resolved_version)
+            return source_url, resolved_version
+
+        # Delegate to RequirementResolver
+        parent_req = self.why[-1][1] if self.why else None
         pbi = self.ctx.package_build_info(req)
+
         if pbi.pre_built:
-            source_url, resolved_version = self._resolve_prebuilt_with_history(
+            source_url, resolved_version = self._resolver.resolve_prebuilt(
                 req=req,
                 req_type=req_type,
+                parent_req=parent_req,
             )
         else:
-            source_url, resolved_version = self._resolve_source_with_history(
+            source_url, resolved_version = self._resolver.resolve_source(
                 req=req,
                 req_type=req_type,
+                parent_req=parent_req,
             )
 
         self._resolved_requirements[req_str] = (source_url, resolved_version)
@@ -894,9 +920,11 @@ class Bootstrapper:
         )
 
         try:
-            wheel_url, fallback_version = self._resolve_prebuilt_with_history(
+            parent_req = self.why[-1][1] if self.why else None
+            wheel_url, fallback_version = self._resolver.resolve_prebuilt(
                 req=req,
                 req_type=req_type,
+                parent_req=parent_req,
             )
 
             if fallback_version != resolved_version:
@@ -1062,42 +1090,6 @@ class Bootstrapper:
                 unpack_dir.joinpath(filename).unlink(missing_ok=True)
             return None
 
-    def _resolve_source_with_history(
-        self,
-        req: Requirement,
-        req_type: RequirementType,
-    ) -> tuple[str, Version]:
-        if req.url:
-            # If we have a URL, we should use that source. For now we only
-            # support git clone URLs of some sort. We are given the directory
-            # where the cloned repo resides, and return that as the URL for the
-            # source code so the next step in the process can find it and
-            # operate on it. However, we only support that if the package is a
-            # top-level dependency.
-            if req_type != RequirementType.TOP_LEVEL:
-                raise ValueError(
-                    f"{req} includes a URL, but is not a top-level dependency"
-                )
-            logger.info("resolving source via URL, ignoring any plugins")
-            return self._resolve_version_from_git_url(req=req)
-
-        cached_resolution = self._resolve_from_graph(
-            req=req,
-            req_type=req_type,
-            pre_built=False,
-        )
-        if cached_resolution:
-            source_url, resolved_version = cached_resolution
-            logger.debug(f"resolved from previous bootstrap to {resolved_version}")
-        else:
-            source_url, resolved_version = sources.resolve_source(
-                ctx=self.ctx,
-                req=req,
-                sdist_server_url=resolver.PYPI_SERVER_URL,
-                req_type=req_type,
-            )
-        return (source_url, resolved_version)
-
     def _resolve_version_from_git_url(self, req: Requirement) -> tuple[str, Version]:
         "Return path to the cloned git repository and the package version."
 
@@ -1246,109 +1238,6 @@ class Bootstrapper:
             p = BytesParser()
             metadata = p.parse(f, headersonly=True)
         return Version(metadata["Version"])
-
-    def _resolve_prebuilt_with_history(
-        self,
-        req: Requirement,
-        req_type: RequirementType,
-    ) -> tuple[str, Version]:
-        cached_resolution = self._resolve_from_graph(
-            req=req,
-            req_type=req_type,
-            pre_built=True,
-        )
-
-        if cached_resolution and not req.url:
-            wheel_url, resolved_version = cached_resolution
-            logger.debug(f"resolved from previous bootstrap to {resolved_version}")
-        else:
-            servers = wheels.get_wheel_server_urls(
-                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
-            )
-            wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
-                ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
-            )
-        return (wheel_url, resolved_version)
-
-    def _resolve_from_graph(
-        self,
-        req: Requirement,
-        req_type: RequirementType,
-        pre_built: bool,
-    ) -> tuple[str, Version] | None:
-        _, parent_req, _ = self.why[-1] if self.why else (None, None, None)
-
-        if not self.prev_graph:
-            return None
-
-        seen_version: set[str] = set()
-
-        # first perform resolution using the top level reqs before looking at history
-        possible_versions_in_top_level: list[tuple[str, Version]] = []
-        for (
-            top_level_edge
-        ) in self.ctx.dependency_graph.get_root_node().get_outgoing_edges(
-            req.name, RequirementType.TOP_LEVEL
-        ):
-            possible_versions_in_top_level.append(
-                (
-                    top_level_edge.destination_node.download_url,
-                    top_level_edge.destination_node.version,
-                )
-            )
-            seen_version.add(str(top_level_edge.destination_node.version))
-
-        resolver_result = self._resolve_from_version_source(
-            possible_versions_in_top_level, req
-        )
-        if resolver_result:
-            return resolver_result
-
-        # only if there is nothing in top level reqs, resolve using history
-        possible_versions_from_graph: list[tuple[str, Version]] = []
-        # check all nodes which have the same parent name irrespective of the parent's version
-        for parent_node in self.prev_graph.get_nodes_by_name(
-            parent_req.name if parent_req else None
-        ):
-            # if the edge matches the current req and type then it is a possible candidate
-            # filtering on type might not be necessary, but we are being safe here. This will
-            # for sure ensure that bootstrap takes the same route as it did in the previous one.
-            # If we don't filter by type then it might pick up a different version from a different
-            # type that should have appeared much later in the resolution process.
-            for edge in parent_node.get_outgoing_edges(req.name, req_type):
-                if (
-                    edge.destination_node.pre_built == pre_built
-                    and str(edge.destination_node.version) not in seen_version
-                ):
-                    possible_versions_from_graph.append(
-                        (
-                            edge.destination_node.download_url,
-                            edge.destination_node.version,
-                        )
-                    )
-                    seen_version.add(str(edge.destination_node.version))
-
-        return self._resolve_from_version_source(possible_versions_from_graph, req)
-
-    def _resolve_from_version_source(
-        self,
-        version_source: list[tuple[str, Version]],
-        req: Requirement,
-    ) -> tuple[str, Version] | None:
-        if not version_source:
-            return None
-        try:
-            # no need to pass req type to enable caching since we are already using the graph as our cache
-            # do not cache candidates
-            provider = resolver.GenericProvider(
-                version_source=lambda identifier: version_source,
-                constraints=self.ctx.constraints,
-                use_resolver_cache=False,
-            )
-            return resolver.resolve_from_provider(provider, req)
-        except Exception as err:
-            logger.debug(f"could not resolve {req} from {version_source}: {err}")
-            return None
 
     def _create_unpack_dir(
         self, req: Requirement, resolved_version: Version
