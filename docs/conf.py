@@ -28,6 +28,7 @@ extensions = [
     "sphinxcontrib.autodoc_pydantic",
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
+    "sphinxcontrib.spelling",
 ]
 
 # Enable MyST extensions to support reStructuredText directives in Markdown
