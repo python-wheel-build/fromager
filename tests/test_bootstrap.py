@@ -556,8 +556,9 @@ def test_resolve_version_from_git_url_with_submodules_enabled(
         mock_pbi_instance.git_options = mock_git_options
         mock_pbi.return_value = mock_pbi_instance
 
+        # Patch on the resolution manager since resolution is now delegated there
         with patch(
-            "fromager.bootstrapper.Bootstrapper._get_version_from_package_metadata"
+            "fromager.resolution_manager.ResolutionManager._get_version_from_package_metadata"
         ) as mock_get_version:
             with patch("shutil.move"):
                 with patch("pathlib.Path.mkdir"):
@@ -595,8 +596,9 @@ def test_resolve_version_from_git_url_with_specific_submodule_paths(
         mock_pbi_instance.git_options = mock_git_options
         mock_pbi.return_value = mock_pbi_instance
 
+        # Patch on the resolution manager since resolution is now delegated there
         with patch(
-            "fromager.bootstrapper.Bootstrapper._get_version_from_package_metadata"
+            "fromager.resolution_manager.ResolutionManager._get_version_from_package_metadata"
         ) as mock_get_version:
             with patch("shutil.move"):
                 with patch("pathlib.Path.mkdir"):
@@ -622,8 +624,9 @@ def test_resolve_version_from_git_url_with_submodules_disabled(
     """Test that git_clone is called with submodules=False by default."""
     req = Requirement("test-pkg @ git+https://github.com/example/repo.git")
 
+    # Patch on the resolver class since resolution is now delegated there
     with patch(
-        "fromager.bootstrapper.Bootstrapper._get_version_from_package_metadata"
+        "fromager.resolution_manager.ResolutionManager._get_version_from_package_metadata"
     ) as mock_get_version:
         with patch("shutil.move"):
             with patch("pathlib.Path.mkdir"):
@@ -656,8 +659,9 @@ def test_resolve_version_from_git_url_with_git_ref(
         mock_pbi_instance.git_options = mock_git_options
         mock_pbi.return_value = mock_pbi_instance
 
+        # Patch on the resolution manager since resolution is now delegated there
         with patch(
-            "fromager.bootstrapper.Bootstrapper._get_version_from_package_metadata"
+            "fromager.resolution_manager.ResolutionManager._get_version_from_package_metadata"
         ) as mock_get_version:
             with patch("shutil.move"):
                 with patch("pathlib.Path.mkdir"):
