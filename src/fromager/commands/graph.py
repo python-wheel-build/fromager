@@ -552,13 +552,6 @@ def extract_package_subset(
     for target_node in target_nodes:
         _collect_dependencies(target_node, related_nodes, visited_down)
 
-    # Always include ROOT if any target nodes are top-level dependencies
-    for target_node in target_nodes:
-        for parent_edge in target_node.parents:
-            if parent_edge.destination_node.key == ROOT:
-                related_nodes.add(ROOT)
-                break
-
     # Create new graph with only related nodes
     subset_graph = DependencyGraph()
     _build_subset_graph(graph, subset_graph, related_nodes)
