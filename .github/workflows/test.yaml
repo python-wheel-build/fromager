@@ -55,7 +55,7 @@ jobs:
         run: hatch run test:test
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-unit-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: .coverage.*
@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload logs for debugging
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: |
@@ -138,7 +138,7 @@ jobs:
             e2e-failed-*
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-e2e-${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: .coverage.*
@@ -183,7 +183,7 @@ jobs:
           hatch run test:coverage report --fail-under=60
 
       - name: Upload report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           path: htmlcov
           name: htmlcov
