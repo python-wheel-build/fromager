@@ -28,6 +28,7 @@ extensions = [
     "sphinxcontrib.autodoc_pydantic",
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
+    "sphinxcontrib.spelling",
 ]
 
 # Enable MyST extensions to support reStructuredText directives in Markdown
@@ -54,6 +55,11 @@ intersphinx_mapping = {
     # "pyproject-hooks": ("https://pyproject-hooks.readthedocs.io/en/latest/", None),
 }
 
+# sphinxcontrib.spelling settings
+# File references a function object. Spell checker complaints about typo in
+# random object id.
+spelling_exclude_patterns = ["config-reference.rst"]
+
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
@@ -76,7 +82,7 @@ class FromagerHookDocumenter(FunctionDocumenter):
 
     objtype = "fromagerhook"
 
-    def format_name(self):
+    def format_name(self) -> str:
         name = super().format_name()
         if name.startswith("default_"):
             name = name[8:]
