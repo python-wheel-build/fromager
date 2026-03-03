@@ -155,6 +155,7 @@ def test_get_build_system_dependencies(
     results = dependencies.get_build_system_dependencies(
         ctx=tmp_context,
         req=Requirement("fromager"),
+        version=Version("1.0.0"),
         sdist_root_dir=tmp_path,
     )
     names = set(r.name for r in results)
@@ -172,6 +173,7 @@ def test_get_build_system_dependencies_cached(
     results = dependencies.get_build_system_dependencies(
         ctx=tmp_context,
         req=Requirement("fromager"),
+        version=Version("1.0.0"),
         sdist_root_dir=sdist_root_dir,
     )
     assert results == set([Requirement("foo==1.0")])
@@ -195,6 +197,7 @@ def test_get_build_backend_dependencies(
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx=tmp_context,
         req=req,
+        version=Version("1.0.0"),
         sdist_root_dir=_fromager_root,
     )
     build_env.install(build_system_dependencies)
@@ -202,6 +205,7 @@ def test_get_build_backend_dependencies(
     results = dependencies.get_build_backend_dependencies(
         ctx=tmp_context,
         req=req,
+        version=Version("1.0.0"),
         sdist_root_dir=_fromager_root,
         build_env=build_env,
     )
@@ -225,6 +229,7 @@ def test_get_build_backend_dependencies_cached(
     results = dependencies.get_build_backend_dependencies(
         ctx=tmp_context,
         req=Requirement("fromager"),
+        version=Version("1.0.0"),
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
@@ -249,6 +254,7 @@ def test_get_build_sdist_dependencies(
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx=tmp_context,
         req=req,
+        version=Version("1.0.0"),
         sdist_root_dir=_fromager_root,
     )
     build_env.install(build_system_dependencies)
@@ -256,6 +262,7 @@ def test_get_build_sdist_dependencies(
     results = dependencies.get_build_sdist_dependencies(
         ctx=tmp_context,
         req=req,
+        version=Version("1.0.0"),
         sdist_root_dir=_fromager_root,
         build_env=build_env,
     )
@@ -280,6 +287,7 @@ def test_get_build_sdist_dependencies_cached(
     results = dependencies.get_build_sdist_dependencies(
         ctx=tmp_context,
         req=req,
+        version=Version("1.0.0"),
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )

@@ -554,6 +554,7 @@ class Bootstrapper:
     def _prepare_build_dependencies(
         self,
         req: Requirement,
+        resolved_version: Version | None,
         sdist_root_dir: pathlib.Path,
         build_env: build_environment.BuildEnvironment,
     ) -> set[Requirement]:
@@ -561,6 +562,7 @@ class Bootstrapper:
         build_system_dependencies = dependencies.get_build_system_dependencies(
             ctx=self.ctx,
             req=req,
+            version=resolved_version,
             sdist_root_dir=sdist_root_dir,
         )
         self._handle_build_requirements(
@@ -575,6 +577,7 @@ class Bootstrapper:
         build_backend_dependencies = dependencies.get_build_backend_dependencies(
             ctx=self.ctx,
             req=req,
+            version=resolved_version,
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
         )
@@ -588,6 +591,7 @@ class Bootstrapper:
         build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
             ctx=self.ctx,
             req=req,
+            version=resolved_version,
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
         )
@@ -851,7 +855,12 @@ class Bootstrapper:
             # Prepare build dependencies (always needed)
             # Note: This may recursively call bootstrap() for build deps,
             # which has its own error handling.
-            self._prepare_build_dependencies(req, sdist_root_dir, build_env)
+            self._prepare_build_dependencies(
+                req=req,
+                resolved_version=resolved_version,
+                sdist_root_dir=sdist_root_dir,
+                build_env=build_env,
+            )
 
             # Build wheel or sdist
             wheel_filename, sdist_filename = self._do_build(
@@ -1214,7 +1223,10 @@ class Bootstrapper:
             parent_dir=source_dir.parent,
         )
         build_dependencies = self._prepare_build_dependencies(
-            req, source_dir, build_env=build_env
+            req=req,
+            resolved_version=None,
+            sdist_root_dir=source_dir,
+            build_env=build_env,
         )
         build_env.install(build_dependencies)
 

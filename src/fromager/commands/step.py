@@ -180,7 +180,10 @@ def prepare_build(
     token = requirement_ctxvar.set(req)
     source_root_dir = _find_source_root_dir(wkctx, wkctx.work_dir, req, dist_version)
     build_environment.prepare_build_environment(
-        ctx=wkctx, req=req, sdist_root_dir=source_root_dir
+        ctx=wkctx,
+        req=req,
+        version=dist_version,
+        sdist_root_dir=source_root_dir,
     )
     requirement_ctxvar.reset(token)
 
