@@ -31,7 +31,7 @@ def as_csv(build_order_file: str, output: pathlib.Path | None) -> None:
     Creates a file suitable for import into a spreadsheet including the
     distribution name, version, original requirement, dependency type,
     whether the package is pre-built, the build order step number, and
-    a full dependency chain leading to the requirment.
+    a full dependency chain leading to the requirement.
 
     """
     fields = [
