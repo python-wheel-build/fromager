@@ -1,6 +1,8 @@
 Configuration Reference
 =======================
 
+.. currentmodule:: fromager.packagesettings
+
 Per-package Settings
 --------------------
 
@@ -19,6 +21,34 @@ For example `flash_attn.yaml`.
 .. autopydantic_model:: fromager.packagesettings.ResolverDist
 
 .. autopydantic_model:: fromager.packagesettings.ProjectOverride
+
+Source Resolver
+^^^^^^^^^^^^^^^
+
+.. autopydantic_model:: fromager.packagesettings.PyPISDistResolver
+
+.. autopydantic_model:: fromager.packagesettings.PyPIPrebuiltResolver
+
+.. autopydantic_model:: fromager.packagesettings.PyPIDownloadResolver
+
+.. autopydantic_model:: fromager.packagesettings.PyPIGitResolver
+
+.. autopydantic_model:: fromager.packagesettings.GithubSourceResolver
+   :inherited-members: AbstractGitSourceResolver
+
+.. autopydantic_model:: fromager.packagesettings.GitlabSourceResolver
+   :inherited-members: AbstractGitSourceResolver
+
+.. autoclass:: fromager.packagesettings.BuildSDist
+
+   .. autoattribute:: pep517
+   .. autoattribute:: tarball
+
+.. autoclass:: fromager.resolver.RetrieveMethod
+
+   .. autoattribute:: tarball
+   .. autoattribute:: git_https
+   .. autoattribute:: git_ssh
 
 Global Settings
 ---------------

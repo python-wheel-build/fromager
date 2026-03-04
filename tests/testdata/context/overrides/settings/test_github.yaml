@@ -1,0 +1,6 @@
+source:
+  provider: github
+  url: https://github.com/python-wheel-build/fromager
+  matcher_factory: fromager.packagesettings:DEFAULT_TAG_MATCHER
+  retrieve_method: git+https
+  build_sdist: pep517
