@@ -227,6 +227,6 @@ followed by the wheel being built successfully.
    pydantic-core: built wheel for version 2.18.4: /work/bootstrap-output/wheels-repo/downloads/pydantic_core-2.18.4-0-cp311-cp311-linux_x86_64.whl
 
 The :doc:`customization` section explains other techniques for changing the
-build inputs to ensure packages build properley. The collection of wheels you
+build inputs to ensure packages build properly. The collection of wheels you
 want to build may have different build-time issues, but you can use this
 iterative approach to work your way though them until they all build.

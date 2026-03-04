@@ -116,5 +116,5 @@ The output below is redacted for brevity. Missing sections are replaced with ``.
    11:19:56 INFO Bootstrapping typing-extensions==4.14.0 took 0:00:01 total, 0:00:00 to resolve source, 0:00:00 to download source, 0:00:00 to prepare source, 0:00:00 to build sdist, 0:00:00 to add extra metadata to wheels, 0:00:00 to build wheels
 
 As each dependency is built, fromager will show output from the build process
-and progress information. At the end of the build, fromager shows the lsit of
+and progress information. At the end of the build, fromager shows the list of
 packages that were built and how long each step took.

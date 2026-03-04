@@ -97,7 +97,7 @@ support templating. The only supported template variable are:
 ### Resolver dist
 
 The source distribution index server used by the package resolver can
-be overriden for a particular package. The resolver can also be told
+be overridden for a particular package. The resolver can also be told
 to whether include wheels or sdist sources while trying to resolve
 the package. Templating is not supported here.
 
