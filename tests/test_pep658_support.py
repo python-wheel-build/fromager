@@ -57,10 +57,11 @@ Requires-Dist: requests >= 2.0.0
         metadata = get_metadata_for_wheel(wheel_url, metadata_url)
 
         # Verify the metadata was parsed correctly
-        assert metadata["Name"] == "test-package"
-        assert metadata["Version"] == "1.0.0"
-        assert metadata["Summary"] == "A test package"
-        assert "requests >= 2.0.0" in metadata.get_all("Requires-Dist", [])
+        assert metadata.name == "test-package"
+        assert str(metadata.version) == "1.0.0"
+        assert metadata.summary == "A test package"
+        assert metadata.requires_dist is not None
+        assert any(str(req) == "requests>=2.0.0" for req in metadata.requires_dist)
 
         # Verify only the metadata URL was called, not the wheel URL
         mock_session.get.assert_called_once_with(metadata_url)
