@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 import pathlib
+import re
 import shutil
 import tarfile
 import typing
@@ -43,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
+    """Determine how a requirement's source will be obtained."""
     source_type = SourceType.SDIST
     if req.url:
         return SourceType.GIT
@@ -52,6 +54,7 @@ def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
         or overrides.find_override_method(req.name, "resolve_source")
         or overrides.find_override_method(req.name, "get_resolver_provider")
         or pbi.download_source_url(resolve_template=False)
+        or pbi.resolver_provider
     ):
         source_type = SourceType.OVERRIDE
     return source_type
@@ -176,10 +179,24 @@ def default_resolve_source(
     sdist_server_url: str,
     req_type: RequirementType | None = None,
 ) -> tuple[str, Version]:
-    "Return URL to source and its version."
+    """Return URL to source and its version.
 
+    Checks for a YAML-configured resolver provider first. If one is
+    configured (and is not 'pypi'), the appropriate provider is created
+    and used. Otherwise falls back to the standard PyPI resolver.
+    """
     pbi = ctx.package_build_info(req)
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+
+    # Check if a specific provider is configured in YAML
+    provider_type = pbi.resolver_provider
+    if provider_type and provider_type != "pypi":
+        url, version = _resolve_with_configured_provider(
+            ctx=ctx,
+            req=req,
+            pbi=pbi,
+        )
+        return url, version
 
     url, version = resolver.resolve(
         ctx=ctx,
@@ -191,6 +208,47 @@ def default_resolve_source(
         ignore_platform=pbi.resolver_ignore_platform,
     )
     return url, version
+
+
+def _resolve_with_configured_provider(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    pbi: packagesettings.PackageBuildInfo,
+) -> tuple[str, Version]:
+    """Create a resolver provider from YAML configuration and resolve."""
+    provider_type = pbi.resolver_provider
+    tag_matcher_pattern = pbi.resolver_tag_matcher
+    matcher: re.Pattern[str] | None = None
+    if tag_matcher_pattern:
+        matcher = re.compile(tag_matcher_pattern)
+
+    provider: resolver.BaseProvider
+    if provider_type == "github":
+        assert pbi.resolver_organization is not None
+        assert pbi.resolver_repo is not None
+        provider = resolver.GitHubTagProvider(
+            organization=pbi.resolver_organization,
+            repo=pbi.resolver_repo,
+            constraints=ctx.constraints,
+            matcher=matcher,
+        )
+    elif provider_type == "gitlab":
+        project_path = pbi.resolver_project_path
+        if not project_path:
+            assert pbi.resolver_organization is not None
+            assert pbi.resolver_repo is not None
+            project_path = f"{pbi.resolver_organization}/{pbi.resolver_repo}"
+        provider = resolver.GitLabTagProvider(
+            project_path=project_path,
+            server_url=pbi.resolver_server_url or "https://gitlab.com",
+            constraints=ctx.constraints,
+            matcher=matcher,
+        )
+    else:
+        raise ValueError(f"Unknown provider type: {provider_type!r}")
+
+    return resolver.resolve_from_provider(provider, req)
 
 
 def default_download_source(
@@ -571,19 +629,64 @@ def prepare_new_source(
 ) -> None:
     """Default steps for new sources
 
+    - ensure PKG-INFO exists
+    - optionally vendor Rust crates before patching
     - patch sources
+    - create files from settings
     - apply project overrides from settings
-    - vendor Rust dependencies
+    - vendor Rust dependencies (if not already done before patching)
 
     :func:`~default_prepare_source` runs this function when the sources are new.
     """
+    pbi = ctx.package_build_info(req)
+    build_dir = pbi.build_dir(source_root_dir)
+    ensure_pkg_info(
+        ctx=ctx,
+        req=req,
+        version=version,
+        sdist_root_dir=source_root_dir,
+        build_dir=build_dir,
+    )
+    if pbi.vendor_rust_before_patch:
+        vendor_rust.vendor_rust(req, source_root_dir)
     patch_source(ctx, source_root_dir, req, version)
+    create_source_files(ctx, req, source_root_dir, version)
     pyproject.apply_project_override(
         ctx=ctx,
         req=req,
         sdist_root_dir=source_root_dir,
     )
-    vendor_rust.vendor_rust(req, source_root_dir)
+    if not pbi.vendor_rust_before_patch:
+        vendor_rust.vendor_rust(req, source_root_dir)
+
+
+def create_source_files(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_root_dir: pathlib.Path,
+    version: Version,
+) -> None:
+    """Create files defined in package settings create_files.
+
+    Each file spec includes a relative path and optional content that
+    supports template substitution with ``${version}``, etc.
+    """
+    pbi = ctx.package_build_info(req)
+    files = pbi.create_files
+    if not files:
+        return
+
+    for file_spec in files:
+        file_path = source_root_dir / file_spec.path
+        template_env: dict[str, str] = {
+            "version": str(version),
+            "version_base_version": version.base_version,
+            "canonicalized_name": str(pbi.package),
+        }
+        content = packagesettings.substitute_template(file_spec.content, template_env)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content)
+        logger.info("created file %s", file_path)
 
 
 @metrics.timeit(description="build sdist")

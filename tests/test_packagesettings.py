@@ -12,6 +12,7 @@ from fromager import build_environment, context
 from fromager.packagesettings import (
     Annotations,
     BuildDirectory,
+    CreateFile,
     EnvVars,
     GitOptions,
     Package,
@@ -51,6 +52,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         ],
         "cmake.define.BLA_VENDOR": "OpenBLAS",
     },
+    "create_files": [],
     "download_source": {
         "destination_filename": "${canonicalized_name}-${version}.tar.gz",
         "url": "https://egg.test/${canonicalized_name}/v${version}.tar.gz",
@@ -73,6 +75,8 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "remove_build_requires": ["cmake"],
         "update_build_requires": ["setuptools>=68.0.0", "torch"],
         "requires_external": ["openssl-libs"],
+        "update_install_requires": [],
+        "remove_install_requires": [],
     },
     "resolver_dist": {
         "include_sdists": True,
@@ -80,6 +84,12 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "sdist_server_url": "https://sdist.test/egg",
         "ignore_platform": True,
         "use_pypi_org_metadata": True,
+        "provider": None,
+        "organization": None,
+        "repo": None,
+        "project_path": None,
+        "server_url": None,
+        "tag_matcher": None,
     },
     "variants": {
         "cpu": {
@@ -105,6 +115,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "pre_built": False,
         },
     },
+    "vendor_rust_before_patch": False,
 }
 
 EMPTY_EXPECTED: dict[str, typing.Any] = {
@@ -119,6 +130,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
     },
     "changelog": {},
     "config_settings": {},
+    "create_files": [],
     "env": {},
     "download_source": {
         "url": None,
@@ -133,6 +145,8 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "remove_build_requires": [],
         "update_build_requires": [],
         "requires_external": [],
+        "update_install_requires": [],
+        "remove_install_requires": [],
     },
     "resolver_dist": {
         "sdist_server_url": None,
@@ -140,8 +154,15 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "include_wheels": False,
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
+        "provider": None,
+        "organization": None,
+        "repo": None,
+        "project_path": None,
+        "server_url": None,
+        "tag_matcher": None,
     },
     "variants": {},
+    "vendor_rust_before_patch": False,
 }
 
 PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
@@ -158,6 +179,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         Version("1.0.1"): ["onboard"],
     },
     "config_settings": {},
+    "create_files": [],
     "env": {},
     "download_source": {
         "url": None,
@@ -172,6 +194,8 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "remove_build_requires": [],
         "update_build_requires": [],
         "requires_external": [],
+        "update_install_requires": [],
+        "remove_install_requires": [],
     },
     "resolver_dist": {
         "sdist_server_url": None,
@@ -179,6 +203,12 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "include_wheels": False,
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
+        "provider": None,
+        "organization": None,
+        "repo": None,
+        "project_path": None,
+        "server_url": None,
+        "tag_matcher": None,
     },
     "variants": {
         "cpu": {
@@ -188,6 +218,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
             "wheel_server_url": None,
         },
     },
+    "vendor_rust_before_patch": False,
 }
 
 
@@ -805,3 +836,346 @@ def test_use_pypi_org_metadata(testdata_context: context.WorkContext) -> None:
         "somepackage_without_customization"
     )
     assert pbi.use_pypi_org_metadata
+
+
+@patch("fromager.packagesettings.get_cpu_count", return_value=1)
+@patch("fromager.packagesettings.get_available_memory_gib", return_value=8.0)
+def test_get_extra_environ_version_substitution(
+    _get_mem: Mock,
+    _get_cpu: Mock,
+) -> None:
+    """Verify ${version} template vars are substituted in env settings."""
+    settings_yaml = """
+env:
+    MY_VERSION: "${version}"
+    MY_BASE: "${version_base_version}"
+    MY_POST: "${version_post}"
+"""
+    from fromager.packagesettings import Settings, SettingsFile
+
+    ps = PackageSettings.from_string("version-pkg", settings_yaml)
+    s = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    pbi = s.package_build_info("version-pkg")
+    result = pbi.get_extra_environ(template_env={}, version=Version("1.2.3"))
+    assert result["MY_VERSION"] == "1.2.3"
+    assert result["MY_BASE"] == "1.2.3"
+    assert result["MY_POST"] == ""
+
+
+@patch("fromager.packagesettings.get_cpu_count", return_value=1)
+@patch("fromager.packagesettings.get_available_memory_gib", return_value=8.0)
+def test_get_extra_environ_version_post_release(
+    _get_mem: Mock,
+    _get_cpu: Mock,
+) -> None:
+    """Verify ${version_base_version} and ${version_post} with post-release."""
+    settings_yaml = """
+env:
+    MY_VERSION: "${version}"
+    MY_BASE: "${version_base_version}"
+    MY_POST: "${version_post}"
+"""
+    from fromager.packagesettings import Settings, SettingsFile
+
+    ps = PackageSettings.from_string("version-pkg", settings_yaml)
+    s = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    pbi = s.package_build_info("version-pkg")
+    result = pbi.get_extra_environ(template_env={}, version=Version("1.2.3.post1"))
+    assert result["MY_VERSION"] == "1.2.3.post1"
+    assert result["MY_BASE"] == "1.2.3"
+    assert result["MY_POST"] == "1"
+
+
+@patch("fromager.packagesettings.get_cpu_count", return_value=1)
+@patch("fromager.packagesettings.get_available_memory_gib", return_value=8.0)
+def test_get_extra_environ_version_none_backward_compat(
+    _get_mem: Mock,
+    _get_cpu: Mock,
+    testdata_context: context.WorkContext,
+) -> None:
+    """Verify backward compatibility when version is None."""
+    testdata_context.settings.max_jobs = 1
+    pbi = testdata_context.settings.package_build_info(TEST_EMPTY_PKG)
+    result = pbi.get_extra_environ(template_env={}, version=None)
+    assert "version" not in result
+    assert "version_base_version" not in result
+    assert "version_post" not in result
+
+
+@patch("fromager.packagesettings.get_cpu_count", return_value=1)
+@patch("fromager.packagesettings.get_available_memory_gib", return_value=8.0)
+def test_get_extra_environ_version_env_override(
+    _get_mem: Mock,
+    _get_cpu: Mock,
+) -> None:
+    """Verify that actual env variables named 'version' take precedence."""
+    settings_yaml = """
+env:
+    MY_VERSION: "${version}"
+"""
+    from fromager.packagesettings import Settings, SettingsFile
+
+    ps = PackageSettings.from_string("version-pkg", settings_yaml)
+    s = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    pbi = s.package_build_info("version-pkg")
+    result = pbi.get_extra_environ(
+        template_env={"version": "from-env"},
+        version=Version("1.2.3"),
+    )
+    assert result["MY_VERSION"] == "from-env"
+
+
+def test_create_file_relative_path() -> None:
+    """Verify CreateFile accepts relative paths."""
+    cf = CreateFile(path="src/mypackage/__init__.py", content="")
+    assert cf.path == "src/mypackage/__init__.py"
+    assert cf.content == ""
+
+
+def test_create_file_rejects_absolute_path() -> None:
+    """Verify CreateFile rejects absolute paths."""
+    with pytest.raises(pydantic.ValidationError, match="is not a relative path"):
+        CreateFile(path="/etc/passwd", content="bad")
+
+
+def test_create_file_rejects_path_traversal() -> None:
+    """Verify CreateFile rejects paths with '..' components."""
+    with pytest.raises(pydantic.ValidationError, match="must not contain"):
+        CreateFile(path="../../../etc/passwd", content="bad")
+
+    with pytest.raises(pydantic.ValidationError, match="must not contain"):
+        CreateFile(path="src/../../etc/passwd", content="bad")
+
+
+def test_create_file_with_content() -> None:
+    """Verify CreateFile stores content."""
+    cf = CreateFile(path="version.py", content='__version__ = "${version}"')
+    assert cf.content == '__version__ = "${version}"'
+
+
+def test_vendor_rust_before_patch_default() -> None:
+    """Verify vendor_rust_before_patch defaults to False."""
+    settings = PackageSettings.from_default("test-pkg")
+    assert settings.vendor_rust_before_patch is False
+
+
+def test_vendor_rust_before_patch_from_yaml() -> None:
+    """Verify vendor_rust_before_patch can be set via YAML."""
+    data = "vendor_rust_before_patch: true\n"
+    settings = PackageSettings.from_string("test-pkg", data)
+    assert settings.vendor_rust_before_patch is True
+
+
+def test_create_files_from_yaml() -> None:
+    """Verify create_files can be parsed from YAML."""
+    data = """\
+create_files:
+  - path: src/mypackage/__init__.py
+    content: ""
+  - path: src/mypackage/version.py
+    content: |
+      __version__ = "${version}"
+"""
+    settings = PackageSettings.from_string("test-pkg", data)
+    assert len(settings.create_files) == 2
+    assert settings.create_files[0].path == "src/mypackage/__init__.py"
+    assert settings.create_files[0].content == ""
+    assert settings.create_files[1].path == "src/mypackage/version.py"
+    assert '__version__ = "${version}"' in settings.create_files[1].content
+
+
+def test_pbi_vendor_rust_before_patch() -> None:
+    """Verify PackageBuildInfo exposes vendor_rust_before_patch."""
+    from fromager.packagesettings import Settings, SettingsFile
+
+    data = "vendor_rust_before_patch: true\n"
+    ps = PackageSettings.from_string("test-pkg", data)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert pbi.vendor_rust_before_patch is True
+
+
+def test_pbi_create_files() -> None:
+    """Verify PackageBuildInfo exposes create_files."""
+    from fromager.packagesettings import Settings, SettingsFile
+
+    data = """\
+create_files:
+  - path: src/__init__.py
+    content: ""
+"""
+    ps = PackageSettings.from_string("test-pkg", data)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert len(pbi.create_files) == 1
+    assert pbi.create_files[0].path == "src/__init__.py"
+
+
+def test_resolver_dist_github_provider() -> None:
+    """Verify ResolverDist accepts valid github provider config."""
+    rd = ResolverDist(provider="github", organization="myorg", repo="myrepo")
+    assert rd.provider == "github"
+    assert rd.organization == "myorg"
+    assert rd.repo == "myrepo"
+
+
+def test_resolver_dist_github_provider_missing_fields() -> None:
+    """Verify github provider requires organization and repo."""
+    with pytest.raises(pydantic.ValidationError, match=r"organization.*repo"):
+        ResolverDist(provider="github", organization="myorg")
+    with pytest.raises(pydantic.ValidationError, match=r"organization.*repo"):
+        ResolverDist(provider="github", repo="myrepo")
+    with pytest.raises(pydantic.ValidationError, match=r"organization.*repo"):
+        ResolverDist(provider="github")
+
+
+def test_resolver_dist_gitlab_provider_with_project_path() -> None:
+    """Verify GitLab provider with project_path."""
+    rd = ResolverDist(provider="gitlab", project_path="group/subgroup/project")
+    assert rd.provider == "gitlab"
+    assert rd.project_path == "group/subgroup/project"
+
+
+def test_resolver_dist_gitlab_provider_with_org_repo() -> None:
+    """Verify GitLab provider with organization and repo."""
+    rd = ResolverDist(provider="gitlab", organization="myorg", repo="myrepo")
+    assert rd.provider == "gitlab"
+    assert rd.organization == "myorg"
+    assert rd.repo == "myrepo"
+
+
+def test_resolver_dist_gitlab_provider_missing_fields() -> None:
+    """Verify gitlab provider requires project_path or organization+repo."""
+    with pytest.raises(pydantic.ValidationError, match="project_path"):
+        ResolverDist(provider="gitlab")
+    with pytest.raises(pydantic.ValidationError, match="project_path"):
+        ResolverDist(provider="gitlab", organization="myorg")
+
+
+def test_resolver_dist_unknown_provider() -> None:
+    """Verify unknown provider names are rejected."""
+    with pytest.raises(pydantic.ValidationError, match="Unknown provider"):
+        ResolverDist(provider="unknown")
+
+
+def test_resolver_dist_pypi_provider() -> None:
+    """Verify pypi provider is accepted (explicit or default)."""
+    rd = ResolverDist(provider="pypi")
+    assert rd.provider == "pypi"
+    rd_default = ResolverDist()
+    assert rd_default.provider is None
+
+
+def test_resolver_dist_tag_matcher_valid() -> None:
+    """Verify valid tag_matcher regex with one capturing group."""
+    rd = ResolverDist(
+        provider="github",
+        organization="org",
+        repo="repo",
+        tag_matcher=r"v(\d+\.\d+\.\d+)",
+    )
+    assert rd.tag_matcher == r"v(\d+\.\d+\.\d+)"
+
+
+def test_resolver_dist_tag_matcher_invalid_regex() -> None:
+    """Verify invalid regex in tag_matcher is rejected."""
+    with pytest.raises(pydantic.ValidationError, match="Invalid tag_matcher regex"):
+        ResolverDist(
+            provider="github",
+            organization="org",
+            repo="repo",
+            tag_matcher=r"v(\d+",
+        )
+
+
+def test_resolver_dist_tag_matcher_wrong_groups() -> None:
+    """Verify tag_matcher with zero or multiple groups is rejected."""
+    with pytest.raises(pydantic.ValidationError, match="exactly 1 capturing group"):
+        ResolverDist(
+            provider="github",
+            organization="org",
+            repo="repo",
+            tag_matcher=r"v\d+\.\d+\.\d+",
+        )
+    with pytest.raises(pydantic.ValidationError, match="exactly 1 capturing group"):
+        ResolverDist(
+            provider="github",
+            organization="org",
+            repo="repo",
+            tag_matcher=r"v(\d+)\.(\d+)",
+        )
+
+
+def test_resolver_dist_from_yaml() -> None:
+    """Verify ResolverDist can be parsed from YAML via PackageSettings."""
+    yaml_data = """
+resolver_dist:
+  provider: github
+  organization: openssl
+  repo: openssl
+  tag_matcher: "openssl-(\\\\d+\\\\.\\\\d+\\\\.\\\\d+)"
+"""
+    ps = PackageSettings.from_string("test-resolver-pkg", yaml_data)
+    assert ps.resolver_dist.provider == "github"
+    assert ps.resolver_dist.organization == "openssl"
+    assert ps.resolver_dist.repo == "openssl"
+
+
+def test_pbi_resolver_properties() -> None:
+    """Verify PackageBuildInfo exposes resolver properties."""
+    from fromager.packagesettings import Settings, SettingsFile
+
+    ps = PackageSettings.from_string(
+        "resolver-test",
+        """
+resolver_dist:
+  provider: github
+  organization: myorg
+  repo: myrepo
+  tag_matcher: "v(.*)"
+""",
+    )
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("resolver-test")
+    assert pbi.resolver_provider == "github"
+    assert pbi.resolver_organization == "myorg"
+    assert pbi.resolver_repo == "myrepo"
+    assert pbi.resolver_project_path is None
+    assert pbi.resolver_server_url is None
+    assert pbi.resolver_tag_matcher == "v(.*)"

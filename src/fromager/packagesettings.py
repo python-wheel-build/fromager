@@ -201,12 +201,79 @@ class ResolverDist(pydantic.BaseModel):
     .. versionadded:: 0.70
     """
 
+    provider: str | None = None
+    """Resolver provider type: 'pypi' (default), 'github', 'gitlab'
+
+    When not set, defaults to PyPI provider behavior.
+
+    .. versionadded:: 0.XX
+    """
+
+    organization: str | None = None
+    """GitHub organization or GitLab group (required for github/gitlab providers)"""
+
+    repo: str | None = None
+    """GitHub/GitLab repository name (required for github/gitlab providers)"""
+
+    project_path: str | None = None
+    """GitLab project path (e.g., 'group/subgroup/project')
+
+    For GitLab, this takes precedence over organization/repo.
+
+    .. versionadded:: 0.XX
+    """
+
+    server_url: str | None = None
+    """GitLab server URL (default: https://gitlab.com)
+
+    Only used with gitlab provider.
+
+    .. versionadded:: 0.XX
+    """
+
+    tag_matcher: str | None = None
+    """Regex pattern for matching version tags
+
+    Applied to git tags to extract version numbers. Must contain
+    exactly one capturing group that captures the version string.
+    Example: ``v(\\d+\\.\\d+\\.\\d+)``
+
+    .. versionadded:: 0.XX
+    """
+
     @pydantic.model_validator(mode="after")
-    def validate_ignore_platform(self) -> typing.Self:
+    def validate_resolver_dist(self) -> typing.Self:
+        """Validate resolver_dist configuration."""
         if self.ignore_platform and not self.include_wheels:
             raise ValueError(
                 "'ignore_platforms' has no effect without 'include_wheels'"
             )
+        if self.provider == "github":
+            if not self.organization or not self.repo:
+                raise ValueError("GitHub provider requires 'organization' and 'repo'")
+        elif self.provider == "gitlab":
+            if not self.project_path and not (self.organization and self.repo):
+                raise ValueError(
+                    "GitLab provider requires 'project_path' or "
+                    "'organization' and 'repo'"
+                )
+        elif self.provider is not None and self.provider != "pypi":
+            raise ValueError(
+                f"Unknown provider: {self.provider!r}. "
+                f"Supported: 'pypi', 'github', 'gitlab'"
+            )
+        if self.tag_matcher is not None:
+            try:
+                pattern = re.compile(self.tag_matcher)
+            except re.error as err:
+                raise ValueError(
+                    f"Invalid tag_matcher regex: {self.tag_matcher!r}: {err}"
+                ) from err
+            if pattern.groups != 1:
+                raise ValueError(
+                    f"tag_matcher must have exactly 1 capturing group, "
+                    f"got {pattern.groups}"
+                )
         return self
 
 
@@ -316,9 +383,24 @@ class ProjectOverride(pydantic.BaseModel):
        ``tomlkit.loads(dist(pkgname).read_text("fromager-build-settings"))``.
     """
 
+    update_install_requires: list[str] = Field(default_factory=list)
+    """Add / update requirements in pyproject.toml ``[project] dependencies``"""
+
+    remove_install_requires: list[Package] = Field(default_factory=list)
+    """Remove requirements from pyproject.toml ``[project] dependencies``"""
+
     @pydantic.field_validator("update_build_requires")
     @classmethod
     def validate_update_build_requires(cls, v: list[str]) -> list[str]:
+        """Validate that each entry is a valid requirement string."""
+        for reqstr in v:
+            Requirement(reqstr)
+        return v
+
+    @pydantic.field_validator("update_install_requires")
+    @classmethod
+    def validate_update_install_requires(cls, v: list[str]) -> list[str]:
+        """Validate that each entry is a valid requirement string."""
         for reqstr in v:
             Requirement(reqstr)
         return v
@@ -388,6 +470,36 @@ class GitOptions(pydantic.BaseModel):
 _DictStrAny = dict[str, typing.Any]
 
 
+class CreateFile(pydantic.BaseModel):
+    """A file to create in the source tree
+
+    ::
+
+      path: src/mypackage/version.py
+      content: |
+        __version__ = "${version}"
+    """
+
+    model_config = MODEL_CONFIG
+
+    path: str
+    """Relative path within the source tree"""
+
+    content: str = ""
+    """File content (supports template substitution with ${version}, etc.)"""
+
+    @pydantic.field_validator("path")
+    @classmethod
+    def validate_path(cls, v: str) -> str:
+        """Reject absolute paths and path traversal components."""
+        p = pathlib.Path(v)
+        if p.is_absolute():
+            raise ValueError(f"{v!r} is not a relative path")
+        if ".." in p.parts:
+            raise ValueError(f"{v!r} must not contain '..' components")
+        return v
+
+
 class PackageSettings(pydantic.BaseModel):
     """Package settings
 
@@ -450,6 +562,15 @@ class PackageSettings(pydantic.BaseModel):
            - "-Dsystem-qhull=true"
     """
 
+    create_files: list[CreateFile] = Field(default_factory=list)
+    """Files to create in the source tree before building
+
+    Useful for adding missing __init__.py, version.py, or other files
+    that some sdists are missing.
+
+    .. versionadded:: 0.XX
+    """
+
     env: EnvVars = Field(default_factory=dict)
     """Common env var for all variants"""
 
@@ -467,6 +588,16 @@ class PackageSettings(pydantic.BaseModel):
 
     project_override: ProjectOverride = Field(default_factory=ProjectOverride)
     """Patch project settings"""
+
+    vendor_rust_before_patch: bool = False
+    """Vendor Rust crates before applying patches instead of after
+
+    When True, ``cargo vendor`` runs before patches are applied.
+    This is useful when patches modify vendored Cargo.lock or
+    Cargo.toml files.
+
+    .. versionadded:: 0.XX
+    """
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
     """Variant configuration"""
@@ -826,6 +957,36 @@ class PackageBuildInfo:
         return self._ps.resolver_dist.ignore_platform
 
     @property
+    def resolver_provider(self) -> str | None:
+        """Resolver provider type."""
+        return self._ps.resolver_dist.provider
+
+    @property
+    def resolver_organization(self) -> str | None:
+        """GitHub/GitLab organization."""
+        return self._ps.resolver_dist.organization
+
+    @property
+    def resolver_repo(self) -> str | None:
+        """GitHub/GitLab repository name."""
+        return self._ps.resolver_dist.repo
+
+    @property
+    def resolver_project_path(self) -> str | None:
+        """GitLab project path."""
+        return self._ps.resolver_dist.project_path
+
+    @property
+    def resolver_server_url(self) -> str | None:
+        """GitLab server URL."""
+        return self._ps.resolver_dist.server_url
+
+    @property
+    def resolver_tag_matcher(self) -> str | None:
+        """Tag matcher regex pattern."""
+        return self._ps.resolver_dist.tag_matcher
+
+    @property
     def use_pypi_org_metadata(self) -> bool:
         """Can use metadata from pypi.org JSON / Simple API?
 
@@ -883,13 +1044,16 @@ class PackageBuildInfo:
         *,
         template_env: dict[str, str] | None = None,
         build_env: build_environment.BuildEnvironment | None = None,
+        version: Version | None = None,
     ) -> dict[str, str]:
         """Get extra environment variables for a variant
 
         1. parallel jobs: ``MAKEFLAGS``, ``MAX_JOBS``, ``CMAKE_BUILD_PARALLEL_LEVEL``
         2. PATH and VIRTUAL_ENV from ``build_env`` (if given)
-        3. package's env settings
-        4. package variant's env settings
+        3. version template variables (``${version}``, ``${version_base_version}``,
+           ``${version_post}``) when *version* is given
+        4. package's env settings
+        5. package variant's env settings
 
         `template_env` defaults to `os.environ`.
         """
@@ -915,6 +1079,14 @@ class PackageBuildInfo:
             venv_environ = build_env.get_venv_environ(template_env=template_env)
             template_env.update(venv_environ)
             extra_environ.update(venv_environ)
+
+        # add version template variables if version is provided;
+        # use setdefault so actual environment variables take precedence
+        if version is not None:
+            template_env.setdefault("version", str(version))
+            template_env.setdefault("version_base_version", version.base_version)
+            post_str = str(version.post) if version.post is not None else ""
+            template_env.setdefault("version_post", post_str)
 
         # chain entries so variant entries can reference general entries
         entries = list(self._ps.env.items())
@@ -972,6 +1144,16 @@ class PackageBuildInfo:
     def git_options(self) -> GitOptions:
         """Git repository cloning options"""
         return self._ps.git_options
+
+    @property
+    def create_files(self) -> list[CreateFile]:
+        """Files to create in the source tree."""
+        return list(self._ps.create_files)
+
+    @property
+    def vendor_rust_before_patch(self) -> bool:
+        """Should Rust crates be vendored before patching?"""
+        return self._ps.vendor_rust_before_patch
 
     @property
     def project_override(self) -> ProjectOverride:
@@ -1226,7 +1408,7 @@ def get_extra_environ(
 ) -> dict[str, str]:
     """Get extra environment variables from settings and update hook"""
     pbi = ctx.package_build_info(req)
-    extra_environ = pbi.get_extra_environ(build_env=build_env)
+    extra_environ = pbi.get_extra_environ(build_env=build_env, version=version)
     overrides.find_and_invoke(
         req.name,
         "update_extra_environ",

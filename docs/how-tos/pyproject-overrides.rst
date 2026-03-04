@@ -73,3 +73,22 @@ All existing numpy requirements are replaced by all the new numpy requirements:
        "packaging",
        "setuptools"
    ]
+
+Modifying Install Dependencies
+------------------------------
+
+The same matching behavior applies to install dependencies (``[project]
+dependencies``) using ``update_install_requires`` and
+``remove_install_requires``.
+
+.. code-block:: yaml
+
+   project_override:
+     remove_install_requires:
+       - easyocr
+       - rapidocr-onnxruntime
+     update_install_requires:
+       - "torch>=2.3.0"
+
+This removes the ``easyocr`` and ``rapidocr-onnxruntime`` packages from
+install dependencies and adds or updates the ``torch`` requirement.

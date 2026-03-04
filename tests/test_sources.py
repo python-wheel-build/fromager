@@ -7,6 +7,8 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import context, packagesettings, resolver, sources
+from fromager.packagesettings import CreateFile
+from fromager.requirements_file import SourceType
 
 
 @patch("fromager.sources.download_url")
@@ -218,3 +220,407 @@ def test_validate_sdist_file(
     else:
         with pytest.raises(ValueError):
             sources.validate_sdist_filename(req, version, sdist_file)
+
+
+@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.GitHubTagProvider")
+def test_resolve_with_configured_github_provider(
+    mock_github_cls: Mock,
+    mock_resolve_from_provider: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify _resolve_with_configured_provider creates GitHubTagProvider."""
+    mock_provider = Mock()
+    mock_github_cls.return_value = mock_provider
+    mock_resolve_from_provider.return_value = (
+        "https://github.com/org/repo/archive/v1.0.tar.gz",
+        Version("1.0"),
+    )
+
+    ps = packagesettings.PackageSettings.from_string(
+        "github-pkg",
+        """
+resolver_dist:
+  provider: github
+  organization: myorg
+  repo: myrepo
+  tag_matcher: "v(.*)"
+""",
+    )
+    settings = packagesettings.Settings(
+        settings=packagesettings.SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_context.settings.patches_dir,
+        max_jobs=1,
+    )
+    tmp_context.settings = settings
+
+    req = Requirement("github-pkg==1.0")
+    pbi = tmp_context.package_build_info(req)
+    url, version = sources._resolve_with_configured_provider(
+        ctx=tmp_context,
+        req=req,
+        pbi=pbi,
+    )
+    assert url == "https://github.com/org/repo/archive/v1.0.tar.gz"
+    assert version == Version("1.0")
+    mock_github_cls.assert_called_once()
+    mock_resolve_from_provider.assert_called_once_with(mock_provider, req)
+
+
+@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.GitLabTagProvider")
+def test_resolve_with_configured_gitlab_provider(
+    mock_gitlab_cls: Mock,
+    mock_resolve_from_provider: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify _resolve_with_configured_provider creates GitLabTagProvider."""
+    mock_provider = Mock()
+    mock_gitlab_cls.return_value = mock_provider
+    mock_resolve_from_provider.return_value = (
+        "https://gitlab.com/group/project/-/archive/v1.0/project-v1.0.tar.gz",
+        Version("1.0"),
+    )
+
+    ps = packagesettings.PackageSettings.from_string(
+        "gitlab-pkg",
+        """
+resolver_dist:
+  provider: gitlab
+  project_path: group/project
+  server_url: https://gitlab.example.com
+""",
+    )
+    settings = packagesettings.Settings(
+        settings=packagesettings.SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_context.settings.patches_dir,
+        max_jobs=1,
+    )
+    tmp_context.settings = settings
+
+    req = Requirement("gitlab-pkg==1.0")
+    pbi = tmp_context.package_build_info(req)
+    _url, _version = sources._resolve_with_configured_provider(
+        ctx=tmp_context,
+        req=req,
+        pbi=pbi,
+    )
+    mock_gitlab_cls.assert_called_once_with(
+        project_path="group/project",
+        server_url="https://gitlab.example.com",
+        constraints=tmp_context.constraints,
+        matcher=None,
+    )
+    mock_resolve_from_provider.assert_called_once_with(mock_provider, req)
+
+
+@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.GitLabTagProvider")
+def test_resolve_gitlab_with_org_repo_fallback(
+    mock_gitlab_cls: Mock,
+    mock_resolve_from_provider: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify GitLab provider uses org/repo when project_path is not set."""
+    mock_provider = Mock()
+    mock_gitlab_cls.return_value = mock_provider
+    mock_resolve_from_provider.return_value = (
+        "https://gitlab.com/myorg/myrepo/-/archive/v1.0.tar.gz",
+        Version("1.0"),
+    )
+
+    ps = packagesettings.PackageSettings.from_string(
+        "gitlab-org-pkg",
+        """
+resolver_dist:
+  provider: gitlab
+  organization: myorg
+  repo: myrepo
+""",
+    )
+    settings = packagesettings.Settings(
+        settings=packagesettings.SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_context.settings.patches_dir,
+        max_jobs=1,
+    )
+    tmp_context.settings = settings
+
+    req = Requirement("gitlab-org-pkg==1.0")
+    pbi = tmp_context.package_build_info(req)
+    sources._resolve_with_configured_provider(
+        ctx=tmp_context,
+        req=req,
+        pbi=pbi,
+    )
+    mock_gitlab_cls.assert_called_once_with(
+        project_path="myorg/myrepo",
+        server_url="https://gitlab.com",
+        constraints=tmp_context.constraints,
+        matcher=None,
+    )
+
+
+@patch("fromager.resolver.resolve")
+def test_default_resolve_source_with_yaml_provider(
+    mock_resolve: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify default_resolve_source skips PyPI when provider is configured."""
+    ps = packagesettings.PackageSettings.from_string(
+        "provider-pkg",
+        """
+resolver_dist:
+  provider: github
+  organization: myorg
+  repo: myrepo
+""",
+    )
+    settings = packagesettings.Settings(
+        settings=packagesettings.SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_context.settings.patches_dir,
+        max_jobs=1,
+    )
+    tmp_context.settings = settings
+
+    req = Requirement("provider-pkg==1.0")
+
+    with patch.object(
+        sources,
+        "_resolve_with_configured_provider",
+        return_value=("https://example.com/archive.tar.gz", Version("1.0")),
+    ) as mock_configured:
+        url, version = sources.default_resolve_source(
+            tmp_context, req, resolver.PYPI_SERVER_URL
+        )
+
+    mock_configured.assert_called_once()
+    mock_resolve.assert_not_called()
+    assert url == "https://example.com/archive.tar.gz"
+    assert version == Version("1.0")
+
+
+def test_get_source_type_with_yaml_provider(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify get_source_type detects YAML-configured provider."""
+    ps = packagesettings.PackageSettings.from_string(
+        "source-type-pkg",
+        """
+resolver_dist:
+  provider: github
+  organization: myorg
+  repo: myrepo
+""",
+    )
+    settings = packagesettings.Settings(
+        settings=packagesettings.SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_context.settings.patches_dir,
+        max_jobs=1,
+    )
+    tmp_context.settings = settings
+
+    req = Requirement("source-type-pkg==1.0")
+    source_type = sources.get_source_type(tmp_context, req)
+    assert source_type == SourceType.OVERRIDE
+
+
+@patch("fromager.vendor_rust.vendor_rust")
+@patch("fromager.pyproject.apply_project_override")
+@patch("fromager.sources.patch_source")
+@patch("fromager.sources.ensure_pkg_info")
+def test_prepare_new_source_calls_ensure_pkg_info(
+    ensure_pkg_info: Mock,
+    patch_source: Mock,
+    apply_project_override: Mock,
+    vendor_rust: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify prepare_new_source calls ensure_pkg_info before patching."""
+    req = Requirement("foo==1.0")
+    source_root_dir = tmp_path / "foo-1.0"
+    source_root_dir.mkdir()
+    version = Version("1.0")
+
+    sources.prepare_new_source(tmp_context, req, source_root_dir, version)
+
+    ensure_pkg_info.assert_called_once()
+    patch_source.assert_called_once()
+    apply_project_override.assert_called_once()
+    vendor_rust.assert_called_once()
+
+
+@patch("fromager.vendor_rust.vendor_rust")
+@patch("fromager.pyproject.apply_project_override")
+@patch("fromager.sources.patch_source")
+@patch("fromager.sources.ensure_pkg_info")
+def test_prepare_new_source_vendor_rust_default_after_patch(
+    ensure_pkg_info: Mock,
+    patch_source: Mock,
+    apply_project_override: Mock,
+    vendor_rust: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify vendor_rust runs after patch_source by default."""
+    call_order: list[str] = []
+    patch_source.side_effect = lambda *a, **kw: call_order.append("patch")
+    vendor_rust.side_effect = lambda *a, **kw: call_order.append("vendor_rust")
+
+    req = Requirement("foo==1.0")
+    source_root_dir = tmp_path / "foo-1.0"
+    source_root_dir.mkdir()
+
+    sources.prepare_new_source(tmp_context, req, source_root_dir, Version("1.0"))
+
+    assert call_order == ["patch", "vendor_rust"]
+
+
+@patch("fromager.vendor_rust.vendor_rust")
+@patch("fromager.pyproject.apply_project_override")
+@patch("fromager.sources.patch_source")
+@patch("fromager.sources.ensure_pkg_info")
+@patch.object(
+    packagesettings.PackageBuildInfo,
+    "vendor_rust_before_patch",
+    new_callable=lambda: property(lambda self: True),
+)
+def test_prepare_new_source_vendor_rust_before_patch(
+    _vendor_rust_prop: Mock,
+    ensure_pkg_info: Mock,
+    patch_source: Mock,
+    apply_project_override: Mock,
+    vendor_rust: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify vendor_rust runs before patch_source when setting is True."""
+    call_order: list[str] = []
+    patch_source.side_effect = lambda *a, **kw: call_order.append("patch")
+    vendor_rust.side_effect = lambda *a, **kw: call_order.append("vendor_rust")
+
+    req = Requirement("foo==1.0")
+    source_root_dir = tmp_path / "foo-1.0"
+    source_root_dir.mkdir()
+
+    sources.prepare_new_source(tmp_context, req, source_root_dir, Version("1.0"))
+
+    assert call_order == ["vendor_rust", "patch"]
+
+
+@patch("fromager.vendor_rust.vendor_rust")
+@patch("fromager.pyproject.apply_project_override")
+@patch("fromager.sources.patch_source")
+@patch("fromager.sources.ensure_pkg_info")
+@patch.object(
+    packagesettings.PackageBuildInfo,
+    "create_files",
+    new_callable=lambda: property(
+        lambda self: [
+            CreateFile(path="src/pkg/__init__.py", content=""),
+            CreateFile(
+                path="src/pkg/version.py",
+                content='__version__ = "${version}"',
+            ),
+        ]
+    ),
+)
+def test_prepare_new_source_create_files(
+    _create_files_prop: Mock,
+    ensure_pkg_info: Mock,
+    patch_source: Mock,
+    apply_project_override: Mock,
+    vendor_rust: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify create_source_files creates files with template substitution."""
+    req = Requirement("foo==1.0")
+    source_root_dir = tmp_path / "foo-1.0"
+    source_root_dir.mkdir()
+
+    sources.prepare_new_source(tmp_context, req, source_root_dir, Version("1.0"))
+
+    init_file = source_root_dir / "src" / "pkg" / "__init__.py"
+    assert init_file.exists()
+    assert init_file.read_text() == ""
+
+    version_file = source_root_dir / "src" / "pkg" / "version.py"
+    assert version_file.exists()
+    assert version_file.read_text() == '__version__ = "1.0"'
+
+
+def test_create_source_files_no_files(
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify create_source_files is a no-op when no files are configured."""
+    req = Requirement("foo==1.0")
+    source_root_dir = tmp_path / "foo-1.0"
+    source_root_dir.mkdir()
+
+    sources.create_source_files(tmp_context, req, source_root_dir, Version("1.0"))
+
+    assert list(source_root_dir.iterdir()) == []
+
+
+@patch.object(
+    packagesettings.PackageBuildInfo,
+    "create_files",
+    new_callable=lambda: property(
+        lambda self: [
+            CreateFile(path="nested/dir/file.txt", content="hello"),
+        ]
+    ),
+)
+def test_create_source_files_creates_parent_dirs(
+    _create_files_prop: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify create_source_files creates parent directories."""
+    req = Requirement("foo==1.0")
+    source_root_dir = tmp_path / "foo-1.0"
+    source_root_dir.mkdir()
+
+    sources.create_source_files(tmp_context, req, source_root_dir, Version("1.0"))
+
+    created_file = source_root_dir / "nested" / "dir" / "file.txt"
+    assert created_file.exists()
+    assert created_file.read_text() == "hello"
+
+
+@patch.object(
+    packagesettings.PackageBuildInfo,
+    "create_files",
+    new_callable=lambda: property(
+        lambda self: [
+            CreateFile(path="existing.txt", content="new content"),
+        ]
+    ),
+)
+def test_create_source_files_overwrites_existing(
+    _create_files_prop: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify create_source_files overwrites existing files."""
+    req = Requirement("foo==1.0")
+    source_root_dir = tmp_path / "foo-1.0"
+    source_root_dir.mkdir()
+    existing = source_root_dir / "existing.txt"
+    existing.write_text("old content")
+
+    sources.create_source_files(tmp_context, req, source_root_dir, Version("1.0"))
+
+    assert existing.read_text() == "new content"
