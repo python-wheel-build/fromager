@@ -52,26 +52,29 @@ class RequirementResolver:
         # Session-level resolution cache to avoid re-resolving same requirements
         self._resolved_requirements: dict[str, tuple[str, Version]] = {}
 
-    def resolve_source(
+    def resolve(
         self,
         req: Requirement,
         req_type: RequirementType,
         parent_req: Requirement | None = None,
+        pre_built: bool | None = None,
     ) -> tuple[str, Version]:
-        """Resolve source package (sdist).
+        """Resolve package requirement.
 
         Tries resolution strategies in order:
         1. Session cache (if previously resolved)
         2. Previous dependency graph
-        3. PyPI source resolution
+        3. PyPI resolution (source or prebuilt based on package build info)
 
         Args:
             req: Package requirement (must NOT have URL)
             req_type: Type of requirement
             parent_req: Parent requirement from dependency chain
+            pre_built: Optional override to force prebuilt (True) or source (False).
+                If None (default), uses package build info to determine.
 
         Returns:
-            Tuple of (source_url, resolved_version)
+            Tuple of (url, resolved_version)
 
         Raises:
             ValueError: If req contains a URL (must use Bootstrapper for git URLs)
@@ -87,84 +90,74 @@ class RequirementResolver:
             logger.debug(f"resolved {req} from cache")
             return cached_result
 
+        # Resolve using strategies
+        url, resolved_version = self._resolve(req, req_type, parent_req, pre_built)
+
+        # Cache the result
+        result = (url, resolved_version)
+        self.cache_resolution(req, result)
+        return url, resolved_version
+
+    def _resolve(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+        parent_req: Requirement | None,
+        pre_built: bool | None,
+    ) -> tuple[str, Version]:
+        """Internal resolution logic without caching.
+
+        Tries resolution strategies in order:
+        1. Previous dependency graph
+        2. PyPI resolution (source or prebuilt)
+
+        Args:
+            req: Package requirement
+            req_type: Type of requirement
+            parent_req: Parent requirement from dependency chain
+            pre_built: Optional override to force prebuilt (True) or source (False).
+                If None, uses package build info to determine.
+
+        Returns:
+            Tuple of (url, resolved_version)
+        """
+        # Determine whether to resolve prebuilt or source
+        if pre_built is None:
+            pbi = self.ctx.package_build_info(req)
+            pre_built = pbi.pre_built
+
         # Try graph
         cached_resolution = self._resolve_from_graph(
             req=req,
             req_type=req_type,
-            pre_built=False,
+            pre_built=pre_built,
             parent_req=parent_req,
         )
-        if cached_resolution:
-            source_url, resolved_version = cached_resolution
+
+        if cached_resolution and not req.url:
+            url, resolved_version = cached_resolution
             logger.debug(f"resolved from previous bootstrap to {resolved_version}")
+            return url, resolved_version
+
+        # Fallback to PyPI
+        if pre_built:
+            # Resolve prebuilt wheel
+            servers = wheels.get_wheel_server_urls(
+                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
+            )
+            url, resolved_version = wheels.resolve_prebuilt_wheel(
+                ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
+            )
         else:
-            # Fallback to PyPI
-            source_url, resolved_version = sources.resolve_source(
+            # Resolve source (sdist)
+            url, resolved_version = sources.resolve_source(
                 ctx=self.ctx,
                 req=req,
                 sdist_server_url=resolver.PYPI_SERVER_URL,
                 req_type=req_type,
             )
 
-        # Cache the result
-        result = (source_url, resolved_version)
-        self.cache_resolution(req, result)
-        return source_url, resolved_version
-
-    def resolve_prebuilt(
-        self,
-        req: Requirement,
-        req_type: RequirementType,
-        parent_req: Requirement | None = None,
-    ) -> tuple[str, Version]:
-        """Resolve pre-built package (wheels only).
-
-        Tries resolution strategies in order:
-        1. Session cache (if previously resolved)
-        2. Previous dependency graph
-        3. PyPI wheel resolution
-
-        Args:
-            req: Package requirement
-            req_type: Type of requirement
-            parent_req: Parent requirement from dependency chain
-
-        Returns:
-            Tuple of (source_url, resolved_version)
-
-        Raises:
-            ValueError: If unable to resolve
-        """
-        # Check session cache first
-        cached_result = self.get_cached_resolution(req)
-        if cached_result is not None:
-            logger.debug(f"resolved {req} from cache")
-            return cached_result
-
-        # Try graph
-        cached_resolution = self._resolve_from_graph(
-            req=req,
-            req_type=req_type,
-            pre_built=True,
-            parent_req=parent_req,
-        )
-
-        if cached_resolution and not req.url:
-            wheel_url, resolved_version = cached_resolution
-            logger.debug(f"resolved from previous bootstrap to {resolved_version}")
-        else:
-            # Fallback to PyPI prebuilt resolution
-            servers = wheels.get_wheel_server_urls(
-                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
-            )
-            wheel_url, resolved_version = wheels.resolve_prebuilt_wheel(
-                ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
-            )
-
-        # Cache the result
-        result = (wheel_url, resolved_version)
-        self.cache_resolution(req, result)
-        return wheel_url, resolved_version
+        return url, resolved_version
 
     def get_cached_resolution(
         self,
