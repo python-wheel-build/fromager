@@ -420,7 +420,10 @@ def _build(
 
         # Build environment
         build_env = build_environment.prepare_build_environment(
-            ctx=wkctx, req=req, sdist_root_dir=source_root_dir
+            ctx=wkctx,
+            req=req,
+            version=resolved_version,
+            sdist_root_dir=source_root_dir,
         )
 
         # Make a new source distribution, in case we patched the code.

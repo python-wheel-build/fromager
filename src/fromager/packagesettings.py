@@ -883,6 +883,7 @@ class PackageBuildInfo:
         *,
         template_env: dict[str, str] | None = None,
         build_env: build_environment.BuildEnvironment | None = None,
+        version: Version | None = None,
     ) -> dict[str, str]:
         """Get extra environment variables for a variant
 
@@ -1226,7 +1227,10 @@ def get_extra_environ(
 ) -> dict[str, str]:
     """Get extra environment variables from settings and update hook"""
     pbi = ctx.package_build_info(req)
-    extra_environ = pbi.get_extra_environ(build_env=build_env)
+    extra_environ = pbi.get_extra_environ(
+        build_env=build_env,
+        version=version,
+    )
     overrides.find_and_invoke(
         req.name,
         "update_extra_environ",

@@ -41,6 +41,7 @@ def get_build_system_dependencies(
     *,
     ctx: context.WorkContext,
     req: Requirement,
+    version: Version | None = None,
     sdist_root_dir: pathlib.Path,
 ) -> set[Requirement]:
     logger.info(f"getting build system dependencies for {req} in {sdist_root_dir}")
@@ -107,6 +108,7 @@ def get_build_backend_dependencies(
     *,
     ctx: context.WorkContext,
     req: Requirement,
+    version: Version | None = None,
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
 ) -> set[Requirement]:
@@ -124,7 +126,7 @@ def get_build_backend_dependencies(
     extra_environ = packagesettings.get_extra_environ(
         ctx=ctx,
         req=req,
-        version=None,
+        version=version,
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
@@ -178,6 +180,7 @@ def get_build_sdist_dependencies(
     *,
     ctx: context.WorkContext,
     req: Requirement,
+    version: Version | None = None,
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
 ) -> set[Requirement]:
@@ -195,7 +198,7 @@ def get_build_sdist_dependencies(
     extra_environ = packagesettings.get_extra_environ(
         ctx=ctx,
         req=req,
-        version=None,
+        version=version,
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )

@@ -249,6 +249,7 @@ def prepare_build_environment(
     *,
     ctx: context.WorkContext,
     req: Requirement,
+    version: Version | None = None,
     sdist_root_dir: pathlib.Path,
 ) -> BuildEnvironment:
     logger.info("preparing build environment")
@@ -261,6 +262,7 @@ def prepare_build_environment(
     build_system_dependencies = dependencies.get_build_system_dependencies(
         ctx=ctx,
         req=req,
+        version=version,
         sdist_root_dir=sdist_root_dir,
     )
     _safe_install(
@@ -274,6 +276,7 @@ def prepare_build_environment(
     build_backend_dependencies = dependencies.get_build_backend_dependencies(
         ctx=ctx,
         req=req,
+        version=version,
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
@@ -288,6 +291,7 @@ def prepare_build_environment(
     build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
         ctx=ctx,
         req=req,
+        version=version,
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
