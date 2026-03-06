@@ -66,10 +66,10 @@ referenced_scripts = set()
 for ci_suite_file in e2e_dir.glob("ci_*_suite.sh"):
     content = ci_suite_file.read_text(encoding="utf8")
     # Look for run_test "script_name" calls (excluding commented lines)
-    for line in content.split('\n'):
+    for line in content.split("\n"):
         # Skip lines that start with # (comments)
         stripped = line.strip()
-        if stripped.startswith('#'):
+        if stripped.startswith("#"):
             continue
         for match in re.finditer(r'run_test\s+"([^"]+)"', line):
             referenced_scripts.add(match.group(1))
@@ -79,10 +79,10 @@ print("scripts referenced in CI suites:\n  ", "\n  ".join(sorted(referenced_scri
 # Find any individual e2e scripts that aren't referenced in any CI suite
 unreferenced_scripts = individual_e2e_scripts.difference(referenced_scripts)
 if unreferenced_scripts:
-    print(f"\nERROR: The following e2e scripts are not referenced in any CI suite:")
+    print("\nERROR: The following e2e scripts are not referenced in any CI suite:")
     for script in sorted(unreferenced_scripts):
         print(f"  - {script}")
-    print(f"Please add these scripts to the appropriate CI suite script.")
+    print("Please add these scripts to the appropriate CI suite script.")
     RC = 1
 else:
     print("✓ All individual e2e scripts are covered by CI suites!")

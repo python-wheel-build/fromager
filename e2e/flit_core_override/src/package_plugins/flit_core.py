@@ -1,6 +1,5 @@
 import logging
 import pathlib
-import typing
 
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -25,10 +24,10 @@ def build_wheel(
     # 'pip wheel'.
     #
     # https://flit.pypa.io/en/stable/bootstrap.html
-    logger.info('using override to build flit_core wheel in %s', sdist_root_dir)
+    logger.info("using override to build flit_core wheel in %s", sdist_root_dir)
     external_commands.run(
-        [str(build_env.python), '-m', 'flit_core.wheel',
-         '--outdir', str(ctx.wheels_build)],
+        [str(build_env.python), "-m", "flit_core.wheel",
+         "--outdir", str(ctx.wheels_build)],
         cwd=str(sdist_root_dir),
         extra_environ=extra_environ,
     )

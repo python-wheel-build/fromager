@@ -1,0 +1,194 @@
+name: Benchmarks (Backfill)
+
+# This workflow runs up-to-date benchmarks on historical commits to populate
+# CodSpeed with baseline data. It uses "Runtime Dependency Injection":
+#
+# 1. Checkout the historical commit (code under test)
+# 2. Copy benchmarks/ from source branch (modern test harness)
+# 3. Install project using historical pyproject.toml (correct runtime deps)
+# 4. Extract benchmark deps from source branch's pyproject.toml (single source of truth)
+# 5. Run pytest directly (bypasses missing Hatch env in old commits)
+#
+# See `benchmarks/README.md` for more information.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_commit:
+        description: 'Start commit SHA (older). Max 200 commits (or 128 with integration).'
+        required: true
+        type: string
+      to_commit:
+        description: 'End commit SHA (newer). Max 200 commits (or 128 with integration).'
+        required: false
+        default: 'HEAD'
+        type: string
+      benchmark_source:
+        description: 'Branch to copy benchmarks from'
+        required: false
+        default: 'main'
+        type: string
+      benchmark_set:
+        description: 'Benchmark set to run'
+        required: false
+        default: 'fast'
+        type: choice
+        options:
+          - fast
+          - full
+      include_integration:
+        description: 'Include integration benchmarks (uses Macro Runners)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      commits: ${{ steps.get-commits.outputs.commits }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commits between range
+        id: get-commits
+        run: |
+          FROM="${{ inputs.from_commit }}"
+          TO="${{ inputs.to_commit }}"
+
+          # GitHub Actions has a hard limit of 256 jobs per matrix.
+          # When integration benchmarks are enabled, both component and integration
+          # jobs run on each commit (2 jobs per commit), so we halve the limit.
+          if [ "${{ inputs.include_integration }}" = "true" ]; then
+            MAX_COMMITS=128  # 128 commits × 2 jobs = 256 jobs max
+          else
+            MAX_COMMITS=200  # Leave room for future matrix expansion
+          fi
+
+          # Get the most recent commits in the range
+          # rev-list outputs newest first, head takes the N newest, tac reverses to chronological order
+          COMMITS=$(git rev-list "$FROM^..$TO" | head -$MAX_COMMITS | tac)
+
+          TOTAL=$(git rev-list "$FROM^..$TO" | wc -l | tr -d ' ')
+          SELECTED=$(echo "$COMMITS" | wc -l | tr -d ' ')
+
+          if [ "$TOTAL" -gt "$MAX_COMMITS" ]; then
+            echo "::warning::Range contains $TOTAL commits, but only the $MAX_COMMITS most recent will be benchmarked (GitHub Actions limit is 256 jobs per matrix)."
+          fi
+
+          # Convert to JSON array
+          JSON_COMMITS=$(echo "$COMMITS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "commits=$JSON_COMMITS" >> $GITHUB_OUTPUT
+          echo "Will benchmark $SELECTED commits (out of $TOTAL in range):"
+          echo "$COMMITS"
+
+  # Component benchmarks: CPU-bound, pure Python operations
+  # Uses CPU simulation on standard GitHub runners
+  backfill-component:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 5  # Throttle to avoid overwhelming CodSpeed ingestion
+      matrix:
+        commit: ${{ fromJson(needs.prepare.outputs.commits) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          fetch-depth: 0
+
+      - name: Fetch benchmark assets from source branch
+        run: |
+          git fetch origin ${{ inputs.benchmark_source }}
+          rm -rf benchmarks/
+          git restore --source=origin/${{ inputs.benchmark_source }} --worktree benchmarks/
+          git show origin/${{ inputs.benchmark_source }}:pyproject.toml > /tmp/source_pyproject.toml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install project (uses historical pyproject.toml)
+        run: uv pip install -e . --system
+
+      - name: Install benchmark dependencies (from source branch)
+        run: |
+          python benchmarks/scripts/extract_deps.py /tmp/source_pyproject.toml \
+            | uv pip install -r - --system
+
+      - name: Run component benchmarks with CodSpeed
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: simulation
+          run: |
+            if [ "${{ inputs.benchmark_set }}" = "fast" ]; then
+              pytest benchmarks/ --codspeed -m "not slow and not integration"
+            else
+              pytest benchmarks/ --codspeed -m "not integration"
+            fi
+
+  # Integration benchmarks: I/O-bound operations with network and file access
+  # Uses walltime on Macro Runners - only runs if include_integration is true
+  backfill-integration:
+    needs: prepare
+    if: ${{ inputs.include_integration }}
+    runs-on: codspeed-macro
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2  # Lower parallelism to conserve 600 min/month Macro Runner quota
+      matrix:
+        commit: ${{ fromJson(needs.prepare.outputs.commits) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.commit }}
+          fetch-depth: 0
+
+      - name: Fetch benchmark assets from source branch
+        run: |
+          git fetch origin ${{ inputs.benchmark_source }}
+          rm -rf benchmarks/
+          git restore --source=origin/${{ inputs.benchmark_source }} --worktree benchmarks/
+          git show origin/${{ inputs.benchmark_source }}:pyproject.toml > /tmp/source_pyproject.toml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install project (uses historical pyproject.toml)
+        run: uv pip install -e . --system
+
+      - name: Install benchmark dependencies (from source branch)
+        run: |
+          python benchmarks/scripts/extract_deps.py /tmp/source_pyproject.toml \
+            | uv pip install -r - --system
+
+      - name: Run integration benchmarks with CodSpeed (walltime)
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: walltime
+          run: |
+            if [ "${{ inputs.benchmark_set }}" = "fast" ]; then
+              pytest benchmarks/ --codspeed -m "integration and not slow"
+            else
+              pytest benchmarks/ --codspeed -m "integration"
+            fi
