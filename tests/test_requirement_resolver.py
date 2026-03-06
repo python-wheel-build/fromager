@@ -248,15 +248,16 @@ def test_resolve_from_graph_no_previous_graph(tmp_context: WorkContext) -> None:
     )
 
 
-def test_resolve_source_rejects_git_urls(tmp_context: WorkContext) -> None:
-    """RequirementResolver.resolve_source() rejects git URLs."""
+def test_resolve_rejects_git_urls(tmp_context: WorkContext) -> None:
+    """RequirementResolver.resolve() rejects git URLs."""
     resolver = RequirementResolver(tmp_context)
 
     with pytest.raises(
         ValueError, match="Git URL requirements must be handled by Bootstrapper"
     ):
-        resolver.resolve_source(
+        resolver.resolve(
             req=Requirement("package @ git+https://github.com/example/repo.git"),
             req_type=RequirementType.TOP_LEVEL,
+            pre_built=False,
             parent_req=None,
         )

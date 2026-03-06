@@ -183,7 +183,6 @@ class Bootstrapper:
         Delegates PyPI/graph resolution to RequirementResolver.
         """
         if req.url:
-            # Git URLs must be resolved in Bootstrapper (orchestration concern)
             if req_type != RequirementType.TOP_LEVEL:
                 raise ValueError(
                     f"{req} includes a URL, but is not a top-level dependency"
@@ -201,22 +200,16 @@ class Bootstrapper:
             self._resolver.cache_resolution(req, (source_url, resolved_version))
             return source_url, resolved_version
 
-        # Delegate to RequirementResolver (handles caching internally)
+        # Delegate to RequirementResolver
         parent_req = self.why[-1][1] if self.why else None
         pbi = self.ctx.package_build_info(req)
 
-        if pbi.pre_built:
-            return self._resolver.resolve_prebuilt(
-                req=req,
-                req_type=req_type,
-                parent_req=parent_req,
-            )
-        else:
-            return self._resolver.resolve_source(
-                req=req,
-                req_type=req_type,
-                parent_req=parent_req,
-            )
+        return self._resolver.resolve(
+            req=req,
+            req_type=req_type,
+            pre_built=pbi.pre_built,
+            parent_req=parent_req,
+        )
 
     def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
         """Are we currently processing a build requirement?
@@ -927,9 +920,10 @@ class Bootstrapper:
 
         try:
             parent_req = self.why[-1][1] if self.why else None
-            wheel_url, fallback_version = self._resolver.resolve_prebuilt(
+            wheel_url, fallback_version = self._resolver.resolve(
                 req=req,
                 req_type=req_type,
+                pre_built=True,
                 parent_req=parent_req,
             )
 
