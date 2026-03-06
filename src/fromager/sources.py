@@ -607,6 +607,9 @@ def build_sdist(
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
+    # look for compiled code in sdist
+    scan_compiled_extensions(sdist_root_dir)
+
     if req.url:
         # The default approach to making an sdist is to make a tarball from the
         # source directory, since most of the time we got the source directory
@@ -775,3 +778,80 @@ def validate_sdist_filename(
         dist_name=sdist_name,
         dist_version=sdist_version,
     )
+
+
+_EXTENSION_SUFFIXES: set[str] = (
+    ".so",  # Linux, BSD
+    ".dylib",  # macOS
+    ".pyd",  # Windows
+    ".dll",  # Windows
+    ".exe",  # Windows
+)
+
+# ignore Python, configs, C, C++, CUDA, Go, Rust, text files
+_IGNORE_SUFFIXES: set[str] = {
+    ".c",
+    ".cc",
+    ".cu",
+    ".go",
+    ".h",
+    ".ini",
+    ".md",
+    ".py",
+    ".rs",
+    ".rst",
+    ".sh",
+    ".toml",
+    ".txt",
+    ".yaml",
+}
+
+_MAGIC_HEADERS: tuple[bytes] = (
+    b"\x7fELF",  # Linux, BSD ELF
+    b"MZ",  # Windows executable
+    b"\xfe\xed\xfa\xcf",  # macOS 64-bit
+    b"\xfe\xed\xfa\xce",  # macOS 32-bit
+    b"\xca\xfe\xba\xbe",  # macOS universal
+)
+
+
+def scan_compiled_extensions(
+    root_dir: pathlib.Path,
+    *,
+    extension_suffixes: set[str] = _EXTENSION_SUFFIXES,
+    ignore_suffixes: set[str] = _IGNORE_SUFFIXES,
+    warn: bool = True,
+) -> list[pathlib.Path]:
+    """Scan directory tree for compiled code
+
+    Detect files that have an extension suffix or magic header.
+
+    .. warning::
+
+       The function is not designed to detect supply chain attacks or
+       malicious code. It's merely a helper to detect packaging issues.
+    """
+    issues: list[pathlib.Path] = []
+    for directory, _, filenames in root_dir.walk():
+        for filename in filenames:
+            filepath = directory / filename
+            suffix = filepath.suffix
+            if suffix in extension_suffixes:
+                if warn:
+                    logger.warning(
+                        "file %s has a binary extension suffix",
+                        filepath.relative_to(root_dir),
+                    )
+                issues.append(filepath)
+            elif suffix not in ignore_suffixes:
+                with filepath.open("rb") as f:
+                    header = f.read(4)
+                    if header.startswith(_MAGIC_HEADERS):
+                        if warn:
+                            logger.warning(
+                                "file %s starts with an executable file magic header: %r",
+                                filepath.relative_to(root_dir),
+                                header,
+                            )
+                        issues.append(filepath)
+    return issues
