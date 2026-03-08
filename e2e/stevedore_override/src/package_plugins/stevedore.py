@@ -23,6 +23,11 @@ def update_extra_environ(
     marker = ctx.work_dir / "update_extra_environ.txt"
     with marker.open(encoding="utf-8", mode="a") as f:
         f.write(f"{version}\n")
+    version_var = extra_environ.get("TEST_VERSION_VAR")
+    if version_var is not None:
+        version_var_marker = ctx.work_dir / "test_version_var.txt"
+        with version_var_marker.open(encoding="utf-8", mode="w") as f:
+            f.write(f"{version_var}\n")
     return None
 
 

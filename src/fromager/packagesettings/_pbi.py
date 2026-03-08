@@ -319,6 +319,13 @@ class PackageBuildInfo:
         else:
             template_env = template_env.copy()
 
+        if version is not None:
+            template_env["__version__"] = str(version)
+        else:
+            # Prevent a stray __version__ in os.environ from being
+            # silently used when the real version is unknown.
+            template_env.pop("__version__", None)
+
         # configure max jobs settings, settings depend on package, available
         # CPU cores, and available virtual memory.
         jobs = self.parallel_jobs()

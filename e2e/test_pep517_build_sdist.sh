@@ -38,18 +38,20 @@ fromager \
     --wheels-repo "$OUTDIR/wheels-repo" \
     step prepare-build --wheel-server-url "https://pypi.org/simple/" "$DIST" "$VERSION"
 
-# Build an updated sdist
+# Build an updated sdist (with settings that exercise ${__version__} in env)
 rm -rf "$OUTDIR/sdists-repo/builds"
 fromager \
     --log-file "$OUTDIR/build-logs/${DIST}-build-sdist.log" \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
+    --settings-dir="$SCRIPTDIR/version_env_settings" \
     step build-sdist "$DIST" "$VERSION"
 
 EXPECTED_FILES="
 $OUTDIR/sdists-repo/builds/stevedore-*.tar.gz
 $OUTDIR/work-dir/update_extra_environ.txt
+$OUTDIR/work-dir/test_version_var.txt
 "
 
 pass=true
@@ -59,6 +61,13 @@ for pattern in $EXPECTED_FILES; do
     pass=false
   fi
 done
+
+# Verify ${__version__} was correctly substituted in the env var
+actual_version=$(cat "$OUTDIR/work-dir/test_version_var.txt" | tr -d '[:space:]')
+if [ "$actual_version" != "$VERSION" ]; then
+  echo "FAIL: TEST_VERSION_VAR='$actual_version', expected '$VERSION'" 1>&2
+  pass=false
+fi
 
 $pass
 
