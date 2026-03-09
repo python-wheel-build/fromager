@@ -192,6 +192,63 @@ def test_patch_sources_apply_only_unversioned(
     apply_patch.assert_called_once_with(req, unversioned_patch_file, source_root_dir)
 
 
+@patch("fromager.sources.vendor_rust.vendor_rust")
+@patch("fromager.sources.pyproject.apply_project_override")
+@patch("fromager.sources.patch_source")
+def test_prepare_new_source_uses_build_dir_for_vendor_rust(
+    patch_source: Mock,
+    apply_project_override: Mock,
+    vendor_rust: Mock,
+    tmp_path: pathlib.Path,
+    testdata_context: context.WorkContext,
+) -> None:
+    """Verify vendor_rust is called with build_dir, not source_root_dir.
+
+    This tests the fix for issue #954: packages using build_dir option
+    for alternative pyproject.toml location should vendor Rust code
+    in the correct directory.
+    """
+    source_root_dir = tmp_path / "test_pkg-1.0.0"
+    source_root_dir.mkdir()
+    req = Requirement("test-pkg==1.0.0")
+    version = Version("1.0.0")
+
+    sources.prepare_new_source(
+        ctx=testdata_context,
+        req=req,
+        source_root_dir=source_root_dir,
+        version=version,
+    )
+
+    vendor_rust.assert_called_once_with(req, source_root_dir / "python")
+
+
+@patch("fromager.sources.vendor_rust.vendor_rust")
+@patch("fromager.sources.pyproject.apply_project_override")
+@patch("fromager.sources.patch_source")
+def test_prepare_new_source_uses_source_root_when_no_build_dir(
+    patch_source: Mock,
+    apply_project_override: Mock,
+    vendor_rust: Mock,
+    tmp_path: pathlib.Path,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Verify vendor_rust uses source_root_dir when no build_dir is set."""
+    source_root_dir = tmp_path / "some_pkg-1.0.0"
+    source_root_dir.mkdir()
+    req = Requirement("some-pkg==1.0.0")
+    version = Version("1.0.0")
+
+    sources.prepare_new_source(
+        ctx=tmp_context,
+        req=req,
+        source_root_dir=source_root_dir,
+        version=version,
+    )
+
+    vendor_rust.assert_called_once_with(req, source_root_dir)
+
+
 @pytest.mark.parametrize(
     "dist_name,version_string,sdist_filename,okay",
     [
