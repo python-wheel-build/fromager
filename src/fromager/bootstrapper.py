@@ -189,15 +189,18 @@ class Bootstrapper:
                 )
 
             # Check cache first to avoid re-resolving
-            cached_result = self._resolver.get_cached_resolution(req)
+            # Git URLs are always source (not prebuilt)
+            cached_result = self._resolver.get_cached_resolution(req, pre_built=False)
             if cached_result is not None:
                 logger.debug(f"resolved {req} from cache")
                 return cached_result
 
             logger.info("resolving source via URL, ignoring any plugins")
             source_url, resolved_version = self._resolve_version_from_git_url(req=req)
-            # Cache the git URL resolution
-            self._resolver.cache_resolution(req, (source_url, resolved_version))
+            # Cache the git URL resolution (always source, not prebuilt)
+            self._resolver.cache_resolution(
+                req, pre_built=False, result=(source_url, resolved_version)
+            )
             return source_url, resolved_version
 
         # Delegate to RequirementResolver

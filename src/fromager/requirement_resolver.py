@@ -50,7 +50,8 @@ class RequirementResolver:
         self.ctx = ctx
         self.prev_graph = prev_graph
         # Session-level resolution cache to avoid re-resolving same requirements
-        self._resolved_requirements: dict[str, tuple[str, Version]] = {}
+        # Key: (requirement_string, pre_built) to distinguish source vs prebuilt
+        self._resolved_requirements: dict[tuple[str, bool], tuple[str, Version]] = {}
 
     def resolve(
         self,
@@ -67,7 +68,7 @@ class RequirementResolver:
         3. PyPI resolution (source or prebuilt based on package build info)
 
         Args:
-            req: Package requirement (must NOT have URL)
+            req: Package requirement
             req_type: Type of requirement
             parent_req: Parent requirement from dependency chain
             pre_built: Optional override to force prebuilt (True) or source (False).
@@ -77,15 +78,24 @@ class RequirementResolver:
             Tuple of (url, resolved_version)
 
         Raises:
-            ValueError: If req contains a URL (must use Bootstrapper for git URLs)
+            ValueError: If req contains a git URL and pre_built is False
+                (git URL source resolution must be handled by Bootstrapper)
         """
-        if req.url:
+        # Determine pre_built if not specified (needed for cache key and URL guard)
+        if pre_built is None:
+            pbi = self.ctx.package_build_info(req)
+            pre_built = pbi.pre_built
+
+        # Git URL source resolution must be handled by Bootstrapper.
+        # But git URL prebuilt resolution is allowed - we look for wheels on PyPI
+        # (test mode fallback uses this path).
+        if req.url and not pre_built:
             raise ValueError(
                 f"Git URL requirements must be handled by Bootstrapper: {req}"
             )
 
-        # Check session cache first
-        cached_result = self.get_cached_resolution(req)
+        # Check session cache (keyed by requirement + pre_built)
+        cached_result = self.get_cached_resolution(req, pre_built)
         if cached_result is not None:
             logger.debug(f"resolved {req} from cache")
             return cached_result
@@ -95,7 +105,7 @@ class RequirementResolver:
 
         # Cache the result
         result = (url, resolved_version)
-        self.cache_resolution(req, result)
+        self.cache_resolution(req, pre_built, result)
         return url, resolved_version
 
     def _resolve(
@@ -103,7 +113,7 @@ class RequirementResolver:
         req: Requirement,
         req_type: RequirementType,
         parent_req: Requirement | None,
-        pre_built: bool | None,
+        pre_built: bool,
     ) -> tuple[str, Version]:
         """Internal resolution logic without caching.
 
@@ -115,17 +125,11 @@ class RequirementResolver:
             req: Package requirement
             req_type: Type of requirement
             parent_req: Parent requirement from dependency chain
-            pre_built: Optional override to force prebuilt (True) or source (False).
-                If None, uses package build info to determine.
+            pre_built: Whether to resolve prebuilt (True) or source (False)
 
         Returns:
             Tuple of (url, resolved_version)
         """
-        # Determine whether to resolve prebuilt or source
-        if pre_built is None:
-            pbi = self.ctx.package_build_info(req)
-            pre_built = pbi.pre_built
-
         # Try graph
         cached_resolution = self._resolve_from_graph(
             req=req,
@@ -162,20 +166,24 @@ class RequirementResolver:
     def get_cached_resolution(
         self,
         req: Requirement,
+        pre_built: bool,
     ) -> tuple[str, Version] | None:
         """Get a cached resolution result if it exists.
 
         Args:
             req: Package requirement to look up in cache
+            pre_built: Whether looking for prebuilt or source resolution
 
         Returns:
             Tuple of (source_url, resolved_version) if cached, None otherwise
         """
-        return self._resolved_requirements.get(str(req))
+        cache_key = (str(req), pre_built)
+        return self._resolved_requirements.get(cache_key)
 
     def cache_resolution(
         self,
         req: Requirement,
+        pre_built: bool,
         result: tuple[str, Version],
     ) -> None:
         """Cache a resolution result.
@@ -185,9 +193,11 @@ class RequirementResolver:
 
         Args:
             req: Package requirement to cache
+            pre_built: Whether this is a prebuilt or source resolution
             result: Tuple of (source_url, resolved_version)
         """
-        self._resolved_requirements[str(req)] = result
+        cache_key = (str(req), pre_built)
+        self._resolved_requirements[cache_key] = result
 
     def _resolve_from_graph(
         self,
