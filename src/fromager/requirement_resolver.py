@@ -269,7 +269,39 @@ class RequirementResolver:
                     )
                     seen_version.add(str(edge.destination_node.version))
 
-        return self._resolve_from_version_source(possible_versions_from_graph, req)
+        resolver_result = self._resolve_from_version_source(
+            possible_versions_from_graph, req
+        )
+        if resolver_result:
+            return resolver_result
+
+        # Fallback: search by package name across the entire previous graph,
+        # ignoring parent and req_type.  This handles cases where a dependency
+        # is encountered via a new parent or a different req_type that did not
+        # exist in the previous graph (#958).
+        # NOTE: This fallback ignores both parent and req_type filters.
+        # It may pick a version from a different parent or dependency type
+        # than the original bootstrap order, but this is preferable to
+        # falling through to PyPI and pulling an unpinned version.
+        possible_versions_by_name: list[tuple[str, Version]] = []
+        for node in self.prev_graph.get_nodes_by_name(req.name):
+            if node.pre_built == pre_built and str(node.version) not in seen_version:
+                possible_versions_by_name.append((node.download_url, node.version))
+                seen_version.add(str(node.version))
+
+        if possible_versions_by_name:
+            logger.debug(
+                "%s: name-based fallback found versions in previous graph: %s",
+                req.name,
+                [str(v) for _, v in possible_versions_by_name],
+            )
+        else:
+            logger.debug(
+                "%s: no versions found in previous graph by name either",
+                req.name,
+            )
+
+        return self._resolve_from_version_source(possible_versions_by_name, req)
 
     def _resolve_from_version_source(
         self,

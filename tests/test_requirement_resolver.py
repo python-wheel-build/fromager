@@ -250,6 +250,189 @@ def test_resolve_from_graph_no_previous_graph(tmp_context: WorkContext) -> None:
     )
 
 
+def test_resolve_from_graph_new_parent_reuses_existing_version(
+    tmp_context: WorkContext,
+) -> None:
+    """Graph resolution finds a package even when encountered via a new parent.
+
+    In a repeatable build, packaging==25.0 exists in the previous graph
+    under setuptools-scm.  A new dependency (wheel) also requires packaging>=24.0.
+    Because wheel is not in the previous graph, the parent-specific lookup fails
+    and fromager falls back to PyPI, picking up packaging==26.0 instead of reusing 25.0.
+    """
+    # Build a previous graph that mirrors the real-world scenario:
+    # ROOT -> setuptools-scm==9.2.2 --[install]--> packaging==25.0
+    prev_graph = DependencyGraph()
+    prev_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("setuptools-scm"),
+        req_version=Version("9.2.2"),
+    )
+    prev_graph.add_dependency(
+        parent_name=canonicalize_name("setuptools-scm"),
+        parent_version=Version("9.2.2"),
+        req_type=RequirementType.INSTALL,
+        req=Requirement("packaging>=20"),
+        req_version=Version("25.0"),
+    )
+
+    resolver = RequirementResolver(tmp_context, prev_graph)
+
+    # Resolve packaging>=24.0 via a NEW parent "wheel" that is NOT in prev_graph.
+    # packaging==25.0 satisfies >=24.0 and exists in the graph, so it should
+    # be returned instead of falling back to PyPI.
+    result = resolver._resolve_from_graph(
+        req=Requirement("packaging>=24.0"),
+        req_type=RequirementType.INSTALL,
+        pre_built=False,
+        parent_req=Requirement("wheel"),
+    )
+    assert result is not None, (
+        "Expected packaging==25.0 from prev_graph but got None (would fall back to PyPI)"
+    )
+    assert result == ("", Version("25.0"))
+
+
+def test_resolve_from_graph_different_req_type_reuses_existing_version(
+    tmp_context: WorkContext,
+) -> None:
+    """Graph resolution finds a package even when req_type differs.
+
+    If a package appears as a build-system dependency in the previous graph
+    but is now encountered as an install dependency (or vice-versa), the
+    strict req_type filter causes the lookup to fail, falling back to PyPI
+    and potentially picking up a newer version.
+    """
+    # Previous graph: foo==1.0 --[build-system]--> bar==2.0
+    prev_graph = DependencyGraph()
+    prev_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("foo"),
+        req_version=Version("1.0"),
+    )
+    prev_graph.add_dependency(
+        parent_name=canonicalize_name("foo"),
+        parent_version=Version("1.0"),
+        req_type=RequirementType.BUILD_SYSTEM,
+        req=Requirement("bar>=1.0"),
+        req_version=Version("2.0"),
+    )
+
+    resolver = RequirementResolver(tmp_context, prev_graph)
+
+    # Now resolve bar>=1.5 as an INSTALL dep of foo (different req_type).
+    # bar==2.0 satisfies >=1.5 and exists in the graph under the same parent
+    # but with a different req_type.
+    result = resolver._resolve_from_graph(
+        req=Requirement("bar>=1.5"),
+        req_type=RequirementType.INSTALL,
+        pre_built=False,
+        parent_req=Requirement("foo"),
+    )
+    assert result is not None, (
+        "Expected bar==2.0 from prev_graph but got None (would fall back to PyPI)"
+    )
+    assert result == ("", Version("2.0"))
+
+
+def test_resolve_from_graph_parent_specific_preferred_over_name_fallback(
+    tmp_context: WorkContext,
+) -> None:
+    """Parent-specific lookup is preferred over the name-based fallback.
+
+    When the previous graph contains a package under the exact parent and
+    req_type being requested, the parent-specific result must be returned
+    even though the name-based fallback would also find candidates.
+    """
+    # Previous graph:
+    #   ROOT -> foo==1.0 --[install]--> bar==2.0
+    #   ROOT -> baz==1.0 --[install]--> bar==3.0
+    prev_graph = DependencyGraph()
+    prev_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("foo"),
+        req_version=Version("1.0"),
+    )
+    prev_graph.add_dependency(
+        parent_name=canonicalize_name("foo"),
+        parent_version=Version("1.0"),
+        req_type=RequirementType.INSTALL,
+        req=Requirement("bar>=1.0"),
+        req_version=Version("2.0"),
+    )
+    prev_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("baz"),
+        req_version=Version("1.0"),
+    )
+    prev_graph.add_dependency(
+        parent_name=canonicalize_name("baz"),
+        parent_version=Version("1.0"),
+        req_type=RequirementType.INSTALL,
+        req=Requirement("bar>=1.0"),
+        req_version=Version("3.0"),
+    )
+
+    resolver = RequirementResolver(tmp_context, prev_graph)
+
+    # Resolve bar>=1.0 as install dep of foo.  The parent-specific lookup
+    # should return bar==2.0 (from foo), NOT bar==3.0 (from baz via fallback).
+    result = resolver._resolve_from_graph(
+        req=Requirement("bar>=1.0"),
+        req_type=RequirementType.INSTALL,
+        pre_built=False,
+        parent_req=Requirement("foo"),
+    )
+    assert result is not None
+    assert result == ("", Version("2.0"))
+
+
+def test_resolve_from_graph_name_fallback_returns_none_for_missing_package(
+    tmp_context: WorkContext,
+) -> None:
+    """Name-based fallback returns None when the package is not in the graph.
+
+    When the previous graph is populated but does not contain the requested
+    package under any parent or req_type, both the parent-specific lookup
+    and the name-based fallback should return None so that resolution
+    proceeds to PyPI.
+    """
+    # Previous graph has packages, but NOT "missing-pkg".
+    prev_graph = DependencyGraph()
+    prev_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("foo"),
+        req_version=Version("1.0"),
+    )
+    prev_graph.add_dependency(
+        parent_name=canonicalize_name("foo"),
+        parent_version=Version("1.0"),
+        req_type=RequirementType.INSTALL,
+        req=Requirement("bar>=1.0"),
+        req_version=Version("2.0"),
+    )
+
+    resolver = RequirementResolver(tmp_context, prev_graph)
+
+    result = resolver._resolve_from_graph(
+        req=Requirement("missing-pkg>=1.0"),
+        req_type=RequirementType.INSTALL,
+        pre_built=False,
+        parent_req=Requirement("foo"),
+    )
+    assert result is None
+
+
 def test_resolve_rejects_git_urls_for_source(tmp_context: WorkContext) -> None:
     """RequirementResolver.resolve() rejects git URLs when pre_built=False."""
     resolver = RequirementResolver(tmp_context)
