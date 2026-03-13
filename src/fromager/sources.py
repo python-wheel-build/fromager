@@ -533,7 +533,14 @@ def prepare_source(
             )
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
-        logger.info(f"prepared source for {req} at {source_root_dir}")
+        # Place .git_archival.txt before the build backend is imported —
+        # setuptools-scm resolves the version during
+        # get_requires_for_build_wheel(), so the file must exist by then.
+        ensure_git_archival(
+            sdist_root_dir=source_root_dir,
+            version=version,
+        )
+        logger.info("prepared source for %s at %s", req, source_root_dir)
     return source_root_dir
 
 
@@ -769,6 +776,88 @@ def ensure_pkg_info(
             )
             had_pkg_info = False
     return had_pkg_info
+
+
+# Template .git_archival.txt files contain "$Format:…$" placeholders that
+# `git archive` expands into real values.  setuptools-scm detects the
+# unexpanded "%(describe" placeholder and falls back to other version-detection
+# methods when it is present.
+_UNPROCESSED_ARCHIVAL_MARKER = "%(describe"
+_REQUIRED_ARCHIVAL_FIELDS = {"describe-name"}
+_GIT_ARCHIVAL_CONTENT = "describe-name: {version}\n"
+
+
+def _is_valid_git_archival(content: str) -> bool:
+    """Check whether ``.git_archival.txt`` content has the required fields."""
+    if _UNPROCESSED_ARCHIVAL_MARKER in content:
+        return False
+    fields: dict[str, str] = {}
+    for line in content.splitlines():
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        fields[key.strip()] = value.strip()
+    return all(fields.get(f) for f in _REQUIRED_ARCHIVAL_FIELDS)
+
+
+def _has_git_metadata(sdist_root_dir: pathlib.Path) -> bool:
+    """Check whether ``.git`` exists in sdist root directory."""
+    return sdist_root_dir.joinpath(".git").exists()
+
+
+def _write_git_archival(archival_file: pathlib.Path, version: Version) -> None:
+    """Write a ``.git_archival.txt`` with the given version."""
+    archival_file.write_text(_GIT_ARCHIVAL_CONTENT.format(version=version))
+
+
+def ensure_git_archival(
+    *,
+    version: Version,
+    sdist_root_dir: pathlib.Path,
+) -> bool | None:
+    """Ensure ``.git_archival.txt`` is valid for setuptools-scm version resolution.
+
+    Behaviour:
+
+    * Skips packages with ``.git`` metadata (git clones need no fix).
+    * Replaces existing files that are unprocessed or missing required fields.
+    * Creates a new file when no ``.git_archival.txt`` exists **and**
+      ``PKG-INFO`` is also absent (indicating a git clone or custom
+      download rather than a PyPI sdist).
+
+    Returns ``True`` (valid file present), ``False`` (created/replaced),
+    or ``None`` (no action taken).
+    """
+    if _has_git_metadata(sdist_root_dir):
+        logger.debug(
+            "git metadata found, skipping .git_archival.txt for %s", sdist_root_dir
+        )
+        return True
+
+    archival_file = sdist_root_dir / ".git_archival.txt"
+
+    # Existing file: validate and replace if invalid
+    if archival_file.is_file():
+        if _is_valid_git_archival(archival_file.read_text()):
+            logger.debug(
+                "valid .git_archival.txt already present in %s", sdist_root_dir
+            )
+            return True
+        logger.info("replacing invalid .git_archival.txt in %s", sdist_root_dir)
+        _write_git_archival(archival_file, version)
+        return False
+
+    # No file: create when PKG-INFO is also absent (git clone / custom download)
+    pkg_info = sdist_root_dir / "PKG-INFO"
+    if not pkg_info.is_file():
+        logger.info(
+            "creating .git_archival.txt in %s (no PKG-INFO, likely a git clone)",
+            sdist_root_dir,
+        )
+        _write_git_archival(archival_file, version)
+        return False
+
+    return None
 
 
 def validate_sdist_filename(
