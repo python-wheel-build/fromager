@@ -182,7 +182,13 @@ def bootstrap(
         # Note: Same pattern - no try/finally to preserve context for error logging
         for req in resolved_reqs:
             token = requirement_ctxvar.set(req)
-            bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
+            try:
+                bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
+            except Exception:
+                if not test_mode:
+                    raise
+                # In test mode, failure is already recorded in
+                # bt.failed_packages; continue to next requirement.
             progressbar.update()
             requirement_ctxvar.reset(token)
 

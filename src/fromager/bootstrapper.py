@@ -294,12 +294,46 @@ class Bootstrapper:
                 self._bootstrap_impl(
                     req, req_type, source_url, resolved_version, build_sdist_only
                 )
-            except Exception as err:
+            except Exception as build_error:
                 if not self.test_mode:
                     raise
+
+                # Test mode: record the build failure unconditionally
                 self._record_test_mode_failure(
-                    req, str(resolved_version), err, "bootstrap"
+                    req, str(resolved_version), build_error, "bootstrap"
                 )
+
+                # Attempt pre-built fallback
+                logger.warning(
+                    "test mode: build failed for %s==%s, attempting pre-built fallback: %s",
+                    req.name,
+                    resolved_version,
+                    build_error,
+                )
+                try:
+                    actual_version = self._bootstrap_impl(
+                        req,
+                        req_type,
+                        source_url,
+                        resolved_version,
+                        build_sdist_only,
+                        force_prebuilt=True,
+                    )
+                    logger.info(
+                        "test mode: successfully used pre-built wheel for %s==%s",
+                        req.name,
+                        actual_version,
+                    )
+                except Exception as fallback_error:
+                    logger.error(
+                        "test mode: pre-built fallback also failed for %s: %s",
+                        req.name,
+                        fallback_error,
+                        exc_info=True,
+                    )
+                    # Build failure already recorded above. Re-raise original
+                    # error so callers know the package wasn't installed.
+                    raise build_error from fallback_error
 
     def _bootstrap_impl(
         self,
@@ -308,7 +342,8 @@ class Bootstrapper:
         source_url: str,
         resolved_version: Version,
         build_sdist_only: bool,
-    ) -> None:
+        force_prebuilt: bool = False,
+    ) -> Version:
         """Internal implementation - performs the actual bootstrap work.
 
         Called by bootstrap() after setup, validation, and seen-checking.
@@ -316,13 +351,19 @@ class Bootstrapper:
         Args:
             req: The requirement to bootstrap.
             req_type: The type of requirement.
-            source_url: The resolved source URL.
+            source_url: The resolved source URL (sdist or wheel URL).
             resolved_version: The resolved version.
             build_sdist_only: Whether to build only sdist (no wheel).
+            force_prebuilt: If True, resolve a pre-built wheel URL and skip
+                source build. Used for test-mode fallback after build failure.
+
+        Returns:
+            The version that was actually installed. This may differ from
+            resolved_version when force_prebuilt=True and the prebuilt
+            resolver returns a different version.
 
         Error Handling:
-            Fatal errors (source build, prebuilt download) raise exceptions
-            for bootstrap() to catch and record.
+            Fatal errors (source build, prebuilt download) raise exceptions.
 
             Non-fatal errors (post-hook, dependency extraction) are recorded
             locally and processing continues. These are recorded here because
@@ -339,12 +380,35 @@ class Bootstrapper:
         cached_wheel_filename: pathlib.Path | None = None
         unpacked_cached_wheel: pathlib.Path | None = None
 
-        if pbi.pre_built:
+        if pbi.pre_built or force_prebuilt:
+            if force_prebuilt:
+                # Resolve prebuilt wheel URL (source_url is the sdist URL)
+                parent_req = self.why[-1][1] if self.why else None
+                wheel_url, fallback_version = self._resolver.resolve(
+                    req=req,
+                    req_type=req_type,
+                    parent_req=parent_req,
+                    pre_built=True,
+                )
+                if fallback_version != resolved_version:
+                    logger.warning(
+                        "test mode: version mismatch for %s"
+                        " - requested %s, fallback %s",
+                        req.name,
+                        resolved_version,
+                        fallback_version,
+                    )
+                resolved_version = fallback_version
+                # Update source_url so _add_to_build_order records
+                # the wheel URL, not the original sdist URL.
+                source_url = wheel_url
+            else:
+                wheel_url = source_url
             wheel_filename, unpack_dir = self._download_prebuilt(
                 req=req,
                 req_type=req_type,
                 resolved_version=resolved_version,
-                wheel_url=source_url,
+                wheel_url=wheel_url,
             )
             build_result = SourceBuildResult(
                 wheel_filename=wheel_filename,
@@ -360,12 +424,11 @@ class Bootstrapper:
                 req, resolved_version
             )
 
-            # Build from source (handles test-mode fallback internally)
+            # Build from source
             build_result = self._build_from_source(
                 req=req,
                 resolved_version=resolved_version,
                 source_url=source_url,
-                req_type=req_type,
                 build_sdist_only=build_sdist_only,
                 cached_wheel_filename=cached_wheel_filename,
                 unpacked_cached_wheel=unpacked_cached_wheel,
@@ -428,13 +491,18 @@ class Bootstrapper:
         self.progressbar.update_total(len(install_dependencies))
         for dep in self._sort_requirements(install_dependencies):
             with req_ctxvar_context(dep):
-                # In test mode, bootstrap() catches and records failures internally.
-                # In normal mode, it raises immediately which we propagate.
-                self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
+                try:
+                    self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
+                except Exception:
+                    if not self.test_mode:
+                        raise
+                    # Failure already recorded in failed_packages; continue.
             self.progressbar.update()
 
         # Clean up build directories
         self.ctx.clean_build_dirs(build_result.sdist_root_dir, build_result.build_env)
+
+        return resolved_version
 
     @contextlib.contextmanager
     def _track_why(
@@ -615,9 +683,12 @@ class Bootstrapper:
 
         for dep in self._sort_requirements(build_dependencies):
             with req_ctxvar_context(dep):
-                # In test mode, bootstrap() catches and records failures internally.
-                # In normal mode, it raises immediately which we propagate.
-                self.bootstrap(req=dep, req_type=build_type)
+                try:
+                    self.bootstrap(req=dep, req_type=build_type)
+                except Exception:
+                    if not self.test_mode:
+                        raise
+                    # Failure already recorded in failed_packages; continue.
             self.progressbar.update()
 
     def _download_prebuilt(
@@ -800,7 +871,6 @@ class Bootstrapper:
         req: Requirement,
         resolved_version: Version,
         source_url: str,
-        req_type: RequirementType,
         build_sdist_only: bool,
         cached_wheel_filename: pathlib.Path | None,
         unpacked_cached_wheel: pathlib.Path | None,
@@ -808,166 +878,69 @@ class Bootstrapper:
         """Build package from source.
 
         Orchestrates download, preparation, build environment setup, and build.
-        In test mode, attempts pre-built fallback on failure.
 
         Raises:
-            Exception: In normal mode, if build fails.
-                In test mode, only if build fails AND fallback also fails.
+            Exception: If any step (download, prepare, build) fails.
+                Callers are responsible for fallback handling.
         """
-        try:
-            # Download and prepare source (if no cached wheel)
-            if not unpacked_cached_wheel:
-                logger.debug("no cached wheel, downloading sources")
-                source_filename = self._download_source(
-                    req=req,
-                    resolved_version=resolved_version,
-                    source_url=source_url,
-                )
-                sdist_root_dir = self._prepare_source(
-                    req=req,
-                    resolved_version=resolved_version,
-                    source_filename=source_filename,
-                )
-            else:
-                logger.debug(f"have cached wheel in {unpacked_cached_wheel}")
-                sdist_root_dir = unpacked_cached_wheel / unpacked_cached_wheel.stem
-
-            assert sdist_root_dir is not None
-
-            if sdist_root_dir.parent.parent != self.ctx.work_dir:
-                raise ValueError(
-                    f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}"
-                )
-            unpack_dir = sdist_root_dir.parent
-
-            build_env = self._create_build_env(
+        # Download and prepare source (if no cached wheel)
+        if not unpacked_cached_wheel:
+            logger.debug("no cached wheel, downloading sources")
+            source_filename = self._download_source(
                 req=req,
                 resolved_version=resolved_version,
-                parent_dir=sdist_root_dir.parent,
+                source_url=source_url,
             )
-
-            # Prepare build dependencies (always needed)
-            # Note: This may recursively call bootstrap() for build deps,
-            # which has its own error handling.
-            self._prepare_build_dependencies(
+            sdist_root_dir = self._prepare_source(
                 req=req,
                 resolved_version=resolved_version,
-                sdist_root_dir=sdist_root_dir,
-                build_env=build_env,
+                source_filename=source_filename,
             )
+        else:
+            logger.debug(f"have cached wheel in {unpacked_cached_wheel}")
+            sdist_root_dir = unpacked_cached_wheel / unpacked_cached_wheel.stem
 
-            # Build wheel or sdist
-            wheel_filename, sdist_filename = self._do_build(
-                req=req,
-                resolved_version=resolved_version,
-                sdist_root_dir=sdist_root_dir,
-                build_env=build_env,
-                build_sdist_only=build_sdist_only,
-                cached_wheel_filename=cached_wheel_filename,
-            )
+        assert sdist_root_dir is not None
 
-            source_type = sources.get_source_type(self.ctx, req)
+        if sdist_root_dir.parent.parent != self.ctx.work_dir:
+            raise ValueError(f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}")
+        unpack_dir = sdist_root_dir.parent
 
-            return SourceBuildResult(
-                wheel_filename=wheel_filename,
-                sdist_filename=sdist_filename,
-                unpack_dir=unpack_dir,
-                sdist_root_dir=sdist_root_dir,
-                build_env=build_env,
-                source_type=source_type,
-            )
-
-        except Exception as build_error:
-            if not self.test_mode:
-                raise
-
-            # Test mode: attempt pre-built fallback
-            fallback_result = self._handle_test_mode_failure(
-                req=req,
-                resolved_version=resolved_version,
-                req_type=req_type,
-                build_error=build_error,
-            )
-            if fallback_result is None:
-                # Fallback failed, re-raise for bootstrap() to catch
-                raise
-
-            return fallback_result
-
-    def _handle_test_mode_failure(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-        req_type: RequirementType,
-        build_error: Exception,
-    ) -> SourceBuildResult | None:
-        """Handle build failure in test mode by attempting pre-built fallback.
-
-        Args:
-            req: The requirement that failed to build.
-            resolved_version: The version that was attempted.
-            req_type: The type of requirement (for fallback resolution).
-            build_error: The original exception from the build attempt.
-
-        Returns:
-            SourceBuildResult if fallback succeeded, None if fallback also failed.
-        """
-        logger.warning(
-            "test mode: build failed for %s==%s, attempting pre-built fallback: %s",
-            req.name,
-            resolved_version,
-            build_error,
+        build_env = self._create_build_env(
+            req=req,
+            resolved_version=resolved_version,
+            parent_dir=sdist_root_dir.parent,
         )
 
-        try:
-            parent_req = self.why[-1][1] if self.why else None
-            wheel_url, fallback_version = self._resolver.resolve(
-                req=req,
-                req_type=req_type,
-                parent_req=parent_req,
-                pre_built=True,  # Force prebuilt for test mode fallback
-            )
+        # Prepare build dependencies. Recursive bootstrap() calls handle
+        # their own error recovery in test mode.
+        self._prepare_build_dependencies(
+            req=req,
+            resolved_version=resolved_version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
 
-            if fallback_version != resolved_version:
-                logger.warning(
-                    "test mode: version mismatch for %s - requested %s, fallback %s",
-                    req.name,
-                    resolved_version,
-                    fallback_version,
-                )
+        # Build wheel or sdist
+        wheel_filename, sdist_filename = self._do_build(
+            req=req,
+            resolved_version=resolved_version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+            build_sdist_only=build_sdist_only,
+            cached_wheel_filename=cached_wheel_filename,
+        )
 
-            wheel_filename, unpack_dir = self._download_prebuilt(
-                req=req,
-                req_type=req_type,
-                resolved_version=fallback_version,
-                wheel_url=wheel_url,
-            )
+        source_type = sources.get_source_type(self.ctx, req)
 
-            logger.info(
-                "test mode: successfully used pre-built wheel for %s==%s",
-                req.name,
-                fallback_version,
-            )
-            # Package succeeded via fallback - no failure to record
-
-            return SourceBuildResult(
-                wheel_filename=wheel_filename,
-                sdist_filename=None,
-                unpack_dir=unpack_dir,
-                sdist_root_dir=None,
-                build_env=None,
-                source_type=SourceType.PREBUILT,
-            )
-
-        except Exception as fallback_error:
-            logger.error(
-                "test mode: pre-built fallback also failed for %s: %s",
-                req.name,
-                fallback_error,
-                exc_info=True,
-            )
-            # Return None to signal failure; bootstrap() will record via re-raised exception
-            return None
+        return SourceBuildResult(
+            wheel_filename=wheel_filename,
+            sdist_filename=sdist_filename,
+            unpack_dir=unpack_dir,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+            source_type=source_type,
+        )
 
     def _look_for_existing_wheel(
         self,
