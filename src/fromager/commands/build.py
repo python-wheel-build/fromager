@@ -58,10 +58,8 @@ class BuildSequenceEntry:
         }
 
 
-BuildSequenceEntryFuture: typing.TypeAlias = concurrent.futures.Future[
-    BuildSequenceEntry
-]
-DependencyNodeSet: typing.TypeAlias = set[dependency_graph.DependencyNode]
+type BuildSequenceEntryFuture = concurrent.futures.Future[BuildSequenceEntry]
+type DependencyNodeSet = set[dependency_graph.DependencyNode]
 
 
 @click.command()

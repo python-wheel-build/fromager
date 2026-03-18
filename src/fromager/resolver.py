@@ -369,14 +369,12 @@ def get_project_from_pypi(
         logger.info("ignored all candidate files at %s", sdist_server_url)
 
 
-RequirementsMap: typing.TypeAlias = typing.Mapping[str, typing.Iterable[Requirement]]
-Candidates: typing.TypeAlias = typing.Iterable[Candidate]
-CandidatesMap: typing.TypeAlias = typing.Mapping[str, Candidates]
+type RequirementsMap = typing.Mapping[str, typing.Iterable[Requirement]]
+type Candidates = typing.Iterable[Candidate]
+type CandidatesMap = typing.Mapping[str, Candidates]
 # {identifier: [cls, cachekey]: list[candidates]}}
-ResolverCache: typing.TypeAlias = dict[
-    str, dict[tuple[type[ExtrasProvider], str], list[Candidate]]
-]
-VersionSource: typing.TypeAlias = typing.Callable[
+type ResolverCache = dict[str, dict[tuple[type[ExtrasProvider], str], list[Candidate]]]
+type VersionSource = typing.Callable[
     [str],
     typing.Iterable[Candidate | tuple[str, str | Version]],
 ]
