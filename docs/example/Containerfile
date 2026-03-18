@@ -12,7 +12,7 @@ RUN dnf install -y --nodocs \
     patch rust cargo \
     && dnf clean all
 
-# /opt/app-root structure (same as s2i-core and ubi9/python-311)
+# /opt/app-root structure (same as s2i-core and ubi9/python-312)
 ENV APP_ROOT=/opt/app-root \
     HOME=/opt/app-root/src \
     PATH=/opt/app-root/src/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

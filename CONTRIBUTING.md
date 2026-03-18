@@ -22,7 +22,7 @@ Fromager thrives on practical, well-tested contributions. This guide summarizes 
 
 ### Prerequisites
 
-- Python 3.11 or newer
+- Python 3.12 or newer
 - `hatch` for environment and task management
 
   ```bash
@@ -99,7 +99,7 @@ The pre-commit hook prevents commits that would fail some CI quality checks, sav
 ### Type Annotations
 
 - Every function (including tests) must annotate all parameters and return values.
-- Use modern `X | None` syntax instead of `Optional[X]` (requires Python 3.11+).
+- Use modern `X | None` syntax instead of `Optional[X]` (PEP 604).
 - Prefer precise collection types (`list[str]`, `dict[str, int]`, etc.).
 
 ```python
