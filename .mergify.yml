@@ -29,8 +29,6 @@ pull_request_rules:
           - "-draft"
 
           # Unit tests
-          - check-success=unit (3.11, 1.75, ubuntu-latest)
-          - check-success=unit (3.11, 1.75, macos-latest)
           - check-success=unit (3.12, 1.75, ubuntu-latest)
           - check-success=unit (3.12, 1.75, macos-latest)
           - check-success=unit (3.13, 1.75, ubuntu-latest)
@@ -42,13 +40,6 @@ pull_request_rules:
           - check-success=mypy
 
           # E2E test suites (consolidated from individual tests)
-          # Python 3.11 - Ubuntu only (macOS excluded)
-          - check-success=e2e (3.11, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
-          - check-success=e2e (3.11, 1.75, ci_bootstrap_suite, ubuntu-latest)
-          - check-success=e2e (3.11, 1.75, ci_build_suite, ubuntu-latest)
-          - check-success=e2e (3.11, 1.75, ci_config_suite, ubuntu-latest)
-          - check-success=e2e (3.11, 1.75, ci_specialized_suite, ubuntu-latest)
-          - check-success=e2e (3.11, 1.75, ci_workflow_suite, ubuntu-latest)
           # Python 3.12 - Ubuntu only (macOS excluded)
           - check-success=e2e (3.12, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
           - check-success=e2e (3.12, 1.75, ci_bootstrap_suite, ubuntu-latest)

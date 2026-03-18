@@ -13,7 +13,6 @@ jobs:
       fail-fast: false
       matrix:
         python-version:
-          - "3.11"
           - "3.12"
           - "3.13"
           - "3.14"
@@ -71,7 +70,6 @@ jobs:
       fail-fast: false
       matrix:
         python-version:
-          - "3.11"
           - "3.12"
           - "3.13"
           - "3.14"
@@ -91,8 +89,6 @@ jobs:
         exclude:
           # macOS tests are slower and congested
           # only run macOS tests on latest stable Python version
-          - os: macos-latest
-            python-version: "3.11"
           - os: macos-latest
             python-version: "3.12"
           - os: macos-latest
