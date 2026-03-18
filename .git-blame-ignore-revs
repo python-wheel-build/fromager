@@ -1,0 +1,8 @@
+# This file lists commits that should be ignored by `git blame`.
+# To read more, see: https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files#ignore-commits-in-the-blame-view
+
+# MDFormat Markdown formatting alignment
+b22767eceb41f11bc33667804222e19d565adba0
+
+# Ruff formatting alignment
+ab5d3aff87d23341b8b83458437ab68d9e2068de

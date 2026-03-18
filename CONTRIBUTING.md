@@ -23,6 +23,7 @@ Fromager thrives on practical, well-tested contributions. This guide summarizes 
 ### Prerequisites
 
 - Python 3.11 or newer
+
 - `hatch` for environment and task management
 
   ```bash
@@ -358,7 +359,7 @@ EnvKey = typing.Annotated[str, BeforeValidator(_validate_envkey)]
 ### Commands
 
 | Task | Command |
-| ------ | --------- |
+| -- | -- |
 | Run tests | `hatch run test:test` |
 | Check code quality | `hatch run lint:check` |
 | Fix formatting | `hatch run lint:fix` |
@@ -367,7 +368,7 @@ EnvKey = typing.Annotated[str, BeforeValidator(_validate_envkey)]
 ### Standards
 
 | Standard | Requirement |
-| ---------- | ------------- |
+| -- | -- |
 | Type annotations | Required for every function |
 | Docstrings | Required on public APIs |
 | Tests | Required for new behavior |
