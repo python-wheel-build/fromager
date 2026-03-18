@@ -6,7 +6,7 @@ This guide gets you from zero to your first wheel build in under 5 minutes.
 Prerequisites
 -------------
 
-You'll need Python 3.11 or later and network access to download packages from PyPI.
+You'll need Python 3.12 or later and network access to download packages from PyPI.
 
 Installation
 ------------
