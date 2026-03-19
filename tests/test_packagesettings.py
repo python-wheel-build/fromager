@@ -534,8 +534,8 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
     ]
 
 
-@patch("fromager.packagesettings.get_cpu_count", return_value=8)
-@patch("fromager.packagesettings.get_available_memory_gib", return_value=7.1)
+@patch("fromager.packagesettings._pbi.get_cpu_count", return_value=8)
+@patch("fromager.packagesettings._pbi.get_available_memory_gib", return_value=7.1)
 def test_parallel_jobs(
     get_available_memory_gib: Mock,
     get_cpu_count: Mock,
