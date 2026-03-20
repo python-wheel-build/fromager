@@ -9,6 +9,12 @@ repos:
       - id: check-merge-conflict     # Prevents merge conflict markers
       - id: check-toml               # Validates TOML syntax
 
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        args: [--config, .markdownlint-config.yaml]
+
   - repo: local
     hooks:
       - id: hatch-lint
