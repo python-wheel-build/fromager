@@ -59,7 +59,7 @@ figured out the build and runtime dependencies, built each package in the
 correct order, and created wheels in ``wheels-repo/downloads/``.
 
 For a detailed explanation of the output files and directories, see
-:doc:`files`.
+:doc:`reference/files`.
 
 Pinning Versions with Constraints
 ---------------------------------

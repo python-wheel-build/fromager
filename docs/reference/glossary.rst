@@ -40,7 +40,7 @@ This glossary defines key terms used throughout Fromager's documentation and cod
       The sequence in which packages must be built, determined by analyzing the
       :term:`dependency graph`. Packages are ordered bottom-up (topological sort)
       so that each package's dependencies are built before the package itself.
-      Stored in ``build-order.json``. See :doc:`/files` for the file format.
+      Stored in ``build-order.json``. See :doc:`/reference/files` for the file format.
 
    build sequence
       A command (``build-sequence``) that processes a pre-determined :term:`build order`
@@ -94,7 +94,7 @@ This glossary defines key terms used throughout Fromager's documentation and cod
       Version specifications that control package :term:`resolution`. Provided via a
       ``constraints.txt`` file, they ensure specific versions are used or avoided
       during builds. Unlike :term:`requirements <requirement>`, constraints only
-      apply when a package is already needed. See :doc:`/files` for format details.
+      apply when a package is already needed. See :doc:`/reference/files` for format details.
 
    cyclic dependency
       A circular dependency where packages depend on each other, forming a loop
@@ -112,7 +112,7 @@ This glossary defines key terms used throughout Fromager's documentation and cod
       A directed graph representing all packages and their relationships discovered
       during :term:`bootstrap`. Nodes represent resolved package versions, and edges
       capture the :term:`requirement` specifications and dependency types (toplevel,
-      install, build-system, etc.). Stored in ``graph.json``. See :doc:`/files` and
+      install, build-system, etc.). Stored in ``graph.json``. See :doc:`/reference/files` and
       :doc:`/how-tos/graph-commands/index`.
 
    distribution name
@@ -124,7 +124,7 @@ This glossary defines key terms used throughout Fromager's documentation and cod
       An extension point in fromager that allows customization of specific
       operations. Hooks include ``post_build``, ``prebuilt_wheel``, and
       ``post_bootstrap``. Multiple plugins can register for the same hook.
-      See :doc:`/hooks` and :doc:`/customization`.
+      See :doc:`/reference/hooks` and :doc:`/customization`.
 
    install dependency
       A runtime dependency of a package, extracted from the built :term:`wheel`'s
@@ -153,7 +153,7 @@ This glossary defines key terms used throughout Fromager's documentation and cod
       A Python module registered as an entry point that provides custom implementations
       of fromager operations for specific packages. Unlike :term:`hooks <hook>`, overrides
       replace the default behavior entirely. Plugins can customize source acquisition,
-      dependency resolution, building, and more. See :doc:`/hooks`.
+      dependency resolution, building, and more. See :doc:`/reference/hooks`.
 
    package index
       A server providing package metadata and downloads, following the
@@ -234,7 +234,7 @@ This glossary defines key terms used throughout Fromager's documentation and cod
       A strategy class that supplies version :term:`candidates <candidate>` during
       :term:`resolution`. The default provider queries :term:`PyPI`, but custom
       providers can resolve versions from GitHub tags, GitLab tags, or other sources.
-      See :doc:`/hooks`.
+      See :doc:`/reference/hooks`.
 
    sdist-only mode
       A :term:`bootstrap` mode (``--sdist-only``) that builds :term:`source
@@ -246,7 +246,7 @@ This glossary defines key terms used throughout Fromager's documentation and cod
       Configuration options that customize package building. Can be global (in
       ``overrides/settings.yaml``) or per-package (in ``overrides/settings/<name>.yaml``).
       Settings control environment variables, source URLs, :term:`variants <variant>`,
-      and more. See :doc:`/customization` and :doc:`/config-reference`.
+      and more. See :doc:`/customization` and :doc:`/reference/config-reference`.
 
    Simple API
       The :pep:`503` specification for :term:`package index` directory layout.
@@ -299,4 +299,4 @@ This glossary defines key terms used throughout Fromager's documentation and cod
    work directory
       The directory (default: ``work-dir/``) where fromager stores working files
       during builds. Contains :term:`build order`, :term:`dependency graph`,
-      constraints, logs, and per-package build artifacts. See :doc:`/files`.
+      constraints, logs, and per-package build artifacts. See :doc:`/reference/files`.

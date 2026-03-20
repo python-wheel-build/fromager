@@ -23,21 +23,58 @@ behavior that works for most PEP-517 compatible packages, but support
 overriding all of the actions for special cases, without encoding
 those special cases directly into fromager.
 
+Getting Started
+---------------
+
+Quick introduction and detailed walkthrough for new users.
+
 .. toctree::
    :maxdepth: 2
 
    quickstart.rst
-   using.md
    getting-started.rst
-   customization.md
-   concepts/index.rst
+
+Guides
+------
+
+Task-oriented guides for common workflows and customization.
+
+.. toctree::
+   :maxdepth: 2
+
    how-tos/index.rst
-   hooks.rst
-   files.md
+   customization.md
+   using.md
+
+Concepts & Explanation
+----------------------
+
+Understanding how fromager works and technical deep-dives.
+
+.. toctree::
+   :maxdepth: 2
+
+   concepts/index.rst
    http-retry.md
-   config-reference.rst
-   cli.rst
-   glossary.rst
+
+Reference
+---------
+
+Technical reference for CLI, configuration, files, and terminology.
+
+.. toctree::
+   :maxdepth: 2
+
+   reference/index.rst
+
+Development
+-----------
+
+Contributing to fromager.
+
+.. toctree::
+   :maxdepth: 2
+
    develop.md
 
 What's with the name?

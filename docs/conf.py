@@ -58,7 +58,7 @@ intersphinx_mapping = {
 # sphinxcontrib.spelling settings
 # File references a function object. Spell checker complaints about typo in
 # random object id.
-spelling_exclude_patterns = ["config-reference.rst"]
+spelling_exclude_patterns = ["reference/config-reference.rst"]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
