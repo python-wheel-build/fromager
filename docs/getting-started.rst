@@ -118,3 +118,24 @@ The output below is redacted for brevity. Missing sections are replaced with ``.
 As each dependency is built, fromager will show output from the build process
 and progress information. At the end of the build, fromager shows the list of
 packages that were built and how long each step took.
+
+Next Steps
+----------
+
+Now that you understand the basic workflow and debugging process:
+
+**Improve Your Workflow:**
+
+* :doc:`how-tos/containers` - Run builds in containers for better isolation
+* :doc:`how-tos/bootstrap-constraints` - Pin versions for reproducible builds
+* :doc:`how-tos/repeatable-builds` - Use previous build graphs for consistency
+
+**Customize Builds:**
+
+* :doc:`customization` - Add patches, override settings, configure variants
+* :doc:`how-tos/pyproject-overrides` - Override pyproject.toml settings
+
+**Learn How It Works:**
+
+* :doc:`concepts/index` - Understand bootstrap mode, build isolation, and more
+* :doc:`reference/glossary` - Definitions of key terms

@@ -474,3 +474,22 @@ def mycommand(
 ) -> None:
     ...
 ```
+
+## See Also
+
+**Reference Documentation:**
+
+* [Configuration Reference](reference/config-reference.rst) - Complete settings schema
+* [Hooks Reference](reference/hooks.rst) - Override plugin documentation
+* [CLI Reference](reference/cli.rst) - Command-line options
+
+**How-To Guides:**
+
+* [Override pyproject.toml](how-tos/pyproject-overrides.rst) - Modify build configuration
+* [Build from Git](how-tos/build-from-git-repo.rst) - Use custom source repositories
+* [Multiple Versions](how-tos/multiple-versions.rst) - Handle version conflicts
+
+**Concepts:**
+
+* [Bootstrap vs Build](concepts/bootstrap-vs-build.rst) - Understand build modes
+* [Dependencies](concepts/dependencies.rst) - Dependency types and resolution
