@@ -29,5 +29,6 @@ run_test "bootstrap_sdist_only"
 test_section "bootstrap git URL tests"
 run_test "bootstrap_git_url"
 run_test "bootstrap_git_url_tag"
+run_test "version_env_git_url"
 
 finish_suite
