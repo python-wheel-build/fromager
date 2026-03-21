@@ -1,4 +1,5 @@
 import pathlib
+import sys
 import typing
 from unittest.mock import Mock, patch
 
@@ -275,3 +276,39 @@ def test_validate_sdist_file(
     else:
         with pytest.raises(ValueError):
             sources.validate_sdist_filename(req, version, sdist_file)
+
+
+# read header of Python executable
+with open(sys.executable, "rb") as _f:
+    _EXEC_HEADER = _f.read(8)
+
+
+@pytest.mark.parametrize(
+    "filename,content,hit",
+    [
+        ("test.py", b"#!/usr/bin/python", False),
+        ("test.so", b"ignore", True),
+        ("test", _EXEC_HEADER, True),
+        # assume that packages do not disguise compiled code as .py files.
+        # A malicious actor can use more elaborate tricks to hide bad code.
+        ("test.py", _EXEC_HEADER, False),
+        # ar archive (static library)
+        ("libfoo.a", b"!<arch>\n", True),
+        # thin ar archive
+        ("libfoo.a", b"!<thin>\n", True),
+        # Mach-O little-endian
+        ("test", b"\xcf\xfa\xed\xfe", True),
+        ("test", b"\xce\xfa\xed\xfe", True),
+    ],
+)
+def test_scan_compiled_extensions(
+    filename: str, content: bytes, hit: bool, tmp_path: pathlib.Path
+) -> None:
+    filepath = tmp_path / filename
+    with filepath.open("wb") as f:
+        f.write(content)
+    matches = sources.scan_compiled_extensions(tmp_path)
+    if hit:
+        assert matches == [pathlib.Path(filename)]
+    else:
+        assert matches == []
