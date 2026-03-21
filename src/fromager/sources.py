@@ -681,6 +681,11 @@ def default_build_sdist(
         sdist_root_dir=sdist_root_dir,
         build_dir=build_dir,
     )
+    if not build_dir.joinpath(".git").exists():
+        ensure_git_archival(
+            version=version,
+            target_dir=build_dir,
+        )
     # The format argument is specified based on
     # https://peps.python.org/pep-0517/#build-sdist.
     with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
@@ -760,6 +765,62 @@ def ensure_pkg_info(
             )
             had_pkg_info = False
     return had_pkg_info
+
+
+# Template .git_archival.txt files contain "$Format:…$" placeholders that
+# `git archive` expands into real values.  If they survive unexpanded,
+# setuptools-scm detects "$FORMAT" in the node field and returns no version
+# (see setuptools_scm.git.archival_to_version).
+_UNPROCESSED_ARCHIVAL_MARKER = "$Format:"
+
+# Dummy commit hash used when synthesizing .git_archival.txt without a
+# real git repository.  The value is never interpreted by setuptools-scm
+# beyond checking that it is not an unprocessed $Format:…$ placeholder.
+_DUMMY_NODE = "0" * 40
+
+_GIT_ARCHIVAL_CONTENT = """\
+node: {node}
+node-date: 1970-01-01T00:00:00+00:00
+describe-name: {version}-0-g{node}
+"""
+
+
+def ensure_git_archival(
+    *,
+    version: Version,
+    target_dir: pathlib.Path,
+) -> bool:
+    """Ensure that sdist has a usable ``.git_archival.txt`` for setuptools-scm.
+
+    When building from source archives without a ``.git`` directory,
+    setuptools-scm cannot determine the package version.  A synthesized
+    ``.git_archival.txt`` provides the version through the ``describe-name``
+    field so that setuptools-scm resolves it without requiring an environment
+    variable override.
+
+    See https://setuptools-scm.readthedocs.io/en/latest/usage/#git-archives
+
+    Returns True if a valid archival file was already present (no changes
+    made), False if a new file was written (file was missing or contained
+    unprocessed placeholders).
+    """
+    archival_file = target_dir.joinpath(".git_archival.txt")
+
+    if archival_file.is_file():
+        content = archival_file.read_text()
+        if _UNPROCESSED_ARCHIVAL_MARKER not in content:
+            logger.debug("valid .git_archival.txt already present in %s", target_dir)
+            return True
+        logger.warning("replacing unprocessed .git_archival.txt in %s", target_dir)
+
+    archival_file.write_text(
+        _GIT_ARCHIVAL_CONTENT.format(
+            node=_DUMMY_NODE,
+            version=str(version),
+        )
+    )
+    logger.info("created .git_archival.txt for version %s in %s", version, target_dir)
+    return False
 
 
 def validate_sdist_filename(
