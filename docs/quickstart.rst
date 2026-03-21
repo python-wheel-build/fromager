@@ -59,7 +59,7 @@ figured out the build and runtime dependencies, built each package in the
 correct order, and created wheels in ``wheels-repo/downloads/``.
 
 For a detailed explanation of the output files and directories, see
-:doc:`files`.
+:doc:`reference/files`.
 
 Pinning Versions with Constraints
 ---------------------------------
@@ -76,8 +76,21 @@ The ``-c`` option ensures fromager uses exactly the versions you specify.
 Next Steps
 ----------
 
-Now that you've seen fromager work with a simple package, you might want to:
+Now that you've seen fromager work with a simple package, explore:
 
-* Learn to debug build failures with a more complex example in :doc:`getting-started`
-* Customize builds with settings, patches, and variants in :doc:`customization`
-* Check specific guides in :doc:`how-tos/index`
+**Learn More:**
+
+* :doc:`getting-started` - Detailed walkthrough with debugging examples
+* :doc:`concepts/index` - Understand how fromager works
+
+**Common Tasks:**
+
+* :doc:`how-tos/containers` - Run fromager in containers (recommended)
+* :doc:`how-tos/bootstrap-constraints` - Pin versions for reproducible builds
+* :doc:`how-tos/repeatable-builds` - Ensure consistent builds across environments
+
+**Customize Builds:**
+
+* :doc:`customization` - Comprehensive customization guide
+* :doc:`reference/config-reference` - Configuration reference
+* :doc:`how-tos/index` - Task-oriented guides
