@@ -132,23 +132,40 @@ def resolve_source(
     sdist_server_url: str,
     req_type: RequirementType | None = None,
 ) -> tuple[str, Version]:
-    "Return URL to source and its version."
+    """Return (URL, version) for the best matching source version.
 
+    Returns the highest matching version.
+    """
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
         f"resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
     )
 
     try:
-        resolver_results = overrides.find_and_invoke(
+        # Get provider via plugin hook or use default
+        pbi = ctx.package_build_info(req)
+        override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+
+        provider = overrides.find_and_invoke(
             req.name,
-            "resolve_source",
-            default_resolve_source,
+            "get_resolver_provider",
+            resolver.default_resolver_provider,
             ctx=ctx,
             req=req,
-            sdist_server_url=sdist_server_url,
+            include_sdists=pbi.resolver_include_sdists,
+            include_wheels=pbi.resolver_include_wheels,
+            sdist_server_url=override_sdist_server_url,
             req_type=req_type,
+            ignore_platform=pbi.resolver_ignore_platform,
         )
+
+        # Get all matching candidates from provider
+        results = resolver.resolve_from_provider(provider, req)
+
+        # Return highest version (first in sorted list)
+        url, version = results[0]
+        return str(url), version
+
     except (
         resolvelib.InconsistentCandidate,
         resolvelib.RequirementsConflicted,
@@ -156,41 +173,6 @@ def resolve_source(
     ) as err:
         logger.debug(f"could not resolve {req} with {constraint}: {err}")
         raise
-
-    if len(resolver_results) == 2:
-        url, version = resolver_results
-    else:
-        raise ValueError(
-            f"do not know how to unpack {resolver_results}, expected 2 members"
-        )
-
-    if not isinstance(version, Version):
-        raise ValueError(f"expected 2nd member to be of type Version, got {version}")
-
-    return str(url), version
-
-
-def default_resolve_source(
-    ctx: context.WorkContext,
-    req: Requirement,
-    sdist_server_url: str,
-    req_type: RequirementType | None = None,
-) -> tuple[str, Version]:
-    "Return URL to source and its version."
-
-    pbi = ctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
-
-    url, version = resolver.resolve(
-        ctx=ctx,
-        req=req,
-        sdist_server_url=override_sdist_server_url,
-        include_sdists=pbi.resolver_include_sdists,
-        include_wheels=pbi.resolver_include_wheels,
-        req_type=req_type,
-        ignore_platform=pbi.resolver_ignore_platform,
-    )
-    return url, version
 
 
 def default_download_source(

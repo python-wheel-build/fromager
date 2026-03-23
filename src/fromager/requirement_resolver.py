@@ -12,7 +12,7 @@ import typing
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from . import resolver, sources, wheels
+from . import overrides, resolver
 from .dependency_graph import DependencyGraph
 from .requirements_file import RequirementType
 
@@ -51,7 +51,10 @@ class RequirementResolver:
         self.prev_graph = prev_graph
         # Session-level resolution cache to avoid re-resolving same requirements
         # Key: (requirement_string, pre_built) to distinguish source vs prebuilt
-        self._resolved_requirements: dict[tuple[str, bool], tuple[str, Version]] = {}
+        # Value: list of (url, version) tuples sorted by version (highest first)
+        self._resolved_requirements: dict[
+            tuple[str, bool], list[tuple[str, Version]]
+        ] = {}
 
     def resolve(
         self,
@@ -60,7 +63,7 @@ class RequirementResolver:
         parent_req: Requirement | None = None,
         pre_built: bool | None = None,
     ) -> tuple[str, Version]:
-        """Resolve package requirement.
+        """Resolve package requirement to the best matching version.
 
         Tries resolution strategies in order:
         1. Session cache (if previously resolved)
@@ -75,7 +78,7 @@ class RequirementResolver:
                 If None (default), uses package build info to determine.
 
         Returns:
-            Tuple of (url, resolved_version)
+            (url, version) tuple for the highest matching version
 
         Raises:
             ValueError: If req contains a git URL and pre_built is False
@@ -98,15 +101,14 @@ class RequirementResolver:
         cached_result = self.get_cached_resolution(req, pre_built)
         if cached_result is not None:
             logger.debug(f"resolved {req} from cache")
-            return cached_result
+            return cached_result[0]
 
         # Resolve using strategies
-        url, resolved_version = self._resolve(req, req_type, parent_req, pre_built)
+        results = self._resolve(req, req_type, parent_req, pre_built)
 
         # Cache the result
-        result = (url, resolved_version)
-        self.cache_resolution(req, pre_built, result)
-        return url, resolved_version
+        self.cache_resolution(req, pre_built, results)
+        return results[0]
 
     def _resolve(
         self,
@@ -114,7 +116,7 @@ class RequirementResolver:
         req_type: RequirementType,
         parent_req: Requirement | None,
         pre_built: bool,
-    ) -> tuple[str, Version]:
+    ) -> list[tuple[str, Version]]:
         """Internal resolution logic without caching.
 
         Tries resolution strategies in order:
@@ -128,7 +130,7 @@ class RequirementResolver:
             pre_built: Whether to resolve prebuilt (True) or source (False)
 
         Returns:
-            Tuple of (url, resolved_version)
+            List of (url, version) tuples sorted by version (highest first)
         """
         # Try graph
         cached_resolution = self._resolve_from_graph(
@@ -139,35 +141,73 @@ class RequirementResolver:
         )
 
         if cached_resolution and not req.url:
-            url, resolved_version = cached_resolution
-            logger.debug(f"resolved from previous bootstrap to {resolved_version}")
-            return url, resolved_version
+            logger.debug(
+                f"resolved from previous bootstrap: {len(cached_resolution)} version(s)"
+            )
+            return cached_resolution
 
-        # Fallback to PyPI
+        # Fallback to PyPI using provider pattern
+        pbi = self.ctx.package_build_info(req)
+
         if pre_built:
             # Resolve prebuilt wheel
-            servers = wheels.get_wheel_server_urls(
-                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
-            )
-            url, resolved_version = wheels.resolve_prebuilt_wheel(
-                ctx=self.ctx, req=req, wheel_server_urls=servers, req_type=req_type
+            # Get wheel server URLs
+            wheel_server_urls: list[str] = []
+            if pbi.wheel_server_url:
+                wheel_server_urls.append(pbi.wheel_server_url)
+            else:
+                if self.ctx.wheel_server_url:
+                    wheel_server_urls.append(self.ctx.wheel_server_url)
+                wheel_server_urls.append(resolver.PYPI_SERVER_URL)
+
+            # Try each wheel server until one succeeds
+            for url in wheel_server_urls:
+                try:
+                    provider = overrides.find_and_invoke(
+                        req.name,
+                        "get_resolver_provider",
+                        resolver.default_resolver_provider,
+                        ctx=self.ctx,
+                        req=req,
+                        include_sdists=False,
+                        include_wheels=True,
+                        sdist_server_url=url,
+                        req_type=req_type,
+                        ignore_platform=False,
+                    )
+                    results = resolver.resolve_from_provider(provider, req)
+                    if results:
+                        return results
+                except Exception:
+                    continue
+            # If we get here, no wheel server succeeded
+            raise ValueError(
+                f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}"
             )
         else:
             # Resolve source (sdist)
-            url, resolved_version = sources.resolve_source(
+            override_sdist_server_url = pbi.resolver_sdist_server_url(
+                resolver.PYPI_SERVER_URL
+            )
+            provider = overrides.find_and_invoke(
+                req.name,
+                "get_resolver_provider",
+                resolver.default_resolver_provider,
                 ctx=self.ctx,
                 req=req,
-                sdist_server_url=resolver.PYPI_SERVER_URL,
+                include_sdists=pbi.resolver_include_sdists,
+                include_wheels=pbi.resolver_include_wheels,
+                sdist_server_url=override_sdist_server_url,
                 req_type=req_type,
+                ignore_platform=pbi.resolver_ignore_platform,
             )
-
-        return url, resolved_version
+            return resolver.resolve_from_provider(provider, req)
 
     def get_cached_resolution(
         self,
         req: Requirement,
         pre_built: bool,
-    ) -> tuple[str, Version] | None:
+    ) -> list[tuple[str, Version]] | None:
         """Get a cached resolution result if it exists.
 
         Args:
@@ -175,7 +215,7 @@ class RequirementResolver:
             pre_built: Whether looking for prebuilt or source resolution
 
         Returns:
-            Tuple of (source_url, resolved_version) if cached, None otherwise
+            List of (url, version) tuples if cached, None otherwise
         """
         cache_key = (str(req), pre_built)
         return self._resolved_requirements.get(cache_key)
@@ -184,7 +224,7 @@ class RequirementResolver:
         self,
         req: Requirement,
         pre_built: bool,
-        result: tuple[str, Version],
+        result: list[tuple[str, Version]],
     ) -> None:
         """Cache a resolution result.
 
@@ -194,7 +234,7 @@ class RequirementResolver:
         Args:
             req: Package requirement to cache
             pre_built: Whether this is a prebuilt or source resolution
-            result: Tuple of (source_url, resolved_version)
+            result: List of (url, version) tuples
         """
         cache_key = (str(req), pre_built)
         self._resolved_requirements[cache_key] = result
@@ -205,7 +245,7 @@ class RequirementResolver:
         req_type: RequirementType,
         pre_built: bool,
         parent_req: Requirement | None,
-    ) -> tuple[str, Version] | None:
+    ) -> list[tuple[str, Version]] | None:
         """Resolve from previous dependency graph.
 
         Extracted from Bootstrapper._resolve_from_graph().
@@ -217,7 +257,7 @@ class RequirementResolver:
             parent_req: Parent requirement for graph traversal
 
         Returns:
-            Tuple of (url, version) if found in graph, None otherwise
+            List of (url, version) tuples if found in graph, None otherwise
         """
         if not self.prev_graph:
             return None
@@ -307,8 +347,8 @@ class RequirementResolver:
         self,
         version_source: list[tuple[str, Version]],
         req: Requirement,
-    ) -> tuple[str, Version] | None:
-        """Select best version from candidates.
+    ) -> list[tuple[str, Version]] | None:
+        """Filter and return all matching versions from candidates.
 
         Extracted from Bootstrapper._resolve_from_version_source().
 
@@ -317,7 +357,7 @@ class RequirementResolver:
             req: Package requirement with version specifier
 
         Returns:
-            Tuple of (url, version) for best match, None if no match
+            List of (url, version) tuples for all matches, None if no matches
         """
         if not version_source:
             return None
@@ -329,6 +369,7 @@ class RequirementResolver:
                 constraints=self.ctx.constraints,
                 use_resolver_cache=False,
             )
+            # resolve_from_provider now returns all matching candidates
             return resolver.resolve_from_provider(provider, req)
         except Exception as err:
             logger.debug(f"could not resolve {req} from {version_source}: {err}")

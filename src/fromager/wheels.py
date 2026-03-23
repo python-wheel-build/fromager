@@ -463,31 +463,41 @@ def resolve_prebuilt_wheel(
     wheel_server_urls: list[str],
     req_type: requirements_file.RequirementType | None = None,
 ) -> tuple[str, Version]:
-    "Return URL to wheel and its version."
+    """Return (URL, version) for the best matching wheel version.
+
+    Tries wheel servers in order and returns result from the first that succeeds.
+    Returns the highest matching version.
+    """
     excs: list[Exception] = []
     for url in wheel_server_urls:
         try:
-            wheel_url, resolved_version = resolver.resolve(
+            # Get provider for this wheel server
+            provider = overrides.find_and_invoke(
+                req.name,
+                "get_resolver_provider",
+                resolver.default_resolver_provider,
                 ctx=ctx,
                 req=req,
-                sdist_server_url=url,
                 include_sdists=False,
                 include_wheels=True,
+                sdist_server_url=url,
                 req_type=req_type,
                 # pre-built wheels must match platform
                 ignore_platform=False,
             )
+
+            # Get all matching candidates from provider
+            results = resolver.resolve_from_provider(provider, req)
+
+            if results:
+                # Return highest version (first in sorted list)
+                wheel_url, version = results[0]
+                return str(wheel_url), version
+            else:
+                excs.append(ValueError(f"no results for {url}: {results=}"))
         except Exception as e:
             excs.append(e)
-        else:
-            if wheel_url and resolved_version:
-                return (wheel_url, resolved_version)
-            else:
-                excs.append(
-                    ValueError(
-                        f"no result for {url}: {wheel_url=}, {resolved_version=}"
-                    )
-                )
+
     raise ExceptionGroup(
         f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}",
         excs,

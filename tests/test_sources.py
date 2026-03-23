@@ -23,29 +23,25 @@ def test_invalid_tarfile(mock_download_url: typing.Any, tmp_path: pathlib.Path) 
         sources._download_source_check(req=req, destination_dir=fake_dir, url=fake_url)
 
 
-@patch("fromager.resolver.resolve")
+@patch("fromager.resolver.resolve_from_provider")
 @patch("fromager.sources._download_source_check")
-def test_default_download_source_from_settings(
+def test_resolve_source_from_settings(
     download_source_check: Mock,
-    resolve: Mock,
+    resolve_from_provider: Mock,
     testdata_context: context.WorkContext,
 ) -> None:
-    resolve.return_value = ("url", Version("42.1.2"))
+    resolve_from_provider.return_value = [("url", Version("42.1.2"))]
     download_source_check.return_value = pathlib.Path("filename.zip")
     req = Requirement("test_pkg==42.1.2")
     sdist_server_url = "https://sdist.test/egg"
 
-    sources.default_resolve_source(testdata_context, req, sdist_server_url)
-
-    resolve.assert_called_with(
-        ctx=testdata_context,
-        req=req,
-        sdist_server_url=sdist_server_url,
-        include_sdists=True,
-        include_wheels=True,
-        req_type=None,
-        ignore_platform=True,
+    url, version = sources.resolve_source(
+        ctx=testdata_context, req=req, sdist_server_url=sdist_server_url
     )
+
+    # Verify we got the expected result
+    assert url == "url"
+    assert version == Version("42.1.2")
 
     sources.default_download_source(
         testdata_context,
@@ -63,7 +59,7 @@ def test_default_download_source_from_settings(
     )
 
 
-@patch("fromager.resolver.resolve")
+@patch("fromager.resolver.resolve_from_provider")
 @patch("fromager.sources._download_source_check")
 @patch.multiple(
     packagesettings.PackageBuildInfo,
@@ -71,45 +67,22 @@ def test_default_download_source_from_settings(
     resolver_include_wheels=True,
     resolver_sdist_server_url=Mock(return_value="url"),
 )
-def test_default_download_source_with_predefined_resolve_dist(
+def test_resolve_source_with_predefined_resolve_dist(
     download_source_check: Mock,
-    resolve: Mock,
+    resolve_from_provider: Mock,
     tmp_context: context.WorkContext,
 ) -> None:
-    resolve.return_value = ("url", Version("1.0"))
+    resolve_from_provider.return_value = [("url", Version("1.0"))]
     download_source_check.return_value = pathlib.Path("filename")
     req = Requirement("foo==1.0")
 
-    sources.default_resolve_source(tmp_context, req, resolver.PYPI_SERVER_URL)
-
-    resolve.assert_called_with(
-        ctx=tmp_context,
-        req=req,
-        sdist_server_url="url",
-        include_sdists=False,
-        include_wheels=True,
-        req_type=None,
-        ignore_platform=False,
+    url, version = sources.resolve_source(
+        ctx=tmp_context, req=req, sdist_server_url=resolver.PYPI_SERVER_URL
     )
 
-
-@patch("fromager.sources.default_resolve_source")
-def test_invalid_version(
-    mock_default_resolve_source: typing.Any, tmp_context: context.WorkContext
-) -> None:
-    req = Requirement("fake==1.0")
-    sdist_server_url = resolver.PYPI_SERVER_URL
-    mock_default_resolve_source.return_value = (
-        "fakesdisturl.com",
-        "fake version 1.0",
-    )
-    mock_default_resolve_source.__name__ = "mock_default_resolve_source"
-    with pytest.raises(ValueError):
-        sources.resolve_source(
-            ctx=tmp_context,
-            req=req,
-            sdist_server_url=sdist_server_url,
-        )
+    # Verify we got the expected result
+    assert url == "url"
+    assert version == Version("1.0")
 
 
 @patch("logging.Logger.warning")
