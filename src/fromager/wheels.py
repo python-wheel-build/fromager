@@ -456,18 +456,22 @@ def get_wheel_server_urls(
 
 
 @metrics.timeit(description="resolve wheel")
-def resolve_prebuilt_wheel(
+def resolve_prebuilt_wheel_all(
     *,
     ctx: context.WorkContext,
     req: Requirement,
     wheel_server_urls: list[str],
     req_type: requirements_file.RequirementType | None = None,
-) -> tuple[str, Version]:
-    "Return URL to wheel and its version."
+) -> list[tuple[str, Version]]:
+    """Return list of (URL, version) for all matching wheel versions.
+
+    Tries wheel servers in order and returns results from the first that succeeds.
+    Returns list sorted by version (highest first).
+    """
     excs: list[Exception] = []
     for url in wheel_server_urls:
         try:
-            wheel_url, resolved_version = resolver.resolve(
+            wheel_results = resolver.resolve_all(
                 ctx=ctx,
                 req=req,
                 sdist_server_url=url,
@@ -480,15 +484,33 @@ def resolve_prebuilt_wheel(
         except Exception as e:
             excs.append(e)
         else:
-            if wheel_url and resolved_version:
-                return (wheel_url, resolved_version)
+            if wheel_results:
+                return wheel_results
             else:
-                excs.append(
-                    ValueError(
-                        f"no result for {url}: {wheel_url=}, {resolved_version=}"
-                    )
-                )
+                excs.append(ValueError(f"no results for {url}: {wheel_results=}"))
     raise ExceptionGroup(
         f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}",
         excs,
     )
+
+
+def resolve_prebuilt_wheel(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    wheel_server_urls: list[str],
+    req_type: requirements_file.RequirementType | None = None,
+) -> tuple[str, Version]:
+    """Return (URL, version) for the best matching wheel version.
+
+    Tries wheel servers in order and returns result from the first that succeeds.
+    Returns the highest matching version.
+    """
+    results = resolve_prebuilt_wheel_all(
+        ctx=ctx,
+        req=req,
+        wheel_server_urls=wheel_server_urls,
+        req_type=req_type,
+    )
+    result: tuple[str, Version] = results[0]
+    return result

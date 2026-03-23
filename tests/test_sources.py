@@ -22,14 +22,14 @@ def test_invalid_tarfile(mock_download_url: typing.Any, tmp_path: pathlib.Path) 
         sources._download_source_check(req=req, destination_dir=fake_dir, url=fake_url)
 
 
-@patch("fromager.resolver.resolve")
+@patch("fromager.resolver.resolve_all")
 @patch("fromager.sources._download_source_check")
 def test_default_download_source_from_settings(
     download_source_check: Mock,
     resolve: Mock,
     testdata_context: context.WorkContext,
 ) -> None:
-    resolve.return_value = ("url", Version("42.1.2"))
+    resolve.return_value = [("url", Version("42.1.2"))]
     download_source_check.return_value = pathlib.Path("filename.zip")
     req = Requirement("test_pkg==42.1.2")
     sdist_server_url = "https://sdist.test/egg"
@@ -62,7 +62,7 @@ def test_default_download_source_from_settings(
     )
 
 
-@patch("fromager.resolver.resolve")
+@patch("fromager.resolver.resolve_all")
 @patch("fromager.sources._download_source_check")
 @patch.multiple(
     packagesettings.PackageBuildInfo,
@@ -75,7 +75,7 @@ def test_default_download_source_with_predefined_resolve_dist(
     resolve: Mock,
     tmp_context: context.WorkContext,
 ) -> None:
-    resolve.return_value = ("url", Version("1.0"))
+    resolve.return_value = [("url", Version("1.0"))]
     download_source_check.return_value = pathlib.Path("filename")
     req = Requirement("foo==1.0")
 
@@ -92,16 +92,18 @@ def test_default_download_source_with_predefined_resolve_dist(
     )
 
 
-@patch("fromager.sources.default_resolve_source")
+@patch("fromager.sources.default_resolve_source_all")
 def test_invalid_version(
     mock_default_resolve_source: typing.Any, tmp_context: context.WorkContext
 ) -> None:
     req = Requirement("fake==1.0")
     sdist_server_url = resolver.PYPI_SERVER_URL
-    mock_default_resolve_source.return_value = (
-        "fakesdisturl.com",
-        "fake version 1.0",
-    )
+    mock_default_resolve_source.return_value = [
+        (
+            "fakesdisturl.com",
+            "fake version 1.0",
+        )
+    ]
     mock_default_resolve_source.__name__ = "mock_default_resolve_source"
     with pytest.raises(ValueError):
         sources.resolve_source(

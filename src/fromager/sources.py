@@ -125,30 +125,62 @@ def download_source(
 
 
 @metrics.timeit(description="resolve source")
-def resolve_source(
+def resolve_source_all(
     *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
     req_type: RequirementType | None = None,
-) -> tuple[str, Version]:
-    "Return URL to source and its version."
+) -> list[tuple[str, Version]]:
+    """Return list of (URL, version) for all matching source versions.
 
+    Returns list sorted by version (highest first).
+
+    Supports both old and new plugin interfaces:
+    - New plugins implement resolve_source_all() returning list
+    - Old plugins implement resolve_source() returning single tuple (backward compat)
+    """
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
         f"resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
     )
 
     try:
-        resolver_results = overrides.find_and_invoke(
-            req.name,
-            "resolve_source",
-            default_resolve_source,
-            ctx=ctx,
-            req=req,
-            sdist_server_url=sdist_server_url,
-            req_type=req_type,
-        )
+        # Check for new plugin hook first (returns list)
+        new_plugin = overrides.find_override_method(req.name, "resolve_source_all")
+        if new_plugin:
+            resolver_results = overrides.find_and_invoke(
+                req.name,
+                "resolve_source_all",
+                default_resolve_source_all,
+                ctx=ctx,
+                req=req,
+                sdist_server_url=sdist_server_url,
+                req_type=req_type,
+            )
+        else:
+            # Fall back to old plugin hook (returns single tuple for backward compat)
+            old_plugin = overrides.find_override_method(req.name, "resolve_source")
+            if old_plugin:
+                single_result = overrides.find_and_invoke(
+                    req.name,
+                    "resolve_source",
+                    default_resolve_source,
+                    ctx=ctx,
+                    req=req,
+                    sdist_server_url=sdist_server_url,
+                    req_type=req_type,
+                )
+                # Wrap old plugin result in list
+                resolver_results = [single_result]
+            else:
+                # No plugin, use default
+                resolver_results = default_resolve_source_all(
+                    ctx=ctx,
+                    req=req,
+                    sdist_server_url=sdist_server_url,
+                    req_type=req_type,
+                )
     except (
         resolvelib.InconsistentCandidate,
         resolvelib.RequirementsConflicted,
@@ -157,31 +189,54 @@ def resolve_source(
         logger.debug(f"could not resolve {req} with {constraint}: {err}")
         raise
 
-    if len(resolver_results) == 2:
-        url, version = resolver_results
-    else:
+    if not isinstance(resolver_results, list):
         raise ValueError(
-            f"do not know how to unpack {resolver_results}, expected 2 members"
+            f"expected list of (url, version) tuples, got {type(resolver_results)}"
         )
 
-    if not isinstance(version, Version):
-        raise ValueError(f"expected 2nd member to be of type Version, got {version}")
+    # Validate each tuple in the list
+    for _url, version in resolver_results:
+        if not isinstance(version, Version):
+            raise ValueError(f"expected Version, got {type(version)}: {version}")
 
-    return str(url), version
+    return [(str(url), version) for url, version in resolver_results]
 
 
-def default_resolve_source(
+def resolve_source(
+    *,
     ctx: context.WorkContext,
     req: Requirement,
     sdist_server_url: str,
     req_type: RequirementType | None = None,
 ) -> tuple[str, Version]:
-    "Return URL to source and its version."
+    """Return (URL, version) for the best matching source version.
 
+    Returns the highest matching version.
+    """
+    results = resolve_source_all(
+        ctx=ctx,
+        req=req,
+        sdist_server_url=sdist_server_url,
+        req_type=req_type,
+    )
+    result: tuple[str, Version] = results[0]
+    return result
+
+
+def default_resolve_source_all(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    req_type: RequirementType | None = None,
+) -> list[tuple[str, Version]]:
+    """Return list of (URL, version) for all matching source versions.
+
+    Returns list sorted by version (highest first).
+    """
     pbi = ctx.package_build_info(req)
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
-    url, version = resolver.resolve(
+    return resolver.resolve_all(
         ctx=ctx,
         req=req,
         sdist_server_url=override_sdist_server_url,
@@ -190,7 +245,21 @@ def default_resolve_source(
         req_type=req_type,
         ignore_platform=pbi.resolver_ignore_platform,
     )
-    return url, version
+
+
+def default_resolve_source(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    req_type: RequirementType | None = None,
+) -> tuple[str, Version]:
+    """Return (URL, version) for the best matching source version.
+
+    Returns the highest matching version.
+    """
+    results = default_resolve_source_all(ctx, req, sdist_server_url, req_type)
+    result: tuple[str, Version] = results[0]
+    return result
 
 
 def default_download_source(

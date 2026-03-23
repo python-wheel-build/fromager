@@ -85,7 +85,7 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("7"))
+    ) == [("", Version("7"))]
 
     # Resolving pbr dependency of bar
     assert resolver._resolve_from_graph(
@@ -93,7 +93,7 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of blah
     assert resolver._resolve_from_graph(
@@ -101,7 +101,7 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("blah"),
-    ) == ("", Version("5"))
+    ) == [("", Version("5"))]
 
 
 def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> None:
@@ -123,7 +123,7 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> Non
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("8"))
+    ) == [("", Version("8"))]
 
     # Resolving pbr dependency of bar - constraint prevents upgrade
     assert resolver._resolve_from_graph(
@@ -131,7 +131,7 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> Non
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of blah - exact version requirement
     assert resolver._resolve_from_graph(
@@ -139,7 +139,7 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> Non
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("blah"),
-    ) == ("", Version("5"))
+    ) == [("", Version("5"))]
 
 
 def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> None:
@@ -161,7 +161,7 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> N
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of bar - already at 6
     assert resolver._resolve_from_graph(
@@ -169,7 +169,7 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> N
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of blah - exact version requirement
     assert resolver._resolve_from_graph(
@@ -177,7 +177,7 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> N
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("blah"),
-    ) == ("", Version("5"))
+    ) == [("", Version("5"))]
 
 
 def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
@@ -208,7 +208,7 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.TOP_LEVEL,
         pre_built=False,
         parent_req=None,
-    ) == ("", Version("2"))
+    ) == [("", Version("2"))]
 
     # Resolving pbr dependency of foo even if foo version changed
     assert resolver._resolve_from_graph(
@@ -216,7 +216,7 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("7"))
+    ) == [("", Version("7"))]
 
     # Resolving bar
     assert resolver._resolve_from_graph(
@@ -224,7 +224,7 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.TOP_LEVEL,
         pre_built=False,
         parent_req=None,
-    ) == ("", Version("1.0.0"))
+    ) == [("", Version("1.0.0"))]
 
     # Resolving pbr dependency of bar
     assert resolver._resolve_from_graph(
@@ -232,7 +232,7 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
 
 def test_resolve_from_graph_no_previous_graph(tmp_context: WorkContext) -> None:
@@ -292,7 +292,7 @@ def test_resolve_from_graph_new_parent_reuses_existing_version(
     assert result is not None, (
         "Expected packaging==25.0 from prev_graph but got None (would fall back to PyPI)"
     )
-    assert result == ("", Version("25.0"))
+    assert result == [("", Version("25.0"))]
 
 
 def test_resolve_from_graph_different_req_type_reuses_existing_version(
@@ -336,7 +336,7 @@ def test_resolve_from_graph_different_req_type_reuses_existing_version(
     assert result is not None, (
         "Expected bar==2.0 from prev_graph but got None (would fall back to PyPI)"
     )
-    assert result == ("", Version("2.0"))
+    assert result == [("", Version("2.0"))]
 
 
 def test_resolve_from_graph_parent_specific_preferred_over_name_fallback(
@@ -392,7 +392,7 @@ def test_resolve_from_graph_parent_specific_preferred_over_name_fallback(
         parent_req=Requirement("foo"),
     )
     assert result is not None
-    assert result == ("", Version("2.0"))
+    assert result == [("", Version("2.0"))]
 
 
 def test_resolve_from_graph_name_fallback_returns_none_for_missing_package(
@@ -448,7 +448,7 @@ def test_resolve_rejects_git_urls_for_source(tmp_context: WorkContext) -> None:
         )
 
 
-@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel")
+@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel_all")
 @patch("fromager.requirement_resolver.wheels.get_wheel_server_urls")
 def test_resolve_allows_git_urls_for_prebuilt(
     mock_get_servers: MagicMock,
@@ -459,12 +459,11 @@ def test_resolve_allows_git_urls_for_prebuilt(
     resolver = RequirementResolver(tmp_context)
     req = Requirement("mypkg @ git+https://github.com/example/repo.git")
 
-    # Mock wheel resolution to return expected result
+    # Mock wheel resolution to return expected result (as list)
     mock_get_servers.return_value = ["https://pypi.org/simple"]
-    mock_resolve_wheel.return_value = (
-        "https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl",
-        Version("1.0"),
-    )
+    mock_resolve_wheel.return_value = [
+        ("https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl", Version("1.0"))
+    ]
 
     # Should NOT raise - git URLs are allowed when explicitly requesting prebuilt
     url, version = resolver.resolve(
@@ -480,14 +479,14 @@ def test_resolve_allows_git_urls_for_prebuilt(
     assert version == Version("1.0")
 
 
-@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel")
+@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel_all")
 @patch("fromager.requirement_resolver.wheels.get_wheel_server_urls")
 def test_resolve_auto_routes_to_prebuilt(
     mock_get_servers: MagicMock,
     mock_resolve_wheel: MagicMock,
     tmp_context: WorkContext,
 ) -> None:
-    """resolve(pre_built=None) with pbi.pre_built=True routes to wheels.resolve_prebuilt_wheel."""
+    """resolve(pre_built=None) with pbi.pre_built=True routes to wheels.resolve_prebuilt_wheel_all."""
     req = Requirement("setuptools>=40")
 
     # Mock package build info to return pre_built=True
@@ -497,12 +496,14 @@ def test_resolve_auto_routes_to_prebuilt(
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
         resolver = RequirementResolver(tmp_context)
 
-        # Mock wheel resolution to return expected result
+        # Mock wheel resolution to return expected result (as list)
         mock_get_servers.return_value = ["https://pypi.org/simple"]
-        mock_resolve_wheel.return_value = (
-            "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl",
-            Version("1.0"),
-        )
+        mock_resolve_wheel.return_value = [
+            (
+                "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl",
+                Version("1.0"),
+            )
+        ]
 
         # Call resolve with pre_built=None (should auto-detect)
         url, version = resolver.resolve(
@@ -518,12 +519,12 @@ def test_resolve_auto_routes_to_prebuilt(
         assert version == Version("1.0")
 
 
-@patch("fromager.requirement_resolver.sources.resolve_source")
+@patch("fromager.requirement_resolver.sources.resolve_source_all")
 def test_resolve_auto_routes_to_source(
     mock_resolve_source: MagicMock,
     tmp_context: WorkContext,
 ) -> None:
-    """resolve(pre_built=None) with pbi.pre_built=False routes to sources.resolve_source."""
+    """resolve(pre_built=None) with pbi.pre_built=False routes to sources.resolve_source_all."""
     req = Requirement("mypackage>=1.0")
 
     # Mock package build info to return pre_built=False
@@ -533,11 +534,10 @@ def test_resolve_auto_routes_to_source(
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
         resolver = RequirementResolver(tmp_context)
 
-        # Mock source resolution to return expected result
-        mock_resolve_source.return_value = (
-            "https://files.pythonhosted.org/mypackage-2.0.tar.gz",
-            Version("2.0"),
-        )
+        # Mock source resolution to return expected result (as list)
+        mock_resolve_source.return_value = [
+            ("https://files.pythonhosted.org/mypackage-2.0.tar.gz", Version("2.0"))
+        ]
 
         # Call resolve with pre_built=None (should auto-detect)
         url, version = resolver.resolve(
@@ -553,9 +553,9 @@ def test_resolve_auto_routes_to_source(
         assert version == Version("2.0")
 
 
-@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel")
+@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel_all")
 @patch("fromager.requirement_resolver.wheels.get_wheel_server_urls")
-@patch("fromager.requirement_resolver.sources.resolve_source")
+@patch("fromager.requirement_resolver.sources.resolve_source_all")
 def test_resolve_prebuilt_after_source_uses_separate_cache(
     mock_resolve_source: MagicMock,
     mock_get_servers: MagicMock,
@@ -572,11 +572,10 @@ def test_resolve_prebuilt_after_source_uses_separate_cache(
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
         resolver = RequirementResolver(tmp_context)
 
-        # Mock source resolution
-        mock_resolve_source.return_value = (
-            "https://files.pythonhosted.org/testpkg-1.5.tar.gz",
-            Version("1.5"),
-        )
+        # Mock source resolution (as list)
+        mock_resolve_source.return_value = [
+            ("https://files.pythonhosted.org/testpkg-1.5.tar.gz", Version("1.5"))
+        ]
 
         # First call: resolve as source (pre_built=None, auto-detects to False)
         url1, version1 = resolver.resolve(
@@ -590,12 +589,14 @@ def test_resolve_prebuilt_after_source_uses_separate_cache(
         assert version1 == Version("1.5")
         assert mock_resolve_source.call_count == 1
 
-        # Mock wheel resolution for second call
+        # Mock wheel resolution for second call (as list)
         mock_get_servers.return_value = ["https://pypi.org/simple"]
-        mock_resolve_wheel.return_value = (
-            "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl",
-            Version("1.5"),
-        )
+        mock_resolve_wheel.return_value = [
+            (
+                "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl",
+                Version("1.5"),
+            )
+        ]
 
         # Second call: resolve same req as prebuilt (explicit pre_built=True)
         # This should NOT return the cached source result
