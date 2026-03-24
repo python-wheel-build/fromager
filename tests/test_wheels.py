@@ -110,6 +110,40 @@ def test_add_extra_metadata_allows_legitimate_double_dots(
     mock_run.assert_called_once()
 
 
+def test_log_existing_sboms_when_present(
+    tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify that existing SBOM files in .dist-info/sboms/ are logged."""
+    req = Requirement("test_pkg==1.0.0")
+    dist_info_dir = tmp_path / "test_pkg-1.0.0.dist-info"
+    dist_info_dir.mkdir()
+    sboms_dir = dist_info_dir / "sboms"
+    sboms_dir.mkdir()
+    (sboms_dir / "cyclonedx.json").write_text("{}")
+    (sboms_dir / "other.spdx.json").write_text("{}")
+
+    with caplog.at_level("INFO", logger="fromager.wheels"):
+        wheels._log_existing_sboms(req, dist_info_dir)
+
+    assert "found existing SBOM files in wheel" in caplog.text
+    assert "cyclonedx.json" in caplog.text
+    assert "other.spdx.json" in caplog.text
+
+
+def test_log_existing_sboms_when_absent(
+    tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify no log output when .dist-info/sboms/ does not exist."""
+    req = Requirement("test_pkg==1.0.0")
+    dist_info_dir = tmp_path / "test_pkg-1.0.0.dist-info"
+    dist_info_dir.mkdir()
+
+    with caplog.at_level("INFO", logger="fromager.wheels"):
+        wheels._log_existing_sboms(req, dist_info_dir)
+
+    assert "SBOM" not in caplog.text
+
+
 def test_download_wheel_unquotes_url_encoded_filenames(tmp_path: pathlib.Path) -> None:
     """Test that download_wheel properly unquotes URL-encoded characters in filenames."""
     req = Requirement("test_pkg")
