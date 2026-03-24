@@ -215,9 +215,86 @@ implemented. A literal `$` must be quoted as `$$`.
 Added support for default value syntax `${NAME:-}`.
 ```
 
+```{versionchanged} 0.76.0
+
+Added the `${__version__}` template variable.
+```
+
+#### The `__version__` variable
+
+When fromager resolves the version of a package it injects the version
+string into the template environment as `__version__`. You can
+reference it in env values with `${__version__}`.
+
+##### Fixing setuptools-scm / flit_scm builds
+
+Packages that use `setuptools-scm` or `flit_scm` for version detection fail
+when built from source archives without `.git` metadata. The build backend
+raises a `LookupError` during import because it cannot determine the version.
+
+Setting `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_{DIST_NAME}` tells
+setuptools-scm to use the provided version instead of reading from SCM.
+This is checked before any `.git` or `PKG-INFO` lookup, so the error is
+avoided entirely.
+
+Use the **per-package** form with the distribution name normalized to
+uppercase with hyphens, dots, and underscores replaced by a single `_`
+(adapted [PEP 503](https://peps.python.org/pep-0503/) semantics). For
+example, for a package named `foo`:
+
 ```yaml
-# example
 env:
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_FOO: "${__version__}"
+```
+
+The per-package form is
+[preferred by setuptools-scm](https://setuptools-scm.readthedocs.io/en/latest/config/)
+over the generic `SETUPTOOLS_SCM_PRETEND_VERSION`, which can leak into
+other setuptools-scm packages in the same build environment.
+
+This is simpler than writing a custom `prepare_source` plugin override
+to inject version metadata.
+
+##### Availability
+
+`__version__` is set for `build_sdist`, `build_wheel`, and all
+dependency hooks (`get_build_backend_dependencies`,
+`get_build_sdist_dependencies`, etc.) that run *after* version
+resolution.
+
+It is **not** available:
+
+- During the `resolve` phase itself — the version has not yet been
+  determined.
+- When bootstrapping from a **git URL whose reference is not a valid
+  PEP 440 version** (for example
+  `pkg @ git+https://host/repo.git` or
+  `pkg @ git+https://host/repo.git@main`). In this case fromager
+  must build the package metadata just to discover the version, so
+  the early dependency-resolution hooks run with `version=None`.
+
+If your env var is used in a phase where the version might be
+unknown, add a fallback default so the substitution does not fail:
+
+```yaml
+env:
+    # safe — falls back to empty string when version is not yet known
+    MY_VAR: "${__version__:-}"
+```
+
+Without the fallback, a bare `${__version__}` raises an error when
+the version is unavailable.
+
+##### Examples
+
+```yaml
+env:
+    # fix setuptools-scm builds from source archives (use per-package form)
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_FOO: "${__version__}"
+    # use the resolved package version in a download URL
+    LIB_URL: "https://github.com/org/lib/archive/v${__version__}.tar.gz"
+    # safe for git-URL bootstrapping where version may not yet be known
+    OPTIONAL_URL: "https://example.com/lib-${__version__:-latest}.tar.gz"
     # pre-pend '/global/bin' to PATH
     PATH: "/global/bin:$PATH"
     # default CFLAGS to empty string and append " -g"

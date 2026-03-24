@@ -1,0 +1,2 @@
+env:
+    TEST_VERSION_VAR: "${__version__}"

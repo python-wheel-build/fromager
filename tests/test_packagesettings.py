@@ -15,8 +15,10 @@ from fromager.packagesettings import (
     EnvVars,
     GitOptions,
     Package,
+    PackageBuildInfo,
     PackageSettings,
     ResolverDist,
+    Settings,
     SettingsFile,
     Variant,
     substitute_template,
@@ -62,6 +64,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "QUOTES": "A\"BC'$$EGG",
         "DEF": "${DEF:-default}",
         "EXTRA_MAX_JOBS": "${MAX_JOBS}",
+        "MY_VERSION": "${__version__}",
     },
     "git_options": {
         "submodules": False,
@@ -239,9 +242,15 @@ def test_pbi_test_pkg_extra_environ(
         "EXTRA_MAX_JOBS": "1",
     }
 
+    version = Version("1.0.0")
+    version_env = {
+        "MY_VERSION": "1.0.0",
+    }
+
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    result = pbi.get_extra_environ(template_env={"EXTRA": "extra"}, version=version)
     assert (
-        pbi.get_extra_environ(template_env={"EXTRA": "extra"})
+        result
         == {
             "EGG": "spam spam",
             "EGG_AGAIN": "spam spam",
@@ -249,10 +258,16 @@ def test_pbi_test_pkg_extra_environ(
             "SPAM": "alot extra",
             "DEF": "default",
         }
+        | version_env
         | parallel
     )
+    assert "__version__" not in result
+
+    result = pbi.get_extra_environ(
+        template_env={"EXTRA": "extra", "DEF": "nondefault"}, version=version
+    )
     assert (
-        pbi.get_extra_environ(template_env={"EXTRA": "extra", "DEF": "nondefault"})
+        result
         == {
             "EGG": "spam spam",
             "EGG_AGAIN": "spam spam",
@@ -260,13 +275,16 @@ def test_pbi_test_pkg_extra_environ(
             "SPAM": "alot extra",
             "DEF": "nondefault",
         }
+        | version_env
         | parallel
     )
+    assert "__version__" not in result
 
     testdata_context.settings.variant = Variant("rocm")
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    result = pbi.get_extra_environ(template_env={"EXTRA": "extra"}, version=version)
     assert (
-        pbi.get_extra_environ(template_env={"EXTRA": "extra"})
+        result
         == {
             "EGG": "spam",
             "EGG_AGAIN": "spam",
@@ -274,13 +292,16 @@ def test_pbi_test_pkg_extra_environ(
             "SPAM": "",
             "DEF": "default",
         }
+        | version_env
         | parallel
     )
+    assert "__version__" not in result
 
     testdata_context.settings.variant = Variant("cuda")
     pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    result = pbi.get_extra_environ(template_env={"EXTRA": "spam"}, version=version)
     assert (
-        pbi.get_extra_environ(template_env={"EXTRA": "spam"})
+        result
         == {
             "EGG": "spam",
             "EGG_AGAIN": "spam",
@@ -288,15 +309,19 @@ def test_pbi_test_pkg_extra_environ(
             "SPAM": "alot spam",
             "DEF": "default",
         }
+        | version_env
         | parallel
     )
+    assert "__version__" not in result
 
     build_env = build_environment.BuildEnvironment(
         testdata_context,
         parent_dir=tmp_path,
     )
     result = pbi.get_extra_environ(
-        template_env={"EXTRA": "spam", "PATH": "/sbin:/bin"}, build_env=build_env
+        template_env={"EXTRA": "spam", "PATH": "/sbin:/bin"},
+        build_env=build_env,
+        version=version,
     )
     assert (
         result
@@ -314,8 +339,10 @@ def test_pbi_test_pkg_extra_environ(
             "UV_PYTHON": str(build_env.python),
             "UV_PYTHON_DOWNLOADS": "never",
         }
+        | version_env
         | parallel
     )
+    assert "__version__" not in result
 
 
 def test_pbi_test_pkg(testdata_context: context.WorkContext) -> None:
@@ -805,3 +832,67 @@ def test_use_pypi_org_metadata(testdata_context: context.WorkContext) -> None:
         "somepackage_without_customization"
     )
     assert pbi.use_pypi_org_metadata
+
+
+def _make_pbi(env_yaml: str, tmp_path: pathlib.Path) -> PackageBuildInfo:
+    """Create a PackageBuildInfo from inline env YAML."""
+    ps = PackageSettings.from_string("version-test-pkg", env_yaml)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+    return settings.package_build_info("version-test-pkg")
+
+
+def test_version_env_var_raises_when_version_unknown(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Using ${__version__} in env without a fallback raises when version is None.
+
+    This mirrors the git-URL bootstrap path where the version has not yet
+    been resolved (e.g. ``pkg @ git+https://host/repo.git@main``).
+    """
+    pbi = _make_pbi(
+        """
+env:
+    MY_VERSION: "${__version__}"
+""",
+        tmp_path,
+    )
+    with pytest.raises(ValueError, match="__version__"):
+        pbi.get_extra_environ(template_env={}, version=None)
+
+
+def test_version_env_var_with_default_when_version_unknown(
+    tmp_path: pathlib.Path,
+) -> None:
+    """${__version__:-fallback} substitutes the default when version is None."""
+    pbi = _make_pbi(
+        """
+env:
+    MY_VERSION: "${__version__:-unresolved}"
+""",
+        tmp_path,
+    )
+    result = pbi.get_extra_environ(template_env={}, version=None)
+    assert result["MY_VERSION"] == "unresolved"
+    assert "__version__" not in result
+
+
+def test_version_none_no_reference(
+    tmp_path: pathlib.Path,
+) -> None:
+    """version=None works when no env vars reference __version__."""
+    pbi = _make_pbi(
+        """
+env:
+    FOO: "bar"
+""",
+        tmp_path,
+    )
+    result = pbi.get_extra_environ(template_env={}, version=None)
+    assert result["FOO"] == "bar"
+    assert "__version__" not in result
