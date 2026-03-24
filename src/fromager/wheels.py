@@ -44,6 +44,24 @@ FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
 FROMAGER_BUILD_REQ_PREFIX = "fromager"
 
 
+def _log_existing_sboms(
+    req: Requirement,
+    dist_info_dir: pathlib.Path,
+) -> None:
+    """Log any existing SBOM files found in the wheel's .dist-info/sboms/ directory."""
+    sboms_dir = dist_info_dir / "sboms"
+    if not sboms_dir.is_dir():
+        return
+    sbom_files = sorted(sboms_dir.iterdir())
+    if sbom_files:
+        names = [f.name for f in sbom_files]
+        logger.info(
+            "%s: found existing SBOM files in wheel: %s",
+            req.name,
+            ", ".join(names),
+        )
+
+
 def _extra_metadata_elfdeps(
     ctx: context.WorkContext,
     req: Requirement,
@@ -181,6 +199,8 @@ def add_extra_metadata_to_wheels(
         dist_info_dir = wheel_root_dir / f"{dist_filename}.dist-info"
         if not dist_info_dir.is_dir():
             raise ValueError(f"{wheel_file} does not contain {dist_info_dir.name}")
+
+        _log_existing_sboms(req, dist_info_dir)
 
         data_to_add = overrides.find_and_invoke(
             req.name,
