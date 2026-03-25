@@ -8,6 +8,7 @@ from ._models import (
     PackageSettings,
     ProjectOverride,
     ResolverDist,
+    SbomSettings,
     VariantInfo,
 )
 from ._pbi import PackageBuildInfo
@@ -47,6 +48,7 @@ __all__ = (
     "ProjectOverride",
     "RawAnnotations",
     "ResolverDist",
+    "SbomSettings",
     "Settings",
     "SettingsFile",
     "Template",

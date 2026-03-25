@@ -29,6 +29,33 @@ from ._typedefs import (
 logger = logging.getLogger(__name__)
 
 
+class SbomSettings(pydantic.BaseModel):
+    """Global SBOM generation settings
+
+    ::
+
+      sbom:
+        supplier: "Organization: ExampleCo"
+        namespace: "https://www.example.com"
+        creators:
+          - "Organization: ExampleCo"
+    """
+
+    model_config = MODEL_CONFIG
+
+    supplier: str = "NOASSERTION"
+    """SPDX supplier field for the wheel package (e.g. ``Organization: ExampleCo``)"""
+
+    namespace: str = "https://spdx.org/spdxdocs"
+    """Base URL for the SPDX documentNamespace"""
+
+    creators: list[str] = Field(default_factory=list)
+    """Additional SPDX creator entries (e.g. ``Organization: ExampleCo``)
+
+    The fromager tool creator entry is always added automatically.
+    """
+
+
 class ResolverDist(pydantic.BaseModel):
     """Packages resolver dist
 
@@ -323,6 +350,14 @@ class PackageSettings(pydantic.BaseModel):
 
     download_source: DownloadSource = Field(default_factory=DownloadSource)
     """Alternative source download settings"""
+
+    purl: str | None = None
+    """Package URL (purl) override for SBOM generation
+
+    When set, this value is used instead of the default ``pkg:pypi/<name>@<version>``
+    purl. Useful for packages that are not on PyPI or are midstream forks.
+    Supports ``{name}`` and ``{version}`` format substitution.
+    """
 
     resolver_dist: ResolverDist = Field(default_factory=ResolverDist)
     """Resolve distribution version"""
