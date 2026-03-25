@@ -37,6 +37,7 @@ from .extras_provider import ExtrasProvider
 from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
 from .requirements_file import RequirementType
+from .versionmap import VersionMap
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -109,7 +110,13 @@ def default_resolver_provider(
     include_wheels: bool,
     req_type: RequirementType | None = None,
     ignore_platform: bool = False,
-) -> PyPIProvider | GenericProvider | GitHubTagProvider:
+) -> (
+    PyPIProvider
+    | GenericProvider
+    | GitHubTagProvider
+    | GitLabTagProvider
+    | VersionMapProvider
+):
     """Lookup resolver provider to resolve package versions"""
     return PyPIProvider(
         include_sdists=include_sdists,
@@ -951,3 +958,55 @@ class GitLabTagProvider(GenericProvider):
 
             # GitLab API uses Link headers for pagination
             nexturl = resp.links.get("next", {}).get("url")
+
+
+class VersionMapProvider(BaseProvider):
+    """Lookup package versions from a VersionMap
+
+    This provider wraps a VersionMap instance to provide versions and URLs
+    for package resolution. The VersionMap should contain Version keys mapped
+    to URL strings.
+    """
+
+    provider_description: typing.ClassVar[str] = (
+        "VersionMap resolver (package: {self.package_name})"
+    )
+
+    def __init__(
+        self,
+        version_map: VersionMap,
+        package_name: str,
+        constraints: Constraints | None = None,
+        *,
+        req_type: RequirementType | None = None,
+        use_resolver_cache: bool = True,
+    ) -> None:
+        super().__init__(
+            constraints=constraints,
+            req_type=req_type,
+            use_resolver_cache=use_resolver_cache,
+        )
+        self.version_map = version_map
+        self.package_name = package_name
+
+    @property
+    def cache_key(self) -> str:
+        return f"versionmap:{self.package_name}"
+
+    def find_candidates(self, identifier: str) -> Candidates:
+        """Find candidates from the VersionMap
+
+        Iterates through all versions in the VersionMap and creates Candidate
+        objects with the associated URLs.
+        """
+        candidates: list[Candidate] = []
+        for version in self.version_map.versions():
+            url = self.version_map[version]
+            candidate = Candidate(
+                name=identifier,
+                version=version,
+                url=url,
+            )
+            candidates.append(candidate)
+
+        return candidates

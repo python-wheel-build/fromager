@@ -792,6 +792,87 @@ def test_resolve_generic() -> None:
         assert provider.cache_key
 
 
+def test_resolve_versionmap() -> None:
+    from fromager.versionmap import VersionMap
+
+    version_map = VersionMap(
+        {
+            "1.2": "https://example.com/pkg-1.2.tar.gz",
+            "1.3": "https://example.com/pkg-1.3.tar.gz",
+            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+        }
+    )
+
+    provider = resolver.VersionMapProvider(
+        version_map=version_map, package_name="testpkg"
+    )
+    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+    rslvr = resolvelib.Resolver(provider, reporter)
+
+    result = rslvr.resolve([Requirement("testpkg")])
+    assert "testpkg" in result.mapping
+
+    candidate = result.mapping["testpkg"]
+    assert str(candidate.version) == "1.4.1"
+    assert candidate.url == "https://example.com/pkg-1.4.1.tar.gz"
+
+    # VersionMapProvider uses resolver cache by default
+    cache = resolver.BaseProvider.resolver_cache
+    assert "testpkg" in cache
+    cached_candidates = cache["testpkg"][
+        (resolver.VersionMapProvider, "versionmap:testpkg")
+    ]
+    assert len(cached_candidates) == 3
+
+
+def test_resolve_versionmap_with_constraint() -> None:
+    from fromager.versionmap import VersionMap
+
+    version_map = VersionMap(
+        {
+            "1.2": "https://example.com/pkg-1.2.tar.gz",
+            "1.3": "https://example.com/pkg-1.3.tar.gz",
+            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+        }
+    )
+
+    c = constraints.Constraints()
+    c.add_constraint("testpkg<1.4")
+
+    provider = resolver.VersionMapProvider(
+        version_map=version_map, package_name="testpkg", constraints=c
+    )
+    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+    rslvr = resolvelib.Resolver(provider, reporter)
+
+    result = rslvr.resolve([Requirement("testpkg")])
+    assert "testpkg" in result.mapping
+
+    candidate = result.mapping["testpkg"]
+    assert str(candidate.version) == "1.3"
+    assert candidate.url == "https://example.com/pkg-1.3.tar.gz"
+
+
+def test_resolve_versionmap_no_match() -> None:
+    from fromager.versionmap import VersionMap
+
+    version_map = VersionMap(
+        {
+            "1.2": "https://example.com/pkg-1.2.tar.gz",
+            "1.3": "https://example.com/pkg-1.3.tar.gz",
+        }
+    )
+
+    provider = resolver.VersionMapProvider(
+        version_map=version_map, package_name="testpkg"
+    )
+    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+    rslvr = resolvelib.Resolver(provider, reporter)
+
+    with pytest.raises(resolvelib.resolvers.ResolverException):
+        rslvr.resolve([Requirement("testpkg>=2.0")])
+
+
 _gitlab_submodlib_repo_response = """
 [
   {
