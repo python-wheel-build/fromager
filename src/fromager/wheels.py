@@ -30,6 +30,7 @@ from . import (
     packagesettings,
     requirements_file,
     resolver,
+    sbom,
     sources,
 )
 
@@ -250,6 +251,15 @@ def add_extra_metadata_to_wheels(
                 )
         else:
             logger.debug("%s is a purelib wheel", req.name)
+
+        sbom_settings = ctx.settings.sbom_settings
+        if sbom_settings is not None:
+            sbom_doc = sbom.generate_sbom(
+                ctx=ctx,
+                req=req,
+                version=version,
+            )
+            sbom.write_sbom(sbom=sbom_doc, dist_info_dir=dist_info_dir)
 
         build_tag_from_settings = pbi.build_tag(version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
