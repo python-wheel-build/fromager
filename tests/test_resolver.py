@@ -5,10 +5,12 @@ import typing
 import pytest
 import requests_mock
 import resolvelib
+from click.testing import CliRunner
 from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import constraints, resolver
+from fromager.__main__ import main as fromager
 
 _hydra_core_simple_response = """
 <!DOCTYPE html>
@@ -1109,3 +1111,15 @@ def test_custom_resolver_error_message_via_resolve() -> None:
         assert "pypi.org" not in error_message.lower(), (
             f"Error message incorrectly mentions PyPI when using GitHub resolver: {error_message}"
         )
+
+
+def test_cli_package_resolver(
+    cli_runner: CliRunner,
+    pypi_hydra_resolver: typing.Any,
+) -> None:
+    result = cli_runner.invoke(fromager, ["package", "resolve", "hydra-core"])
+    assert result.exit_code == 0
+    assert "- Fromager versions: 1.2.2, 1.3.2" in result.stdout
+    assert "- PyPI versions: 1.2.2, 1.3.1+local, 1.3.2, 2.0.0a1" in result.stdout
+    assert "- only wheels on PyPI: 1.3.1+local, 2.0.0a1" in result.stdout
+    assert "- missing from Fromager: 1.3.1+local, 2.0.0a1" in result.stdout

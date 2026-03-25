@@ -10,8 +10,8 @@ import click
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import constraints, context, overrides, resolver
-from fromager.commands.list_versions import DistributionType
+from .. import constraints, context, overrides, resolver
+from . import package
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +32,8 @@ class OutputFormat(Enum):
     default=OutputFormat.REQUIREMENTS.value,
     help="Output format (requirements: name==version, json: JSON array, csv: CSV with name,version columns)",
 )
-@click.option(
-    "--distribution-type",
-    type=click.Choice(DistributionType, case_sensitive=False),
-    default=DistributionType.DEFAULT.value,
-    help="Distribution type to include in version lookup (default: use package settings, sdist: source only, wheel: wheels only, both: include both sdists and wheels)",
-)
-@click.option(
-    "--sdist-server-url",
-    default=resolver.PYPI_SERVER_URL,
-    help="URL to the Python package index to use for version lookup",
-)
+@package.distribution_type_option
+@package.sdist_server_url_option
 @click.option(
     "-o",
     "--output",
@@ -197,22 +188,9 @@ def _find_newer_versions(
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
     # Determine include flags based on distribution type
-    dist_type = DistributionType(distribution_type)
-    match dist_type:
-        case DistributionType.SDIST:
-            include_sdists = True
-            include_wheels = False
-        case DistributionType.WHEEL:
-            include_sdists = False
-            include_wheels = True
-        case DistributionType.BOTH:
-            include_sdists = True
-            include_wheels = True
-        case _:  # DEFAULT
-            # Use package settings defaults
-            package_settings = wkctx.settings.package_setting(constraint.name)
-            include_sdists = package_settings.resolver_dist.include_sdists
-            include_wheels = package_settings.resolver_dist.include_wheels
+    include_sdists, include_wheels = package.parse_distribution_option(
+        distribution_type, pbi
+    )
 
     # Get resolver provider
     provider = overrides.find_and_invoke(
