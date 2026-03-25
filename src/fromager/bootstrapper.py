@@ -40,7 +40,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # package name, extras, version, sdist/wheel
-SeenKey = tuple[NormalizedName, tuple[str, ...], str, typing.Literal["sdist", "wheel"]]
+SeenKey = tuple[NormalizedName, str, typing.Literal["sdist", "wheel"]]
 
 
 @dataclasses.dataclass
@@ -1287,9 +1287,13 @@ class Bootstrapper:
     def _resolved_key(
         self, req: Requirement, version: Version, typ: typing.Literal["sdist", "wheel"]
     ) -> SeenKey:
+        """Return a key for tracking whether a package has already been resolved.
+
+        Extras are intentionally excluded because a build is the same
+        regardless of extras.
+        """
         return (
             canonicalize_name(req.name),
-            tuple(sorted(req.extras)),
             str(version),
             typ,
         )
@@ -1331,11 +1335,9 @@ class Bootstrapper:
         prebuilt: bool = False,
         constraint: Requirement | None = None,
     ) -> None:
-        # We only care if this version of this package has been built,
-        # and don't want to trigger building it twice. The "extras"
-        # value, included in the _resolved_key() output, can confuse
-        # that so we ignore itand build our own key using just the
-        # name and version.
+        # Deduplicate by (name, version) only. We don't distinguish
+        # sdist vs wheel here because a package should appear in the
+        # build order at most once per version.
         key = (canonicalize_name(req.name), str(version))
         if key in self._build_requirements:
             return

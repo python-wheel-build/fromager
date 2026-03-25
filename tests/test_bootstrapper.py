@@ -20,6 +20,12 @@ def test_seen(tmp_context: WorkContext) -> None:
 
 
 def test_seen_extras(tmp_context: WorkContext) -> None:
+    """Verify that extras are ignored for seen-checks.
+
+    A wheel build is the same regardless of extras, so
+    ``testdist`` and ``testdist[extra]`` must be treated as
+    the same package.
+    """
     req1 = Requirement("testdist")
     req2 = Requirement("testdist[extra]")
     version = Version("1.2")
@@ -27,10 +33,18 @@ def test_seen_extras(tmp_context: WorkContext) -> None:
     assert not bt._has_been_seen(req1, version)
     bt._mark_as_seen(req1, version)
     assert bt._has_been_seen(req1, version)
-    assert not bt._has_been_seen(req2, version)
-    bt._mark_as_seen(req2, version)
-    assert bt._has_been_seen(req1, version)
+    # Same package with extras should also be seen
     assert bt._has_been_seen(req2, version)
+
+    # Reverse: mark with extras, check without
+    bt2 = bootstrapper.Bootstrapper(tmp_context)
+    bt2._mark_as_seen(req2, version)
+    assert bt2._has_been_seen(req1, version)
+
+    # Extras are also ignored for sdist_only path
+    bt3 = bootstrapper.Bootstrapper(tmp_context)
+    bt3._mark_as_seen(req1, version, sdist_only=True)
+    assert bt3._has_been_seen(req2, version, sdist_only=True)
 
 
 def test_seen_name_canonicalization(tmp_context: WorkContext) -> None:
