@@ -543,7 +543,7 @@ def default_prepare_source(
     source_filename: pathlib.Path,
     version: Version,
 ) -> tuple[pathlib.Path, bool]:
-    """Unpack and modify sdist sources
+    """Unpack, modify, and check sdist sources
 
     Calls :func:`~fromager.sources.prepare_new_source` by default.
     """
@@ -560,6 +560,15 @@ def default_prepare_source(
             source_root_dir=source_root_dir,
             version=version,
         )
+
+    # look for compiled code in sdist and warn the user
+    potential_issues = scan_compiled_extensions(source_root_dir)
+    if potential_issues:
+        logger.warning(
+            "scan_compiled_extensions has detected potential issues in %s",
+            ", ".join(str(f) for f in sorted(potential_issues)),
+        )
+
     return source_root_dir, is_new
 
 
@@ -776,3 +785,94 @@ def validate_sdist_filename(
         dist_name=sdist_name,
         dist_version=sdist_version,
     )
+
+
+_EXTENSION_SUFFIXES: set[str] = {
+    ".so",  # Linux, BSD
+    ".dylib",  # macOS
+    ".pyd",  # Windows
+    ".dll",  # Windows
+    ".exe",  # Windows
+}
+
+# ignore Python, configs, C, C++, CUDA, Go, JavaScript, ROCm/hip, Rust,
+# text files (Markdown, restructured text, HTML), TypeScripts
+_IGNORE_SUFFIXES: set[str] = {
+    ".c",
+    ".cc",
+    ".css",
+    ".cu",
+    ".cuh",
+    ".go",
+    ".h",
+    ".hip",
+    ".hpp",
+    ".html",
+    ".ini",
+    ".js",
+    ".md",
+    ".py",
+    ".rs",
+    ".rst",
+    ".sh",
+    ".ts",
+    ".toml",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+
+_MAGIC_HEADERS: tuple[bytes, ...] = (
+    b"\x7fELF",  # Linux, BSD ELF file (binaries, object files)
+    b"!<arch>\n",  # ar archive (static libraries)
+    b"!<thin>\n",  # GCC thin ar archive
+    b"\xfe\xed\xfa\xcf",  # macOS Mach-O 64-bit
+    b"\xfe\xed\xfa\xce",  # macOS Mach-O 32-bit
+    b"\xcf\xfa\xed\xfe",  # macOS Mach-O 64-bit (little-endian)
+    b"\xce\xfa\xed\xfe",  # macOS Mach-O 32-bit (little-endian)
+    b"\xca\xfe\xba\xbe",  # macOS universal binary
+    b"MZ",  # Windows executable (usually have dll, pyd, or exe file suffix)
+)
+_MAGIC_HEADERS_READ: int = max(len(header) for header in _MAGIC_HEADERS)
+
+
+def scan_compiled_extensions(
+    root_dir: pathlib.Path,
+    *,
+    extension_suffixes: set[str] = _EXTENSION_SUFFIXES,
+    ignore_suffixes: set[str] = _IGNORE_SUFFIXES,
+    magic_headers: tuple[bytes, ...] = _MAGIC_HEADERS,
+) -> list[pathlib.Path]:
+    """Scan directory tree for compiled code
+
+    Detect files that have an extension suffix or magic header.
+
+    Returns a list of files with potential issues. The paths are relative
+    to *root_dir*.
+
+    .. warning::
+
+       The function is not designed to detect supply chain attacks or
+       malicious code. It's merely a helper to detect packaging issues.
+    """
+    issues: list[pathlib.Path] = []
+    for directory, _, filenames in root_dir.walk():
+        for filename in filenames:
+            filepath = directory / filename
+            suffix = filepath.suffix
+            if suffix in extension_suffixes:
+                relpath = filepath.relative_to(root_dir)
+                logger.debug("file %s has a binary extension suffix", relpath)
+                issues.append(relpath)
+            elif suffix not in ignore_suffixes:
+                with filepath.open("rb") as f:
+                    header = f.read(_MAGIC_HEADERS_READ)
+                if header.startswith(magic_headers):
+                    relpath = filepath.relative_to(root_dir)
+                    logger.debug(
+                        "file %s starts with an executable file magic header: %r",
+                        relpath,
+                        header,
+                    )
+                    issues.append(relpath)
+    return issues
