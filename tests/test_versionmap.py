@@ -100,3 +100,26 @@ def test_no_match() -> None:
         m.lookup(Requirement("pkg"), Requirement("pkg<1.0"))
     with pytest.raises(ValueError):
         m.lookup(Requirement("pkg>1.0"), Requirement("pkg<1.0"))
+
+
+def test_getitem() -> None:
+    m = VersionMap(
+        {
+            "1.2": "value for 1.2",
+            Version("1.3"): "value for 1.3",
+            "1.0": "value for 1.0",
+        }
+    )
+    # Access by Version object
+    assert m[Version("1.2")] == "value for 1.2"
+    assert m[Version("1.3")] == "value for 1.3"
+
+    # Access by string (auto-converted to Version)
+    assert m["1.2"] == "value for 1.2"
+    assert m["1.0"] == "value for 1.0"
+
+    # Non-existent version raises KeyError
+    with pytest.raises(KeyError):
+        m[Version("2.0")]
+    with pytest.raises(KeyError):
+        m["2.0"]

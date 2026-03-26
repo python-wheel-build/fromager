@@ -30,6 +30,16 @@ class VersionMap:
             key = Version(key)
         self._content[key] = value
 
+    def __getitem__(self, key: Version | str) -> typing.Any:
+        """Get the value associated with a version
+
+        String keys are converted to Version instances. Raises KeyError if the
+        version is not found.
+        """
+        if not isinstance(key, Version):
+            key = Version(key)
+        return self._content[key]
+
     def versions(self) -> typing.Iterable[Version]:
         """Return the known versions, sorted in descending order."""
         return reversed(sorted(self._content.keys()))
