@@ -14,7 +14,7 @@ import typing
 from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
-from urllib.parse import quote, unquote, urljoin, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import pypi_simple
 import resolvelib
@@ -192,6 +192,8 @@ def get_project_from_pypi(
     extras: typing.Iterable[str],
     sdist_server_url: str,
     ignore_platform: bool = False,
+    *,
+    override_download_url: str | None = None,
 ) -> Candidates:
     """Return candidates created from the project name and extras."""
     found_candidates: set[str] = set()
@@ -352,6 +354,11 @@ def get_project_from_pypi(
                 ignored_candidates.add(dp.filename)
                 continue
 
+        if override_download_url is None:
+            url = dp.url
+        else:
+            url = override_download_url.format(version=version)
+
         upload_time = dp.upload_time
         if upload_time is not None:
             upload_time = upload_time.astimezone(datetime.UTC)
@@ -359,7 +366,7 @@ def get_project_from_pypi(
         c = Candidate(
             name=name,
             version=version,
-            url=dp.url,
+            url=url,
             extras=tuple(sorted(extras)),
             is_sdist=is_sdist,
             build_tag=build_tag,
@@ -592,7 +599,11 @@ class BaseProvider(ExtrasProvider):
 
 
 class PyPIProvider(BaseProvider):
-    """Lookup package and versions from a simple Python index (PyPI)"""
+    """Lookup package and versions from a simple Python index (PyPI)
+
+    The ``override_download_url`` parameter supports the string template variable:
+    * version (Version object)
+    """
 
     provider_description: typing.ClassVar[str] = (
         "PyPI resolver (searching at {self.sdist_server_url})"
@@ -608,6 +619,7 @@ class PyPIProvider(BaseProvider):
         ignore_platform: bool = False,
         *,
         use_resolver_cache: bool = True,
+        override_download_url: str | None = None,
     ):
         super().__init__(
             constraints=constraints,
@@ -618,21 +630,25 @@ class PyPIProvider(BaseProvider):
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
         self.ignore_platform = ignore_platform
+        self.override_download_url = override_download_url
 
     @property
     def cache_key(self) -> str:
         # ignore platform parameter changes behavior of find_candidates()
+        key = self.sdist_server_url
+        if self.override_download_url is not None:
+            key = f"{key}+{self.override_download_url}"
         if self.ignore_platform:
-            return f"{self.sdist_server_url}+ignore_platform"
-        else:
-            return self.sdist_server_url
+            key = f"{key}+ignore_platform"
+        return key
 
     def find_candidates(self, identifier: str) -> Candidates:
         return get_project_from_pypi(
             identifier,
-            set(),
-            self.sdist_server_url,
-            self.ignore_platform,
+            extras=set(),
+            sdist_server_url=self.sdist_server_url,
+            ignore_platform=self.ignore_platform,
+            override_download_url=self.override_download_url,
         )
 
     def validate_candidate(
@@ -791,6 +807,12 @@ class GitHubTagProvider(GenericProvider):
     """Lookup tarball and version from GitHub git tags
 
     Assumes that upstream uses version tags `1.2.3` or `v1.2.3`.
+
+    The ``override_download_url`` parameter supports the string template variable:
+    * organization
+    * repo
+    * tagname
+    * version (Version object)
     """
 
     provider_description: typing.ClassVar[str] = (
@@ -808,6 +830,7 @@ class GitHubTagProvider(GenericProvider):
         *,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
+        override_download_url: str | None = None,
     ):
         super().__init__(
             constraints=constraints,
@@ -818,10 +841,14 @@ class GitHubTagProvider(GenericProvider):
         )
         self.organization = organization
         self.repo = repo
+        self.override_download_url = override_download_url
 
     @property
     def cache_key(self) -> str:
-        return f"{self.organization}/{self.repo}"
+        key = f"{self.organization}/{self.repo}"
+        if self.override_download_url is not None:
+            key = f"{key}+{self.override_download_url}"
+        return key
 
     @retry_on_exception(
         exceptions=RETRYABLE_EXCEPTIONS,
@@ -852,7 +879,16 @@ class GitHubTagProvider(GenericProvider):
                     logger.debug(f"{identifier}: match function ignores {tagname}")
                     continue
                 assert isinstance(version, Version)
-                url = entry["tarball_url"]
+
+                if self.override_download_url is None:
+                    url = entry["tarball_url"]
+                else:
+                    url = self.override_download_url.format(
+                        organization=self.organization,
+                        repo=self.repo,
+                        tagname=tagname,
+                        version=version,
+                    )
 
                 # Github tag API endpoint does not include commit date information.
                 # It would be too expensive to query every commit API endpoint.
@@ -870,7 +906,15 @@ class GitHubTagProvider(GenericProvider):
 
 
 class GitLabTagProvider(GenericProvider):
-    """Lookup tarball and version from GitLab git tags"""
+    """Lookup tarball and version from GitLab git tags
+
+    The ``override_download_url`` parameter supports the string template variable:
+    * hostname
+    * project_path
+    * project_name (last component of project_path)
+    * tagname
+    * version (Version object)
+    """
 
     provider_description: typing.ClassVar[str] = (
         "GitLab tag resolver (project: {self.server_url}/{self.project_path})"
@@ -885,6 +929,7 @@ class GitLabTagProvider(GenericProvider):
         *,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
+        override_download_url: str | None = None,
     ) -> None:
         super().__init__(
             constraints=constraints,
@@ -894,6 +939,9 @@ class GitLabTagProvider(GenericProvider):
             matcher=matcher,
         )
         self.server_url = server_url.rstrip("/")
+        self.server_hostname = urlparse(server_url).hostname
+        if not self.server_hostname:
+            raise ValueError(f"invalid {server_url=}")
         self.project_path = project_path.lstrip("/")
         # URL-encode the project path as required by GitLab API.
         # The safe="" parameter tells quote() to encode ALL characters,
@@ -904,10 +952,14 @@ class GitLabTagProvider(GenericProvider):
         self.api_url = (
             f"{self.server_url}/api/v4/projects/{encoded_path}/repository/tags"
         )
+        self.override_download_url = override_download_url
 
     @property
     def cache_key(self) -> str:
-        return f"{self.server_url}/{self.project_path}"
+        key = f"{self.server_url}/{self.project_path}"
+        if self.override_download_url is not None:
+            key = f"{key}+{self.override_download_url}"
+        return key
 
     @retry_on_exception(
         exceptions=RETRYABLE_EXCEPTIONS,
@@ -921,6 +973,14 @@ class GitLabTagProvider(GenericProvider):
     ) -> Iterable[Candidate]:
         nexturl: str = self.api_url
         created_at: datetime.datetime | None
+        project_name = self.project_path.split("/")[-1]
+        if self.override_download_url is None:
+            download_template = (
+                self.server_url
+                + "/{project_path}/-/archive/{tagname}/{project_name}-{tagname}.tar.gz"
+            )
+        else:
+            download_template = self.override_download_url
         while nexturl:
             resp: Response = session.get(nexturl)
             resp.raise_for_status()
@@ -932,8 +992,13 @@ class GitLabTagProvider(GenericProvider):
                     continue
                 assert isinstance(version, Version)
 
-                archive_path: str = f"{self.project_path}/-/archive/{tagname}/{self.project_path.split('/')[-1]}-{tagname}.tar.gz"
-                url = urljoin(self.server_url, archive_path)
+                url = download_template.format(
+                    hostname=self.server_hostname,
+                    project_path=self.project_path,
+                    project_name=project_name,
+                    tagname=tagname,
+                    version=version,
+                )
 
                 # get tag creation time, fall back to commit creation time
                 created_at_str: str | None = entry.get("created_at")
