@@ -76,6 +76,7 @@ Contributing to fromager.
    :maxdepth: 2
 
    develop.md
+   proposals/index.rst
 
 What's with the name?
 ---------------------
