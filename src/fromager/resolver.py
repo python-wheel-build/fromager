@@ -76,7 +76,7 @@ def match_py_req(py_req: str, *, python_version: Version = PYTHON_VERSION) -> bo
     return python_version in SpecifierSet(py_req)
 
 
-def resolve(
+def resolve_all(
     *,
     ctx: context.WorkContext,
     req: Requirement,
@@ -85,7 +85,11 @@ def resolve(
     include_wheels: bool = True,
     req_type: RequirementType | None = None,
     ignore_platform: bool = False,
-) -> tuple[str, Version]:
+) -> list[tuple[str, Version]]:
+    """Resolve requirement and return all matching versions.
+
+    Returns list of (url, version) tuples sorted by version (highest first).
+    """
     # Create the (reusable) resolver.
     provider = overrides.find_and_invoke(
         req.name,
@@ -100,6 +104,32 @@ def resolve(
         ignore_platform=ignore_platform,
     )
     return resolve_from_provider(provider, req)
+
+
+def resolve(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    include_sdists: bool = True,
+    include_wheels: bool = True,
+    req_type: RequirementType | None = None,
+    ignore_platform: bool = False,
+) -> tuple[str, Version]:
+    """Resolve requirement and return the best matching version.
+
+    Returns (url, version) tuple for the highest matching version.
+    """
+    results = resolve_all(
+        ctx=ctx,
+        req=req,
+        sdist_server_url=sdist_server_url,
+        include_sdists=include_sdists,
+        include_wheels=include_wheels,
+        req_type=req_type,
+        ignore_platform=ignore_platform,
+    )
+    return results[0]
 
 
 def default_resolver_provider(
@@ -165,26 +195,31 @@ class LogReporter(resolvelib.BaseReporter):
 
 def resolve_from_provider(
     provider: BaseProvider, req: Requirement
-) -> tuple[str, Version]:
-    reporter = LogReporter(req)
-    rslvr: resolvelib.Resolver = resolvelib.Resolver(provider, reporter)
+) -> list[tuple[str, Version]]:
+    """Resolve requirement and return all matching candidates.
+
+    Returns list of (url, version) tuples sorted by version (highest first).
+    """
+    # Get all matching candidates directly from provider
+    # instead of using resolvelib's resolver which picks just one
+    identifier = provider.identify(req)
     try:
-        result = rslvr.resolve([req])
+        candidates = provider.find_matches(
+            identifier=identifier,
+            requirements={identifier: [req]},
+            incompatibilities={},
+        )
     except resolvelib.resolvers.ResolverException as err:
         constraint = provider.constraints.get_constraint(req.name)
         provider_desc = provider.get_provider_description()
-        # Include the original error message to preserve detailed information
-        # (e.g., file types, pre-release info from PyPIProvider)
         original_msg = str(err)
         raise resolvelib.resolvers.ResolverException(
             f"Unable to resolve requirement specifier {req} with constraint {constraint} using {provider_desc}: {original_msg}"
         ) from err
-    # resolvelib actually just returns one candidate per requirement.
-    # result.mapping is map from an identifier to its resolved candidate
-    candidate: Candidate
-    for candidate in result.mapping.values():
-        return candidate.url, candidate.version
-    raise ValueError(f"Unable to resolve {req}")
+
+    # Convert candidates to list of (url, version) tuples
+    # Candidates are already sorted by version (highest first)
+    return [(candidate.url, candidate.version) for candidate in candidates]
 
 
 def get_project_from_pypi(
@@ -461,8 +496,8 @@ class BaseProvider(ExtrasProvider):
         incompatibilities: CandidatesMap,
         candidate: Candidate,
     ) -> bool:
-        identifier_reqs = list(requirements[identifier])
-        bad_versions = {c.version for c in incompatibilities[identifier]}
+        identifier_reqs = list(requirements.get(identifier, []))
+        bad_versions = {c.version for c in incompatibilities.get(identifier, [])}
         # Skip versions that are known bad
         if candidate.version in bad_versions:
             if DEBUG_RESOLVER:
@@ -566,8 +601,11 @@ class BaseProvider(ExtrasProvider):
 
         Subclasses should override this to provide provider-specific error details.
         """
-        r = next(iter(requirements[identifier]))
-        return f"found no match for {r} using {self.get_provider_description()}"
+        reqs = requirements.get(identifier, [])
+        if reqs:
+            r = next(iter(reqs))
+            return f"found no match for {r} using {self.get_provider_description()}"
+        return f"found no match for identifier {identifier} using {self.get_provider_description()}"
 
     def find_matches(
         self,
