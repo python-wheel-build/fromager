@@ -4,7 +4,7 @@ import pathlib
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import context, sources, build_environment
+from fromager import build_environment, context, sources
 
 logger = logging.getLogger(__name__)
 

@@ -2,8 +2,9 @@
 """Simple coverage setup for E2E tests."""
 
 import pathlib
-import sys
 import site
+import sys
+
 
 def setup_coverage() -> None:
     """Create coverage.pth file for subprocess coverage collection."""
