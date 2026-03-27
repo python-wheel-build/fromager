@@ -48,6 +48,7 @@ Customize builds with overrides, variants, and version handling.
    pyproject-overrides
    multiple-versions
    pre-release-versions
+   pypi-cooldown
 
 Analyzing Builds
 ----------------
