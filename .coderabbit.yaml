@@ -1,0 +1,135 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit Configuration for python-wheel-build/fromager
+
+language: "en-US"
+early_access: false
+inheritance: true
+
+tone_instructions: >-
+  Be direct and concise. Provide code suggestions when flagging issues.
+  Skip comments already handled by ruff, mypy, or pre-commit. Only comment
+  on specific bugs, security issues, or measurable improvements.
+
+reviews:
+  profile: chill
+
+  request_changes_workflow: false
+
+  high_level_summary: false
+  high_level_summary_in_walkthrough: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  changed_files_summary: false
+  suggested_labels: false
+  suggested_reviewers: false
+  related_issues: false
+  related_prs: false
+
+  commit_status: true
+  fail_commit_status: false
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+
+  pre_merge_checks:
+    description:
+      mode: warning
+    docstrings:
+      mode: off
+
+  tools:
+    # Disable tools that fromager already runs via hatch/pre-commit
+    ruff:
+      enabled: false
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    markdownlint:
+      enabled: false
+
+    # Not applicable (no JS/TS/Go in fromager)
+    biome:
+      enabled: false
+    eslint:
+      enabled: false
+    golangci-lint:
+      enabled: false
+
+    # Enable security scanning tools
+    gitleaks:
+      enabled: true
+    semgrep:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    actionlint:
+      enabled: true
+    checkov:
+      enabled: true
+
+  path_instructions:
+    - path: "**"
+      instructions: >-
+        Focus on major issues impacting performance, readability,
+        maintainability and security. Avoid nitpicks and verbosity.
+
+    - path: "tests/**"
+      instructions: >-
+        Verify test actually tests the intended behavior. Check for missing
+        edge cases. Flag overly brittle mocks. Skip all style comments —
+        ruff handles that.
+
+    - path: "e2e/**/*.sh"
+      instructions: >-
+        Check for proper cleanup and teardown (trap handlers). Look for race
+        conditions in server startup/shutdown. Ensure set -euo pipefail is
+        used. Verify variables are quoted to prevent word splitting.
+
+    - path: ".github/workflows/**"
+      instructions: >-
+        Check that actions are pinned by SHA, not tag (supply chain security).
+        No secret interpolation in run: blocks. Least-privilege permissions
+        per job.
+
+    - path: "**/*.md"
+      instructions: >-
+        Only comment on factual errors or broken links. Skip all formatting
+        and style suggestions.
+
+  path_filters:
+    - "!**/*.pyc"
+    - "!**/__pycache__/**"
+    - "!.venv/**"
+    - "!venv/**"
+    - "!htmlcov/**"
+    - "!.pytest_cache/**"
+    - "!.ruff_cache/**"
+    - "!*.egg-info/**"
+    - "!build/**"
+    - "!dist/**"
+    - "!.mypy_cache/**"
+    - "!*.log"
+    - "!*.tmp"
+
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    labels:
+      - "!work-in-progress"
+
+knowledge_base:
+  learnings:
+    scope: local
+  issues:
+    scope: local
