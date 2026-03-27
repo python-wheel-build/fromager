@@ -26,6 +26,12 @@ run_test "bootstrap_prerelease"
 run_test "bootstrap_cache"
 run_test "bootstrap_sdist_only"
 
+test_section "bootstrap test-mode tests"
+run_test "mode_resolution"
+run_test "mode_deps"
+run_test "mode_build"
+run_test "mode_fallback"
+
 test_section "bootstrap git URL tests"
 run_test "bootstrap_git_url"
 run_test "bootstrap_git_url_tag"
