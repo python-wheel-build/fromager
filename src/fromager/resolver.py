@@ -33,6 +33,7 @@ from resolvelib.resolvers import RequirementInformation
 from . import overrides
 from .candidate import Candidate
 from .constraints import Constraints
+from .context import Cooldown
 from .extras_provider import ExtrasProvider
 from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
@@ -48,6 +49,7 @@ logger = logging.getLogger(__name__)
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
 PYPI_SERVER_URL = "https://pypi.org/simple"
+
 GITHUB_URL = "https://github.com"
 
 # all supported tags
@@ -125,6 +127,7 @@ def default_resolver_provider(
         constraints=ctx.constraints,
         req_type=req_type,
         ignore_platform=ignore_platform,
+        cooldown=ctx.pypi_cooldown,
     )
 
 
@@ -470,6 +473,7 @@ class BaseProvider(ExtrasProvider):
                     f"{identifier}: skipping bad version {candidate.version} from {bad_versions}"
                 )
             return False
+
         for r in identifier_reqs:
             if self.is_satisfied_by(requirement=r, candidate=candidate):
                 return True
@@ -608,12 +612,17 @@ class PyPIProvider(BaseProvider):
         ignore_platform: bool = False,
         *,
         use_resolver_cache: bool = True,
+        cooldown: Cooldown | None = None,
     ):
         super().__init__(
             constraints=constraints,
             req_type=req_type,
             use_resolver_cache=use_resolver_cache,
         )
+        # In this initial implementation, cooldown only applies to sdist
+        # resolution. Wheel-only lookups (cache servers, pre_built packages)
+        # use a different trust model.
+        self.cooldown = cooldown if include_sdists else None
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
@@ -660,6 +669,29 @@ class PyPIProvider(BaseProvider):
                     f"{identifier}: skipping {candidate} because it is a wheel"
                 )
             return False
+        # Fail closed: if upload_time is missing we cannot verify the package
+        # is old enough, so we reject it rather than silently bypassing the policy.
+        if self.cooldown is not None:
+            if candidate.upload_time is None:
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        "%s: skipping %s — upload_time unknown, required for cooldown",
+                        identifier,
+                        candidate.version,
+                    )
+                return False
+            cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
+            if candidate.upload_time > cutoff:
+                if DEBUG_RESOLVER:
+                    age = self.cooldown.bootstrap_time - candidate.upload_time
+                    logger.debug(
+                        "%s: skipping %s uploaded %s ago (cooldown: %s)",
+                        identifier,
+                        candidate.version,
+                        age,
+                        self.cooldown.min_age,
+                    )
+                return False
         return True
 
     def _get_no_match_error_message(
@@ -682,6 +714,35 @@ class PyPIProvider(BaseProvider):
             file_type_info = "sdists"
         else:
             file_type_info = "wheels"
+
+        # If a cooldown is active, check whether it's responsible for the
+        # failure so we can give a more actionable error message.
+        if self.cooldown is not None:
+            cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
+            all_candidates = list(self._find_cached_candidates(identifier))
+            missing_time = [c for c in all_candidates if c.upload_time is None]
+            cooldown_blocked = [
+                c
+                for c in all_candidates
+                if c.upload_time is not None and c.upload_time > cutoff
+            ]
+            if missing_time and not cooldown_blocked:
+                return (
+                    f"found {len(missing_time)} candidate(s) for {r} but none have "
+                    f"upload timestamp metadata; cannot enforce the "
+                    f"{self.cooldown.min_age.days}-day cooldown"
+                )
+            if cooldown_blocked:
+                oldest_days = min(
+                    (self.cooldown.bootstrap_time - c.upload_time).days
+                    for c in cooldown_blocked
+                    if c.upload_time is not None
+                )
+                return (
+                    f"found {len(cooldown_blocked)} candidate(s) for {r} but all "
+                    f"are within the {self.cooldown.min_age.days}-day cooldown window "
+                    f"(oldest is {oldest_days} day(s) old)"
+                )
 
         return (
             f"found no match for {r} using {self.get_provider_description()}, "
