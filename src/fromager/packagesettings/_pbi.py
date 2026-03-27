@@ -70,6 +70,11 @@ class PackageBuildInfo:
         return self._variant
 
     @property
+    def purl(self) -> str | None:
+        """Package URL (purl) override for SBOM generation."""
+        return self._ps.purl
+
+    @property
     def annotations(self) -> Annotations:
         """Get Package and variant annotations
 

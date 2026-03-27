@@ -72,6 +72,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
     },
     "name": "test-pkg",
     "has_config": True,
+    "purl": None,
     "project_override": {
         "remove_build_requires": ["cmake"],
         "update_build_requires": ["setuptools>=68.0.0", "torch"],
@@ -132,6 +133,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "submodule_paths": [],
     },
     "has_config": True,
+    "purl": None,
     "project_override": {
         "remove_build_requires": [],
         "update_build_requires": [],
@@ -171,6 +173,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "submodule_paths": [],
     },
     "has_config": True,
+    "purl": None,
     "project_override": {
         "remove_build_requires": [],
         "update_build_requires": [],

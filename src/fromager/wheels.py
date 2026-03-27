@@ -30,6 +30,7 @@ from . import (
     packagesettings,
     requirements_file,
     resolver,
+    sbom,
     sources,
 )
 
@@ -42,6 +43,24 @@ FROMAGER_BUILD_SETTINGS = "fromager-build-settings"
 FROMAGER_ELF_PROVIDES = "fromager-elf-provides.txt"
 FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
 FROMAGER_BUILD_REQ_PREFIX = "fromager"
+
+
+def _log_existing_sboms(
+    req: Requirement,
+    dist_info_dir: pathlib.Path,
+) -> None:
+    """Log any existing SBOM files found in the wheel's .dist-info/sboms/ directory."""
+    sboms_dir = dist_info_dir / "sboms"
+    if not sboms_dir.is_dir():
+        return
+    sbom_files = sorted(sboms_dir.iterdir())
+    if sbom_files:
+        names = [f.name for f in sbom_files]
+        logger.info(
+            "%s: found existing SBOM files in wheel: %s",
+            req.name,
+            ", ".join(names),
+        )
 
 
 def _extra_metadata_elfdeps(
@@ -182,6 +201,8 @@ def add_extra_metadata_to_wheels(
         if not dist_info_dir.is_dir():
             raise ValueError(f"{wheel_file} does not contain {dist_info_dir.name}")
 
+        _log_existing_sboms(req, dist_info_dir)
+
         data_to_add = overrides.find_and_invoke(
             req.name,
             "add_extra_metadata_to_wheels",
@@ -230,6 +251,15 @@ def add_extra_metadata_to_wheels(
                 )
         else:
             logger.debug("%s is a purelib wheel", req.name)
+
+        sbom_settings = ctx.settings.sbom_settings
+        if sbom_settings is not None:
+            sbom_doc = sbom.generate_sbom(
+                ctx=ctx,
+                req=req,
+                version=version,
+            )
+            sbom.write_sbom(sbom=sbom_doc, dist_info_dir=dist_info_dir)
 
         build_tag_from_settings = pbi.build_tag(version)
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
