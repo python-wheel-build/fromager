@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime
 import logging
 import pathlib
 import sys
@@ -143,6 +144,15 @@ else:
     help="Build sdist and when with network isolation (unshare -cn)",
     show_default=True,
 )
+@click.option(
+    "--pypi-min-age",
+    type=click.IntRange(min=0),
+    default=0,
+    help=(
+        "Reject PyPI package versions published fewer than this many days ago "
+        "(0 disables the check). Also settable via FROMAGER_PYPI_MIN_AGE."
+    ),
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -163,6 +173,7 @@ def main(
     variant: str,
     jobs: int | None,
     network_isolation: bool,
+    pypi_min_age: int,
 ) -> None:
     # Save the debug flag so invoke_main() can use it.
     global _DEBUG
@@ -249,6 +260,11 @@ def main(
         network_isolation=network_isolation,
         max_jobs=jobs,
         settings_dir=settings_dir,
+        pypi_cooldown=(
+            context.Cooldown(min_age=datetime.timedelta(days=pypi_min_age))
+            if pypi_min_age > 0
+            else None
+        ),
     )
     wkctx.setup()
     ctx.obj = wkctx
