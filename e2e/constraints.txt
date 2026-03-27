@@ -1,9 +1,2 @@
 # This file is here in case we need to quickly add a constraint to
 # fix CI jobs.
-
-# setuptools-scm 10.0.2 added a build-system dependency on
-# vcs-versioning, which itself requires hatchling. This creates a
-# circular bootstrap dependency that causes e2e tests to fail because
-# hatchling's wheel is not yet available on the local wheel server
-# when vcs-versioning tries to install it. See #982.
-setuptools-scm<10
