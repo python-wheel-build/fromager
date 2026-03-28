@@ -10,6 +10,26 @@ TESTDATA_PATH = pathlib.Path(__file__).parent.absolute() / "testdata"
 E2E_PATH = pathlib.Path(__file__).parent.parent.absolute() / "e2e"
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--with-network",
+        action="store_true",
+        default=False,
+        help="run tests that require network access",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    if config.getoption("--with-network"):
+        return
+    skip_network = pytest.mark.skip(reason="need --with-network option to run")
+    for item in items:
+        if "network" in item.keywords:
+            item.add_marker(skip_network)
+
+
 @pytest.fixture
 def testdata_path() -> typing.Generator[pathlib.Path, None, None]:
     yield TESTDATA_PATH
