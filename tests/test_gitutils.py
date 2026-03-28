@@ -1,9 +1,29 @@
 import pathlib
+import shutil
+import subprocess
+import sys
 from unittest.mock import Mock, patch
 
 import pytest
+from packaging.version import Version
 
 from fromager.gitutils import git_clone_fast
+
+needs_git_command = pytest.mark.skipif(
+    shutil.which("git") is None, reason="requires 'git' command"
+)
+
+
+def setuptools_scm_version(root_dir: pathlib.Path) -> Version:
+    out = subprocess.check_output(
+        [sys.executable, "-m", "setuptools_scm"],
+        text=True,
+        stderr=subprocess.STDOUT,
+        cwd=str(root_dir),
+    )
+    # last line contains the version
+    lastline = out.strip().splitlines()[-1]
+    return Version(lastline)
 
 
 @patch("fromager.external_commands.run")
@@ -56,8 +76,12 @@ def test_git_clone_fast_submodules(m_run: Mock, tmp_path: pathlib.Path) -> None:
     )
 
 
-@pytest.mark.skip(reason="needs network access")
+@pytest.mark.network
+@needs_git_command
 def test_git_clone_real(tmp_path: pathlib.Path) -> None:
     repo_url = "https://github.com/python-wheel-build/fromager.git"
     git_clone_fast(output_dir=tmp_path, repo_url=repo_url, ref="refs/tags/0.73.0")
     assert tmp_path.joinpath("src", "fromager").is_dir()
+
+    # detect version from .git
+    assert setuptools_scm_version(tmp_path) == Version("0.73.0")
