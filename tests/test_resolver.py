@@ -372,6 +372,26 @@ def test_provider_constraint_match() -> None:
         assert str(candidate.version) == "1.2.2"
 
 
+def test_pypi_provider_override_download_url() -> None:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(
+            override_download_url="https://server.test/hydr_core-{version}.tar.gz"
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("hydra-core")])
+        assert "hydra-core" in result.mapping
+
+        candidate = result.mapping["hydra-core"]
+        assert candidate.url == "https://server.test/hydr_core-1.3.2.tar.gz"
+
+
 _ignore_platform_simple_response = """
 <!DOCTYPE html>
 <html>
@@ -717,6 +737,33 @@ def test_resolve_github() -> None:
         )
 
 
+def test_resolve_github_override_download_url() -> None:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            text=_github_fromager_repo_response,
+        )
+        r.get(
+            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            text=_github_fromager_tag_response,
+        )
+
+        provider = resolver.GitHubTagProvider(
+            organization="python-wheel-build",
+            repo="fromager",
+            override_download_url="git+https://github.com/{organization}/{repo}.git@{tagname}",
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("fromager")])
+        candidate = result.mapping["fromager"]
+        assert (
+            str(candidate.url)
+            == "git+https://github.com/python-wheel-build/fromager.git@0.9.0"
+        )
+
+
 def test_github_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
     constraint.add_constraint("fromager>=1.0")
@@ -1002,6 +1049,29 @@ def test_resolve_gitlab() -> None:
         assert candidate.remote_commit == "72ae33a1ead9761e7240c2e095873047339ada7c"
         assert candidate.upload_time == datetime.datetime(
             2025, 5, 14, 15, 43, 0, tzinfo=datetime.UTC
+        )
+
+
+def test_resolve_gitlab_override_download_url() -> None:
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
+            text=_gitlab_submodlib_repo_response,
+        )
+
+        provider = resolver.GitLabTagProvider(
+            project_path="mirrors/github/decile-team/submodlib",
+            server_url="https://gitlab.com",
+            matcher=re.compile("v(.*)"),  # with match object
+            override_download_url="git+https://{hostname}/{project_path}.git@{tagname}",
+        )
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+        result = rslvr.resolve([Requirement("submodlib")])
+        candidate = result.mapping["submodlib"]
+        assert (
+            str(candidate.url)
+            == "git+https://gitlab.com/mirrors/github/decile-team/submodlib.git@v0.0.3"
         )
 
 
