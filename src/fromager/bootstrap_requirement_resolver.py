@@ -12,7 +12,7 @@ import typing
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from . import overrides, resolver
+from . import resolver, sources, wheels
 from .dependency_graph import DependencyGraph
 from .requirements_file import RequirementType
 
@@ -147,61 +147,28 @@ class BootstrapRequirementResolver:
             return cached_resolution
 
         # Fallback to PyPI using provider pattern
-        pbi = self.ctx.package_build_info(req)
-
         if pre_built:
             # Resolve prebuilt wheel
-            # Get wheel server URLs
-            wheel_server_urls: list[str] = []
-            if pbi.wheel_server_url:
-                wheel_server_urls.append(pbi.wheel_server_url)
-            else:
-                if self.ctx.wheel_server_url:
-                    wheel_server_urls.append(self.ctx.wheel_server_url)
-                wheel_server_urls.append(resolver.PYPI_SERVER_URL)
-
-            # Try each wheel server until one succeeds
-            for url in wheel_server_urls:
-                try:
-                    provider = overrides.find_and_invoke(
-                        req.name,
-                        "get_resolver_provider",
-                        resolver.default_resolver_provider,
-                        ctx=self.ctx,
-                        req=req,
-                        include_sdists=False,
-                        include_wheels=True,
-                        sdist_server_url=url,
-                        req_type=req_type,
-                        ignore_platform=False,
-                    )
-                    results = resolver.resolve_from_provider(provider, req)
-                    if results:
-                        return results
-                except Exception:
-                    continue
-            # If we get here, no wheel server succeeded
-            raise ValueError(
-                f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}"
+            # Get wheel server URLs (use PyPI as cache/fallback server)
+            wheel_server_urls = wheels.get_wheel_server_urls(
+                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
+            )
+            # Use shared retry loop logic from wheels module
+            return wheels.resolve_all_prebuilt_wheels(
+                ctx=self.ctx,
+                req=req,
+                wheel_server_urls=wheel_server_urls,
+                req_type=req_type,
             )
         else:
             # Resolve source (sdist)
-            override_sdist_server_url = pbi.resolver_sdist_server_url(
-                resolver.PYPI_SERVER_URL
-            )
-            provider = overrides.find_and_invoke(
-                req.name,
-                "get_resolver_provider",
-                resolver.default_resolver_provider,
+            provider = sources.get_source_provider(
                 ctx=self.ctx,
                 req=req,
-                include_sdists=pbi.resolver_include_sdists,
-                include_wheels=pbi.resolver_include_wheels,
-                sdist_server_url=override_sdist_server_url,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
                 req_type=req_type,
-                ignore_platform=pbi.resolver_ignore_platform,
             )
-            return resolver.resolve_from_provider(provider, req)
+            return resolver.find_all_matching_from_provider(provider, req)
 
     def get_cached_resolution(
         self,
@@ -369,8 +336,8 @@ class BootstrapRequirementResolver:
                 constraints=self.ctx.constraints,
                 use_resolver_cache=False,
             )
-            # resolve_from_provider now returns all matching candidates
-            return resolver.resolve_from_provider(provider, req)
+            # find_all_matching_from_provider now returns all matching candidates
+            return resolver.find_all_matching_from_provider(provider, req)
         except Exception as err:
             logger.debug(f"could not resolve {req} from {version_source}: {err}")
             return None

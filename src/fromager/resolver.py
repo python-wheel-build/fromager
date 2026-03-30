@@ -103,7 +103,7 @@ def resolve(
         req_type=req_type,
         ignore_platform=ignore_platform,
     )
-    results = resolve_from_provider(provider, req)
+    results = find_all_matching_from_provider(provider, req)
     return results[0]
 
 
@@ -168,21 +168,37 @@ class LogReporter(resolvelib.BaseReporter):
         self._report("successfully resolved %r", self.req)
 
 
-def resolve_from_provider(
+def find_all_matching_from_provider(
     provider: BaseProvider, req: Requirement
 ) -> list[tuple[str, Version]]:
-    """Resolve requirement and return all matching candidates.
+    """Find all matching candidates from provider without full dependency resolution.
+
+    This function collects ALL candidates that match the requirement, rather than
+    performing full dependency resolution to find a single best candidate.
 
     Returns list of (url, version) tuples sorted by version (highest first).
+
+    IMPORTANT: This bypasses resolvelib's full resolver to collect all matching
+    candidates. This is safe ONLY because BaseProvider.get_dependencies() returns
+    an empty list (no transitive dependencies to resolve). The empty incompatibilities
+    dict means no version is ever excluded based on conflicts.
+
+    If get_dependencies() is ever extended to return actual dependencies, this
+    function must be revisited to use resolvelib's full resolution algorithm
+    (Resolver.resolve()) to properly handle dependency conflicts and backtracking.
     """
     # Get all matching candidates directly from provider
     # instead of using resolvelib's resolver which picks just one
     identifier = provider.identify(req)
     try:
+        # Bypass resolvelib's resolver to collect all matching candidates rather than
+        # just the single best one. This is safe because get_dependencies() returns []
+        # (no transitive deps to resolve). If get_dependencies() is ever extended,
+        # this must be revisited to use resolvelib's full resolution.
         candidates = provider.find_matches(
             identifier=identifier,
             requirements={identifier: [req]},
-            incompatibilities={},
+            incompatibilities={},  # Empty - safe only because no transitive deps
         )
     except resolvelib.resolvers.ResolverException as err:
         constraint = provider.constraints.get_constraint(req.name)
@@ -193,7 +209,8 @@ def resolve_from_provider(
         ) from err
 
     # Convert candidates to list of (url, version) tuples
-    # Candidates are already sorted by version (highest first)
+    # Candidates are sorted by version (highest first) by BaseProvider.find_matches()
+    # which calls sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
     return [(candidate.url, candidate.version) for candidate in candidates]
 
 

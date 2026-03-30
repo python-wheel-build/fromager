@@ -1213,7 +1213,9 @@ def test_custom_resolver_error_message_missing_tag() -> None:
         provider = resolver.GitHubTagProvider(organization="test-org", repo="test-repo")
 
         with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
-            resolver.resolve_from_provider(provider, Requirement("test-package==1.0.0"))
+            resolver.find_all_matching_from_provider(
+                provider, Requirement("test-package==1.0.0")
+            )
 
         error_message = str(exc_info.value)
         assert (
@@ -1249,7 +1251,9 @@ def test_custom_resolver_error_message_via_resolve() -> None:
         provider = custom_resolver_provider()
 
         with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
-            resolver.resolve_from_provider(provider, Requirement("test-package==1.0.0"))
+            resolver.find_all_matching_from_provider(
+                provider, Requirement("test-package==1.0.0")
+            )
 
         error_message = str(exc_info.value)
         # After fix for issue #858, the error message should indicate that a GitHub resolver was used

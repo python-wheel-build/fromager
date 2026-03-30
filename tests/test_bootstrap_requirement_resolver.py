@@ -448,7 +448,7 @@ def test_resolve_rejects_git_urls_for_source(tmp_context: WorkContext) -> None:
         )
 
 
-@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_allows_git_urls_for_prebuilt(
     mock_resolve: MagicMock,
     tmp_context: WorkContext,
@@ -476,7 +476,7 @@ def test_resolve_allows_git_urls_for_prebuilt(
     assert version == Version("1.0")
 
 
-@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_auto_routes_to_prebuilt(
     mock_resolve: MagicMock,
     tmp_context: WorkContext,
@@ -514,7 +514,7 @@ def test_resolve_auto_routes_to_prebuilt(
         assert version == Version("1.0")
 
 
-@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_auto_routes_to_source(
     mock_resolve: MagicMock,
     tmp_context: WorkContext,
@@ -554,7 +554,7 @@ def test_resolve_auto_routes_to_source(
         assert version == Version("2.0")
 
 
-@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_prebuilt_after_source_uses_separate_cache(
     mock_resolve: MagicMock,
     tmp_context: WorkContext,

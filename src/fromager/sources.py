@@ -49,7 +49,6 @@ def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
     pbi = ctx.package_build_info(req)
     if (
         overrides.find_override_method(req.name, "download_source")
-        or overrides.find_override_method(req.name, "resolve_source")
         or overrides.find_override_method(req.name, "get_resolver_provider")
         or pbi.download_source_url(resolve_template=False)
     ):
@@ -124,6 +123,38 @@ def download_source(
     return source_path
 
 
+def get_source_provider(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_server_url: str,
+    req_type: RequirementType | None = None,
+) -> resolver.BaseProvider:
+    """Create a provider for resolving source distributions.
+
+    Returns a provider configured according to the package's resolver settings
+    (sdist/wheel inclusion, platform matching, server URL override).
+    """
+    pbi = ctx.package_build_info(req)
+    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+
+    return typing.cast(
+        resolver.BaseProvider,
+        overrides.find_and_invoke(
+            req.name,
+            "get_resolver_provider",
+            resolver.default_resolver_provider,
+            ctx=ctx,
+            req=req,
+            include_sdists=pbi.resolver_include_sdists,
+            include_wheels=pbi.resolver_include_wheels,
+            sdist_server_url=override_sdist_server_url,
+            req_type=req_type,
+            ignore_platform=pbi.resolver_ignore_platform,
+        ),
+    )
+
+
 @metrics.timeit(description="resolve source")
 def resolve_source(
     *,
@@ -143,24 +174,12 @@ def resolve_source(
 
     try:
         # Get provider via plugin hook or use default
-        pbi = ctx.package_build_info(req)
-        override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
-
-        provider = overrides.find_and_invoke(
-            req.name,
-            "get_resolver_provider",
-            resolver.default_resolver_provider,
-            ctx=ctx,
-            req=req,
-            include_sdists=pbi.resolver_include_sdists,
-            include_wheels=pbi.resolver_include_wheels,
-            sdist_server_url=override_sdist_server_url,
-            req_type=req_type,
-            ignore_platform=pbi.resolver_ignore_platform,
+        provider = get_source_provider(
+            ctx=ctx, req=req, sdist_server_url=sdist_server_url, req_type=req_type
         )
 
         # Get all matching candidates from provider
-        results = resolver.resolve_from_provider(provider, req)
+        results = resolver.find_all_matching_from_provider(provider, req)
 
         # Return highest version (first in sorted list)
         url, version = results[0]

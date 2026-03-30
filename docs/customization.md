@@ -90,7 +90,7 @@ source url can be provided directly in settings.yaml. Optionally the
 downloaded sdist can be renamed. Both the url and the destination filename
 support templating. The only supported template variable are:
 
-- `version` - it is replaced by the version returned by the `resolve_source`
+- `version` - it is replaced by the resolved version of the package
 - `canonicalized_name` - it is replaced by the canonicalized name of the
   package specified in the requirement, specifically it applies `canonicalize_name(req.nam)`
 

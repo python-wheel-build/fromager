@@ -23,14 +23,14 @@ def test_invalid_tarfile(mock_download_url: typing.Any, tmp_path: pathlib.Path) 
         sources._download_source_check(req=req, destination_dir=fake_dir, url=fake_url)
 
 
-@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.find_all_matching_from_provider")
 @patch("fromager.sources._download_source_check")
 def test_resolve_source_from_settings(
     download_source_check: Mock,
-    resolve_from_provider: Mock,
+    find_all_matching_from_provider: Mock,
     testdata_context: context.WorkContext,
 ) -> None:
-    resolve_from_provider.return_value = [("url", Version("42.1.2"))]
+    find_all_matching_from_provider.return_value = [("url", Version("42.1.2"))]
     download_source_check.return_value = pathlib.Path("filename.zip")
     req = Requirement("test_pkg==42.1.2")
     sdist_server_url = "https://sdist.test/egg"
@@ -59,7 +59,7 @@ def test_resolve_source_from_settings(
     )
 
 
-@patch("fromager.resolver.resolve_from_provider")
+@patch("fromager.resolver.find_all_matching_from_provider")
 @patch("fromager.sources._download_source_check")
 @patch.multiple(
     packagesettings.PackageBuildInfo,
@@ -69,10 +69,10 @@ def test_resolve_source_from_settings(
 )
 def test_resolve_source_with_predefined_resolve_dist(
     download_source_check: Mock,
-    resolve_from_provider: Mock,
+    find_all_matching_from_provider: Mock,
     tmp_context: context.WorkContext,
 ) -> None:
-    resolve_from_provider.return_value = [("url", Version("1.0"))]
+    find_all_matching_from_provider.return_value = [("url", Version("1.0"))]
     download_source_check.return_value = pathlib.Path("filename")
     req = Requirement("foo==1.0")
 

@@ -191,27 +191,13 @@ Source hooks
 
 .. currentmodule:: fromager.sources
 
-.. autofromagerhook:: default_resolve_source
-
-    The ``resolve_source()`` function is responsible for resolving a
-    requirement and acquiring the source for that version of a
-    package. The default is to use pypi.org to resolve the requirement.
-
-    The arguments are the ``WorkContext``, the ``Requirement`` being
-    evaluated, and the URL to the sdist index.
-
-    The return value is ``Tuple[str, Version]`` where the first member is
-    the url from which the source can be downloaded and the second member
-    is the version of the resolved package.
-
 .. autofromagerhook:: default_download_source
 
     The ``download_source()`` function is responsible for downloading the
     source from a URL.
 
     The arguments are the ``WorkContext``, the ``Requirement`` being
-    evaluated, version of the package being downloaded, the URL
-    from which the source can be downloaded as returned by ``resolve_source``,
+    evaluated, version of the package being downloaded, the download URL,
     and the output directory in which the source should be downloaded.
 
     The return value should be a ``pathlib.Path`` file path to the downloaded source.

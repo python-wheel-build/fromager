@@ -77,7 +77,6 @@ def list_overrides(
                 "prebuilt_wheel",
                 # from overrides.py, found by searching for find_override_method
                 "download_source",
-                "resolve_source",
                 "get_resolver_provider",
                 "prepare_source",
                 "build_sdist",
