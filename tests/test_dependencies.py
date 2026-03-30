@@ -179,6 +179,42 @@ def test_get_build_system_dependencies_cached(
     assert results == set([Requirement("foo==1.0")])
 
 
+def test_get_build_system_dependencies_no_discovery_raises(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Verify no_discovery raises when cache file is missing."""
+    tmp_context.no_discovery = True
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    with pytest.raises(dependencies.DiscoveryHookRequiredError, match="--no-discovery"):
+        dependencies.get_build_system_dependencies(
+            ctx=tmp_context,
+            req=Requirement("fromager"),
+            version=Version("1.0.0"),
+            sdist_root_dir=sdist_root_dir,
+        )
+
+
+def test_get_build_system_dependencies_no_discovery_uses_cache(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Verify no_discovery still works when cache file exists."""
+    tmp_context.no_discovery = True
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    req_file = tmp_path / "build-system-requirements.txt"
+    req_file.write_text("foo==1.0")
+    results = dependencies.get_build_system_dependencies(
+        ctx=tmp_context,
+        req=Requirement("fromager"),
+        version=Version("1.0.0"),
+        sdist_root_dir=sdist_root_dir,
+    )
+    assert results == set([Requirement("foo==1.0")])
+
+
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
 def test_get_build_backend_dependencies(
@@ -234,6 +270,53 @@ def test_get_build_backend_dependencies_cached(
         build_env=build_env,
     )
     assert results == set([Requirement("foo==1.0")])
+
+
+def test_get_build_backend_dependencies_no_discovery_uses_cache(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Verify no_discovery still works when cache file exists."""
+    tmp_context.no_discovery = True
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    req_file = tmp_path / "build-backend-requirements.txt"
+    req_file.write_text("foo==1.0")
+
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
+    results = dependencies.get_build_backend_dependencies(
+        ctx=tmp_context,
+        req=Requirement("fromager"),
+        version=Version("1.0.0"),
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
+    assert results == set([Requirement("foo==1.0")])
+
+
+def test_get_build_backend_dependencies_no_discovery_raises(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Verify no_discovery raises when cache file is missing."""
+    tmp_context.no_discovery = True
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
+    with pytest.raises(dependencies.DiscoveryHookRequiredError, match="--no-discovery"):
+        dependencies.get_build_backend_dependencies(
+            ctx=tmp_context,
+            req=Requirement("fromager"),
+            version=Version("1.0.0"),
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
 
 
 @patch("fromager.dependencies._write_requirements_file")
@@ -292,6 +375,53 @@ def test_get_build_sdist_dependencies_cached(
         build_env=build_env,
     )
     assert results == set([Requirement("foo==1.0")])
+
+
+def test_get_build_sdist_dependencies_no_discovery_uses_cache(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Verify no_discovery still works when cache file exists."""
+    tmp_context.no_discovery = True
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    req_file = tmp_path / "build-sdist-requirements.txt"
+    req_file.write_text("foo==1.0")
+
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
+    results = dependencies.get_build_sdist_dependencies(
+        ctx=tmp_context,
+        req=Requirement("fromager"),
+        version=Version("1.0.0"),
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
+    assert results == set([Requirement("foo==1.0")])
+
+
+def test_get_build_sdist_dependencies_no_discovery_raises(
+    tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Verify no_discovery raises when cache file is missing."""
+    tmp_context.no_discovery = True
+    sdist_root_dir = tmp_path / "sdist"
+    sdist_root_dir.mkdir()
+
+    build_env = build_environment.BuildEnvironment(
+        ctx=tmp_context,
+        parent_dir=tmp_path,
+    )
+    with pytest.raises(dependencies.DiscoveryHookRequiredError, match="--no-discovery"):
+        dependencies.get_build_sdist_dependencies(
+            ctx=tmp_context,
+            req=Requirement("fromager"),
+            version=Version("1.0.0"),
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
 
 
 @patch("fromager.dependencies.pep517_metadata_of_sdist")

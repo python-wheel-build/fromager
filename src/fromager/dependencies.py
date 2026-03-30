@@ -28,6 +28,18 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class DiscoveryHookRequiredError(Exception):
+    """Raised when a PEP 517 discovery hook would be needed but --no-discovery is set."""
+
+    def __init__(self, req: Requirement, cache_file: pathlib.Path) -> None:
+        super().__init__(
+            f"Cached dependency file {cache_file} not found for {req} "
+            f"and --no-discovery prevents running PEP 517 hooks. "
+            f"Run bootstrap first to populate the cache."
+        )
+
+
 BUILD_SYSTEM_REQ_FILE_NAME = "build-system-requirements.txt"
 BUILD_BACKEND_REQ_FILE_NAME = "build-backend-requirements.txt"
 BUILD_SDIST_REQ_FILE_NAME = "build-sdist-requirements.txt"
@@ -51,6 +63,9 @@ def get_build_system_dependencies(
     if build_system_req_file.exists():
         logger.info(f"loading build system dependencies from {build_system_req_file}")
         return _read_requirements_file(build_system_req_file)
+
+    if ctx.no_discovery:
+        raise DiscoveryHookRequiredError(req, build_system_req_file)
 
     logger.debug(
         f"file {build_system_req_file} does not exist, getting dependencies from hook"
@@ -119,6 +134,9 @@ def get_build_backend_dependencies(
     if build_backend_req_file.exists():
         logger.info(f"loading build backend dependencies from {build_backend_req_file}")
         return _read_requirements_file(build_backend_req_file)
+
+    if ctx.no_discovery:
+        raise DiscoveryHookRequiredError(req, build_backend_req_file)
 
     logger.debug(
         f"file {build_backend_req_file} does not exist, getting dependencies from hook"
@@ -191,6 +209,9 @@ def get_build_sdist_dependencies(
     if build_sdist_req_file.exists():
         logger.info(f"loading build sdist dependencies from {build_sdist_req_file}")
         return _read_requirements_file(build_sdist_req_file)
+
+    if ctx.no_discovery:
+        raise DiscoveryHookRequiredError(req, build_sdist_req_file)
 
     logger.debug(
         f"file {build_sdist_req_file} does not exist, getting dependencies from hook"

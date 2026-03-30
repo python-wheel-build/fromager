@@ -142,6 +142,12 @@ build._fromager_show_build_settings = True  # type: ignore
     "cache_wheel_server_url",
     help="url to a wheel server from where fromager can check if it had already built the wheel",
 )
+@click.option(
+    "--no-discovery",
+    is_flag=True,
+    default=False,
+    help="fail instead of running PEP 517 discovery hooks when cached dependency files are missing",
+)
 @click.argument("build_order_file")
 @click.pass_obj
 def build_sequence(
@@ -149,6 +155,7 @@ def build_sequence(
     build_order_file: str,
     force: bool,
     cache_wheel_server_url: str | None,
+    no_discovery: bool,
 ) -> None:
     """Build a sequence of wheels in order
 
@@ -160,6 +167,7 @@ def build_sequence(
     the build order file.
 
     """
+    wkctx.no_discovery = no_discovery
     server.start_wheel_server(wkctx)
 
     if force:
@@ -584,6 +592,12 @@ def _nodes_to_string(nodes: typing.Iterable[dependency_graph.DependencyNode]) ->
     default=None,
     help="maximum number of parallel workers to run (default: unlimited)",
 )
+@click.option(
+    "--no-discovery",
+    is_flag=True,
+    default=False,
+    help="fail instead of running PEP 517 discovery hooks when cached dependency files are missing",
+)
 @click.argument("graph_file")
 @click.pass_obj
 def build_parallel(
@@ -592,6 +606,7 @@ def build_parallel(
     force: bool,
     cache_wheel_server_url: str | None,
     max_workers: int | None,
+    no_discovery: bool,
 ) -> None:
     """Build wheels in parallel based on a dependency graph
 
@@ -603,6 +618,7 @@ def build_parallel(
     parallel. Use --max-workers to limit the number of concurrent builds.
 
     """
+    wkctx.no_discovery = no_discovery
     wkctx.enable_parallel_builds()
 
     server.start_wheel_server(wkctx)

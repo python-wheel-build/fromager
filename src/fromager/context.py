@@ -94,6 +94,7 @@ class WorkContext:
         self.time_description_store: dict[str, str] = {}
 
         self._parallel_builds = False
+        self.no_discovery: bool = False
 
     def enable_parallel_builds(self) -> None:
         self._parallel_builds = True
