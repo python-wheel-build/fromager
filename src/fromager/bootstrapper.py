@@ -19,12 +19,12 @@ from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import (
+    bootstrap_requirement_resolver,
     build_environment,
     dependencies,
     finders,
     hooks,
     progress,
-    requirement_resolver,
     resolver,
     server,
     sources,
@@ -103,8 +103,8 @@ class Bootstrapper:
         self.test_mode = test_mode
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
 
-        # Delegate resolution to RequirementResolver
-        self._resolver = requirement_resolver.RequirementResolver(
+        # Delegate resolution to BootstrapRequirementResolver
+        self._resolver = bootstrap_requirement_resolver.BootstrapRequirementResolver(
             ctx=ctx,
             prev_graph=prev_graph,
         )
@@ -180,7 +180,7 @@ class Bootstrapper:
 
         Git URL resolution stays in Bootstrapper because it requires
         build orchestration (BuildEnvironment, build dependencies).
-        Delegates PyPI/graph resolution to RequirementResolver.
+        Delegates PyPI/graph resolution to BootstrapRequirementResolver.
         """
         if req.url:
             if req_type != RequirementType.TOP_LEVEL:

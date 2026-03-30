@@ -22,10 +22,10 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RequirementResolver:
-    """Resolve package requirements from PyPI or dependency graph.
+class BootstrapRequirementResolver:
+    """Resolve package requirements from PyPI or dependency graph during bootstrap.
 
-    Single Responsibility: Coordinate resolution strategies.
+    Single Responsibility: Coordinate resolution strategies for bootstrap process.
     Reason to Change: Resolution algorithm or provider priorities change.
 
     Resolution strategies (in order):
