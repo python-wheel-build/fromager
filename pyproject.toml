@@ -76,6 +76,7 @@ test = [
     "hatchling",
     "hatch-vcs",
     "click!=8.3.0",
+    "setuptools-scm",
 ]
 docs = [
     "sphinx",
@@ -284,3 +285,8 @@ description = "Sphinx docs."
 features = ["docs"]
 [tool.hatch.envs.docs.scripts]
 build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
+
+[tool.pytest.ini_options]
+markers = [
+    "network: test that need network access",
+]
