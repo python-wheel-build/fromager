@@ -859,6 +859,8 @@ def scan_compiled_extensions(
     for directory, _, filenames in root_dir.walk():
         for filename in filenames:
             filepath = directory / filename
+            if not filepath.is_file():
+                continue
             suffix = filepath.suffix
             if suffix in extension_suffixes:
                 relpath = filepath.relative_to(root_dir)
