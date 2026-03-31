@@ -20,6 +20,8 @@ For example `flash_attn.yaml`.
 
 .. autopydantic_model:: fromager.packagesettings.ProjectOverride
 
+.. autopydantic_model:: fromager.packagesettings.PurlConfig
+
 .. autopydantic_model:: fromager.packagesettings.SbomSettings
 
 Global Settings

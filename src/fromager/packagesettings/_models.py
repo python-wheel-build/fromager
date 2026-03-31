@@ -10,6 +10,7 @@ from collections.abc import Mapping
 
 import pydantic
 import yaml
+from packageurl import PackageURL
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import Field
@@ -37,6 +38,8 @@ class SbomSettings(pydantic.BaseModel):
       sbom:
         supplier: "Organization: ExampleCo"
         namespace: "https://www.example.com"
+        purl_type: pypi
+        repository_url: "https://example.com/simple"
         creators:
           - "Organization: ExampleCo"
     """
@@ -54,6 +57,78 @@ class SbomSettings(pydantic.BaseModel):
 
     The fromager tool creator entry is always added automatically.
     """
+
+    purl_type: str = "pypi"
+    """Default purl type for all packages (e.g. ``pypi``, ``generic``)"""
+
+    repository_url: str | None = None
+    """Default purl ``repository_url`` qualifier for all packages
+
+    When set, this URL is added to every purl as a qualifier
+    (e.g. ``pkg:pypi/flask@2.0?repository_url=https://example.com/simple``).
+    Can be overridden per-package in the package settings file.
+    """
+
+
+class PurlConfig(pydantic.BaseModel):
+    """Per-package purl configuration for SBOM generation.
+
+    Allows overriding individual purl components or specifying an
+    upstream purl for packages sourced from GitHub/GitLab.
+
+    .. versionadded:: 0.81.0
+
+    ::
+
+      purl:
+        type: generic
+        name: custom-name
+        repository_url: "https://example.com/simple"
+        upstream: "pkg:github/org/repo@v1.0.0"
+    """
+
+    model_config = MODEL_CONFIG
+
+    type: str | None = None
+    """Override the purl type (e.g. ``generic`` instead of ``pypi``)"""
+
+    namespace: str | None = None
+    """Override the purl namespace component"""
+
+    name: str | None = None
+    """Override the purl name component (defaults to the package name)"""
+
+    version: str | None = None
+    """Override the purl version component (defaults to the resolved version)"""
+
+    repository_url: str | None = None
+    """Per-package override for the purl ``repository_url`` qualifier.
+
+    Overrides the global ``sbom.repository_url`` setting for this package.
+    """
+
+    upstream: str | None = None
+    """Full purl string identifying the upstream source package.
+
+    When set, this is used as the upstream identity in the SBOM's
+    GENERATED_FROM relationship. Used for packages sourced from
+    GitHub/GitLab rather than PyPI.
+
+    When absent, the upstream purl is auto-derived from the downstream
+    purl without the ``repository_url`` qualifier.
+    """
+
+    @pydantic.field_validator("upstream")
+    @classmethod
+    def validate_upstream_purl(cls, v: str | None) -> str | None:
+        """Validate that upstream is a valid purl string."""
+        if v is None:
+            return v
+        try:
+            PackageURL.from_string(v)
+        except ValueError as err:
+            raise ValueError(f"invalid upstream purl {v!r}") from err
+        return v
 
 
 class ResolverDist(pydantic.BaseModel):
@@ -351,12 +426,14 @@ class PackageSettings(pydantic.BaseModel):
     download_source: DownloadSource = Field(default_factory=DownloadSource)
     """Alternative source download settings"""
 
-    purl: str | None = None
-    """Package URL (purl) override for SBOM generation
+    purl: PurlConfig | None = None
+    """Purl configuration for SBOM generation.
 
-    When set, this value is used instead of the default ``pkg:pypi/<name>@<version>``
-    purl. Useful for packages that are not on PyPI or are midstream forks.
-    Supports ``{name}`` and ``{version}`` format substitution.
+    A ``PurlConfig`` object with individual field overrides and upstream
+    source identification.
+
+    .. versionchanged:: 0.81.0
+       The *purl* option now requires a valid PURL config object instead of a string.
     """
 
     resolver_dist: ResolverDist = Field(default_factory=ResolverDist)

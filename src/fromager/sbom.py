@@ -13,39 +13,76 @@ import pathlib
 import typing
 from datetime import UTC, datetime
 
+from packageurl import PackageURL
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 if typing.TYPE_CHECKING:
     from . import context
+    from .packagesettings import PackageBuildInfo, SbomSettings
 
 logger = logging.getLogger(__name__)
 
 SBOM_FILENAME = "fromager.spdx.json"
 
 
-def _build_purl(
+def _build_downstream_purl(
     *,
-    package_name: str,
-    package_version: Version,
-    purl_override: str | None,
-) -> str:
-    """Build a package URL for the SBOM.
+    name: NormalizedName,
+    version: Version,
+    pbi: PackageBuildInfo,
+    sbom_settings: SbomSettings,
+) -> PackageURL:
+    """Build the downstream package URL for the wheel.
 
-    Returns ``pkg:pypi/<name>@<version>`` by default. If a purl override
-    is set in per-package settings, it is used instead with
-    ``str.format()`` substitution for ``{name}`` and ``{version}``.
+    A purl is constructed from ``PurlConfig`` field overrides
+    (per-package) falling back to global defaults.
     """
-    if purl_override:
-        try:
-            return purl_override.format(name=package_name, version=package_version)
-        except (KeyError, ValueError) as err:
-            raise ValueError(
-                f"invalid purl template {purl_override!r}: "
-                "only {name} and {version} are supported"
-            ) from err
-    return f"pkg:pypi/{package_name}@{package_version}"
+    pc = pbi.purl_config
+    purl_type = (pc.type if pc else None) or sbom_settings.purl_type
+    qualifiers: dict[str, str] = {}
+    repo_url = (pc.repository_url if pc else None) or sbom_settings.repository_url
+    if repo_url:
+        qualifiers["repository_url"] = repo_url
+
+    return PackageURL(
+        type=purl_type,
+        namespace=pc.namespace if pc else None,
+        name=(pc.name if pc else None) or name,
+        version=(pc.version if pc else None) or str(version),
+        qualifiers=qualifiers or None,
+    )
+
+
+def _build_upstream_purl(
+    *,
+    name: NormalizedName,
+    version: Version,
+    pbi: PackageBuildInfo,
+    sbom_settings: SbomSettings,
+) -> PackageURL:
+    """Build the upstream source package URL.
+
+    If ``upstream`` is set in the per-package ``PurlConfig``, it is
+    used as-is.  Otherwise, the upstream purl is derived from the same
+    base as the downstream purl but without the ``repository_url``
+    qualifier.
+    """
+    pc = pbi.purl_config
+    if pc and pc.upstream:
+        return PackageURL.from_string(pc.upstream)
+
+    purl_type = pc.type if pc else None
+    purl_namespace = pc.namespace if pc else None
+    purl_name = pc.name if pc else None
+    purl_version = pc.version if pc else None
+    return PackageURL(
+        type=purl_type or sbom_settings.purl_type,
+        namespace=purl_namespace,
+        name=purl_name or name,
+        version=purl_version or str(version),
+    )
 
 
 def generate_sbom(
@@ -56,8 +93,9 @@ def generate_sbom(
 ) -> dict[str, typing.Any]:
     """Generate a minimal SPDX 2.3 JSON document for a wheel.
 
-    The document contains the wheel as the primary package and a
-    DESCRIBES relationship from the document to the package.
+    The document contains the downstream wheel as the primary package,
+    the upstream source as a second package, and DESCRIBES /
+    GENERATED_FROM relationships.
     """
     sbom_settings = ctx.settings.sbom_settings
     if sbom_settings is None:
@@ -73,26 +111,48 @@ def generate_sbom(
 
     namespace = f"{sbom_settings.namespace}/{name}-{version}.spdx.json"
 
-    package_entry: dict[str, typing.Any] = {
+    downstream = _build_downstream_purl(
+        name=name,
+        version=version,
+        pbi=pbi,
+        sbom_settings=sbom_settings,
+    )
+    upstream = _build_upstream_purl(
+        name=name,
+        version=version,
+        pbi=pbi,
+        sbom_settings=sbom_settings,
+    )
+
+    wheel_entry: dict[str, typing.Any] = {
         "SPDXID": "SPDXRef-wheel",
-        "name": name,
-        "versionInfo": str(version),
+        "name": downstream.name,
+        "versionInfo": downstream.version or str(version),
         "downloadLocation": "NOASSERTION",
         "supplier": sbom_settings.supplier,
+        "externalRefs": [
+            {
+                "referenceCategory": "PACKAGE-MANAGER",
+                "referenceType": "purl",
+                "referenceLocator": downstream.to_string(),
+            }
+        ],
     }
 
-    purl = _build_purl(
-        package_name=name,
-        package_version=version,
-        purl_override=pbi.purl,
-    )
-    package_entry["externalRefs"] = [
-        {
-            "referenceCategory": "PACKAGE-MANAGER",
-            "referenceType": "purl",
-            "referenceLocator": purl,
-        }
-    ]
+    upstream_entry: dict[str, typing.Any] = {
+        "SPDXID": "SPDXRef-upstream",
+        "name": upstream.name,
+        "versionInfo": upstream.version or str(version),
+        "downloadLocation": "NOASSERTION",
+        "supplier": "NOASSERTION",
+        "externalRefs": [
+            {
+                "referenceCategory": "PACKAGE-MANAGER",
+                "referenceType": "purl",
+                "referenceLocator": upstream.to_string(),
+            }
+        ],
+    }
 
     doc: dict[str, typing.Any] = {
         "spdxVersion": "SPDX-2.3",
@@ -104,12 +164,17 @@ def generate_sbom(
             "created": timestamp,
             "creators": creators,
         },
-        "packages": [package_entry],
+        "packages": [wheel_entry, upstream_entry],
         "relationships": [
             {
                 "spdxElementId": "SPDXRef-DOCUMENT",
                 "relationshipType": "DESCRIBES",
                 "relatedSpdxElement": "SPDXRef-wheel",
+            },
+            {
+                "spdxElementId": "SPDXRef-wheel",
+                "relationshipType": "GENERATED_FROM",
+                "relatedSpdxElement": "SPDXRef-upstream",
             },
         ],
     }
