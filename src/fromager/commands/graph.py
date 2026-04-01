@@ -1110,6 +1110,9 @@ def check(
     version is an unnecessary build.  Required means no single version
     works — write_constraints_file will fail for this package.
     """
+    if as_json and as_constraints:
+        raise click.UsageError("--json and --constraints are mutually exclusive")
+
     # Load raw dict for well-formedness (needs access to raw edges)
     with open(graph_file) as f:
         graph_dict = json.load(f)
@@ -1124,7 +1127,7 @@ def check(
     entries: list[dict[str, typing.Any]] = []
     n_nodes = len(graph_dict) - 1  # exclude root
     if not wf_issues:
-        graph = DependencyGraph.from_file(graph_file)
+        graph = DependencyGraph.from_dict(graph_dict)
         entries = _classify_conflicts(graph)
         n_nodes = len(graph) - 1  # exclude root
 
