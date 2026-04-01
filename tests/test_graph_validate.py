@@ -467,6 +467,18 @@ class TestCheckCLI:
         # No output — nothing collapsible to suggest
         assert result.output.strip() == ""
 
+    def test_json_and_constraints_mutually_exclusive(
+        self, cli_runner: CliRunner, tmp_path: pathlib.Path
+    ) -> None:
+        """Passing both --json and --constraints is an error."""
+        d = _make_graph_dict({"a==1.0": {"edges": []}})
+        graph_file = _write_graph(tmp_path, d)
+        result = cli_runner.invoke(
+            fromager, ["graph", "check", "--json", "--constraints", str(graph_file)]
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output
+
     def test_dangling_edge_fails(
         self, cli_runner: CliRunner, tmp_path: pathlib.Path
     ) -> None:
