@@ -36,8 +36,10 @@ pull_request_rules:
           - check-success=unit (3.14, 1.75, ubuntu-latest)
           - check-success=unit (3.14, 1.75, macos-latest)
 
-          # MyPy type checking
-          - check-success=mypy
+          # checks (see check.yaml)
+          - check-success=pre-commit
+          - check-success=pkglint
+          - check-success=readthedocs
 
           # E2E test suites (consolidated from individual tests)
           # Python 3.12 - Ubuntu only (macOS excluded)
