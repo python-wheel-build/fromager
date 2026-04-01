@@ -865,6 +865,10 @@ def scan_compiled_extensions(
                 logger.debug("file %s has a binary extension suffix", relpath)
                 issues.append(relpath)
             elif suffix not in ignore_suffixes:
+                # Path.walk() lists symlinks to directories as filenames
+                # rather than dirnames, causing IsADirectoryError on open().
+                if not filepath.is_file():
+                    continue
                 with filepath.open("rb") as f:
                     header = f.read(_MAGIC_HEADERS_READ)
                 if header.startswith(magic_headers):
