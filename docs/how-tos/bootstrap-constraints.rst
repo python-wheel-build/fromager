@@ -31,7 +31,7 @@ production packages.
 
 .. code-block:: console
 
-   $ fromager --constraints-file constraints.txt build-sequence ./work-dir/build-order.json
+   $ fromager --constraints-file constraints.txt build-sequence ./work-dir/graph.json ./work-dir/build-order.json
 
 This will use the constraints in the ``constraints.txt`` file to build the
 production packages for ``my-package``.

@@ -186,6 +186,10 @@ def bootstrap(
             progressbar.update()
             requirement_ctxvar.reset(token)
 
+        # Ensure graph.json is written even when no recursive dependencies
+        # were discovered (e.g., prebuilt-only bootstraps).
+        wkctx.write_to_graph_to_file()
+
         # Finalize test mode and check for failures
         exit_code = bt.finalize()
         if exit_code != 0:

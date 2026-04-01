@@ -142,22 +142,26 @@ build._fromager_show_build_settings = True  # type: ignore
     "cache_wheel_server_url",
     help="url to a wheel server from where fromager can check if it had already built the wheel",
 )
+@click.argument("graph_file")
 @click.argument("build_order_file")
 @click.pass_obj
 def build_sequence(
     wkctx: context.WorkContext,
+    graph_file: str,
     build_order_file: str,
     force: bool,
     cache_wheel_server_url: str | None,
 ) -> None:
     """Build a sequence of wheels in order
 
-    BUILD_ORDER_FILE is the build-order.json files to build
+    GRAPH_FILE is a graph.json file containing the dependency relationships
+    between packages, used to resolve build dependencies.
 
-    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
+    BUILD_ORDER_FILE is the build-order.json file specifying the build order.
 
     Performs the equivalent of the 'build' command for each item in
-    the build order file.
+    the build order file, using the dependency graph to populate
+    build environments instead of PEP 517 discovery hooks.
 
     """
     server.start_wheel_server(wkctx)
@@ -172,6 +176,9 @@ def build_sequence(
             "skipping builds for versions of packages available at "
             f"{wkctx.wheel_server_url=}, {cache_wheel_server_url=}"
         )
+
+    logger.info("reading dependency graph from %s", graph_file)
+    graph = dependency_graph.DependencyGraph.from_file(graph_file)
 
     entries: list[BuildSequenceEntry] = []
 
@@ -191,6 +198,10 @@ def build_sequence(
             else:
                 req = Requirement(f"{dist_name}=={resolved_version}")
 
+            build_requirements = _get_build_requirements_from_graph(
+                graph, dist_name, resolved_version
+            )
+
             with req_ctxvar_context(req, resolved_version):
                 logger.info("building %s", resolved_version)
                 entry = _build(
@@ -200,6 +211,7 @@ def build_sequence(
                     source_download_url=source_download_url,
                     force=force,
                     cache_wheel_server_url=cache_wheel_server_url,
+                    build_requirements=build_requirements,
                 )
                 if entry.prebuilt:
                     logger.info(
@@ -326,6 +338,7 @@ def _build(
     source_download_url: str,
     force: bool,
     cache_wheel_server_url: str | None,
+    build_requirements: typing.Iterable[dependency_graph.DependencyNode] | None = None,
 ) -> BuildSequenceEntry:
     """Handle one version of one wheel.
 
@@ -417,12 +430,20 @@ def _build(
         )
 
         # Build environment
-        build_env = build_environment.prepare_build_environment(
-            ctx=wkctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=source_root_dir,
-        )
+        if build_requirements is not None:
+            build_env = build_environment.prepare_build_environment_from_graph(
+                ctx=wkctx,
+                req=req,
+                sdist_root_dir=source_root_dir,
+                build_requirements=build_requirements,
+            )
+        else:
+            build_env = build_environment.prepare_build_environment(
+                ctx=wkctx,
+                req=req,
+                version=resolved_version,
+                sdist_root_dir=source_root_dir,
+            )
 
         # Make a new source distribution, in case we patched the code.
         sdist_filename = sources.build_sdist(
@@ -544,6 +565,7 @@ def _build_parallel(
     source_download_url: str,
     force: bool,
     cache_wheel_server_url: str | None,
+    build_requirements: typing.Iterable[dependency_graph.DependencyNode] | None = None,
 ) -> BuildSequenceEntry:
     """
     This function runs in a thread to manage the build of a single package.
@@ -556,7 +578,24 @@ def _build_parallel(
             source_download_url=source_download_url,
             force=force,
             cache_wheel_server_url=cache_wheel_server_url,
+            build_requirements=build_requirements,
         )
+
+
+def _get_build_requirements_from_graph(
+    graph: dependency_graph.DependencyGraph,
+    dist_name: str,
+    version: Version,
+) -> list[dependency_graph.DependencyNode]:
+    """Look up build requirements for a package from the dependency graph."""
+    node_key = f"{canonicalize_name(dist_name)}=={version}"
+    node = graph.nodes.get(node_key)
+    if node is None:
+        raise KeyError(
+            f"package {node_key} not found in dependency graph; "
+            f"ensure the graph file matches the build order"
+        )
+    return list(node.iter_build_requirements())
 
 
 def _nodes_to_string(nodes: typing.Iterable[dependency_graph.DependencyNode]) -> str:
@@ -681,6 +720,7 @@ def build_parallel(
                     source_download_url=node.download_url,
                     force=force,
                     cache_wheel_server_url=cache_wheel_server_url,
+                    build_requirements=list(node.iter_build_requirements()),
                 )
                 future.add_done_callback(update_progressbar_cb)
                 future2node[future] = node

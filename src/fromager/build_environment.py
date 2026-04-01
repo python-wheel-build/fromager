@@ -18,7 +18,7 @@ from . import dependencies, external_commands, metrics, resolver
 from .requirements_file import RequirementType
 
 if typing.TYPE_CHECKING:
-    from . import context
+    from . import context, dependency_graph
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +302,55 @@ def prepare_build_environment(
         deps=build_sdist_dependencies,
         dep_req_type=RequirementType.BUILD_SDIST,
     )
+
+    try:
+        distributions = build_env.get_distributions()
+    except Exception:
+        # ignore error for debug call, error reason is logged in get_distributions()
+        pass
+    else:
+        logger.debug("build env %r has packages %r", build_env.path, distributions)
+
+    return build_env
+
+
+@metrics.timeit(description="prepare build environment from graph")
+def prepare_build_environment_from_graph(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    build_requirements: typing.Iterable[dependency_graph.DependencyNode],
+) -> BuildEnvironment:
+    """Create a build environment populated from pre-resolved graph dependencies.
+
+    Uses build requirements extracted from the dependency graph instead of
+    running PEP 517 discovery hooks. This is the preferred path for Stage 2
+    build commands (build-sequence, build-parallel) where the graph is the
+    source of truth.
+    """
+    logger.info("preparing build environment from dependency graph")
+
+    build_env = BuildEnvironment(
+        ctx=ctx,
+        parent_dir=sdist_root_dir.parent,
+    )
+
+    reqs = {
+        Requirement(f"{node.canonicalized_name}=={node.version}")
+        for node in build_requirements
+    }
+    if reqs:
+        # Graph-resolved deps are a mix of build-system, build-backend,
+        # build-sdist, and their transitive install deps. We use
+        # BUILD_SYSTEM as the label since they all go into the build env.
+        _safe_install(
+            ctx=ctx,
+            req=req,
+            build_env=build_env,
+            deps=reqs,
+            dep_req_type=RequirementType.BUILD_SYSTEM,
+        )
 
     try:
         distributions = build_env.get_distributions()
