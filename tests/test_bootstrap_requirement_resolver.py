@@ -490,6 +490,7 @@ def test_resolve_auto_routes_to_prebuilt(
     mock_pbi = MagicMock()
     mock_pbi.pre_built = True
     mock_pbi.wheel_server_url = None
+    mock_pbi.resolver_min_release_age = None
 
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
         resolver = BootstrapRequirementResolver(tmp_context)
@@ -535,6 +536,7 @@ def test_resolve_auto_routes_to_source(
     mock_pbi.resolver_sdist_server_url = MagicMock(
         return_value="https://pypi.org/simple"
     )
+    mock_pbi.resolver_min_release_age = None
 
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
         resolver = BootstrapRequirementResolver(tmp_context)

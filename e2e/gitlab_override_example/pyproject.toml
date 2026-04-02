@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitlab-example-with-package-plugin"
+version = "0.1.0"
+description = "Example Fromager package plugin demonstrating GitLabTagProvider via get_resolver_provider"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.entry-points."fromager.project_overrides"]
+python_gitlab = "package_plugins.python_gitlab"

@@ -251,6 +251,16 @@ class PackageBuildInfo:
         return self._ps.resolver_dist.ignore_platform
 
     @property
+    def resolver_min_release_age(self) -> int | None:
+        """Per-package release-age cooldown override in days.
+
+        Returns None (inherit global), 0 (disabled), or a positive integer
+        (override days). The caller is responsible for converting to a
+        :class:`~fromager.context.Cooldown` instance.
+        """
+        return self._ps.resolver_dist.min_release_age
+
+    @property
     def use_pypi_org_metadata(self) -> bool:
         """Can use metadata from pypi.org JSON / Simple API?
 
