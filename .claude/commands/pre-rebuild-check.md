@@ -38,7 +38,7 @@ Present build efficiency first, then conflicts grouped by leverage.
 - Exact `==` pin → "upgrade `<parent>` (can't relax an exact pin)"
 - Quick workaround → "add `<package>==<pin>` to constraints.txt"
 
-**Required** → blocker. `write_constraints_file` will fail. The binding parent must change before rebuilding.
+**Required** → blocker. `write_constraints_file` will likely fail. The binding parent must change before rebuilding.
 
 ## Step 3: Offer artifacts and next steps
 
