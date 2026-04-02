@@ -33,6 +33,7 @@ from resolvelib.resolvers import RequirementInformation
 from . import overrides
 from .candidate import Candidate
 from .constraints import Constraints
+from .context import Cooldown
 from .extras_provider import ExtrasProvider
 from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
@@ -103,6 +104,14 @@ def resolve(
         req_type=req_type,
         ignore_platform=ignore_platform,
     )
+    # Apply cooldown settings to sdist resolution only. Wheel-only lookups
+    # (cache servers, pre_built packages) use a different trust model.
+    pbi = ctx.package_build_info(req)
+    provider.cooldown = (
+        resolve_package_cooldown(ctx.cooldown, pbi.resolver_min_release_age)
+        if include_sdists
+        else None
+    )
     results = find_all_matching_from_provider(provider, req)
     return results[0]
 
@@ -130,6 +139,37 @@ def default_resolver_provider(
         constraints=ctx.constraints,
         req_type=req_type,
         ignore_platform=ignore_platform,
+    )
+
+
+def resolve_package_cooldown(
+    global_cooldown: Cooldown | None,
+    per_package_days: int | None,
+) -> Cooldown | None:
+    """Compute the effective cooldown for a single package.
+
+    Args:
+        global_cooldown: The run-wide cooldown from ``--min-release-age``.
+        per_package_days: The ``resolver_dist.min_release_age`` setting for
+            this package (None = inherit, 0 = disabled, positive = override).
+
+    Returns:
+        The cooldown to pass to the provider, or ``None`` if disabled.
+    """
+    if per_package_days is None:
+        return global_cooldown
+    if per_package_days == 0:
+        return None
+    # Per-package positive override: inherit bootstrap_time from global so all
+    # resolutions in a single run share the same fixed cutoff point.
+    bootstrap_time = (
+        global_cooldown.bootstrap_time
+        if global_cooldown is not None
+        else datetime.datetime.now(datetime.UTC)
+    )
+    return Cooldown(
+        min_age=datetime.timedelta(days=per_package_days),
+        bootstrap_time=bootstrap_time,
     )
 
 
@@ -437,11 +477,26 @@ class BaseProvider(ExtrasProvider):
         constraints: Constraints | None = None,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
+        cooldown: Cooldown | None = None,
     ):
         super().__init__()
         self.constraints = constraints or Constraints()
         self.req_type = req_type
         self.use_cache_candidates = use_resolver_cache
+
+        # cooldown specific settings
+        self.cooldown = cooldown
+        self.cooldown_unsupported_previously_warned = False
+        """
+        Does this provider supply upload timestamps for candidates?
+
+        Defaults to False (safe/unknown). Subclasses that reliably populate
+        upload_time on every candidate should set this to True in their __init__.
+
+        When a cooldown is active and this is False, the cooldown check is
+        skipped with a warning rather than failing closed.
+        """
+        self.supports_upload_time: bool = False
 
     @property
     def cache_key(self) -> str:
@@ -552,6 +607,45 @@ class BaseProvider(ExtrasProvider):
                 )
             return False
 
+        # Release-age cooldown: reject candidates published too recently.
+        if self.cooldown is not None:
+            if candidate.upload_time is None:
+                if not self.supports_upload_time:
+                    # Provider does not yet support timestamp retrieval (e.g. GitHub).
+                    # Warn once per provider instance (i.e. per package) rather than
+                    # once per candidate.
+                    if not self.cooldown_unsupported_previously_warned:
+                        self.cooldown_unsupported_previously_warned = True
+                        logger.warning(
+                            "%s: release-age cooldown cannot be enforced — upload "
+                            "timestamp support is not yet implemented for %s; "
+                            "cooldown check skipped",
+                            requirement.name,
+                            self.get_provider_description(),
+                        )
+                    return True
+                # Provider should supply timestamps but this candidate is missing one.
+                # Fail closed: we cannot verify the age, so reject it.
+                if DEBUG_RESOLVER:
+                    logger.debug(
+                        "%s: skipping %s — upload_time unknown, required for cooldown",
+                        requirement.name,
+                        candidate.version,
+                    )
+                return False
+            cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
+            if candidate.upload_time > cutoff:
+                if DEBUG_RESOLVER:
+                    age = self.cooldown.bootstrap_time - candidate.upload_time
+                    logger.debug(
+                        "%s: skipping %s uploaded %s ago (cooldown: %s)",
+                        requirement.name,
+                        candidate.version,
+                        age,
+                        self.cooldown.min_age,
+                    )
+                return False
+
         return True
 
     def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
@@ -656,12 +750,24 @@ class PyPIProvider(BaseProvider):
         *,
         use_resolver_cache: bool = True,
         override_download_url: str | None = None,
+        cooldown: Cooldown | None = None,
+        supports_upload_time: bool = True,
     ):
         super().__init__(
             constraints=constraints,
             req_type=req_type,
             use_resolver_cache=use_resolver_cache,
+            cooldown=cooldown,
         )
+
+        # not all PyPI indexes reliably support
+        # https://peps.python.org/pep-0691/, which is necessary
+        # to reliably supply upload times for packages
+        #
+        # consumers of this provider which specify a custom sdist_server_url
+        # that only provides support for https://peps.python.org/pep-0503/
+        # Simple Repository API should specify support_upload_time=False
+        self.supports_upload_time = supports_upload_time
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
@@ -735,6 +841,36 @@ class PyPIProvider(BaseProvider):
         else:
             file_type_info = "wheels"
 
+        # If a cooldown is active, check whether it's responsible for the
+        # failure so we can give a more actionable error message.
+        if self.cooldown is not None:
+            cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
+            all_candidates = list(self._find_cached_candidates(identifier))
+            missing_time = [c for c in all_candidates if c.upload_time is None]
+            cooldown_blocked = [
+                c
+                for c in all_candidates
+                if c.upload_time is not None and c.upload_time > cutoff
+            ]
+            if missing_time and not cooldown_blocked:
+                return (
+                    f"found {len(missing_time)} candidate(s) for {r} but none have "
+                    f"upload timestamp metadata; {self.sdist_server_url!r} may not "
+                    f"support PEP 691 (JSON API), which is required to enforce the "
+                    f"{self.cooldown.min_age.days}-day release-age cooldown"
+                )
+            if cooldown_blocked:
+                oldest_days = min(
+                    (self.cooldown.bootstrap_time - c.upload_time).days
+                    for c in cooldown_blocked
+                    if c.upload_time is not None
+                )
+                return (
+                    f"found {len(cooldown_blocked)} candidate(s) for {r} but all "
+                    f"were published within the last {self.cooldown.min_age.days} days "
+                    f"(release-age cooldown; oldest is {oldest_days} day(s) old)"
+                )
+
         return (
             f"found no match for {r} using {self.get_provider_description()}, "
             f"searching for {file_type_info}, {prerelease_info} pre-release versions"
@@ -766,11 +902,13 @@ class GenericProvider(BaseProvider):
         *,
         # generic provider does not implement caching
         use_resolver_cache: bool = False,
+        cooldown: Cooldown | None = None,
     ):
         super().__init__(
             constraints=constraints,
             req_type=req_type,
             use_resolver_cache=use_resolver_cache,
+            cooldown=cooldown,
         )
         self._version_source = version_source
         if matcher is None:
@@ -874,6 +1012,7 @@ class GitHubTagProvider(GenericProvider):
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
         override_download_url: str | None = None,
+        cooldown: Cooldown | None = None,
     ):
         super().__init__(
             constraints=constraints,
@@ -881,6 +1020,7 @@ class GitHubTagProvider(GenericProvider):
             use_resolver_cache=use_resolver_cache,
             version_source=self._find_tags,
             matcher=matcher,
+            cooldown=cooldown,
         )
         self.organization = organization
         self.repo = repo
@@ -973,6 +1113,7 @@ class GitLabTagProvider(GenericProvider):
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
         override_download_url: str | None = None,
+        cooldown: Cooldown | None = None,
     ) -> None:
         super().__init__(
             constraints=constraints,
@@ -980,7 +1121,9 @@ class GitLabTagProvider(GenericProvider):
             use_resolver_cache=use_resolver_cache,
             version_source=self._find_tags,
             matcher=matcher,
+            cooldown=cooldown,
         )
+        self.supports_upload_time = True
         self.server_url = server_url.rstrip("/")
         self.server_hostname = urlparse(server_url).hostname
         if not self.server_hostname:

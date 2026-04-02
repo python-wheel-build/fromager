@@ -202,6 +202,8 @@ follow_imports = "silent"
 exclude = [
     "^e2e/.*/build/.*$",
     "^e2e/pyo3_test/.*$",
+    "^e2e/gitlab_override_example/.*$",
+    "^e2e/github_override_example/.*$",
 ]
 
 [[tool.mypy.overrides]]

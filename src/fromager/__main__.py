@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime
 import logging
 import pathlib
 import sys
@@ -143,6 +144,12 @@ else:
     help="Build sdist and when with network isolation (unshare -cn)",
     show_default=True,
 )
+@click.option(
+    "--min-release-age",
+    type=click.IntRange(min=0),
+    default=0,
+    help="Reject package versions published fewer than this many days ago (0 disables the check).",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -163,6 +170,7 @@ def main(
     variant: str,
     jobs: int | None,
     network_isolation: bool,
+    min_release_age: int,
 ) -> None:
     # Save the debug flag so invoke_main() can use it.
     global _DEBUG
@@ -249,6 +257,11 @@ def main(
         network_isolation=network_isolation,
         max_jobs=jobs,
         settings_dir=settings_dir,
+        cooldown=(
+            context.Cooldown(min_age=datetime.timedelta(days=min_release_age))
+            if min_release_age > 0
+            else None
+        ),
     )
     wkctx.setup()
     ctx.obj = wkctx

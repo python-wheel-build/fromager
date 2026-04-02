@@ -171,6 +171,16 @@ class ResolverDist(pydantic.BaseModel):
     .. versionadded:: 0.70
     """
 
+    min_release_age: int | None = pydantic.Field(default=None, ge=0)
+    """Per-package minimum release age override in days.
+
+    None (default): inherit the global ``--min-release-age`` setting.
+    0: disable the release-age cooldown for this package.
+    Positive integer: override the cooldown with this many days.
+
+    .. versionadded:: 0.81
+    """
+
     @pydantic.model_validator(mode="after")
     def validate_ignore_platform(self) -> typing.Self:
         if self.ignore_platform and not self.include_wheels:
