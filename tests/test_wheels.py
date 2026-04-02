@@ -4,10 +4,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 import wheel.wheelfile  # type: ignore
+from conftest import make_sbom_ctx
 from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import build_environment, context, sources, wheels
+from fromager.packagesettings import SbomSettings
 
 
 @patch("fromager.sources.download_url")
@@ -108,6 +110,100 @@ def test_add_extra_metadata_allows_legitimate_double_dots(
     # Verify the function completed without error
     assert result_wheel.exists()
     mock_run.assert_called_once()
+
+
+def test_log_existing_sboms_when_present(
+    tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify that existing SBOM files in .dist-info/sboms/ are logged."""
+    req = Requirement("test_pkg==1.0.0")
+    dist_info_dir = tmp_path / "test_pkg-1.0.0.dist-info"
+    dist_info_dir.mkdir()
+    sboms_dir = dist_info_dir / "sboms"
+    sboms_dir.mkdir()
+    (sboms_dir / "cyclonedx.json").write_text("{}")
+    (sboms_dir / "other.spdx.json").write_text("{}")
+
+    with caplog.at_level("INFO", logger="fromager.wheels"):
+        wheels._log_existing_sboms(req, dist_info_dir)
+
+    assert "found existing SBOM files in wheel" in caplog.text
+    assert "cyclonedx.json" in caplog.text
+    assert "other.spdx.json" in caplog.text
+
+
+def test_log_existing_sboms_when_absent(
+    tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify no log output when .dist-info/sboms/ does not exist."""
+    req = Requirement("test_pkg==1.0.0")
+    dist_info_dir = tmp_path / "test_pkg-1.0.0.dist-info"
+    dist_info_dir.mkdir()
+
+    with caplog.at_level("INFO", logger="fromager.wheels"):
+        wheels._log_existing_sboms(req, dist_info_dir)
+
+    assert "SBOM" not in caplog.text
+
+
+@patch("fromager.external_commands.run")
+def test_add_extra_metadata_generates_sbom_when_enabled(
+    mock_run: Mock, tmp_path: pathlib.Path
+) -> None:
+    """Verify SBOM is generated in .dist-info/sboms/ when sbom settings are configured."""
+    sbom_ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    sbom_ctx.setup()
+    req = Requirement("test_pkg==1.0.0")
+    version = Version("1.0.0")
+
+    wheel_dir = tmp_path / "wheel_build"
+    wheel_dir.mkdir()
+    wheel_file = wheel_dir / "test_pkg-1.0.0-py3-none-any.whl"
+
+    with zipfile.ZipFile(wheel_file, "w") as zf:
+        zf.writestr("test_pkg/__init__.py", "")
+        zf.writestr(
+            "test_pkg-1.0.0.dist-info/METADATA",
+            "Name: test_pkg\nVersion: 1.0.0\n",
+        )
+        zf.writestr(
+            "test_pkg-1.0.0.dist-info/WHEEL",
+            "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        )
+
+    mock_run.return_value = ""
+
+    # Create the repacked wheel that wheel pack would produce
+    repacked = wheel_dir / "test_pkg-1.0.0-0-py3-none-any.whl"
+
+    sdist_dir = tmp_path / "sdist"
+    sdist_dir.mkdir()
+
+    # Capture the wheel contents before repack by inspecting what wheel pack receives
+    captured_contents: list[str] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> str:
+        # wheel pack is called with the unpacked dir as second arg
+        unpacked_dir = pathlib.Path(cmd[2])
+        for f in unpacked_dir.rglob("*"):
+            if f.is_file():
+                captured_contents.append(str(f.relative_to(unpacked_dir)))
+        repacked.touch()
+        return ""
+
+    mock_run.side_effect = fake_run
+
+    wheels.add_extra_metadata_to_wheels(
+        ctx=sbom_ctx,
+        req=req,
+        version=version,
+        extra_environ={},
+        sdist_root_dir=sdist_dir,
+        wheel_file=wheel_file,
+    )
+
+    # Verify the SBOM file was added to the unpacked wheel before repacking
+    assert any("sboms/fromager.spdx.json" in c for c in captured_contents)
 
 
 def test_download_wheel_unquotes_url_encoded_filenames(tmp_path: pathlib.Path) -> None:

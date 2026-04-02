@@ -13,7 +13,7 @@ from packaging.utils import canonicalize_name
 from pydantic import Field
 
 from .. import overrides
-from ._models import PackageSettings
+from ._models import PackageSettings, SbomSettings
 from ._pbi import PackageBuildInfo
 from ._typedefs import MODEL_CONFIG, GlobalChangelog, Package, Variant
 
@@ -36,6 +36,14 @@ class SettingsFile(pydantic.BaseModel):
 
     changelog: GlobalChangelog = Field(default_factory=dict)
     """Changelog entries"""
+
+    sbom: SbomSettings | None = None
+    """SBOM generation settings
+
+    When set, Fromager generates SPDX 2.3 SBOM documents and embeds
+    them in built wheels per PEP 770. When absent (default), no SBOMs
+    are generated.
+    """
 
     @classmethod
     def from_string(
@@ -161,6 +169,11 @@ class Settings:
         """Change max jobs (for testing)"""
         self._pbi_cache.clear()
         self._max_jobs = jobs
+
+    @property
+    def sbom_settings(self) -> SbomSettings | None:
+        """Get global SBOM settings, or None if SBOM generation is disabled."""
+        return self._settings.sbom
 
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""

@@ -5,6 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 from fromager import context, packagesettings
+from fromager.packagesettings import SbomSettings
 
 TESTDATA_PATH = pathlib.Path(__file__).parent.absolute() / "testdata"
 E2E_PATH = pathlib.Path(__file__).parent.parent.absolute() / "e2e"
@@ -80,6 +81,38 @@ def testdata_context(
     )
     ctx.setup()
     return ctx
+
+
+def make_sbom_ctx(
+    tmp_path: pathlib.Path,
+    sbom_settings: SbomSettings | None = None,
+    purl: str | None = None,
+) -> context.WorkContext:
+    """Create a minimal WorkContext with SBOM settings."""
+    settings_file = packagesettings.SettingsFile(sbom=sbom_settings)
+    settings = packagesettings.Settings(
+        settings=settings_file,
+        package_settings=[],
+        patches_dir=tmp_path / "patches",
+        variant="cpu",
+        max_jobs=None,
+    )
+    if purl is not None:
+        ps = packagesettings.PackageSettings.from_mapping(
+            "test-pkg",
+            {"purl": purl},
+            source="test",
+            has_config=True,
+        )
+        settings._package_settings[ps.name] = ps
+    return context.WorkContext(
+        active_settings=settings,
+        constraints_file=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+    )
 
 
 @pytest.fixture
