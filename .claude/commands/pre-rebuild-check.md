@@ -17,6 +17,7 @@ One line. Offer to compare against another graph if relevant.
 ### Structural failures (dangling edges or cycles)
 
 These block everything — don't analyze conflicts. Report what failed:
+
 - **Dangling edges**: which packages are missing from the graph
 - **Cycles**: which packages form the cycle
 
@@ -30,10 +31,11 @@ Present build efficiency first, then conflicts grouped by leverage.
 
 **Per conflict**, present problem and fix together:
 
-> **`<package>`** — <collapsible|required>, bound by `<parent>` (`<specifier>`)
+> **`<package>`** — \<collapsible|required>, bound by `<parent>` (`<specifier>`)
 > → <recommendation>
 
 **Collapsible** recommendations:
+
 - Internal binding parent → "relax the specifier in `<parent>`"
 - Exact `==` pin → "upgrade `<parent>` (can't relax an exact pin)"
 - Quick workaround → "add `<package>==<pin>` to constraints.txt"
@@ -67,13 +69,16 @@ For a graph with 419 wheels, 3 collapsible conflicts, and 1 required:
 > **419 wheels built, 3 extra.** 1 required conflict blocks the next build.
 >
 > **Blocker:**
+>
 > - **`tokenizers`** — required, bound by `transformers==4.40.0` (`tokenizers<0.20,>=0.19`). No pin satisfies all consumers. Update transformers before rebuilding.
 >
 > **Eliminate 3 extra builds:**
+>
 > - **`datasets`** and **`huggingface-hub`** — both bound by `unsloth-zoo==0.1.0`. Relaxing unsloth-zoo's specifiers frees both. Pin: `datasets==2.20.0`, `huggingface-hub==0.23.0`
 > - **`fsspec`** — bound by `datasets==2.19.0` (`fsspec>=2023.1.0,<2024.6.0`). Pin: `fsspec==2024.5.0`
 >
 > Ready-to-paste constraints:
+>
 > ```
 > datasets==2.20.0
 > huggingface-hub==0.23.0
