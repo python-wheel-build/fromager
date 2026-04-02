@@ -867,10 +867,11 @@ def scan_compiled_extensions(
             elif suffix not in ignore_suffixes:
                 # Path.walk() lists symlinks to directories as filenames
                 # rather than dirnames, causing IsADirectoryError on open().
-                if not filepath.is_file():
+                try:
+                    with filepath.open("rb") as f:
+                        header = f.read(_MAGIC_HEADERS_READ)
+                except IsADirectoryError:
                     continue
-                with filepath.open("rb") as f:
-                    header = f.read(_MAGIC_HEADERS_READ)
                 if header.startswith(magic_headers):
                     relpath = filepath.relative_to(root_dir)
                     logger.debug(
