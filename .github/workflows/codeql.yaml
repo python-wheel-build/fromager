@@ -1,0 +1,51 @@
+# CodeQL static analysis for security vulnerabilities
+# https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning
+
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Run weekly on Monday at 02:00 UTC
+    - cron: "0 2 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - python
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@7fc1baf373eb073c686865bd453d412d506a05a2  # v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@7fc1baf373eb073c686865bd453d412d506a05a2  # v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@7fc1baf373eb073c686865bd453d412d506a05a2  # v3
+        with:
+          category: "/language:${{ matrix.language }}"
