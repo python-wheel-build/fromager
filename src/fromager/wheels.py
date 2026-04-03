@@ -485,6 +485,71 @@ def get_wheel_server_urls(
     return wheel_server_urls
 
 
+def get_prebuilt_wheel_provider(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    wheel_server_url: str,
+    req_type: requirements_file.RequirementType | None = None,
+) -> resolver.BaseProvider:
+    """Create a provider for resolving prebuilt wheels from a wheel server.
+
+    Returns a provider configured to search for wheels (not sdists) that match
+    the current platform.
+    """
+    return typing.cast(
+        resolver.BaseProvider,
+        overrides.find_and_invoke(
+            req.name,
+            "get_resolver_provider",
+            resolver.default_resolver_provider,
+            ctx=ctx,
+            req=req,
+            include_sdists=False,
+            include_wheels=True,
+            sdist_server_url=wheel_server_url,
+            req_type=req_type,
+            # pre-built wheels must match platform
+            ignore_platform=False,
+        ),
+    )
+
+
+def resolve_all_prebuilt_wheels(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    wheel_server_urls: list[str],
+    req_type: requirements_file.RequirementType | None = None,
+) -> list[tuple[str, Version]]:
+    """Return all matching wheel versions from the first successful server.
+
+    Tries wheel servers in order and returns all matching versions from the
+    first server that has any matches. Results are sorted by version (highest first).
+
+    Raises ExceptionGroup if no server has matching wheels.
+    """
+    excs: list[Exception] = []
+    for url in wheel_server_urls:
+        try:
+            # Get provider for this wheel server
+            provider = get_prebuilt_wheel_provider(
+                ctx=ctx, req=req, wheel_server_url=url, req_type=req_type
+            )
+
+            # Get all matching candidates from provider
+            results = resolver.find_all_matching_from_provider(provider, req)
+            # find_all_matching_from_provider never returns empty list - raises instead
+            return results
+        except Exception as e:
+            excs.append(e)
+
+    raise ExceptionGroup(
+        f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}",
+        excs,
+    )
+
+
 @metrics.timeit(description="resolve wheel")
 def resolve_prebuilt_wheel(
     *,
@@ -493,32 +558,14 @@ def resolve_prebuilt_wheel(
     wheel_server_urls: list[str],
     req_type: requirements_file.RequirementType | None = None,
 ) -> tuple[str, Version]:
-    "Return URL to wheel and its version."
-    excs: list[Exception] = []
-    for url in wheel_server_urls:
-        try:
-            wheel_url, resolved_version = resolver.resolve(
-                ctx=ctx,
-                req=req,
-                sdist_server_url=url,
-                include_sdists=False,
-                include_wheels=True,
-                req_type=req_type,
-                # pre-built wheels must match platform
-                ignore_platform=False,
-            )
-        except Exception as e:
-            excs.append(e)
-        else:
-            if wheel_url and resolved_version:
-                return (wheel_url, resolved_version)
-            else:
-                excs.append(
-                    ValueError(
-                        f"no result for {url}: {wheel_url=}, {resolved_version=}"
-                    )
-                )
-    raise ExceptionGroup(
-        f"Could not find a prebuilt wheel for {req} on {' or '.join(wheel_server_urls)}",
-        excs,
+    """Return (URL, version) for the best matching wheel version.
+
+    Tries wheel servers in order and returns result from the first that succeeds.
+    Returns the highest matching version.
+    """
+    results = resolve_all_prebuilt_wheels(
+        ctx=ctx, req=req, wheel_server_urls=wheel_server_urls, req_type=req_type
     )
+    # Return highest version (first in sorted list)
+    wheel_url, version = results[0]
+    return str(wheel_url), version

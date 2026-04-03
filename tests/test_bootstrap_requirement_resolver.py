@@ -1,4 +1,4 @@
-"""Tests for requirement_resolver module."""
+"""Tests for bootstrap_requirement_resolver module."""
 
 from unittest.mock import MagicMock, patch
 
@@ -7,9 +7,9 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
+from fromager.bootstrap_requirement_resolver import BootstrapRequirementResolver
 from fromager.context import WorkContext
 from fromager.dependency_graph import DependencyGraph
-from fromager.requirement_resolver import RequirementResolver
 from fromager.requirements_file import RequirementType
 
 # Test fixture: previous dependency graph
@@ -65,8 +65,8 @@ old_graph.add_dependency(
 
 
 def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
-    """RequirementResolver resolves from previous graph with no changes."""
-    resolver = RequirementResolver(tmp_context, old_graph)
+    """BootstrapRequirementResolver resolves from previous graph with no changes."""
+    resolver = BootstrapRequirementResolver(tmp_context, old_graph)
 
     # Resolving new dependency that doesn't exist in graph
     assert (
@@ -85,7 +85,7 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("7"))
+    ) == [("", Version("7"))]
 
     # Resolving pbr dependency of bar
     assert resolver._resolve_from_graph(
@@ -93,7 +93,7 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of blah
     assert resolver._resolve_from_graph(
@@ -101,12 +101,12 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("blah"),
-    ) == ("", Version("5"))
+    ) == [("", Version("5"))]
 
 
 def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> None:
-    """RequirementResolver prefers top-level requirements over history."""
-    resolver = RequirementResolver(tmp_context, old_graph)
+    """BootstrapRequirementResolver prefers top-level requirements over history."""
+    resolver = BootstrapRequirementResolver(tmp_context, old_graph)
 
     # Simulating new bootstrap with a toplevel requirement of pbr==8
     tmp_context.dependency_graph.add_dependency(
@@ -123,7 +123,7 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> Non
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("8"))
+    ) == [("", Version("8"))]
 
     # Resolving pbr dependency of bar - constraint prevents upgrade
     assert resolver._resolve_from_graph(
@@ -131,7 +131,7 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> Non
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of blah - exact version requirement
     assert resolver._resolve_from_graph(
@@ -139,12 +139,12 @@ def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> Non
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("blah"),
-    ) == ("", Version("5"))
+    ) == [("", Version("5"))]
 
 
 def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> None:
-    """RequirementResolver handles version downgrades from top-level requirements."""
-    resolver = RequirementResolver(tmp_context, old_graph)
+    """BootstrapRequirementResolver handles version downgrades from top-level requirements."""
+    resolver = BootstrapRequirementResolver(tmp_context, old_graph)
 
     # Simulating new bootstrap with a toplevel requirement of pbr<=6
     tmp_context.dependency_graph.add_dependency(
@@ -161,7 +161,7 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> N
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of bar - already at 6
     assert resolver._resolve_from_graph(
@@ -169,7 +169,7 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> N
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
     # Resolving pbr dependency of blah - exact version requirement
     assert resolver._resolve_from_graph(
@@ -177,12 +177,12 @@ def test_resolve_from_graph_install_dep_downgrade(tmp_context: WorkContext) -> N
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("blah"),
-    ) == ("", Version("5"))
+    ) == [("", Version("5"))]
 
 
 def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
-    """RequirementResolver resolves top-level dependencies correctly."""
-    resolver = RequirementResolver(tmp_context, old_graph)
+    """BootstrapRequirementResolver resolves top-level dependencies correctly."""
+    resolver = BootstrapRequirementResolver(tmp_context, old_graph)
 
     # Simulating new bootstrap with a toplevel requirement for foo
     tmp_context.dependency_graph.add_dependency(
@@ -208,7 +208,7 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.TOP_LEVEL,
         pre_built=False,
         parent_req=None,
-    ) == ("", Version("2"))
+    ) == [("", Version("2"))]
 
     # Resolving pbr dependency of foo even if foo version changed
     assert resolver._resolve_from_graph(
@@ -216,7 +216,7 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("foo"),
-    ) == ("", Version("7"))
+    ) == [("", Version("7"))]
 
     # Resolving bar
     assert resolver._resolve_from_graph(
@@ -224,7 +224,7 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.TOP_LEVEL,
         pre_built=False,
         parent_req=None,
-    ) == ("", Version("1.0.0"))
+    ) == [("", Version("1.0.0"))]
 
     # Resolving pbr dependency of bar
     assert resolver._resolve_from_graph(
@@ -232,12 +232,12 @@ def test_resolve_from_graph_toplevel_dep(tmp_context: WorkContext) -> None:
         req_type=RequirementType.INSTALL,
         pre_built=False,
         parent_req=Requirement("bar"),
-    ) == ("", Version("6"))
+    ) == [("", Version("6"))]
 
 
 def test_resolve_from_graph_no_previous_graph(tmp_context: WorkContext) -> None:
-    """RequirementResolver returns None when no previous graph is available."""
-    resolver = RequirementResolver(tmp_context, prev_graph=None)
+    """BootstrapRequirementResolver returns None when no previous graph is available."""
+    resolver = BootstrapRequirementResolver(tmp_context, prev_graph=None)
 
     assert (
         resolver._resolve_from_graph(
@@ -278,7 +278,7 @@ def test_resolve_from_graph_new_parent_reuses_existing_version(
         req_version=Version("25.0"),
     )
 
-    resolver = RequirementResolver(tmp_context, prev_graph)
+    resolver = BootstrapRequirementResolver(tmp_context, prev_graph)
 
     # Resolve packaging>=24.0 via a NEW parent "wheel" that is NOT in prev_graph.
     # packaging==25.0 satisfies >=24.0 and exists in the graph, so it should
@@ -292,7 +292,7 @@ def test_resolve_from_graph_new_parent_reuses_existing_version(
     assert result is not None, (
         "Expected packaging==25.0 from prev_graph but got None (would fall back to PyPI)"
     )
-    assert result == ("", Version("25.0"))
+    assert result == [("", Version("25.0"))]
 
 
 def test_resolve_from_graph_different_req_type_reuses_existing_version(
@@ -322,7 +322,7 @@ def test_resolve_from_graph_different_req_type_reuses_existing_version(
         req_version=Version("2.0"),
     )
 
-    resolver = RequirementResolver(tmp_context, prev_graph)
+    resolver = BootstrapRequirementResolver(tmp_context, prev_graph)
 
     # Now resolve bar>=1.5 as an INSTALL dep of foo (different req_type).
     # bar==2.0 satisfies >=1.5 and exists in the graph under the same parent
@@ -336,7 +336,7 @@ def test_resolve_from_graph_different_req_type_reuses_existing_version(
     assert result is not None, (
         "Expected bar==2.0 from prev_graph but got None (would fall back to PyPI)"
     )
-    assert result == ("", Version("2.0"))
+    assert result == [("", Version("2.0"))]
 
 
 def test_resolve_from_graph_parent_specific_preferred_over_name_fallback(
@@ -381,7 +381,7 @@ def test_resolve_from_graph_parent_specific_preferred_over_name_fallback(
         req_version=Version("3.0"),
     )
 
-    resolver = RequirementResolver(tmp_context, prev_graph)
+    resolver = BootstrapRequirementResolver(tmp_context, prev_graph)
 
     # Resolve bar>=1.0 as install dep of foo.  The parent-specific lookup
     # should return bar==2.0 (from foo), NOT bar==3.0 (from baz via fallback).
@@ -392,7 +392,7 @@ def test_resolve_from_graph_parent_specific_preferred_over_name_fallback(
         parent_req=Requirement("foo"),
     )
     assert result is not None
-    assert result == ("", Version("2.0"))
+    assert result == [("", Version("2.0"))]
 
 
 def test_resolve_from_graph_name_fallback_returns_none_for_missing_package(
@@ -422,7 +422,7 @@ def test_resolve_from_graph_name_fallback_returns_none_for_missing_package(
         req_version=Version("2.0"),
     )
 
-    resolver = RequirementResolver(tmp_context, prev_graph)
+    resolver = BootstrapRequirementResolver(tmp_context, prev_graph)
 
     result = resolver._resolve_from_graph(
         req=Requirement("missing-pkg>=1.0"),
@@ -434,8 +434,8 @@ def test_resolve_from_graph_name_fallback_returns_none_for_missing_package(
 
 
 def test_resolve_rejects_git_urls_for_source(tmp_context: WorkContext) -> None:
-    """RequirementResolver.resolve() rejects git URLs when pre_built=False."""
-    resolver = RequirementResolver(tmp_context)
+    """BootstrapRequirementResolver.resolve() rejects git URLs when pre_built=False."""
+    resolver = BootstrapRequirementResolver(tmp_context)
 
     with pytest.raises(
         ValueError, match="Git URL requirements must be handled by Bootstrapper"
@@ -448,23 +448,19 @@ def test_resolve_rejects_git_urls_for_source(tmp_context: WorkContext) -> None:
         )
 
 
-@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel")
-@patch("fromager.requirement_resolver.wheels.get_wheel_server_urls")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_allows_git_urls_for_prebuilt(
-    mock_get_servers: MagicMock,
-    mock_resolve_wheel: MagicMock,
+    mock_resolve: MagicMock,
     tmp_context: WorkContext,
 ) -> None:
-    """RequirementResolver.resolve() allows git URLs when pre_built=True (test mode fallback)."""
-    resolver = RequirementResolver(tmp_context)
+    """BootstrapRequirementResolver.resolve() allows git URLs when pre_built=True (test mode fallback)."""
+    resolver = BootstrapRequirementResolver(tmp_context)
     req = Requirement("mypkg @ git+https://github.com/example/repo.git")
 
-    # Mock wheel resolution to return expected result
-    mock_get_servers.return_value = ["https://pypi.org/simple"]
-    mock_resolve_wheel.return_value = (
-        "https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl",
-        Version("1.0"),
-    )
+    # Mock resolution to return expected result (as list)
+    mock_resolve.return_value = [
+        ("https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl", Version("1.0"))
+    ]
 
     # Should NOT raise - git URLs are allowed when explicitly requesting prebuilt
     url, version = resolver.resolve(
@@ -474,35 +470,35 @@ def test_resolve_allows_git_urls_for_prebuilt(
         parent_req=None,
     )
 
-    # Verify it routed to wheel resolution
-    mock_resolve_wheel.assert_called_once()
+    # Verify resolution was called
+    mock_resolve.assert_called_once()
     assert url == "https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl"
     assert version == Version("1.0")
 
 
-@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel")
-@patch("fromager.requirement_resolver.wheels.get_wheel_server_urls")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_auto_routes_to_prebuilt(
-    mock_get_servers: MagicMock,
-    mock_resolve_wheel: MagicMock,
+    mock_resolve: MagicMock,
     tmp_context: WorkContext,
 ) -> None:
-    """resolve(pre_built=None) with pbi.pre_built=True routes to wheels.resolve_prebuilt_wheel."""
+    """resolve(pre_built=None) with pbi.pre_built=True routes to wheel resolution."""
     req = Requirement("setuptools>=40")
 
     # Mock package build info to return pre_built=True
     mock_pbi = MagicMock()
     mock_pbi.pre_built = True
+    mock_pbi.wheel_server_url = None
 
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
-        resolver = RequirementResolver(tmp_context)
+        resolver = BootstrapRequirementResolver(tmp_context)
 
-        # Mock wheel resolution to return expected result
-        mock_get_servers.return_value = ["https://pypi.org/simple"]
-        mock_resolve_wheel.return_value = (
-            "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl",
-            Version("1.0"),
-        )
+        # Mock resolution to return expected result (as list)
+        mock_resolve.return_value = [
+            (
+                "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl",
+                Version("1.0"),
+            )
+        ]
 
         # Call resolve with pre_built=None (should auto-detect)
         url, version = resolver.resolve(
@@ -512,32 +508,37 @@ def test_resolve_auto_routes_to_prebuilt(
             pre_built=None,
         )
 
-        # Verify it routed to wheel resolution
-        mock_resolve_wheel.assert_called_once()
+        # Verify resolution was called
+        mock_resolve.assert_called_once()
         assert url == "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl"
         assert version == Version("1.0")
 
 
-@patch("fromager.requirement_resolver.sources.resolve_source")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_auto_routes_to_source(
-    mock_resolve_source: MagicMock,
+    mock_resolve: MagicMock,
     tmp_context: WorkContext,
 ) -> None:
-    """resolve(pre_built=None) with pbi.pre_built=False routes to sources.resolve_source."""
+    """resolve(pre_built=None) with pbi.pre_built=False routes to source resolution."""
     req = Requirement("mypackage>=1.0")
 
     # Mock package build info to return pre_built=False
     mock_pbi = MagicMock()
     mock_pbi.pre_built = False
+    mock_pbi.resolver_include_sdists = True
+    mock_pbi.resolver_include_wheels = True
+    mock_pbi.resolver_ignore_platform = True
+    mock_pbi.resolver_sdist_server_url = MagicMock(
+        return_value="https://pypi.org/simple"
+    )
 
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
-        resolver = RequirementResolver(tmp_context)
+        resolver = BootstrapRequirementResolver(tmp_context)
 
-        # Mock source resolution to return expected result
-        mock_resolve_source.return_value = (
-            "https://files.pythonhosted.org/mypackage-2.0.tar.gz",
-            Version("2.0"),
-        )
+        # Mock source resolution to return expected result (as list)
+        mock_resolve.return_value = [
+            ("https://files.pythonhosted.org/mypackage-2.0.tar.gz", Version("2.0"))
+        ]
 
         # Call resolve with pre_built=None (should auto-detect)
         url, version = resolver.resolve(
@@ -547,69 +548,57 @@ def test_resolve_auto_routes_to_source(
             pre_built=None,
         )
 
-        # Verify it routed to source resolution
-        mock_resolve_source.assert_called_once()
+        # Verify resolution was called
+        mock_resolve.assert_called_once()
         assert url == "https://files.pythonhosted.org/mypackage-2.0.tar.gz"
         assert version == Version("2.0")
 
 
-@patch("fromager.requirement_resolver.wheels.resolve_prebuilt_wheel")
-@patch("fromager.requirement_resolver.wheels.get_wheel_server_urls")
-@patch("fromager.requirement_resolver.sources.resolve_source")
+@patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_prebuilt_after_source_uses_separate_cache(
-    mock_resolve_source: MagicMock,
-    mock_get_servers: MagicMock,
-    mock_resolve_wheel: MagicMock,
+    mock_resolve: MagicMock,
     tmp_context: WorkContext,
 ) -> None:
     """resolve(pre_built=True) after same req resolved as source uses separate cache."""
     req = Requirement("testpkg==1.5")
 
-    # Mock package build info to return pre_built=False initially
-    mock_pbi = MagicMock()
-    mock_pbi.pre_built = False
+    # Set up side_effect to return different results for each call
+    mock_resolve.side_effect = [
+        # First call: source resolution
+        [("https://files.pythonhosted.org/testpkg-1.5.tar.gz", Version("1.5"))],
+        # Second call: wheel resolution
+        [
+            (
+                "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl",
+                Version("1.5"),
+            )
+        ],
+    ]
 
-    with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
-        resolver = RequirementResolver(tmp_context)
+    resolver = BootstrapRequirementResolver(tmp_context)
 
-        # Mock source resolution
-        mock_resolve_source.return_value = (
-            "https://files.pythonhosted.org/testpkg-1.5.tar.gz",
-            Version("1.5"),
-        )
+    # First call: resolve as source (explicit pre_built=False)
+    url1, version1 = resolver.resolve(
+        req=req,
+        req_type=RequirementType.INSTALL,
+        parent_req=None,
+        pre_built=False,
+    )
 
-        # First call: resolve as source (pre_built=None, auto-detects to False)
-        url1, version1 = resolver.resolve(
-            req=req,
-            req_type=RequirementType.INSTALL,
-            parent_req=None,
-            pre_built=None,
-        )
+    assert url1 == "https://files.pythonhosted.org/testpkg-1.5.tar.gz"
+    assert version1 == Version("1.5")
+    assert mock_resolve.call_count == 1
 
-        assert url1 == "https://files.pythonhosted.org/testpkg-1.5.tar.gz"
-        assert version1 == Version("1.5")
-        assert mock_resolve_source.call_count == 1
+    # Second call: resolve same req as prebuilt (explicit pre_built=True)
+    # This should NOT return the cached source result
+    url2, version2 = resolver.resolve(
+        req=req,
+        req_type=RequirementType.INSTALL,
+        parent_req=None,
+        pre_built=True,
+    )
 
-        # Mock wheel resolution for second call
-        mock_get_servers.return_value = ["https://pypi.org/simple"]
-        mock_resolve_wheel.return_value = (
-            "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl",
-            Version("1.5"),
-        )
-
-        # Second call: resolve same req as prebuilt (explicit pre_built=True)
-        # This should NOT return the cached source result
-        url2, version2 = resolver.resolve(
-            req=req,
-            req_type=RequirementType.INSTALL,
-            parent_req=None,
-            pre_built=True,
-        )
-
-        # Verify it called wheel resolution (not cached)
-        assert mock_resolve_wheel.call_count == 1
-        assert url2 == "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl"
-        assert version2 == Version("1.5")
-
-        # Verify source was only called once (first time, not second)
-        assert mock_resolve_source.call_count == 1
+    # Verify it called resolution again (not cached) because cache keys differ
+    assert mock_resolve.call_count == 2
+    assert url2 == "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl"
+    assert version2 == Version("1.5")

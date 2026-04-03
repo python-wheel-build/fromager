@@ -101,7 +101,6 @@ get_build_backend_dependencies = "fromager.dependencies:default_get_build_backen
 get_build_sdist_dependencies = "fromager.dependencies:default_get_build_sdist_dependencies"
 resolver_provider = "fromager.resolver:default_resolver_provider"
 download_source = "fromager.sources:default_download_source"
-resolve_source = "fromager.sources:default_resolve_source"
 build_sdist = "fromager.sources:default_build_sdist"
 build_wheel = "fromager.wheels:default_build_wheel"
 

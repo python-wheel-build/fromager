@@ -19,12 +19,12 @@ from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import (
+    bootstrap_requirement_resolver,
     build_environment,
     dependencies,
     finders,
     hooks,
     progress,
-    requirement_resolver,
     resolver,
     server,
     sources,
@@ -103,8 +103,8 @@ class Bootstrapper:
         self.test_mode = test_mode
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
 
-        # Delegate resolution to RequirementResolver
-        self._resolver = requirement_resolver.RequirementResolver(
+        # Delegate resolution to BootstrapRequirementResolver
+        self._resolver = bootstrap_requirement_resolver.BootstrapRequirementResolver(
             ctx=ctx,
             prev_graph=prev_graph,
         )
@@ -176,11 +176,11 @@ class Bootstrapper:
     ) -> tuple[str, Version]:
         """Resolve the version of a requirement.
 
-        Returns the source URL and the version of the requirement.
+        Returns the source URL and the version of the requirement (highest matching version).
 
         Git URL resolution stays in Bootstrapper because it requires
         build orchestration (BuildEnvironment, build dependencies).
-        Delegates PyPI/graph resolution to RequirementResolver.
+        Delegates PyPI/graph resolution to BootstrapRequirementResolver.
         """
         if req.url:
             if req_type != RequirementType.TOP_LEVEL:
@@ -193,19 +193,22 @@ class Bootstrapper:
             cached_result = self._resolver.get_cached_resolution(req, pre_built=False)
             if cached_result is not None:
                 logger.debug(f"resolved {req} from cache")
-                return cached_result
+                # Pick highest version from cached list
+                return cached_result[0]
 
             logger.info("resolving source via URL, ignoring any plugins")
             source_url, resolved_version = self._resolve_version_from_git_url(req=req)
             # Cache the git URL resolution (always source, not prebuilt)
+            # Store as list for consistency with cache structure
             self._resolver.cache_resolution(
-                req, pre_built=False, result=(source_url, resolved_version)
+                req, pre_built=False, result=[(source_url, resolved_version)]
             )
             return source_url, resolved_version
 
         # Delegate to RequirementResolver
         parent_req = self.why[-1][1] if self.why else None
 
+        # Returns the highest matching version
         return self._resolver.resolve(
             req=req,
             req_type=req_type,
