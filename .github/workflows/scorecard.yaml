@@ -1,0 +1,58 @@
+# Runs the OpenSSF Scorecard on a weekly schedule and publishes results
+# to the OpenSSF dashboard and GitHub Security tab.
+# https://github.com/ossf/scorecard-action
+
+name: OpenSSF Scorecard
+
+on:
+  # Run on branch protection rule changes
+  branch_protection_rule:
+  # Weekly schedule
+  schedule:
+    - cron: "30 1 * * 1"
+  # Allow manual trigger
+  workflow_dispatch:
+
+# Declare default permissions as read only
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'python-wheel-build' }}
+
+    permissions:
+      # Needed for Code Scanning upload
+      security-events: write
+      # Needed to publish results
+      id-token: write
+      # Read repo contents
+      contents: read
+      # Read actions
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a  # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@7fc1baf373eb073c686865bd453d412d506a05a2  # v3
+        with:
+          sarif_file: results.sarif
