@@ -187,8 +187,10 @@ individual package compilation or integration into larger build systems.
 
 ### The build-sequence command
 
-The `build-sequence` command processes a pre-determined build order file
-(typically `build-order.json`) to build wheels in dependency order.
+The `build-sequence` command processes a dependency graph (`graph.json`) and a
+pre-determined build order file (`build-order.json`) to build wheels in
+dependency order. Build dependencies are resolved from the graph rather than
+running PEP 517 discovery hooks.
 
 The outputs are patched source distributions and built wheels for each item in
 the build-order file.
@@ -198,11 +200,12 @@ for any wheels that have already been built with the current settings.
 
 For each package in the sequence:
 
-1. **Build Order Reading** - Loads the build order file containing:
+1. **Build Order Reading** - Loads the build order and graph files:
 
-   - Package names and versions to build
-   - Source URLs and types (PyPI, git, prebuilt)
-   - Dependency relationships and constraints
+   - `build-order.json`: Package names, versions, source URLs and types
+     (PyPI, git, prebuilt) in predetermined build order
+   - `graph.json`: Dependency relationships used to resolve build
+     requirements without running PEP 517 discovery hooks
 
 2. **Build Status Checking** - Determines if building is needed:
 

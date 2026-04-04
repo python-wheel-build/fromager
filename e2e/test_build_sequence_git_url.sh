@@ -23,6 +23,7 @@ ls "$OUTDIR"/work-dir/*/build.log || true
 
 # Clean up the work directory so we can test build-sequence
 mv "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
+cp "$OUTDIR/work-dir/graph.json" "$OUTDIR/"
 rm -rf "$OUTDIR/work-dir/wheels-repo"
 rm -rf "$OUTDIR/work-dir/sdists-repo"
 
@@ -37,7 +38,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence --force "$OUTDIR/build-order.json"
+    build-sequence --force "$OUTDIR/graph.json" "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/" -name '*.whl'
 find "$OUTDIR/sdists-repo/" -name '*.tar.gz'

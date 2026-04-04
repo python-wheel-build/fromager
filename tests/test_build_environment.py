@@ -1,11 +1,16 @@
+import pathlib
 import textwrap
 from unittest.mock import Mock, patch
 
+import pytest
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from fromager import build_environment
+from fromager.commands.build import _get_build_requirements_from_graph
 from fromager.context import WorkContext
+from fromager.dependency_graph import DependencyGraph, DependencyNode
 from fromager.requirements_file import RequirementType
 
 
@@ -81,3 +86,96 @@ def test_missing_dependency_pattern_resolution_impossible() -> None:
     """)
     match = build_environment._uv_missing_dependency_pattern.search(msg)
     assert match is not None
+
+
+@patch("fromager.build_environment.BuildEnvironment")
+def test_prepare_build_environment_from_graph_installs_deps(
+    mock_build_env_cls: Mock,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify graph-based build env installs resolved deps without discovery."""
+    mock_build_env = Mock()
+    mock_build_env.get_distributions.return_value = {}
+    mock_build_env_cls.return_value = mock_build_env
+
+    sdist_root_dir = tmp_path / "pkg-1.0" / "pkg-1.0"
+    sdist_root_dir.mkdir(parents=True)
+
+    nodes = [
+        DependencyNode(canonicalize_name("setuptools"), Version("80.8.0")),
+        DependencyNode(canonicalize_name("wheel"), Version("0.46.1")),
+    ]
+
+    result = build_environment.prepare_build_environment_from_graph(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        sdist_root_dir=sdist_root_dir,
+        build_requirements=nodes,
+    )
+
+    assert result is mock_build_env
+    mock_build_env.install.assert_called_once()
+    installed_reqs = mock_build_env.install.call_args[0][0]
+    installed_names = {str(r) for r in installed_reqs}
+    assert installed_names == {"setuptools==80.8.0", "wheel==0.46.1"}
+
+
+@patch("fromager.build_environment.BuildEnvironment")
+def test_prepare_build_environment_from_graph_no_deps(
+    mock_build_env_cls: Mock,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify graph-based build env works with no build deps."""
+    mock_build_env = Mock()
+    mock_build_env.get_distributions.return_value = {}
+    mock_build_env_cls.return_value = mock_build_env
+
+    sdist_root_dir = tmp_path / "pkg-1.0" / "pkg-1.0"
+    sdist_root_dir.mkdir(parents=True)
+
+    result = build_environment.prepare_build_environment_from_graph(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        sdist_root_dir=sdist_root_dir,
+        build_requirements=[],
+    )
+
+    assert result is mock_build_env
+    mock_build_env.install.assert_not_called()
+
+
+def test_get_build_requirements_from_graph() -> None:
+    """Verify build requirements are extracted from graph nodes."""
+    graph = DependencyGraph()
+    graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("pkg==1.0"),
+        req_version=Version("1.0"),
+        download_url="https://example.com/pkg-1.0.tar.gz",
+    )
+    graph.add_dependency(
+        parent_name=canonicalize_name("pkg"),
+        parent_version=Version("1.0"),
+        req_type=RequirementType.BUILD_SYSTEM,
+        req=Requirement("setuptools>=61.2"),
+        req_version=Version("80.8.0"),
+        download_url="https://example.com/setuptools-80.8.0.tar.gz",
+    )
+
+    result = _get_build_requirements_from_graph(graph, "pkg", Version("1.0"))
+
+    assert result is not None
+    assert len(result) == 1
+    assert result[0].canonicalized_name == canonicalize_name("setuptools")
+    assert result[0].version == Version("80.8.0")
+
+
+def test_get_build_requirements_from_graph_missing_node() -> None:
+    """Verify missing node raises KeyError."""
+    graph = DependencyGraph()
+    with pytest.raises(KeyError, match="nonexistent"):
+        _get_build_requirements_from_graph(graph, "nonexistent", Version("1.0"))

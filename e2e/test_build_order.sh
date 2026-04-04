@@ -19,8 +19,9 @@ fromager \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
     bootstrap "${DIST}==${VERSION}"
 
-# Save the build order file but remove everything else.
+# Save the build order and graph files but remove everything else.
 cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
+cp "$OUTDIR/work-dir/graph.json" "$OUTDIR/"
 
 # Rebuild everything even if it already exists
 log="$OUTDIR/build-logs/${DIST}-build.log"
@@ -31,7 +32,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence --force "$OUTDIR/build-order.json"
+    build-sequence --force "$OUTDIR/graph.json" "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
@@ -94,7 +95,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/changelog_settings" \
-    build-sequence "$OUTDIR/build-order.json"
+    build-sequence "$OUTDIR/graph.json" "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 
@@ -118,7 +119,7 @@ fromager \
     --work-dir "$OUTDIR/work-dir" \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
-    build-sequence --cache-wheel-server-url="https://pypi.org/simple" "$OUTDIR/build-order.json"
+    build-sequence --cache-wheel-server-url="https://pypi.org/simple" "$OUTDIR/graph.json" "$OUTDIR/build-order.json"
 
 find "$OUTDIR/wheels-repo/"
 

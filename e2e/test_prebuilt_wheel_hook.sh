@@ -21,8 +21,9 @@ fromager \
     --settings-dir="$SCRIPTDIR/prebuilt_settings" \
     bootstrap "${DIST}==${VERSION}"
 
-# Save the build order file but remove everything else.
+# Save the build order and graph files but remove everything else.
 cp "$OUTDIR/work-dir/build-order.json" "$OUTDIR/"
+cp "$OUTDIR/work-dir/graph.json" "$OUTDIR/"
 
 # Remove downloaded wheels to trigger hook
 rm -rf "$OUTDIR/wheels-repo"
@@ -34,7 +35,7 @@ fromager \
     --sdists-repo "$OUTDIR/sdists-repo" \
     --wheels-repo "$OUTDIR/wheels-repo" \
     --settings-dir="$SCRIPTDIR/prebuilt_settings" \
-    build-sequence "$OUTDIR/build-order.json"
+    build-sequence "$OUTDIR/graph.json" "$OUTDIR/build-order.json"
 
 PATTERNS=(
   "downloading prebuilt wheel ${DIST}==${VERSION}"
