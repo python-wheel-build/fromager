@@ -241,6 +241,7 @@ class BuildEnvironment:
             mapping = json.loads(result.strip())
         except Exception:
             logger.exception("failed to de-serialize JSON: %s", result)
+            raise
         return {name: Version(version) for name, version in sorted(mapping.items())}
 
 
