@@ -14,9 +14,11 @@ import typing
 import zipfile
 from urllib.parse import urlparse
 
+import requests.exceptions
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
+from resolvelib.resolvers import ResolverException
 
 from . import (
     bootstrap_requirement_resolver,
@@ -1141,9 +1143,21 @@ class Bootstrapper:
                 req, resolved_version, cached_wheel
             )
             return cached_wheel, unpack_dir
-        except Exception:
+        except ResolverException:
             logger.info(
                 f"did not find wheel for {resolved_version} in {self.cache_wheel_server_url}"
+            )
+            return None, None
+        except requests.exceptions.RequestException as err:
+            logger.warning(
+                f"network error checking wheel cache for {resolved_version} "
+                f"at {self.cache_wheel_server_url}: {err}"
+            )
+            return None, None
+        except Exception as err:
+            logger.warning(
+                f"unexpected error checking wheel cache for {resolved_version} "
+                f"at {self.cache_wheel_server_url}: {err}"
             )
             return None, None
 
