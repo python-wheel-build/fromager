@@ -7,9 +7,12 @@ import sys
 import typing
 
 import click
+import rich
+import rich.box
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
+from rich.table import Table
 
 from fromager import clickext, context
 from fromager.commands import bootstrap
@@ -784,3 +787,252 @@ def build_graph(
         topo.done(*nodes_to_build)
 
     print(f"\nBuilding {len(graph)} packages in {rounds} rounds.")
+
+
+def get_dependency_closure(node: DependencyNode) -> set[NormalizedName]:
+    """Compute the full dependency closure for a node.
+
+    Traverses all edge types and returns the set of canonical package names reachable from node,
+    including node itself.
+
+    Args:
+        node: The starting node to compute the closure for.
+
+    Returns:
+        Set of canonicalized package names in the transitive closure.
+    """
+    dependency_names: set[NormalizedName] = set()
+    if node.canonicalized_name != ROOT:
+        dependency_names.add(node.canonicalized_name)
+    for dependency in node.iter_all_dependencies():
+        if dependency.canonicalized_name != ROOT:
+            dependency_names.add(dependency.canonicalized_name)
+    return dependency_names
+
+
+def get_package_names(graph: DependencyGraph) -> set[NormalizedName]:
+    """Extract all unique canonical package names from a graph.
+
+    Args:
+        graph: The dependency graph to extract names from.
+
+    Returns:
+        Set of canonicalized package names, excluding the ROOT node.
+    """
+    return {
+        node.canonicalized_name for node in graph.get_all_nodes() if node.key != ROOT
+    }
+
+
+def extract_collection_name(graph_path: str) -> str:
+    """Derive a collection name from a graph file path.
+
+    Returns the filename without the extension as a string.
+
+    Args:
+        graph_path: Filesystem path to a graph JSON file.
+
+    Returns:
+        The filename without the extension.
+    """
+    return pathlib.PurePath(graph_path).stem
+
+
+class _CollectionScore(typing.NamedTuple):
+    """Overlap score between a package's dependency closure and a collection."""
+
+    collection: str
+    new_packages: int
+    existing_packages: int
+    coverage_percentage: float
+
+
+def _analyze_suggestions(
+    toplevel_nodes: list[DependencyNode],
+    collection_packages: dict[str, set[NormalizedName]],
+) -> list[dict[str, typing.Any]]:
+    """Score each onboarding top-level package against every collection.
+
+    Args:
+        toplevel_nodes: Top-level nodes from the onboarding graph.
+        collection_packages: Mapping of collection name to its package name set.
+
+    Returns:
+        List of result dicts, one per top-level package, sorted by package name.
+    """
+    results: list[dict[str, typing.Any]] = []
+
+    for node in sorted(toplevel_nodes, key=lambda n: n.canonicalized_name):
+        dependency_names = get_dependency_closure(node)
+        total_dependency_count = len(dependency_names)
+
+        scores: list[_CollectionScore] = []
+        for collection_name, packages in collection_packages.items():
+            existing_count = len(dependency_names & packages)
+            new_count = total_dependency_count - existing_count
+            coverage_percentage = (
+                (existing_count / total_dependency_count * 100)
+                if total_dependency_count
+                else 0.0
+            )
+            scores.append(
+                _CollectionScore(
+                    collection_name, new_count, existing_count, coverage_percentage
+                )
+            )
+
+        # Rank: fewest new packages, then highest coverage, then name for determinism
+        scores.sort(
+            key=lambda score: (
+                score.new_packages,
+                -score.coverage_percentage,
+                score.collection,
+            )
+        )
+        best_score = scores[0] if scores else None
+
+        logger.debug(
+            "%s: %d deps, best fit '%s' (%d new, %.1f%% coverage)",
+            node.canonicalized_name,
+            total_dependency_count,
+            best_score.collection if best_score else "none",
+            best_score.new_packages if best_score else 0,
+            best_score.coverage_percentage if best_score else 0.0,
+        )
+
+        results.append(
+            {
+                "package": str(node.canonicalized_name),
+                "version": str(node.version),
+                "total_dependencies": total_dependency_count,
+                "best_fit": best_score.collection if best_score else "none",
+                "new_packages": best_score.new_packages if best_score else 0,
+                "existing_packages": best_score.existing_packages if best_score else 0,
+                "coverage_percentage": (
+                    round(best_score.coverage_percentage, 1) if best_score else 0.0
+                ),
+                "all_collections": [
+                    {
+                        "collection": score.collection,
+                        "new_packages": score.new_packages,
+                        "existing_packages": score.existing_packages,
+                        "coverage_percentage": round(score.coverage_percentage, 1),
+                    }
+                    for score in scores
+                ],
+            }
+        )
+
+    return results
+
+
+def _print_suggest_collection_table(
+    results: list[dict[str, typing.Any]],
+) -> None:
+    """Render suggest-collection results as a Rich table."""
+    table = Table(
+        title="Collection Suggestions for Onboarding Packages",
+        box=rich.box.MARKDOWN,
+        title_justify="left",
+    )
+    table.add_column("Package", justify="left", no_wrap=True)
+    table.add_column("Version", justify="left", no_wrap=True)
+    table.add_column("Total Deps", justify="right", no_wrap=True)
+    table.add_column("Best Fit", justify="left", no_wrap=True)
+    table.add_column("New Pkgs", justify="right", no_wrap=True)
+    table.add_column("Existing", justify="right", no_wrap=True)
+    table.add_column("Coverage", justify="right", no_wrap=True)
+
+    for result in results:
+        table.add_row(
+            result["package"],
+            result["version"],
+            str(result["total_dependencies"]),
+            result["best_fit"],
+            str(result["new_packages"]),
+            str(result["existing_packages"]),
+            f"{result['coverage_percentage']:.1f}%",
+        )
+
+    rich.get_console().print(table)
+
+
+@graph.command(name="suggest-collection")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"], case_sensitive=False),
+    default="table",
+    help="Output format (default: table)",
+)
+@click.argument("onboarding-graph", type=str)
+@click.argument("collection-graphs", nargs=-1, required=True, type=str)
+def suggest_collection(
+    output_format: str,
+    onboarding_graph: str,
+    collection_graphs: tuple[str, ...],
+) -> None:
+    """Suggest the best-fit collection for each onboarding package.
+
+    Analyzes dependency overlap between top-level packages in ONBOARDING_GRAPH
+    and the existing COLLECTION_GRAPHS to recommend where each onboarding
+    package should be placed.
+
+    For each top-level package in the onboarding graph, computes the full
+    transitive dependency closure and compares it against every collection.
+    Collections are ranked by fewest new packages required, then by highest
+    dependency coverage.
+
+    \b
+    ONBOARDING_GRAPH  Path to the onboarding collection graph.json.
+    COLLECTION_GRAPHS One or more paths to existing collection graph.json files.
+    """
+    try:
+        onboarding = DependencyGraph.from_file(onboarding_graph)
+    except Exception as err:
+        raise click.ClickException(
+            f"Failed to load onboarding graph {onboarding_graph}: {err}"
+        ) from err
+
+    root = onboarding.get_root_node()
+
+    toplevel_nodes: list[DependencyNode] = [
+        edge.destination_node
+        for edge in root.children
+        if edge.req_type == RequirementType.TOP_LEVEL
+    ]
+
+    if not toplevel_nodes:
+        click.echo("No top-level packages found in onboarding graph.", err=True)
+
+    logger.info(
+        "Loaded onboarding graph with %d top-level packages", len(toplevel_nodes)
+    )
+
+    collection_packages: dict[str, set[NormalizedName]] = {}
+    for graph_path in collection_graphs:
+        collection_name = extract_collection_name(graph_path)
+        if collection_name in collection_packages:
+            raise click.ClickException(
+                f"Duplicate collection name '{collection_name}' from {graph_path}. "
+                "Rename one of the graph files to avoid ambiguity."
+            )
+        try:
+            collection_graph = DependencyGraph.from_file(graph_path)
+        except Exception as err:
+            raise click.ClickException(
+                f"Failed to load collection graph {graph_path}: {err}"
+            ) from err
+        collection_packages[collection_name] = get_package_names(collection_graph)
+        logger.debug(
+            "Collection '%s': %d packages",
+            collection_name,
+            len(collection_packages[collection_name]),
+        )
+
+    results = _analyze_suggestions(toplevel_nodes, collection_packages)
+
+    if output_format == "json":
+        click.echo(json.dumps(results, indent=2))
+    else:
+        _print_suggest_collection_table(results)

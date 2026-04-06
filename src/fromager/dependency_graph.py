@@ -158,6 +158,24 @@ class DependencyNode:
             ):
                 yield install_edge.destination_node
 
+    def iter_all_dependencies(self) -> typing.Iterable[DependencyNode]:
+        """Get all unique, recursive dependencies following every edge type.
+
+        Yields every reachable node exactly once using iterative DFS.
+        Follows install, build, and toplevel edges.
+        """
+        visited: set[str] = {self.key}
+        stack: list[DependencyNode] = [self]
+        while stack:
+            current = stack.pop()
+            for edge in current.children:
+                child_node = edge.destination_node
+                if child_node.key in visited:
+                    continue
+                visited.add(child_node.key)
+                yield child_node
+                stack.append(child_node)
+
     def iter_install_requirements(self) -> typing.Iterable[DependencyNode]:
         """Get all unique, recursive install requirements"""
         visited: set[str] = set()
