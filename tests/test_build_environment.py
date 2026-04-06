@@ -1,6 +1,8 @@
+import json
 import textwrap
 from unittest.mock import Mock, patch
 
+import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -81,3 +83,24 @@ def test_missing_dependency_pattern_resolution_impossible() -> None:
     """)
     match = build_environment._uv_missing_dependency_pattern.search(msg)
     assert match is not None
+
+
+def test_get_distributions_valid_json() -> None:
+    """get_distributions returns a mapping of package names to versions."""
+    env = Mock(spec=build_environment.BuildEnvironment)
+    env.python = "/fake/python3"
+    env.run.return_value = json.dumps({"setuptools": "69.5.1", "pip": "24.0"})
+
+    result = build_environment.BuildEnvironment.get_distributions(env)
+
+    assert result == {"pip": Version("24.0"), "setuptools": Version("69.5.1")}
+
+
+def test_get_distributions_invalid_json_raises() -> None:
+    """get_distributions raises on invalid JSON instead of UnboundLocalError."""
+    env = Mock(spec=build_environment.BuildEnvironment)
+    env.python = "/fake/python3"
+    env.run.return_value = "not valid json"
+
+    with pytest.raises(json.JSONDecodeError):
+        build_environment.BuildEnvironment.get_distributions(env)
