@@ -336,6 +336,51 @@ class DependencyGraph:
 
         self.nodes[parent_key].add_child(node, req=req, req_type=req_type)
 
+    def remove_dependency(
+        self,
+        req_name: NormalizedName,
+        req_version: Version,
+    ) -> None:
+        """Remove a dependency node from the graph.
+
+        Removes the node and all edges pointing to it. This includes:
+        - Back-references in child nodes' parents lists
+        - Forward edges in parent nodes' children lists
+        Child nodes of the removed node are kept if referenced elsewhere.
+
+        Args:
+            req_name: Canonical name of the package
+            req_version: Version of the package
+        """
+        key = f"{req_name}=={req_version}"
+        if key not in self.nodes:
+            logger.debug(f"Cannot remove {key} - not in graph")
+            return
+
+        logger.debug(f"Removing failed dependency {key} from graph")
+
+        deleted_node = self.nodes[key]
+
+        # Clean up back-references (parents) in nodes that were children of the removed node
+        for child_edge in deleted_node.children:
+            child_node = child_edge.destination_node
+            filtered_parents = [
+                edge for edge in child_node.parents if edge.destination_node.key != key
+            ]
+            child_node.parents.clear()
+            child_node.parents.extend(filtered_parents)
+
+        # Remove the node itself
+        del self.nodes[key]
+
+        # Remove forward edges from any node whose children pointed to the removed node
+        for node in self.nodes.values():
+            filtered_children = [
+                edge for edge in node.children if edge.destination_node.key != key
+            ]
+            node.children.clear()
+            node.children.extend(filtered_children)
+
     def get_dependency_edges(
         self, match_dep_types: list[RequirementType] | None = None
     ) -> typing.Iterable[DependencyEdge]:

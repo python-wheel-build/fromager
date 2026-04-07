@@ -103,6 +103,13 @@ def _get_requirements_from_args(
     default=False,
     help="Test mode: continue processing after failures, report failures at end",
 )
+@click.option(
+    "--multiple-versions",
+    "multiple_versions",
+    is_flag=True,
+    default=False,
+    help="Bootstrap all matching versions instead of only the highest version",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -113,6 +120,7 @@ def bootstrap(
     sdist_only: bool,
     skip_constraints: bool,
     test_mode: bool,
+    multiple_versions: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -147,6 +155,11 @@ def bootstrap(
             "test mode enabled: will continue processing after failures and report at end"
         )
 
+    if multiple_versions:
+        logger.info(
+            "multiple versions mode enabled: will bootstrap all matching versions"
+        )
+
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
         logger.info("treating %s as pre-built wheels", sorted(pre_built))
@@ -161,6 +174,7 @@ def bootstrap(
             cache_wheel_server_url,
             sdist_only=sdist_only,
             test_mode=test_mode,
+            multiple_versions=multiple_versions,
         )
 
         # Pre-resolution phase: Resolve all top-level dependencies before recursive
@@ -463,6 +477,13 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     default=None,
     help="maximum number of parallel workers to run (default: unlimited)",
 )
+@click.option(
+    "--multiple-versions",
+    "multiple_versions",
+    is_flag=True,
+    default=False,
+    help="Bootstrap all matching versions instead of only the highest version",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 @click.pass_context
@@ -476,6 +497,7 @@ def bootstrap_parallel(
     skip_constraints: bool,
     force: bool,
     max_workers: int | None,
+    multiple_versions: bool,
     toplevel: list[str],
 ) -> None:
     """Bootstrap and build-parallel
@@ -502,6 +524,7 @@ def bootstrap_parallel(
         cache_wheel_server_url=cache_wheel_server_url,
         sdist_only=True,
         skip_constraints=skip_constraints,
+        multiple_versions=multiple_versions,
         toplevel=toplevel,
     )
 

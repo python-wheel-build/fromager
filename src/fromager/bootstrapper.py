@@ -89,6 +89,7 @@ class Bootstrapper:
         cache_wheel_server_url: str | None = None,
         sdist_only: bool = False,
         test_mode: bool = False,
+        multiple_versions: bool = False,
     ) -> None:
         if test_mode and sdist_only:
             raise ValueError(
@@ -101,6 +102,7 @@ class Bootstrapper:
         self.cache_wheel_server_url = cache_wheel_server_url or ctx.wheel_server_url
         self.sdist_only = sdist_only
         self.test_mode = test_mode
+        self.multiple_versions = multiple_versions
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
 
         # Delegate resolution to BootstrapRequirementResolver
@@ -126,6 +128,10 @@ class Bootstrapper:
         # Track failed packages in test mode (list of typed dicts for JSON export)
         self.failed_packages: list[FailureRecord] = []
 
+        # Track failed versions in multiple_versions mode
+        # Maps (package_name, version) -> exception info
+        self._failed_versions: list[tuple[str, str, Exception]] = []
+
     def resolve_and_add_top_level(
         self,
         req: Requirement,
@@ -134,6 +140,10 @@ class Bootstrapper:
 
         This is the pre-resolution phase before recursive bootstrapping begins.
         In test mode, catches resolution errors and records them as failures.
+
+        When multiple_versions is enabled, resolves and adds all matching versions
+        to the graph, but still returns only the first (highest) version for
+        backward compatibility.
 
         Args:
             req: The top-level requirement to resolve.
@@ -147,40 +157,59 @@ class Bootstrapper:
         """
         try:
             pbi = self.ctx.package_build_info(req)
-            source_url, version = self.resolve_version(
+            results = self.resolve_versions(
                 req=req,
                 req_type=RequirementType.TOP_LEVEL,
+                return_all_versions=self.multiple_versions,
             )
-            logger.info("%s resolves to %s", req, version)
-            self.ctx.dependency_graph.add_dependency(
-                parent_name=None,
-                parent_version=None,
-                req_type=RequirementType.TOP_LEVEL,
-                req=req,
-                req_version=version,
-                download_url=source_url,
-                pre_built=pbi.pre_built,
-                constraint=self.ctx.constraints.get_constraint(req.name),
-            )
-            return (source_url, version)
+            if self.multiple_versions:
+                logger.info(f"resolved {len(results)} version(s) for {req}")
+
+            # Add all resolved versions to the graph
+            for source_url, version in results:
+                logger.info("%s resolves to %s", req, version)
+                self.ctx.dependency_graph.add_dependency(
+                    parent_name=None,
+                    parent_version=None,
+                    req_type=RequirementType.TOP_LEVEL,
+                    req=req,
+                    req_version=version,
+                    download_url=source_url,
+                    pre_built=pbi.pre_built,
+                    constraint=self.ctx.constraints.get_constraint(req.name),
+                )
+
+            # Return first result for backward compatibility
+            return results[0]
         except Exception as err:
             if not self.test_mode:
                 raise
             self._record_test_mode_failure(req, None, err, "resolution")
             return None
 
-    def resolve_version(
+    def resolve_versions(
         self,
         req: Requirement,
         req_type: RequirementType,
-    ) -> tuple[str, Version]:
-        """Resolve the version of a requirement.
+        return_all_versions: bool = False,
+    ) -> list[tuple[str, Version]]:
+        """Resolve version(s) of a requirement.
 
-        Returns the source URL and the version of the requirement (highest matching version).
+        Returns list of (source URL, version) tuples, sorted by version (highest first).
 
         Git URL resolution stays in Bootstrapper because it requires
         build orchestration (BuildEnvironment, build dependencies).
         Delegates PyPI/graph resolution to BootstrapRequirementResolver.
+
+        Args:
+            req: Package requirement to resolve
+            req_type: Type of requirement
+            return_all_versions: If True, return all matching versions.
+                If False, return only highest version.
+
+        Returns:
+            List of (url, version) tuples. Contains one item when
+            return_all_versions=False, or all matching versions when True.
         """
         if req.url:
             if req_type != RequirementType.TOP_LEVEL:
@@ -193,26 +222,23 @@ class Bootstrapper:
             cached_result = self._resolver.get_cached_resolution(req, pre_built=False)
             if cached_result is not None:
                 logger.debug(f"resolved {req} from cache")
-                # Pick highest version from cached list
-                return cached_result[0]
+                return cached_result if return_all_versions else [cached_result[0]]
 
             logger.info("resolving source via URL, ignoring any plugins")
             source_url, resolved_version = self._resolve_version_from_git_url(req=req)
             # Cache the git URL resolution (always source, not prebuilt)
             # Store as list for consistency with cache structure
-            self._resolver.cache_resolution(
-                req, pre_built=False, result=[(source_url, resolved_version)]
-            )
-            return source_url, resolved_version
+            result = [(source_url, resolved_version)]
+            self._resolver.cache_resolution(req, pre_built=False, result=result)
+            return result  # Git URLs always return single version
 
         # Delegate to RequirementResolver
         parent_req = self.why[-1][1] if self.why else None
-
-        # Returns the highest matching version
         return self._resolver.resolve(
             req=req,
             req_type=req_type,
             parent_req=parent_req,
+            return_all_versions=return_all_versions,
         )
 
     def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
@@ -249,22 +275,61 @@ class Bootstrapper:
 
         In test mode, catches build exceptions, records package name, and continues.
         In normal mode, raises exceptions immediately (fail-fast).
+
+        When multiple_versions is enabled, bootstraps all matching versions instead
+        of just the highest version.
         """
         logger.info(f"bootstrapping {req} as {req_type} dependency of {self.why[-1:]}")
 
-        # Resolve version first so we have it for error reporting.
+        # Resolve versions - get all if multiple_versions mode is enabled, else get highest
         # In test mode, record resolution failures and continue.
         try:
-            source_url, resolved_version = self.resolve_version(
+            resolved_versions = self.resolve_versions(
                 req=req,
                 req_type=req_type,
+                return_all_versions=self.multiple_versions,
             )
+            if self.multiple_versions:
+                logger.info(f"resolved {len(resolved_versions)} version(s) for {req}")
         except Exception as err:
             if not self.test_mode:
                 raise
             self._record_test_mode_failure(req, None, err, "resolution")
             return
 
+        # Check if resolution returned no versions
+        if not resolved_versions:
+            raise RuntimeError(f"Could not resolve any versions for {req}")
+
+        # Bootstrap each resolved version
+        for source_url, resolved_version in resolved_versions:
+            self._bootstrap_single_version(req, req_type, source_url, resolved_version)
+
+        # In multiple versions mode, report any failures for this requirement
+        if self.multiple_versions and self._failed_versions:
+            failed_for_req = [
+                (name, ver, exc)
+                for name, ver, exc in self._failed_versions
+                if name == canonicalize_name(req.name)
+            ]
+            if failed_for_req:
+                logger.warning(
+                    f"{req.name}: {len(failed_for_req)} version(s) failed to bootstrap"
+                )
+                for name, ver, exc in failed_for_req:
+                    logger.warning(f"  - {name}=={ver}: {type(exc).__name__}: {exc}")
+
+    def _bootstrap_single_version(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+        source_url: str,
+        resolved_version: Version,
+    ) -> None:
+        """Bootstrap a single version of a package.
+
+        Extracted from bootstrap() to handle both single and multiple version modes.
+        """
         # Capture parent before _track_why pushes current package onto the stack
         parent: tuple[Requirement, Version] | None = None
         if self.why:
@@ -272,7 +337,9 @@ class Bootstrapper:
             parent = (parent_req, parent_version)
 
         # Update dependency graph unconditionally (before seen check to capture all edges)
-        self._add_to_graph(req, req_type, resolved_version, source_url, parent)
+        # Skip for TOP_LEVEL as they were already added in resolve_and_add_top_level()
+        if req_type != RequirementType.TOP_LEVEL:
+            self._add_to_graph(req, req_type, resolved_version, source_url, parent)
 
         # Build sdist-only (no wheel) if flag is set, unless this is a build
         # requirement which always needs a full wheel.
@@ -298,11 +365,29 @@ class Bootstrapper:
                     req, req_type, source_url, resolved_version, build_sdist_only
                 )
             except Exception as err:
-                if not self.test_mode:
-                    raise
-                self._record_test_mode_failure(
-                    req, str(resolved_version), err, "bootstrap"
-                )
+                # In test_mode, record failure and continue
+                if self.test_mode:
+                    self._record_test_mode_failure(
+                        req, str(resolved_version), err, "bootstrap"
+                    )
+                    return
+
+                # In multiple_versions mode, record failure and continue to next version
+                if self.multiple_versions:
+                    pkg_name = canonicalize_name(req.name)
+                    self._failed_versions.append((pkg_name, str(resolved_version), err))
+                    logger.warning(
+                        f"{req.name}=={resolved_version}: failed to bootstrap: {type(err).__name__}: {err}"
+                    )
+                    # Remove failed node from graph since bootstrap didn't complete
+                    self.ctx.dependency_graph.remove_dependency(
+                        pkg_name, resolved_version
+                    )
+                    self.ctx.write_to_graph_to_file()
+                    return
+
+                # Otherwise, raise the exception (fail-fast)
+                raise
 
     def _bootstrap_impl(
         self,
@@ -924,12 +1009,13 @@ class Bootstrapper:
 
         try:
             parent_req = self.why[-1][1] if self.why else None
-            wheel_url, fallback_version = self._resolver.resolve(
+            results = self._resolver.resolve(
                 req=req,
                 req_type=req_type,
                 parent_req=parent_req,
                 pre_built=True,  # Force prebuilt for test mode fallback
             )
+            wheel_url, fallback_version = results[0]
 
             if fallback_version != resolved_version:
                 logger.warning(
@@ -1261,9 +1347,6 @@ class Bootstrapper:
         download_url: str,
         parent: tuple[Requirement, Version] | None,
     ) -> None:
-        if req_type == RequirementType.TOP_LEVEL:
-            return
-
         parent_req, parent_version = parent if parent else (None, None)
         pbi = self.ctx.package_build_info(req)
         # Update the dependency graph after we determine that this requirement is

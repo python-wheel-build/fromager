@@ -62,8 +62,9 @@ class BootstrapRequirementResolver:
         req_type: RequirementType,
         parent_req: Requirement | None = None,
         pre_built: bool | None = None,
-    ) -> tuple[str, Version]:
-        """Resolve package requirement to the best matching version.
+        return_all_versions: bool = False,
+    ) -> list[tuple[str, Version]]:
+        """Resolve package requirement to matching version(s).
 
         Tries resolution strategies in order:
         1. Session cache (if previously resolved)
@@ -76,9 +77,13 @@ class BootstrapRequirementResolver:
             parent_req: Parent requirement from dependency chain
             pre_built: Optional override to force prebuilt (True) or source (False).
                 If None (default), uses package build info to determine.
+            return_all_versions: If True, return all matching versions. If False,
+                return only the highest matching version.
 
         Returns:
-            (url, version) tuple for the highest matching version
+            List of (url, version) tuples sorted by version (highest first).
+            Contains one item when return_all_versions=False, or all matching
+            versions when return_all_versions=True.
 
         Raises:
             ValueError: If req contains a git URL and pre_built is False
@@ -101,14 +106,14 @@ class BootstrapRequirementResolver:
         cached_result = self.get_cached_resolution(req, pre_built)
         if cached_result is not None:
             logger.debug(f"resolved {req} from cache")
-            return cached_result[0]
+            return cached_result if return_all_versions else [cached_result[0]]
 
         # Resolve using strategies
         results = self._resolve(req, req_type, parent_req, pre_built)
 
         # Cache the result
         self.cache_resolution(req, pre_built, results)
-        return results[0]
+        return results if return_all_versions else [results[0]]
 
     def _resolve(
         self,

@@ -256,13 +256,15 @@ class TestBootstrapExceptionHandling:
     def test_resolution_failure_recorded_in_test_mode(
         self, tmp_context: context.WorkContext
     ) -> None:
-        """Test that resolve_version failures are recorded in test mode."""
+        """Test that resolve_versions failures are recorded in test mode."""
         bt = bootstrapper.Bootstrapper(ctx=tmp_context, test_mode=True)
         req = Requirement("nonexistent-package>=1.0")
 
-        # Mock resolve_version to raise an exception
+        # Mock resolve_versions to raise an exception
         with mock.patch.object(
-            bt, "resolve_version", side_effect=RuntimeError("Version resolution failed")
+            bt,
+            "resolve_versions",
+            side_effect=RuntimeError("Version resolution failed"),
         ):
             # Should not raise in test mode
             bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
@@ -280,13 +282,15 @@ class TestBootstrapExceptionHandling:
     def test_resolution_failure_raises_in_normal_mode(
         self, tmp_context: context.WorkContext
     ) -> None:
-        """Test that resolve_version failures raise in normal mode."""
+        """Test that resolve_versions failures raise in normal mode."""
         bt = bootstrapper.Bootstrapper(ctx=tmp_context, test_mode=False)
         req = Requirement("nonexistent-package>=1.0")
 
-        # Mock resolve_version to raise an exception
+        # Mock resolve_versions to raise an exception
         with mock.patch.object(
-            bt, "resolve_version", side_effect=RuntimeError("Version resolution failed")
+            bt,
+            "resolve_versions",
+            side_effect=RuntimeError("Version resolution failed"),
         ):
             with pytest.raises(RuntimeError, match="Version resolution failed"):
                 bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
