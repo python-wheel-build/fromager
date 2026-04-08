@@ -18,6 +18,7 @@ import logging
 import random
 import time
 import typing
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -156,7 +157,7 @@ class RetryHTTPAdapter(HTTPAdapter):
                 if (
                     response.status_code == 403
                     and request.url is not None
-                    and "api.github.com" in request.url
+                    and urlparse(request.url).hostname == "api.github.com"
                     and "rate limit" in response.text.lower()
                 ):
                     self._handle_github_rate_limit(response, attempt, max_attempts)
