@@ -14,6 +14,7 @@ from unittest import mock
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 from fromager import bootstrapper, context
 from fromager.requirements_file import RequirementType
@@ -290,3 +291,165 @@ class TestBootstrapExceptionHandling:
         ):
             with pytest.raises(RuntimeError, match="Version resolution failed"):
                 bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+
+
+class TestPrebuiltFallback:
+    """Test prebuilt fallback behavior in test mode when build fails."""
+
+    def test_fallback_succeeds_records_build_failure(
+        self, tmp_context: context.WorkContext, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that build failure is always recorded, even when fallback succeeds."""
+        bt = bootstrapper.Bootstrapper(ctx=tmp_context, test_mode=True)
+        req = Requirement("test-package>=1.0")
+
+        with (
+            mock.patch.object(
+                bt,
+                "resolve_version",
+                return_value=("https://sdist.url", Version("1.0")),
+            ),
+            mock.patch.object(bt, "_add_to_graph"),
+            mock.patch.object(bt, "_has_been_seen", return_value=False),
+            mock.patch.object(bt, "_mark_as_seen"),
+            # First call fails (build), second succeeds (fallback with force_prebuilt)
+            mock.patch.object(
+                bt,
+                "_bootstrap_impl",
+                side_effect=[RuntimeError("Build failed"), None],
+            ),
+        ):
+            bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+
+        # Build failure is always recorded
+        assert len(bt.failed_packages) == 1
+        assert "Build failed" in bt.failed_packages[0]["exception_message"]
+        assert "successfully used pre-built wheel" in caplog.text
+
+    def test_fallback_also_fails_raises_original_error(
+        self, tmp_context: context.WorkContext, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that when fallback also fails, original build error is re-raised."""
+        bt = bootstrapper.Bootstrapper(ctx=tmp_context, test_mode=True)
+        req = Requirement("test-package>=1.0")
+
+        with (
+            mock.patch.object(
+                bt,
+                "resolve_version",
+                return_value=("https://sdist.url", Version("1.0")),
+            ),
+            mock.patch.object(bt, "_add_to_graph"),
+            mock.patch.object(bt, "_has_been_seen", return_value=False),
+            mock.patch.object(bt, "_mark_as_seen"),
+            # Both build and fallback fail
+            mock.patch.object(
+                bt,
+                "_bootstrap_impl",
+                side_effect=[
+                    RuntimeError("Original build failed"),
+                    RuntimeError("Fallback also failed"),
+                ],
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Original build failed") as exc_info:
+                bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+
+        # Original error is raised, chained from fallback error
+        assert exc_info.value.__cause__ is not None
+        assert "Fallback also failed" in str(exc_info.value.__cause__)
+
+        # Failure recorded with ORIGINAL error before fallback was attempted
+        assert len(bt.failed_packages) == 1
+        failure = bt.failed_packages[0]
+        assert failure["package"] == "test-package"
+        assert failure["version"] == "1.0"
+        assert failure["failure_type"] == "bootstrap"
+        assert "Original build failed" in failure["exception_message"]
+        assert "pre-built fallback also failed" in caplog.text
+
+    def test_build_failure_raises_in_normal_mode(
+        self, tmp_context: context.WorkContext
+    ) -> None:
+        """Test that build failures raise immediately in normal mode (no fallback)."""
+        bt = bootstrapper.Bootstrapper(ctx=tmp_context, test_mode=False)
+        req = Requirement("test-package>=1.0")
+
+        with (
+            mock.patch.object(
+                bt,
+                "resolve_version",
+                return_value=("https://sdist.url", Version("1.0")),
+            ),
+            mock.patch.object(bt, "_add_to_graph"),
+            mock.patch.object(bt, "_has_been_seen", return_value=False),
+            mock.patch.object(bt, "_mark_as_seen"),
+            mock.patch.object(
+                bt,
+                "_bootstrap_impl",
+                side_effect=RuntimeError("Build failed"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Build failed"):
+                bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+
+        # No fallback attempted in normal mode
+        assert len(bt.failed_packages) == 0
+
+    def test_force_prebuilt_version_mismatch_logs_warning(
+        self, tmp_context: context.WorkContext, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that version mismatch in force_prebuilt path logs a warning.
+
+        When the prebuilt resolver returns a different version than the
+        originally resolved source version, a warning is logged and the
+        fallback version propagates correctly to downstream calls.
+        """
+        bt = bootstrapper.Bootstrapper(ctx=tmp_context, test_mode=True)
+        req = Requirement("test-package>=1.0")
+        original_version = Version("1.0")
+        fallback_version = Version("1.2")
+        fallback_wheel_url = "https://wheel.url/test_package-1.2-py3-none-any.whl"
+        mock_wheel = tmp_context.work_dir / "test_package-1.2-py3-none-any.whl"
+
+        with (
+            mock.patch.object(
+                bt,
+                "resolve_version",
+                return_value=("https://sdist.url", original_version),
+            ),
+            mock.patch.object(bt, "_add_to_graph"),
+            mock.patch.object(bt, "_has_been_seen", return_value=False),
+            mock.patch.object(bt, "_mark_as_seen"),
+            mock.patch.object(
+                bt._resolver,
+                "resolve",
+                return_value=(fallback_wheel_url, fallback_version),
+            ),
+            mock.patch.object(
+                bt,
+                "_download_prebuilt",
+                return_value=(mock_wheel, tmp_context.work_dir),
+            ) as mock_download,
+            mock.patch("fromager.hooks.run_post_bootstrap_hooks"),
+            mock.patch.object(bt, "_get_install_dependencies", return_value=[]),
+            mock.patch.object(bt, "_add_to_build_order") as mock_build_order,
+            mock.patch.object(
+                bt, "_build_from_source", side_effect=RuntimeError("Build failed")
+            ),
+        ):
+            bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+
+        # Version mismatch warning is logged
+        assert "version mismatch" in caplog.text
+        assert "1.0" in caplog.text
+        assert "1.2" in caplog.text
+
+        # Fallback version propagated to downstream calls
+        mock_download.assert_called_once()
+        assert mock_download.call_args.kwargs["resolved_version"] == fallback_version
+
+        # Build order records fallback wheel URL, not original sdist URL
+        mock_build_order.assert_called_once()
+        assert mock_build_order.call_args.kwargs["version"] == fallback_version
+        assert mock_build_order.call_args.kwargs["source_url"] == fallback_wheel_url
