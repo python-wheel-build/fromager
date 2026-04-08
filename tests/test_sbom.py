@@ -1,12 +1,24 @@
 import json
 import pathlib
+import typing
 
 from conftest import make_sbom_ctx
 from packaging.requirements import Requirement
 from packaging.version import Version
+from spdx_tools.spdx.parser.jsonlikedict.json_like_dict_parser import (
+    JsonLikeDictParser,
+)
+from spdx_tools.spdx.validation.document_validator import validate_full_spdx_document
 
 from fromager import sbom
 from fromager.packagesettings import SbomSettings
+
+
+def _validate_spdx(doc: dict[str, typing.Any]) -> None:
+    """Validate an SBOM dict against the SPDX 2.3 spec using spdx-tools."""
+    parsed = JsonLikeDictParser().parse(doc)
+    errors = validate_full_spdx_document(parsed, spdx_version="SPDX-2.3")
+    assert not errors, "\n".join(e.validation_message for e in errors)
 
 
 def test_generate_sbom_structure(tmp_path: pathlib.Path) -> None:
@@ -26,6 +38,7 @@ def test_generate_sbom_structure(tmp_path: pathlib.Path) -> None:
     assert "creationInfo" in doc
     assert doc["creationInfo"]["created"]
     assert any("fromager" in c for c in doc["creationInfo"]["creators"])
+    _validate_spdx(doc)
 
 
 def test_generate_sbom_default_settings(tmp_path: pathlib.Path) -> None:
@@ -43,6 +56,7 @@ def test_generate_sbom_default_settings(tmp_path: pathlib.Path) -> None:
     assert doc["documentNamespace"] == (
         "https://spdx.org/spdxdocs/my-package-2.0.0.spdx.json"
     )
+    _validate_spdx(doc)
 
 
 def test_generate_sbom_custom_settings(tmp_path: pathlib.Path) -> None:
@@ -67,6 +81,7 @@ def test_generate_sbom_custom_settings(tmp_path: pathlib.Path) -> None:
     creators = doc["creationInfo"]["creators"]
     assert "Organization: ExampleCo" in creators
     assert any("fromager" in c for c in creators)
+    _validate_spdx(doc)
 
 
 def test_generate_sbom_purl_override(tmp_path: pathlib.Path) -> None:
@@ -86,6 +101,7 @@ def test_generate_sbom_purl_override(tmp_path: pathlib.Path) -> None:
     ext_refs = pkg["externalRefs"]
     assert len(ext_refs) == 1
     assert ext_refs[0]["referenceLocator"] == "pkg:generic/test-pkg@1.0.0"
+    _validate_spdx(doc)
 
 
 def test_generate_sbom_default_purl(tmp_path: pathlib.Path) -> None:
@@ -99,6 +115,7 @@ def test_generate_sbom_default_purl(tmp_path: pathlib.Path) -> None:
 
     pkg = doc["packages"][0]
     assert pkg["externalRefs"][0]["referenceLocator"] == "pkg:pypi/test@0.1.0"
+    _validate_spdx(doc)
 
 
 def test_generate_sbom_canonicalizes_name(tmp_path: pathlib.Path) -> None:
@@ -114,6 +131,7 @@ def test_generate_sbom_canonicalizes_name(tmp_path: pathlib.Path) -> None:
     assert pkg["name"] == "my-package"
     assert doc["name"] == "my-package-1.0.0"
     assert pkg["externalRefs"][0]["referenceLocator"] == "pkg:pypi/my-package@1.0.0"
+    _validate_spdx(doc)
 
 
 def test_generate_sbom_describes_relationship(tmp_path: pathlib.Path) -> None:
@@ -130,6 +148,7 @@ def test_generate_sbom_describes_relationship(tmp_path: pathlib.Path) -> None:
     assert rels[0]["spdxElementId"] == "SPDXRef-DOCUMENT"
     assert rels[0]["relationshipType"] == "DESCRIBES"
     assert rels[0]["relatedSpdxElement"] == "SPDXRef-wheel"
+    _validate_spdx(doc)
 
 
 def test_write_sbom_creates_file(tmp_path: pathlib.Path) -> None:
@@ -150,6 +169,7 @@ def test_write_sbom_creates_file(tmp_path: pathlib.Path) -> None:
 
     content = json.loads(result.read_text())
     assert content["spdxVersion"] == "SPDX-2.3"
+    _validate_spdx(content)
 
 
 def test_write_sbom_preserves_existing_files(tmp_path: pathlib.Path) -> None:
