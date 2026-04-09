@@ -2,7 +2,7 @@
 
 > **Note**: This file is also available as `CLAUDE.md` (symlink) for Claude Code CLI users.
 >
-> Read [CONTRIBUTING.md](CONTRIBUTING.md) for comprehensive coding standards, design patterns, and commit message format. This file provides agent-specific quick reference only.
+> **You MUST read [CONTRIBUTING.md](CONTRIBUTING.md) before writing code.** It contains coding standards, type annotation rules, design patterns, and commit message format. This file provides agent-specific quick reference only.
 
 ## Essential Rules (MUST FOLLOW)
 

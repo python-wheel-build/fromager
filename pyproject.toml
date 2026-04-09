@@ -72,6 +72,7 @@ test = [
     "coverage[toml]!=4.4,>=4.0",
     "pytest",
     "requests-mock",
+    "spdx-tools",
     "twine>=6.1.0",
     "hatchling",
     "hatch-vcs",
@@ -204,7 +205,7 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "stevedore"]
+module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "spdx_tools.*", "stevedore"]
 ignore_missing_imports = true
 
 [tool.basedpyright]
