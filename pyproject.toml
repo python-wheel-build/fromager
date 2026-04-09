@@ -229,7 +229,9 @@ features = ["test"]
 
 [tool.hatch.envs.test.scripts]
 test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
-coverage-report = ["coverage combine", "coverage report --format=markdown"]
+coverage-erase = "coverage erase"
+coverage-combine = "coverage combine"
+coverage-report = ["coverage combine", "coverage report --format=markdown | tee coverage-report-$(date +%Y%m%d-%H%M%S).md"]
 
 [tool.hatch.envs.lint]
 description = "Run linters."

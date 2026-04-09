@@ -39,7 +39,26 @@ recent version of Python (as defined in `pyproject.toml` under `project.requires
 - `hatch run test:test` - Run unit tests with coverage
 - `hatch run test:test tests/test_bootstrapper.py` - Run specific test files
 - `hatch run test:test -k "test_metadata"` - Run tests with custom args
-- `hatch run test:coverage-report` - Generate coverage report
+- `hatch run test:coverage-erase` - Clean old coverage data
+- `hatch run test:coverage-report` - Combine and generate markdown coverage report (saved to `coverage-report-<timestamp>.md`)
+
+• **Coverage Report:**
+
+To generate a coverage report that includes both unit and e2e tests:
+
+```bash
+hatch run test:coverage-erase      # Clean old coverage data
+hatch run test:test                # Run unit tests (collects coverage)
+./e2e/run_all.sh                   # Run all e2e tests (collects coverage)
+hatch run test:coverage-report     # Combine and generate markdown report
+```
+
+The report is printed to the terminal and saved to a timestamped file
+(`coverage-report-YYYYMMDD-HHMMSS.md`). For unit-test-only coverage,
+skip the `run_all.sh` step. To run a single e2e suite instead of all,
+replace `run_all.sh` with one of: `ci_bootstrap_suite.sh`,
+`ci_bootstrap_parallel_suite.sh`, `ci_build_suite.sh`, `ci_config_suite.sh`,
+`ci_specialized_suite.sh`, `ci_workflow_suite.sh`.
 
 • **Linting & Code Quality:**
 
