@@ -3,6 +3,7 @@ import pathlib
 from unittest.mock import Mock, patch
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from fromager import bootstrapper, requirements_file
@@ -293,3 +294,79 @@ def test_build_from_source_returns_dataclass(tmp_context: WorkContext) -> None:
         assert result.sdist_root_dir == mock_sdist_root
         assert result.build_env is not None
         assert result.source_type == SourceType.SDIST
+
+
+def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
+    """Test that multiple versions mode continues when one version fails."""
+    # Enable multiple versions mode
+    bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+
+    # Mock the resolver to return 3 versions
+    with patch.object(
+        bt._resolver,
+        "resolve",
+        return_value=[
+            ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
+            ("https://pypi.org/testpkg-1.5.tar.gz", Version("1.5")),
+            ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
+        ],
+    ):
+        # Mock _bootstrap_impl to fail for version 1.5 only
+        call_count = {"count": 0}
+
+        def mock_bootstrap_impl(
+            req: Requirement,
+            req_type: RequirementType,
+            source_url: str,
+            resolved_version: Version,
+            build_sdist_only: bool,
+        ) -> None:
+            call_count["count"] += 1
+            if str(resolved_version) == "1.5":
+                raise ValueError("Simulated failure for version 1.5")
+            # For other versions, just mark as seen to avoid actual build
+            bt._mark_as_seen(req, resolved_version, build_sdist_only)
+
+        with patch.object(bt, "_bootstrap_impl", side_effect=mock_bootstrap_impl):
+            # Mock _has_been_seen to return False so we attempt bootstrap
+            with patch.object(bt, "_has_been_seen", return_value=False):
+                # Capture log output
+                with patch("fromager.bootstrapper.logger") as mock_logger:
+                    req = Requirement("testpkg>=1.0")
+
+                    # Call bootstrap with INSTALL type (not TOP_LEVEL, since TOP_LEVEL
+                    # nodes are added in resolve_and_add_top_level())
+                    bt.bootstrap(
+                        req=req,
+                        req_type=RequirementType.INSTALL,
+                    )
+
+                    # Verify _bootstrap_impl was called 3 times (all versions attempted)
+                    assert call_count["count"] == 3
+
+                    # Verify that version 1.5 is in failed_versions
+                    assert len(bt._failed_versions) == 1
+                    pkg_name, version_str, exc = bt._failed_versions[0]
+                    assert pkg_name == canonicalize_name("testpkg")
+                    assert version_str == "1.5"
+                    assert isinstance(exc, ValueError)
+                    assert str(exc) == "Simulated failure for version 1.5"
+
+                    # Verify that a warning was logged for the failed version
+                    warning_calls = [
+                        call
+                        for call in mock_logger.warning.call_args_list
+                        if "failed to bootstrap" in str(call)
+                    ]
+                    assert len(warning_calls) >= 1
+
+                    # Verify that failed version 1.5 is NOT in the dependency graph
+                    # (should have been removed)
+                    failed_key = f"{canonicalize_name('testpkg')}==1.5"
+                    assert failed_key not in tmp_context.dependency_graph.nodes
+
+                    # Verify that successful versions ARE in the dependency graph
+                    success_key_20 = f"{canonicalize_name('testpkg')}==2.0"
+                    success_key_10 = f"{canonicalize_name('testpkg')}==1.0"
+                    assert success_key_20 in tmp_context.dependency_graph.nodes
+                    assert success_key_10 in tmp_context.dependency_graph.nodes

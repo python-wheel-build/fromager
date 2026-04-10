@@ -463,7 +463,7 @@ def test_resolve_allows_git_urls_for_prebuilt(
     ]
 
     # Should NOT raise - git URLs are allowed when explicitly requesting prebuilt
-    url, version = resolver.resolve(
+    results = resolver.resolve(
         req=req,
         req_type=RequirementType.INSTALL,
         pre_built=True,
@@ -472,6 +472,8 @@ def test_resolve_allows_git_urls_for_prebuilt(
 
     # Verify resolution was called
     mock_resolve.assert_called_once()
+    assert len(results) == 1
+    url, version = results[0]
     assert url == "https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl"
     assert version == Version("1.0")
 
@@ -501,7 +503,7 @@ def test_resolve_auto_routes_to_prebuilt(
         ]
 
         # Call resolve with pre_built=None (should auto-detect)
-        url, version = resolver.resolve(
+        results = resolver.resolve(
             req=req,
             req_type=RequirementType.INSTALL,
             parent_req=None,
@@ -510,6 +512,8 @@ def test_resolve_auto_routes_to_prebuilt(
 
         # Verify resolution was called
         mock_resolve.assert_called_once()
+        assert len(results) == 1
+        url, version = results[0]
         assert url == "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl"
         assert version == Version("1.0")
 
@@ -541,7 +545,7 @@ def test_resolve_auto_routes_to_source(
         ]
 
         # Call resolve with pre_built=None (should auto-detect)
-        url, version = resolver.resolve(
+        results = resolver.resolve(
             req=req,
             req_type=RequirementType.INSTALL,
             parent_req=None,
@@ -550,6 +554,8 @@ def test_resolve_auto_routes_to_source(
 
         # Verify resolution was called
         mock_resolve.assert_called_once()
+        assert len(results) == 1
+        url, version = results[0]
         assert url == "https://files.pythonhosted.org/mypackage-2.0.tar.gz"
         assert version == Version("2.0")
 
@@ -578,20 +584,22 @@ def test_resolve_prebuilt_after_source_uses_separate_cache(
     resolver = BootstrapRequirementResolver(tmp_context)
 
     # First call: resolve as source (explicit pre_built=False)
-    url1, version1 = resolver.resolve(
+    results1 = resolver.resolve(
         req=req,
         req_type=RequirementType.INSTALL,
         parent_req=None,
         pre_built=False,
     )
 
+    assert len(results1) == 1
+    url1, version1 = results1[0]
     assert url1 == "https://files.pythonhosted.org/testpkg-1.5.tar.gz"
     assert version1 == Version("1.5")
     assert mock_resolve.call_count == 1
 
     # Second call: resolve same req as prebuilt (explicit pre_built=True)
     # This should NOT return the cached source result
-    url2, version2 = resolver.resolve(
+    results2 = resolver.resolve(
         req=req,
         req_type=RequirementType.INSTALL,
         parent_req=None,
@@ -600,5 +608,7 @@ def test_resolve_prebuilt_after_source_uses_separate_cache(
 
     # Verify it called resolution again (not cached) because cache keys differ
     assert mock_resolve.call_count == 2
+    assert len(results2) == 1
+    url2, version2 = results2[0]
     assert url2 == "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl"
     assert version2 == Version("1.5")

@@ -89,10 +89,11 @@ def lint_requirements(
             if resolve_requirements and not is_constraints:
                 token = requirement_ctxvar.set(requirement)
                 try:
-                    _, version = bt.resolve_version(
+                    results = bt.resolve_versions(
                         req=requirement,
                         req_type=RequirementType.TOP_LEVEL,
                     )
+                    _, version = results[0]
                     logger.info(f"{requirement} resolves to {version}")
                 except Exception as err:
                     logger.error(
