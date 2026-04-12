@@ -1078,6 +1078,9 @@ class Bootstrapper:
         if not wheel_filename:
             return None, None
 
+        # Re-validate build tag from the actual wheel metadata because
+        # finders.find_wheel matches by filename prefix, which may not
+        # enforce an exact build tag match.
         _, _, build_tag, _ = wheels.extract_info_from_wheel_file(req, wheel_filename)
         if expected_build_tag and expected_build_tag != build_tag:
             logger.info(
@@ -1181,7 +1184,12 @@ class Bootstrapper:
             return None
 
     def _resolve_version_from_git_url(self, req: Requirement) -> tuple[str, Version]:
-        "Return path to the cloned git repository and the package version."
+        """Resolve source path and version from a ``git+`` URL.
+
+        Parses the URL for an ``@ref`` version hint. If the ref is a valid
+        version, reuses an existing clone when possible. Otherwise, clones
+        the repo and extracts the version from package metadata.
+        """
 
         if not req.url:
             raise ValueError(f"unable to resolve from URL with no URL in {req}")

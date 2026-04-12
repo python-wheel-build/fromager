@@ -40,6 +40,14 @@ def find_sdist(
     req: Requirement,
     dist_version: str,
 ) -> pathlib.Path | None:
+    """Find an sdist archive in downloads_dir for the given requirement.
+
+    First checks for a plugin-provided exact filename. If no plugin match,
+    tries four naming conventions (underscore-normalized, canonical, original,
+    and dotted) with case-insensitive comparison to handle inconsistent
+    sdist naming across the Python ecosystem. Case-insensitive globbing
+    is not available before Python 3.12.
+    """
     sdist_file_name = overrides.find_and_invoke(
         req.name,
         "expected_source_archive_name",
@@ -95,6 +103,13 @@ def find_wheel(
     dist_version: str,
     build_tag: BuildTag = (),
 ) -> pathlib.Path | None:
+    """Find a wheel file in downloads_dir for the given requirement.
+
+    Tries four naming conventions (PEP 427 transformed, canonical, original,
+    and dotted), each suffixed with the build tag when present. Uses
+    case-insensitive ``startswith`` matching rather than exact base comparison
+    because wheel filenames include platform/Python tags after the version.
+    """
     filename_prefix = _dist_name_to_filename(req.name)
     canonical_name = canonicalize_name(req.name)
     # if build tag is 0 then we can ignore to handle non tagged wheels for backward compatibility
@@ -140,6 +155,15 @@ def find_source_dir(
     req: Requirement,
     dist_version: str,
 ) -> pathlib.Path | None:
+    """Find the unpacked source directory for a requirement.
+
+    Tries three strategies in order:
+    1. Plugin override providing the exact directory name
+    2. Derive from the sdist archive name (strip extension), assuming the
+       unpacked layout is ``<base>/<base>/`` (double-nested)
+    3. Fall back to four naming conventions with case-insensitive matching,
+       returning ``<match>/<match>/`` (same double-nested convention)
+    """
     sdir_name_func = overrides.find_override_method(
         req.name, "expected_source_directory_name"
     )
