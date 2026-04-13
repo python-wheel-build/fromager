@@ -253,5 +253,6 @@ __marimo__/
 
 # Misc
 .skip-coverage
-.claude
+.claude/*
+!.claude/commands/
 /.beads/
