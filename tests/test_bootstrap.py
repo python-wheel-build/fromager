@@ -1,4 +1,5 @@
 import io
+import logging
 import pathlib
 import textwrap
 from unittest.mock import Mock, patch
@@ -539,6 +540,143 @@ def test_skip_constraints_cli_option() -> None:
     # Check that the help text includes our new option
     assert "--skip-constraints" in result.output
     assert "Skip generating constraints.txt file" in result.output
+
+
+@patch("fromager.commands.bootstrap.bootstrapper.Bootstrapper")
+@patch("fromager.commands.bootstrap.server.start_wheel_server")
+@patch("fromager.commands.bootstrap.progress.progress_context")
+@patch("fromager.commands.bootstrap.metrics.summarize")
+def test_multiple_versions_auto_disables_constraints(
+    mock_metrics: Mock,
+    mock_progress: Mock,
+    mock_server: Mock,
+    mock_bootstrapper: Mock,
+    tmp_context: context.WorkContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that --multiple-versions alone auto-disables constraints and logs message"""
+    # Setup mocks
+    mock_progress.return_value.__enter__.return_value = Mock()
+    mock_progress.return_value.__exit__.return_value = None
+    mock_bt_instance = Mock()
+    mock_bt_instance.resolve_and_add_top_level.return_value = ("url", Version("1.0"))
+    mock_bt_instance.finalize.return_value = 0
+    mock_bootstrapper.return_value = mock_bt_instance
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        # Create a temporary requirements file
+        pathlib.Path("req.txt").write_text("setuptools>=60\n")
+
+        # Invoke with --multiple-versions but NOT --skip-constraints
+        with caplog.at_level(logging.INFO):
+            result = runner.invoke(
+                bootstrap.bootstrap,
+                [
+                    "-r",
+                    "req.txt",
+                    "--multiple-versions",
+                ],
+                obj=tmp_context,
+            )
+
+        # Should succeed
+        assert result.exit_code == 0
+
+        # Should log that constraints are auto-disabled
+        assert "automatically disabling constraints generation" in caplog.text
+        assert "incompatible with --multiple-versions" in caplog.text
+
+
+@patch("fromager.commands.bootstrap.bootstrapper.Bootstrapper")
+@patch("fromager.commands.bootstrap.server.start_wheel_server")
+@patch("fromager.commands.bootstrap.progress.progress_context")
+@patch("fromager.commands.bootstrap.metrics.summarize")
+def test_multiple_versions_with_skip_constraints_no_duplicate_log(
+    mock_metrics: Mock,
+    mock_progress: Mock,
+    mock_server: Mock,
+    mock_bootstrapper: Mock,
+    tmp_context: context.WorkContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that --multiple-versions --skip-constraints together doesn't log auto-disable message"""
+    # Setup mocks
+    mock_progress.return_value.__enter__.return_value = Mock()
+    mock_progress.return_value.__exit__.return_value = None
+    mock_bt_instance = Mock()
+    mock_bt_instance.resolve_and_add_top_level.return_value = ("url", Version("1.0"))
+    mock_bt_instance.finalize.return_value = 0
+    mock_bootstrapper.return_value = mock_bt_instance
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        # Create a temporary requirements file
+        pathlib.Path("req.txt").write_text("setuptools>=60\n")
+
+        # Invoke with BOTH --multiple-versions AND --skip-constraints
+        with caplog.at_level(logging.INFO):
+            result = runner.invoke(
+                bootstrap.bootstrap,
+                [
+                    "-r",
+                    "req.txt",
+                    "--multiple-versions",
+                    "--skip-constraints",
+                ],
+                obj=tmp_context,
+            )
+
+        # Should succeed
+        assert result.exit_code == 0
+
+        # Should NOT log the auto-disable message (already disabled by user)
+        assert "automatically disabling constraints generation" not in caplog.text
+
+
+@patch("fromager.commands.bootstrap.bootstrapper.Bootstrapper")
+@patch("fromager.commands.bootstrap.server.start_wheel_server")
+@patch("fromager.commands.bootstrap.progress.progress_context")
+@patch("fromager.commands.bootstrap.metrics.summarize")
+@patch("fromager.commands.bootstrap.write_constraints_file")
+def test_without_multiple_versions_constraints_not_disabled(
+    mock_write_constraints: Mock,
+    mock_metrics: Mock,
+    mock_progress: Mock,
+    mock_server: Mock,
+    mock_bootstrapper: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Test that without --multiple-versions, constraints are not auto-disabled"""
+    # Setup mocks
+    mock_progress.return_value.__enter__.return_value = Mock()
+    mock_progress.return_value.__exit__.return_value = None
+    mock_bt_instance = Mock()
+    mock_bt_instance.resolve_and_add_top_level.return_value = ("url", Version("1.0"))
+    mock_bt_instance.finalize.return_value = 0
+    mock_bootstrapper.return_value = mock_bt_instance
+    mock_write_constraints.return_value = True
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        # Create a temporary requirements file
+        pathlib.Path("req.txt").write_text("setuptools>=60\n")
+
+        # Invoke WITHOUT --multiple-versions
+        result = runner.invoke(
+            bootstrap.bootstrap,
+            [
+                "-r",
+                "req.txt",
+            ],
+            obj=tmp_context,
+        )
+
+        # Should succeed
+        assert result.exit_code == 0
+
+        # write_constraints_file should have been called (constraints NOT disabled)
+        assert mock_write_constraints.called
 
 
 @patch("fromager.gitutils.git_clone")
