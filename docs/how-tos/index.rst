@@ -47,6 +47,7 @@ Customize builds with overrides, variants, and version handling.
    :maxdepth: 1
 
    pyproject-overrides
+   dependency-build-tags
    multiple-versions
    multiple-version-bootstrap
    pre-release-versions
