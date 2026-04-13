@@ -8,7 +8,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
-from fromager import build_environment, context
+from fromager import build_environment, context, requirements_file, resolver
 from fromager.packagesettings import (
     Annotations,
     BuildDirectory,
@@ -29,6 +29,14 @@ TEST_EMPTY_PKG = "test-empty-pkg"
 TEST_OTHER_PKG = "test-other-pkg"
 TEST_RELATED_PKG = "test-pkg-library"
 TEST_PREBUILT_PKG = "test-prebuilt-pkg"
+TEST_GITHUB_DOWNLOAD = "test-github-download"
+TEST_GITHUB_GIT = "test-github-git"
+TEST_GITLAB_DOWNLOAD = "test-gitlab-download"
+TEST_GITLAB_GIT = "test-gitlab-git"
+TEST_PYPIDOWNLOAD = "test-pypidownload"
+TEST_PYPIPREBUILT = "test-pypiprebuilt"
+TEST_PYPIGIT = "test-pypigit"
+TEST_PYPISDIST = "test-pypisdist"
 
 FULL_EXPECTED: dict[str, typing.Any] = {
     "annotations": {
@@ -85,6 +93,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "ignore_platform": True,
         "use_pypi_org_metadata": True,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": {
@@ -93,6 +102,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
+            "source": None,
         },
         "rocm": {
             "annotations": {
@@ -101,12 +111,14 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"SPAM": ""},
             "wheel_server_url": None,
             "pre_built": True,
+            "source": None,
         },
         "cuda": {
             "annotations": None,
             "env": {},
             "wheel_server_url": None,
             "pre_built": False,
+            "source": None,
         },
     },
 }
@@ -146,6 +158,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
     },
+    "source": None,
     "variants": {},
 }
 
@@ -186,12 +199,14 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": None,
             "env": {},
             "pre_built": True,
             "wheel_server_url": None,
+            "source": None,
         },
     },
 }
@@ -504,6 +519,14 @@ def test_settings_overrides(testdata_context: context.WorkContext) -> None:
         TEST_OTHER_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
+        TEST_GITHUB_DOWNLOAD,
+        TEST_GITHUB_GIT,
+        TEST_GITLAB_DOWNLOAD,
+        TEST_GITLAB_GIT,
+        TEST_PYPIDOWNLOAD,
+        TEST_PYPIGIT,
+        TEST_PYPIPREBUILT,
+        TEST_PYPISDIST,
     }
 
 
@@ -549,11 +572,19 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
 
 def test_settings_list(testdata_context: context.WorkContext) -> None:
     assert testdata_context.settings.list_overrides() == {
+        TEST_PKG,
         TEST_EMPTY_PKG,
         TEST_OTHER_PKG,
-        TEST_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
+        TEST_GITHUB_DOWNLOAD,
+        TEST_GITHUB_GIT,
+        TEST_GITLAB_DOWNLOAD,
+        TEST_GITLAB_GIT,
+        TEST_PYPIDOWNLOAD,
+        TEST_PYPIGIT,
+        TEST_PYPIPREBUILT,
+        TEST_PYPISDIST,
     }
     assert testdata_context.settings.list_pre_built() == {TEST_PREBUILT_PKG}
     assert testdata_context.settings.variant_changelog() == []
@@ -899,3 +930,99 @@ env:
     result = pbi.get_extra_environ(template_env={}, version=None)
     assert result["FOO"] == "bar"
     assert "__version__" not in result
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        (
+            TEST_GITHUB_DOWNLOAD,
+            {
+                "provider": "github-tag-download",
+                # "matcher_factory": "",
+                "project_url": "https://github.com/python-wheel-build/fromager",
+            },
+        ),
+        (
+            TEST_GITHUB_GIT,
+            {
+                "provider": "github-tag-git",
+                # "matcher_factory": "",
+                "project_url": "https://github.com/python-wheel-build/fromager",
+            },
+        ),
+        (
+            TEST_GITLAB_DOWNLOAD,
+            {
+                "provider": "gitlab-tag-download",
+                # "matcher_factory": "",
+                "project_url": "https://gitlab.test/python-wheel-build/fromager",
+            },
+        ),
+        (
+            TEST_GITLAB_GIT,
+            {
+                "provider": "gitlab-tag-git",
+                # "matcher_factory": "",
+                "project_url": "https://gitlab.test/python-wheel-build/fromager",
+            },
+        ),
+        (
+            TEST_PYPIDOWNLOAD,
+            {
+                "provider": "pypi-download",
+                "index_url": "https://pypi.test/simple",
+                "download_url": "https://download.test/test_pypidownload-%7Bversion%7D.tar.gz",
+            },
+        ),
+        (
+            TEST_PYPIGIT,
+            {
+                "provider": "pypi-git",
+                "index_url": "https://pypi.test/simple",
+                "clone_url": "https://github.com/python-wheel-build/fromager.git",
+                "tag": "v{version}",
+            },
+        ),
+        (
+            TEST_PYPIPREBUILT,
+            {
+                "provider": "pypi-prebuilt",
+                "index_url": "https://pypi.test/simple",
+            },
+        ),
+        (
+            TEST_PYPISDIST,
+            {
+                "provider": "pypi-sdist",
+                "index_url": "https://pypi.test/simple",
+            },
+        ),
+    ],
+)
+def test_source_resolvers(
+    name: str, expected: dict, testdata_context: context.WorkContext
+) -> None:
+    pbi = testdata_context.settings.package_build_info(name)
+    assert pbi.source_resolver
+    assert pbi.source_resolver.provider == expected["provider"]
+    assert pbi.serialize(mode="json")["source"] == expected
+
+    resolver_provider = pbi.source_resolver.resolver_provider(
+        ctx=testdata_context,
+        req_type=requirements_file.RequirementType.TOP_LEVEL,
+    )
+    assert isinstance(resolver_provider, resolver.BaseProvider)
+
+
+def test_source_resolver_variant(testdata_context: context.WorkContext) -> None:
+    pbi = testdata_context.settings.package_build_info(TEST_PYPISDIST)
+    assert pbi.source_resolver
+    assert pbi.source_resolver.provider == "pypi-sdist"
+    assert str(pbi.source_resolver.index_url) == "https://pypi.test/simple"
+
+    testdata_context.settings.variant = Variant("rocm")
+    pbi = testdata_context.settings.package_build_info(TEST_PYPISDIST)
+    assert pbi.source_resolver
+    assert pbi.source_resolver.provider == "pypi-sdist"
+    assert str(pbi.source_resolver.index_url) == "https://rocm.test/simple"

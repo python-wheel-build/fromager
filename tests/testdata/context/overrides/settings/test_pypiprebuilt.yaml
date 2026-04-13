@@ -1,0 +1,3 @@
+source:
+  provider: pypi-prebuilt
+  index_url: https://pypi.test/simple
