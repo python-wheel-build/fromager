@@ -1,0 +1,5 @@
+changelog:
+  "12.9":
+    - "Updated to CUDA 12.9"
+  "12.8":
+    - "Updated to CUDA 12.8"

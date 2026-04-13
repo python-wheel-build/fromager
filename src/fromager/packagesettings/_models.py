@@ -332,6 +332,21 @@ class PackageSettings(pydantic.BaseModel):
     changelog: VariantChangelog = Field(default_factory=dict)
     """Changelog entries"""
 
+    dependencies: list[Package] = Field(default_factory=list)
+    """Package dependencies for build tag calculation
+
+    When any dependency's build tag changes, this package's build tag
+    increases accordingly. Applies to all versions of the package.
+    Supports transitive dependencies and "fake packages" (platform
+    dependencies like CUDA, ROCm that have settings but no source).
+
+    Example::
+
+        dependencies:
+          - torch
+          - cuda-toolkit
+    """
+
     config_settings: dict[str, str | list[str]] = Field(default_factory=dict)
     """PEP 517 arbitrary configuration for wheel builds
 

@@ -1,0 +1,5 @@
+dependencies:
+  - test-dep-chain-c
+changelog:
+  "1.0.0":
+    - "Base package update"

@@ -46,6 +46,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         Version("1.0.1"): ["fixed bug"],
         Version("1.0.2"): ["more bugs", "rebuild"],
     },
+    "dependencies": [],
     "config_settings": {
         "setup-args": [
             "-Dsystem-freetype=true",
@@ -122,6 +123,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "exclusive_build": False,
     },
     "changelog": {},
+    "dependencies": [],
     "config_settings": {},
     "env": {},
     "download_source": {
@@ -162,6 +164,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
     "changelog": {
         Version("1.0.1"): ["onboard"],
     },
+    "dependencies": [],
     "config_settings": {},
     "env": {},
     "download_source": {
@@ -504,6 +507,12 @@ def test_settings_overrides(testdata_context: context.WorkContext) -> None:
         TEST_OTHER_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
+        "test-dep-chain-a",
+        "test-dep-chain-b",
+        "test-dep-chain-c",
+        "test-circular-a",
+        "test-circular-b",
+        "test-fake-cuda",
     }
 
 
@@ -554,6 +563,12 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
         TEST_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
+        "test-dep-chain-a",
+        "test-dep-chain-b",
+        "test-dep-chain-c",
+        "test-circular-a",
+        "test-circular-b",
+        "test-fake-cuda",
     }
     assert testdata_context.settings.list_pre_built() == {TEST_PREBUILT_PKG}
     assert testdata_context.settings.variant_changelog() == []
@@ -899,3 +914,106 @@ env:
     result = pbi.get_extra_environ(template_env={}, version=None)
     assert result["FOO"] == "bar"
     assert "__version__" not in result
+
+
+def test_build_tag_no_dependencies(testdata_context: context.WorkContext) -> None:
+    """Test build tag without dependencies (backward compatibility)."""
+    pbi = testdata_context.settings.package_build_info("test-empty-pkg")
+    # Empty package has no changelog entries
+    assert pbi.build_tag(Version("1.0.0")) == ()
+
+
+def test_build_tag_simple_dependency(testdata_context: context.WorkContext) -> None:
+    """Test build tag with a simple dependency chain: C (no deps)."""
+    pbi = testdata_context.settings.package_build_info("test-dep-chain-c")
+    # C has 1 changelog entry, no dependencies
+    assert pbi.build_tag(Version("1.0.0")) == (1, "")
+
+
+def test_build_tag_transitive_dependencies(
+    testdata_context: context.WorkContext,
+) -> None:
+    """Test build tag includes all transitive dependencies: A -> B -> C."""
+    # C: 1 changelog entry, no dependencies = 1
+    pbi_c = testdata_context.settings.package_build_info("test-dep-chain-c")
+    assert pbi_c.build_tag(Version("1.0.0")) == (1, "")
+
+    # B: 1 changelog entry + 1 from C = 2
+    pbi_b = testdata_context.settings.package_build_info("test-dep-chain-b")
+    assert pbi_b.build_tag(Version("1.0.0")) == (2, "")
+
+    # A: 1 changelog entry + 2 from B (which includes C) = 3
+    pbi_a = testdata_context.settings.package_build_info("test-dep-chain-a")
+    assert pbi_a.build_tag(Version("1.0.0")) == (3, "")
+
+
+def test_build_tag_circular_dependency(testdata_context: context.WorkContext) -> None:
+    """Test circular dependency detection: A -> B -> A."""
+    pbi = testdata_context.settings.package_build_info("test-circular-a")
+    with pytest.raises(ValueError, match="Circular dependency detected"):
+        pbi.build_tag(Version("1.0.0"))
+
+
+def test_build_tag_fake_package(testdata_context: context.WorkContext) -> None:
+    """Test fake package (platform dependency with settings but no source)."""
+    pbi = testdata_context.settings.package_build_info("test-fake-cuda")
+    # Fake package has changelog for version 12.9 (1 entry)
+    assert pbi.build_tag(Version("12.9")) == (1, "")
+    # Fake package has changelog for version 12.8 (1 entry)
+    assert pbi.build_tag(Version("12.8")) == (1, "")
+    # No changelog for other versions
+    assert pbi.build_tag(Version("1.0.0")) == ()
+
+
+def test_build_tag_with_pre_built_dependency(
+    testdata_context: context.WorkContext,
+) -> None:
+    """Test that pre-built dependencies contribute 0 to build tag."""
+    # test-prebuilt-pkg has pre_built: True for cpu variant
+    # Even though it has a changelog, pre-built packages return ()
+    pbi = testdata_context.settings.package_build_info("test-prebuilt-pkg")
+    assert pbi.pre_built is True
+    assert pbi.build_tag(Version("1.0.1")) == ()
+
+
+def test_dependencies_field_default() -> None:
+    """Test that dependencies field defaults to empty list."""
+    ps = PackageSettings.from_default("test-pkg")
+    assert ps.dependencies == []
+
+
+def test_dependencies_field_from_yaml(testdata_context: context.WorkContext) -> None:
+    """Test that dependencies are parsed from YAML."""
+    pbi = testdata_context.settings.package_build_info("test-dep-chain-a")
+    ps = pbi._ps
+    assert ps.dependencies == ["test-dep-chain-b"]
+
+
+def test_build_tag_non_existent_dependency(
+    testdata_context: context.WorkContext,
+) -> None:
+    """Test that non-existent dependencies create default settings with empty changelog."""
+    # Create a package with a dependency that doesn't exist
+    ps = PackageSettings.from_string(
+        "test-nonexist-dep",
+        """
+dependencies:
+  - nonexistent-package
+changelog:
+  "1.0.0":
+    - "My change"
+""",
+    )
+
+    # Manually create a Settings object to test
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=testdata_context.settings.patches_dir,
+        max_jobs=1,
+    )
+
+    pbi = settings.package_build_info("test-nonexist-dep")
+    # Should be 1 (own changelog) + 0 (non-existent dependency has no changelog) = 1
+    assert pbi.build_tag(Version("1.0.0")) == (1, "")
