@@ -370,3 +370,41 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
                     success_key_10 = f"{canonicalize_name('testpkg')}==1.0"
                     assert success_key_20 in tmp_context.dependency_graph.nodes
                     assert success_key_10 in tmp_context.dependency_graph.nodes
+
+
+@patch("fromager.resolver.find_all_matching_from_provider")
+@patch("fromager.resolver.PyPIProvider")
+def test_download_wheel_from_cache_bypasses_hooks(
+    mock_pypi_provider: Mock,
+    mock_find_all: Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """Verify _download_wheel_from_cache uses PyPIProvider directly, not hooks."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.cache_wheel_server_url = "https://cache.example.com/simple/"
+
+    mock_provider = Mock()
+    mock_pypi_provider.return_value = mock_provider
+    # Raise so the except clause returns (None, None) before hitting
+    # network calls later in the function.
+    mock_find_all.side_effect = RuntimeError("no match")
+
+    with patch("fromager.overrides.find_and_invoke") as mock_override:
+        result = bt._download_wheel_from_cache(
+            req=Requirement("test-pkg"),
+            resolved_version=Version("1.0.0"),
+        )
+
+    assert result == (None, None)
+
+    # Hook system must NOT be called for cache lookups
+    mock_override.assert_not_called()
+
+    # PyPIProvider must be instantiated directly
+    mock_pypi_provider.assert_called_once_with(
+        sdist_server_url="https://cache.example.com/simple/",
+        include_sdists=False,
+        include_wheels=True,
+        constraints=tmp_context.constraints,
+    )
+    mock_find_all.assert_called_once_with(mock_provider, Requirement("test-pkg==1.0.0"))
