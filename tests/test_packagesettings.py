@@ -582,9 +582,9 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
 def test_settings_list(testdata_context: context.WorkContext) -> None:
     assert testdata_context.settings.list_overrides() == {
         TEST_COOLDOWN_PKG,
+        TEST_PKG,
         TEST_EMPTY_PKG,
         TEST_OTHER_PKG,
-        TEST_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
     }

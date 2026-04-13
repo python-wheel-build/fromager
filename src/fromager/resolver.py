@@ -1324,12 +1324,14 @@ class VersionMapProvider(BaseProvider):
     def __init__(
         self,
         version_map: VersionMap,
-        package_name: str,
+        package_name: str | None,
         constraints: Constraints | None = None,
         *,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
     ) -> None:
+        if package_name is None:
+            use_resolver_cache = False
         super().__init__(
             constraints=constraints,
             req_type=req_type,
@@ -1340,6 +1342,8 @@ class VersionMapProvider(BaseProvider):
 
     @property
     def cache_key(self) -> str:
+        if self.package_name is None:
+            raise ValueError("Cannot cache VersionMapProvider without package name")
         return f"versionmap:{self.package_name}"
 
     def find_candidates(self, identifier: str) -> Candidates:
