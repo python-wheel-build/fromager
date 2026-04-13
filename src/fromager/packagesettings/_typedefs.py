@@ -7,6 +7,7 @@ import typing
 from collections.abc import Mapping
 
 import pydantic
+from packaging.specifiers import SpecifierSet
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 from pydantic_core import CoreSchema, core_schema
@@ -52,6 +53,21 @@ class PackageVersion(Version):
     ) -> CoreSchema:
         return core_schema.with_info_plain_validator_function(
             cls.validate,
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                str, when_used="json"
+            ),
+        )
+
+
+class SpecifierSetType(SpecifierSet):
+    """Pydantic-aware specifier set"""
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: typing.Any, handler: pydantic.GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.with_info_plain_validator_function(
+            lambda v, _: SpecifierSet(v),
             serialization=core_schema.plain_serializer_function_ser_schema(
                 str, when_used="json"
             ),
