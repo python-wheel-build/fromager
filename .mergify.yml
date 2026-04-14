@@ -78,15 +78,16 @@ pull_request_rules:
       merge:
         method: merge
 
-  - name: Auto-rebase approved PRs that are behind
+  - name: Auto-update approved PRs that are behind
     conditions:
       - "-draft"
       - "-conflict"
       - "#commits-behind>0"
       - "base=main"
       - "#approved-reviews-by>=1"
+      - "author!=dependabot[bot]"
     actions:
-      rebase:
+      update:
 
   - name: Ping author on conflicts
     conditions:
