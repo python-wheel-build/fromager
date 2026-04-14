@@ -67,6 +67,18 @@ reliably includes upload timestamps.
 
 .. _PEP 691 JSON Simple API: https://peps.python.org/pep-0691/
 
+.. note::
+
+   If you are writing a ``get_resolver_provider`` plugin that uses
+   :class:`~fromager.resolver.PyPIProvider` with a private index that only
+   implements the `PEP 503`_ HTML API (and therefore cannot supply upload
+   timestamps), pass ``supports_upload_time=False`` to ``PyPIProvider``. This
+   switches the provider from fail-closed to warn-and-skip, so candidates
+   without upload timestamps are skipped with a warning rather than causing
+   resolution to fail.
+
+.. _PEP 503: https://peps.python.org/pep-0503/
+
 Example
 -------
 

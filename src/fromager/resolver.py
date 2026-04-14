@@ -104,6 +104,14 @@ def resolve(
         req_type=req_type,
         ignore_platform=ignore_platform,
     )
+    # Apply cooldown settings to sdist resolution only. Wheel-only lookups
+    # (cache servers, pre_built packages) use a different trust model.
+    pbi = ctx.package_build_info(req)
+    provider.cooldown = (
+        resolve_package_cooldown(ctx.cooldown, pbi.resolver_min_release_age)
+        if include_sdists
+        else None
+    )
     results = find_all_matching_from_provider(provider, req)
     return results[0]
 
@@ -124,8 +132,6 @@ def default_resolver_provider(
     | VersionMapProvider
 ):
     """Lookup resolver provider to resolve package versions"""
-    pbi = ctx.package_build_info(req)
-    cooldown = _resolve_package_cooldown(ctx.cooldown, pbi.resolver_min_release_age)
     return PyPIProvider(
         include_sdists=include_sdists,
         include_wheels=include_wheels,
@@ -133,11 +139,10 @@ def default_resolver_provider(
         constraints=ctx.constraints,
         req_type=req_type,
         ignore_platform=ignore_platform,
-        cooldown=cooldown,
     )
 
 
-def _resolve_package_cooldown(
+def resolve_package_cooldown(
     global_cooldown: Cooldown | None,
     per_package_days: int | None,
 ) -> Cooldown | None:
@@ -459,14 +464,6 @@ type VersionSource = typing.Callable[
 class BaseProvider(ExtrasProvider):
     resolver_cache: typing.ClassVar[ResolverCache] = {}
     provider_description: typing.ClassVar[str]
-    supports_upload_time: typing.ClassVar[bool] = True
-    """Does this provider supply upload timestamps for candidates?
-
-    Set to False on providers (e.g. GitHubTagProvider) that do not yet
-    support timestamp retrieval.  When a cooldown is active and this flag is
-    False, the cooldown check is skipped with a warning rather than
-    failing closed.
-    """
 
     def __init__(
         self,
@@ -480,8 +477,20 @@ class BaseProvider(ExtrasProvider):
         self.constraints = constraints or Constraints()
         self.req_type = req_type
         self.use_cache_candidates = use_resolver_cache
+
+        # cooldown specific settings
         self.cooldown = cooldown
         self.cooldown_unsupported_previously_warned = False
+        """
+        Does this provider supply upload timestamps for candidates?
+
+        Defaults to False (safe/unknown). Subclasses that reliably populate
+        upload_time on every candidate should set this to True in their __init__.
+
+        When a cooldown is active and this is False, the cooldown check is
+        skipped with a warning rather than failing closed.
+        """
+        self.supports_upload_time: bool = False
 
     @property
     def cache_key(self) -> str:
@@ -736,15 +745,23 @@ class PyPIProvider(BaseProvider):
         use_resolver_cache: bool = True,
         override_download_url: str | None = None,
         cooldown: Cooldown | None = None,
+        supports_upload_time: bool = True,
     ):
         super().__init__(
             constraints=constraints,
             req_type=req_type,
             use_resolver_cache=use_resolver_cache,
-            # Cooldown applies to sdist resolution only. Wheel-only lookups
-            # (cache servers, pre_built packages) use a different trust model.
-            cooldown=cooldown if include_sdists else None,
+            cooldown=cooldown,
         )
+
+        # not all PyPI indexes reliably support
+        # https://peps.python.org/pep-0691/, which is necessary
+        # to reliably supply upload times for packages
+        #
+        # consumers of this provider which specify a custom sdist_server_url
+        # that only provides support for https://peps.python.org/pep-0503/
+        # Simple Repository API should specify support_upload_time=False
+        self.supports_upload_time = supports_upload_time
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels
         self.sdist_server_url = sdist_server_url
@@ -969,7 +986,6 @@ class GitHubTagProvider(GenericProvider):
     provider_description: typing.ClassVar[str] = (
         "GitHub tag resolver (repository: {self.organization}/{self.repo})"
     )
-    supports_upload_time: typing.ClassVar[bool] = False
     host = "github.com:443"
     api_url = "https://api.{self.host}/repos/{self.organization}/{self.repo}/tags"
 
@@ -1094,6 +1110,7 @@ class GitLabTagProvider(GenericProvider):
             matcher=matcher,
             cooldown=cooldown,
         )
+        self.supports_upload_time = True
         self.server_url = server_url.rstrip("/")
         self.server_hostname = urlparse(server_url).hostname
         if not self.server_hostname:

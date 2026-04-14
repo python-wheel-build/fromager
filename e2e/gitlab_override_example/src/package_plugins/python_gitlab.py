@@ -17,5 +17,4 @@ def get_resolver_provider(
         project_path="python-gitlab/python-gitlab",
         constraints=ctx.constraints,
         req_type=req_type,
-        cooldown=ctx.cooldown,
     )

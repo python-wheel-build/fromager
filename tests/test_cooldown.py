@@ -15,10 +15,11 @@ from collections import defaultdict
 import pytest
 import requests_mock
 import resolvelib
+import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import context, resolver
+from fromager import context, packagesettings, resolver, sources
 from fromager.context import Cooldown
 
 _BOOTSTRAP_TIME = datetime.datetime(2026, 3, 26, 0, 0, 0, tzinfo=datetime.UTC)
@@ -214,12 +215,10 @@ def test_cooldown_missing_timestamp_error_message() -> None:
 
 
 def test_cooldown_applied_automatically_via_ctx(tmp_path: pathlib.Path) -> None:
-    """ctx.cooldown propagates through both the direct and full resolve paths.
+    """ctx.cooldown propagates through resolver.resolve() to any provider.
 
-    Verifies two levels of the call stack without requiring a real build:
-    - default_resolver_provider(ctx=ctx) picks up the cooldown directly
-    - resolver.resolve(ctx=ctx) picks it up through find_and_invoke
-    Plugin authors who call either function get cooldown enforcement for free.
+    Cooldown is set on the provider by resolve() after find_and_invoke()
+    returns it, so plugin authors do not need to handle cooldown themselves.
     """
     ctx = context.WorkContext(
         active_settings=None,
@@ -238,21 +237,6 @@ def test_cooldown_applied_automatically_via_ctx(tmp_path: pathlib.Path) -> None:
             headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
         )
 
-        # Via default_resolver_provider directly.
-        provider = resolver.default_resolver_provider(
-            ctx=ctx,
-            req=Requirement("test-pkg"),
-            sdist_server_url="https://pypi.org/simple/",
-            include_sdists=True,
-            include_wheels=True,
-        )
-        result = resolvelib.Resolver(provider, resolvelib.BaseReporter()).resolve(
-            [Requirement("test-pkg")]
-        )
-        assert str(result.mapping["test-pkg"].version) == "1.3.2"
-
-        # Via resolver.resolve() (exercises find_and_invoke path).
-        resolver.BaseProvider.clear_cache()
         _, version = resolver.resolve(
             ctx=ctx,
             req=Requirement("test-pkg"),
@@ -263,8 +247,36 @@ def test_cooldown_applied_automatically_via_ctx(tmp_path: pathlib.Path) -> None:
         assert str(version) == "1.3.2"
 
 
-def test_wheel_only_resolution_ignores_cooldown_without_upload_time() -> None:
-    """include_sdists=False suppresses the cooldown even when a cooldown is configured.
+def test_cooldown_applied_via_get_source_provider(tmp_path: pathlib.Path) -> None:
+    """ctx.cooldown propagates through sources.get_source_provider() to any provider.
+
+    The bootstrapper resolves sources via get_source_provider(), not resolver.resolve().
+    This test ensures cooldown is applied on that path too, so plugin-provided
+    providers cannot silently bypass the cooldown.
+    """
+    ctx = context.WorkContext(
+        active_settings=None,
+        constraints_file=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
+
+    provider = sources.get_source_provider(
+        ctx=ctx,
+        req=Requirement("test-pkg"),
+        sdist_server_url="https://pypi.org/simple/",
+    )
+
+    assert provider.cooldown == _COOLDOWN
+
+
+def test_wheel_only_resolution_ignores_cooldown_without_upload_time(
+    tmp_path: pathlib.Path,
+) -> None:
+    """resolve() with include_sdists=False suppresses cooldown for wheel-only lookups.
 
     Cache servers and prebuilt wheel servers (fromager wheel-server, Pulp,
     GitLab package registry) serve Simple HTML v1.0 with no upload_time.
@@ -272,6 +284,15 @@ def test_wheel_only_resolution_ignores_cooldown_without_upload_time() -> None:
     lookups use a different trust model and must never fail-closed against
     servers that structurally cannot provide timestamps.
     """
+    ctx = context.WorkContext(
+        active_settings=None,
+        constraints_file=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
     no_timestamp_response = {
         "meta": {"api-version": "1.1"},
         "name": "test-pkg",
@@ -290,39 +311,37 @@ def test_wheel_only_resolution_ignores_cooldown_without_upload_time() -> None:
             json=no_timestamp_response,
             headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
         )
-        provider = resolver.PyPIProvider(
+        _, version = resolver.resolve(
+            ctx=ctx,
+            req=Requirement("test-pkg==1.3.2"),
             sdist_server_url="https://cache.example.com/simple/",
             include_sdists=False,
             include_wheels=True,
-            cooldown=_COOLDOWN,  # cooldown configured but must not fire for wheel-only
         )
-        result = resolvelib.Resolver(provider, resolvelib.BaseReporter()).resolve(
-            [Requirement("test-pkg==1.3.2")]
-        )
-        assert str(result.mapping["test-pkg"].version) == "1.3.2"
+        assert str(version) == "1.3.2"
 
 
 def test_resolve_package_cooldown_inherits_global() -> None:
     """None per-package override returns the global cooldown unchanged."""
-    result = resolver._resolve_package_cooldown(_COOLDOWN, None)
+    result = resolver.resolve_package_cooldown(_COOLDOWN, None)
     assert result is _COOLDOWN
 
 
 def test_resolve_package_cooldown_disabled_per_package() -> None:
     """per_package_days=0 disables the cooldown for the package even when global is set."""
-    result = resolver._resolve_package_cooldown(_COOLDOWN, 0)
+    result = resolver.resolve_package_cooldown(_COOLDOWN, 0)
     assert result is None
 
 
 def test_resolve_package_cooldown_disabled_no_global() -> None:
     """per_package_days=0 with no global cooldown still returns None."""
-    result = resolver._resolve_package_cooldown(None, 0)
+    result = resolver.resolve_package_cooldown(None, 0)
     assert result is None
 
 
 def test_resolve_package_cooldown_override_days() -> None:
     """Positive per-package override creates a new Cooldown with the given days."""
-    result = resolver._resolve_package_cooldown(_COOLDOWN, 30)
+    result = resolver.resolve_package_cooldown(_COOLDOWN, 30)
     assert result is not None
     assert result.min_age.days == 30
     # bootstrap_time is inherited from the global cooldown for a consistent cutoff.
@@ -331,7 +350,7 @@ def test_resolve_package_cooldown_override_days() -> None:
 
 def test_resolve_package_cooldown_override_no_global() -> None:
     """Positive per-package override works even without a global cooldown."""
-    result = resolver._resolve_package_cooldown(None, 14)
+    result = resolver.resolve_package_cooldown(None, 14)
     assert result is not None
     assert result.min_age.days == 14
 
@@ -342,16 +361,12 @@ def test_per_package_cooldown_disable_via_ctx(tmp_path: pathlib.Path) -> None:
     Even when the global cooldown is active, a package with min_release_age=0
     in its settings should resolve the latest version.
     """
-    import yaml
-
     settings_dir = tmp_path / "settings"
     settings_dir.mkdir()
     # Disable cooldown for test-pkg specifically.
     (settings_dir / "test-pkg.yaml").write_text(
         yaml.dump({"resolver_dist": {"min_release_age": 0}})
     )
-
-    from fromager import packagesettings
 
     ctx = context.WorkContext(
         active_settings=packagesettings.Settings.from_files(
@@ -544,7 +559,7 @@ def test_github_cooldown_skips_with_warning(
     provider = resolver.GitHubTagProvider(
         organization="example",
         repo="pkg",
-        cooldown=_GITLAB_COOLDOWN,
+        cooldown=_COOLDOWN,
         use_resolver_cache=False,
     )
     candidate = resolver.Candidate(

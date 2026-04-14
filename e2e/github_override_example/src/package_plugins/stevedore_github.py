@@ -18,7 +18,6 @@ def get_resolver_provider(
         repo="stevedore-test-repo",
         constraints=ctx.constraints,
         req_type=req_type,
-        cooldown=ctx.cooldown,
         override_download_url=(
             "https://github.com/{organization}/{repo}"
             "/archive/refs/tags/{tagname}.tar.gz"
