@@ -285,3 +285,103 @@ def test_scan_compiled_extensions(
         assert matches == [pathlib.Path(filename)]
     else:
         assert matches == []
+
+
+class TestEnsureGitArchival:
+    """Tests for ensure_git_archival()."""
+
+    def test_skips_when_pkg_info_present(self, tmp_path: pathlib.Path) -> None:
+        """Verify no file is created when PKG-INFO exists (PyPI sdist)."""
+        (tmp_path / "PKG-INFO").write_text("Metadata-Version: 1.0\n")
+        version = Version("1.2.3")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+        archival = tmp_path / ".git_archival.txt"
+
+        assert result is None
+        assert not archival.is_file()
+
+    def test_creates_file_when_no_pkg_info(self, tmp_path: pathlib.Path) -> None:
+        """Verify file is created when PKG-INFO is missing (git clone)."""
+        version = Version("1.2.3")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+        archival = tmp_path / ".git_archival.txt"
+
+        assert result is False
+        assert archival.is_file()
+        content = archival.read_text()
+        assert "describe-name: 1.2.3\n" in content
+
+    def test_replaces_unprocessed_file(self, tmp_path: pathlib.Path) -> None:
+        """Verify unprocessed template file is replaced."""
+        archival = tmp_path / ".git_archival.txt"
+        archival.write_text(
+            "node: $Format:%H$\n"
+            "node-date: $Format:%cI$\n"
+            "describe-name: $Format:%(describe:tags=true)$\n"
+        )
+        version = Version("4.5.6")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+
+        assert result is False
+        content = archival.read_text()
+        assert "describe-name: 4.5.6\n" in content
+        assert "%(describe" not in content
+
+    def test_preserves_valid_file(self, tmp_path: pathlib.Path) -> None:
+        """Verify a valid archival file is left untouched."""
+        archival = tmp_path / ".git_archival.txt"
+        original = (
+            "node: abc123\n"
+            "node-date: 2025-01-01T00:00:00+00:00\n"
+            "describe-name: v1.0.0-0-gabc123\n"
+        )
+        archival.write_text(original)
+        version = Version("9.9.9")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+
+        assert result is True
+        assert archival.read_text() == original
+
+    def test_preserves_valid_file_describe_name_only(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Verify a file with only describe-name is valid."""
+        archival = tmp_path / ".git_archival.txt"
+        original = "describe-name: 2.0.0\n"
+        archival.write_text(original)
+        version = Version("9.9.9")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+
+        assert result is True
+        assert archival.read_text() == original
+
+    def test_replaces_truncated_file(self, tmp_path: pathlib.Path) -> None:
+        """Verify a truncated file missing required fields is replaced."""
+        archival = tmp_path / ".git_archival.txt"
+        archival.write_text("node-date: 2025-01-01T00:00:00+00:00\n")
+        version = Version("3.0.0")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+
+        assert result is False
+        content = archival.read_text()
+        assert "describe-name: 3.0.0\n" in content
+
+    def test_replaces_file_with_empty_values(self, tmp_path: pathlib.Path) -> None:
+        """Verify a file with required fields but empty values is replaced."""
+        archival = tmp_path / ".git_archival.txt"
+        archival.write_text("describe-name:\n")
+        version = Version("5.0.0")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+
+        assert result is False
+        content = archival.read_text()
+        assert "describe-name: 5.0.0\n" in content
+
+    def test_skips_when_git_dir_exists(self, tmp_path: pathlib.Path) -> None:
+        """Verify no file is created when .git directory exists."""
+        (tmp_path / ".git").mkdir()
+        version = Version("1.0.0")
+        result = sources.ensure_git_archival(sdist_root_dir=tmp_path, version=version)
+
+        assert result is True
+        assert not (tmp_path / ".git_archival.txt").exists()
