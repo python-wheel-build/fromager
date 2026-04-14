@@ -1100,13 +1100,17 @@ class Bootstrapper:
             f"checking if wheel was already uploaded to {self.cache_wheel_server_url}"
         )
         try:
-            wheel_url, _ = resolver.resolve(
-                ctx=self.ctx,
-                req=Requirement(f"{req.name}=={resolved_version}"),
+            # Use PyPIProvider directly for cache lookups, bypassing resolver
+            # hooks. Cache servers are always simple PyPI index servers.
+            pinned_req = Requirement(f"{req.name}=={resolved_version}")
+            provider = resolver.PyPIProvider(
                 sdist_server_url=self.cache_wheel_server_url,
                 include_sdists=False,
                 include_wheels=True,
+                constraints=self.ctx.constraints,
             )
+            results = resolver.find_all_matching_from_provider(provider, pinned_req)
+            wheel_url, _ = results[0]
             wheelfile_name = pathlib.Path(urlparse(wheel_url).path)
             pbi = self.ctx.package_build_info(req)
             expected_build_tag = pbi.build_tag(resolved_version)
