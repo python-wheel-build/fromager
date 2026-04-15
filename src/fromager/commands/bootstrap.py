@@ -159,6 +159,14 @@ def bootstrap(
         logger.info(
             "multiple versions mode enabled: will bootstrap all matching versions"
         )
+        # Automatically disable constraints when multiple versions mode is enabled
+        # because constraints.txt cannot handle multiple versions of the same package
+        if not skip_constraints:
+            logger.info(
+                "automatically disabling constraints generation "
+                "(incompatible with --multiple-versions)"
+            )
+            skip_constraints = True
 
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
