@@ -77,3 +77,24 @@ pull_request_rules:
     actions:
       merge:
         method: merge
+
+  - name: Auto-update approved PRs that are behind
+    conditions:
+      - "-draft"
+      - "-conflict"
+      - "#commits-behind>0"
+      - "base=main"
+      - "#approved-reviews-by>=1"
+      - "author!=dependabot[bot]"
+    actions:
+      update:
+
+  - name: Ping author on conflicts
+    conditions:
+      - "conflict"
+      - "-closed"
+    actions:
+      comment:
+        message: |
+          This pull request has merge conflicts that must be resolved before it can be merged.
+          @{{ author }} please rebase your branch.
