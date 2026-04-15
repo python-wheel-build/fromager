@@ -5,3 +5,4 @@ Fromager Enhancement Proposals
    :maxdepth: 1
 
    new-patcher-config
+   new-resolver-config
