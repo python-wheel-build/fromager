@@ -7,18 +7,21 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
-# Create constraints file to pin build dependencies (keeps CI fast)
+# Create constraints file with generous ranges to test multiple versions
+# of build dependencies (not just top-level packages)
 constraints_file=$(mktemp)
 trap "rm -f $constraints_file" EXIT
 cat > "$constraints_file" <<EOF
-flit-core==3.11.0
+# Allow a range of flit-core versions to verify multiple-versions works for dependencies
+flit-core>=3.9,<3.12
 EOF
 
 # Use tomli with a version range that matches exactly 3 versions (2.0.0, 2.0.1, 2.0.2)
 # tomli has no runtime dependencies, making it fast to bootstrap
-# It uses flit-core as build backend (pinned above)
+# It uses flit-core as build backend, and we allow multiple flit-core versions
+# to test that --multiple-versions works for the entire dependency chain
 # Using <=2.0.2 instead of <2.1 to be deterministic (tomli 2.1.0 exists)
-# Note: constraints file generation will fail (expected with multiple versions)
+# Note: constraints file generation is automatically disabled with --multiple-versions
 fromager \
   --log-file="$OUTDIR/bootstrap.log" \
   --error-log-file="$OUTDIR/fromager-errors.log" \
@@ -28,7 +31,7 @@ fromager \
   --constraints-file="$constraints_file" \
   bootstrap \
   --multiple-versions \
-  'tomli>=2.0,<=2.0.2' || true
+  'tomli>=2.0,<=2.0.2'
 
 # Check that wheels were built
 echo "Checking for wheels..."
@@ -60,3 +63,22 @@ fi
 
 echo ""
 echo "SUCCESS: All expected tomli versions (2.0.0, 2.0.1, 2.0.2) were bootstrapped"
+
+# Verify that multiple versions of flit-core were built (dependency of tomli)
+# This confirms that --multiple-versions works for the entire dependency chain
+echo ""
+echo "Checking for flit-core versions (build dependency)..."
+FLIT_CORE_COUNT=$(find "$OUTDIR/wheels-repo/downloads/" -name 'flit_core-3.*.whl' | wc -l)
+echo "Found $FLIT_CORE_COUNT flit-core 3.x wheel(s)"
+
+if [ "$FLIT_CORE_COUNT" -lt 2 ]; then
+  echo ""
+  echo "ERROR: Expected at least 2 flit-core versions, found $FLIT_CORE_COUNT"
+  echo "The --multiple-versions flag should bootstrap multiple versions of dependencies too"
+  echo ""
+  echo "Found flit-core wheels:"
+  find "$OUTDIR/wheels-repo/downloads/" -name 'flit_core-*.whl'
+  exit 1
+fi
+
+echo "✓ Multiple versions of flit-core were bootstrapped (confirms dependency chain handling)"

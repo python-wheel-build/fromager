@@ -121,6 +121,8 @@ Resolver hooks
 
 .. currentmodule:: fromager.resolver
 
+.. _resolver_provider_hook:
+
 .. autofromagerhook:: default_resolver_provider
 
     The ``get_resolver_provider()`` function allows an override to change
@@ -190,6 +192,11 @@ Source hooks
 ------------
 
 .. currentmodule:: fromager.sources
+
+.. versionremoved:: 0.80.0
+   The ``resolve_source`` hook and ``default_resolve_source`` function
+   were removed. Define a :ref:`resolver_provider <resolver_provider_hook>` hook
+   to resolve sources.
 
 .. autofromagerhook:: default_download_source
 
