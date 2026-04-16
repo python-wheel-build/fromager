@@ -222,7 +222,13 @@ def get_project_from_pypi(
     *,
     override_download_url: str | None = None,
 ) -> Candidates:
-    """Return candidates created from the project name and extras."""
+    """Fetch and filter package candidates from a PyPI-compatible server.
+
+    Filters the project's package list by: project status, filename
+    validity, package type (sdist/wheel), yanked status, Python version
+    compatibility, and platform tags. Can substitute
+    ``override_download_url`` into each candidate's URL.
+    """
     found_candidates: set[str] = set()
     ignored_candidates: set[str] = set()
     logger.debug("%s: getting available versions from %s", project, sdist_server_url)
@@ -806,6 +812,13 @@ class GenericProvider(BaseProvider):
         raise NotImplementedError("GenericProvider does not implement caching")
 
     def find_candidates(self, identifier: typing.Any) -> Candidates:
+        """Find matching candidates from the version source.
+
+        Accepts three input formats from _version_source:
+        1. Candidate objects (used directly)
+        2. (url, Version) tuples
+        3. (url, str) tuples (version parsed via _match_function)
+        """
         candidates: list[Candidate] = []
         version: Version | None
         for item in self._version_source(identifier):

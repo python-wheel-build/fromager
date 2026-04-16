@@ -169,6 +169,8 @@ class DependencyNode:
         start_edges: list[DependencyEdge],
         visited: set[str],
     ) -> typing.Iterable[DependencyEdge]:
+        # Depth-first walk of install requirement edges, skipping nodes
+        # already visited to avoid loops in the dependency graph.
         for edge in start_edges:
             if edge.key in visited:
                 continue
@@ -220,6 +222,9 @@ class DependencyGraph:
         graph_dict: dict[str, dict[str, typing.Any]],
     ) -> DependencyGraph:
         graph = cls()
+        # Stack-based DFS to reconstruct graph from serialized dict,
+        # skipping nodes already visited to avoid processing shared
+        # dependencies twice.
         stack = [ROOT]
         visited = set()
         while stack:

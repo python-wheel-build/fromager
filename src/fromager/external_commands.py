@@ -58,7 +58,13 @@ def run(
     log_filename: str | None = None,
     stdin: TextIOWrapper | None = None,
 ) -> str:
-    """Call the subprocess while logging output"""
+    """Run a subprocess with optional network isolation and structured logging.
+
+    Captures output to a log file or in-memory pipe and prefixes each
+    line with the current package name for easier searching. Raises
+    ``NetworkIsolationError`` instead of ``CalledProcessError`` when the
+    failure output indicates a network access problem.
+    """
     if extra_environ is None:
         extra_environ = {}
     env = os.environ.copy()
