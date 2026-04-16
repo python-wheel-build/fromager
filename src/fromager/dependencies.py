@@ -81,6 +81,8 @@ def _filter_requirements(
     for r in requirements:
         if not isinstance(r, Requirement):
             r = Requirement(r)
+        # Use the parent's extras for marker evaluation because PEP 508
+        # markers like `extra == "foo"` refer to the parent's install extras.
         if requirements_file.evaluate_marker(req, r, req.extras):
             requires.add(r)
         else:
@@ -529,7 +531,13 @@ def get_build_backend_hook_caller(
     build_env: build_environment.BuildEnvironment,
     log_filename: str | None = None,
 ) -> pyproject_hooks.BuildBackendHookCaller:
-    """Create pyproject_hooks build backend caller"""
+    """Create a ``BuildBackendHookCaller`` with merged environment variables.
+
+    Environment variables are merged from three sources, where later
+    sources override earlier ones: hook-provided ``extra_environ``,
+    package-specific ``override_environ``, and ``build_env`` virtualenv
+    variables.
+    """
 
     def _run_hook_with_extra_environ(
         cmd: typing.Sequence[str],

@@ -295,6 +295,12 @@ def download_url(
     url: str,
     destination_filename: str | None = None,
 ) -> pathlib.Path:
+    """Download a URL to destination_dir, returning the local path.
+
+    Returns immediately if the file already exists. Downloads to a
+    temporary file first and renames it on success to avoid leaving
+    partial files. Retries on transient network errors.
+    """
     basename = (
         destination_filename
         if destination_filename
@@ -500,6 +506,13 @@ def prepare_source(
     source_filename: pathlib.Path,
     version: Version,
 ) -> pathlib.Path:
+    """Unpack and prepare source for building.
+
+    Git URL sources skip the plugin system and are prepared directly.
+    Non-git sources go through ``find_and_invoke`` which may call a
+    package-specific override. The plugin may return a ``Path`` or a
+    ``(Path, bool)`` tuple; both forms are handled.
+    """
     if req.url:
         logger.info(
             "preparing source cloned from %s into %s, ignoring any plugins",
