@@ -56,7 +56,7 @@ def _cargo_shrink(crate_dir: pathlib.Path) -> None:
         for filename in crate_dir.glob(pattern):
             logger.debug("removing '%s'", filename.relative_to(crate_dir.parent))
             filename.unlink()
-            filename.touch()  # create empty file
+            filename.touch()  # keep empty placeholder so cargo doesn't error on missing files
             removed_files.append(str(filename.relative_to(crate_dir)))
 
     # update checksums

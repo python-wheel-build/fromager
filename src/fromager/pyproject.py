@@ -93,6 +93,12 @@ class PyprojectFix:
         return build_system
 
     def _update_build_requires(self, build_system: TomlDict) -> None:
+        """Merge, remove, and deduplicate build requirements.
+
+        Starts with setuptools as a default, adds the existing requirements,
+        removes unwanted ones, then applies updates. Only writes back if
+        the resulting set differs from the original.
+        """
         old_requires = build_system[BUILD_REQUIRES]
         # always include setuptools
         req_map: dict[NormalizedName, list[Requirement]] = {

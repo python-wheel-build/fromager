@@ -139,6 +139,13 @@ def _extra_metadata_elfdeps(
 def extract_info_from_wheel_file(
     req: Requirement, wheel_file: pathlib.Path
 ) -> tuple[str, Version, BuildTag, frozenset[Tag]]:
+    """Extract metadata from a wheel filename.
+
+    Returns the **verbatim** dist name (not normalized) because the
+    dist-info directory inside the wheel uses the original casing
+    (e.g. ``MarkupSafe``, not ``markupsafe``). Uses ``parse_wheel_filename``
+    for validation and to extract version, build tag, and platform tags.
+    """
     # parse_wheel_filename normalizes the dist name, however the dist-info
     # directory uses the verbatim distribution name from the wheel file.
     # Packages with upper case names like "MarkupSafe" are affected.
@@ -174,6 +181,12 @@ def add_extra_metadata_to_wheels(
     sdist_root_dir: pathlib.Path,
     wheel_file: pathlib.Path,
 ) -> pathlib.Path:
+    """Unpack a wheel, inject extra metadata, and repack with a build tag.
+
+    Unpacks the wheel, validates dist-info, adds plugin metadata, build
+    settings, requirement files, ELF dependency info (Linux only), and
+    an SBOM. Repacks with ``wheel pack`` and deletes the original.
+    """
     pbi = ctx.package_build_info(req)
     dist_name, dist_version, _, wheel_tags = extract_info_from_wheel_file(
         req, wheel_file
