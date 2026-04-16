@@ -2,6 +2,7 @@ args
 backend
 backends
 backoff
+bootstrapper
 canonicalize
 canonicalized
 changelog
@@ -39,6 +40,7 @@ libcurl
 linter
 linters
 localhost
+lookups
 matcher
 mdformat
 mergify
@@ -87,6 +89,7 @@ txt
 unshare
 url
 urls
+uv
 vendored
 vendoring
 versionless
