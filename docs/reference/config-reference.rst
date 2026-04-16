@@ -1,6 +1,8 @@
 Configuration Reference
 =======================
 
+.. currentmodule:: fromager.packagesettings
+
 Per-package Settings
 --------------------
 
@@ -21,6 +23,41 @@ For example `flash_attn.yaml`.
 .. autopydantic_model:: fromager.packagesettings.ProjectOverride
 
 .. autopydantic_model:: fromager.packagesettings.SbomSettings
+
+Source Resolver
+^^^^^^^^^^^^^^^
+
+.. autopydantic_model:: fromager.packagesettings.PyPISDistResolver
+
+.. autopydantic_model:: fromager.packagesettings.PyPIPrebuiltResolver
+
+.. autopydantic_model:: fromager.packagesettings.PyPIDownloadResolver
+
+.. autopydantic_model:: fromager.packagesettings.PyPIGitResolver
+
+.. autopydantic_model:: fromager.packagesettings.VersionMapResolver
+
+.. autopydantic_model:: fromager.packagesettings.GitHubTagDownloadResolver
+   :inherited-members: AbstractGitSourceResolver
+
+.. autopydantic_model:: fromager.packagesettings.GitHubTagCloneResolver
+   :inherited-members: AbstractGitSourceResolver
+
+.. autopydantic_model:: fromager.packagesettings.GitLabTagDownloadResolver
+   :inherited-members: AbstractGitSourceResolver
+
+.. autopydantic_model:: fromager.packagesettings.GitLabTagCloneResolver
+   :inherited-members: AbstractGitSourceResolver
+
+.. autopydantic_model:: fromager.packagesettings.NotAvailableResolver
+
+.. autopydantic_model:: fromager.packagesettings.HookResolver
+
+.. autoclass:: fromager.packagesettings.BuildSDist
+
+   .. autoattribute:: pep517
+   .. autoattribute:: tarball
+
 
 Global Settings
 ---------------

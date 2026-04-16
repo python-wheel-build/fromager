@@ -1,0 +1,8 @@
+source:
+  provider: pypi-sdist
+  index_url: https://pypi.test/simple
+variants:
+  rocm:
+    source:
+      provider: pypi-sdist
+      index_url: https://rocm.test/simple

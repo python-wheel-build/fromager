@@ -15,6 +15,7 @@ from packaging.utils import canonicalize_name
 from pydantic import Field
 from pydantic_core import core_schema
 
+from ._resolver import SourceResolver
 from ._typedefs import (
     MODEL_CONFIG,
     BuildDirectory,
@@ -228,7 +229,7 @@ class VariantInfo(pydantic.BaseModel):
         VAR1: "value 1"
         VAR2: "2.0
       wheel_server_url: https://pypi.org/simple/
-      pre_build: False
+      pre_built: False
     """
 
     model_config = MODEL_CONFIG
@@ -248,6 +249,12 @@ class VariantInfo(pydantic.BaseModel):
 
     pre_built: bool = False
     """Use pre-built wheel from index server?"""
+
+    source: typing.Annotated[
+        SourceResolver | None,
+        pydantic.Field(default=None, discriminator="provider"),
+    ]
+    """Source resolver and downloader"""
 
 
 class GitOptions(pydantic.BaseModel):
@@ -370,6 +377,12 @@ class PackageSettings(pydantic.BaseModel):
 
     project_override: ProjectOverride = Field(default_factory=ProjectOverride)
     """Patch project settings"""
+
+    source: typing.Annotated[
+        SourceResolver | None,
+        pydantic.Field(default=None, discriminator="provider"),
+    ]
+    """Source resolver and downloader"""
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
     """Variant configuration"""
