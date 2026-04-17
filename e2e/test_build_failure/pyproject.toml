@@ -1,0 +1,8 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "test_build_failure"
+version = "1.0.0"
+description = "Test fixture that intentionally fails to build"
