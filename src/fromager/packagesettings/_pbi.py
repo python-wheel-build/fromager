@@ -18,6 +18,7 @@ from ._models import (
     GitOptions,
     PackageSettings,
     ProjectOverride,
+    PurlConfig,
     VariantInfo,
 )
 from ._templates import _resolve_template, substitute_template
@@ -70,8 +71,8 @@ class PackageBuildInfo:
         return self._variant
 
     @property
-    def purl(self) -> str | None:
-        """Package URL (purl) override for SBOM generation."""
+    def purl_config(self) -> PurlConfig | None:
+        """Per-package purl configuration for SBOM generation."""
         return self._ps.purl
 
     @property

@@ -86,7 +86,7 @@ def testdata_context(
 def make_sbom_ctx(
     tmp_path: pathlib.Path,
     sbom_settings: SbomSettings | None = None,
-    purl: str | None = None,
+    package_overrides: dict[str, typing.Any] | None = None,
 ) -> context.WorkContext:
     """Create a minimal WorkContext with SBOM settings."""
     settings_file = packagesettings.SettingsFile(sbom=sbom_settings)
@@ -97,10 +97,10 @@ def make_sbom_ctx(
         variant="cpu",
         max_jobs=None,
     )
-    if purl is not None:
+    if package_overrides is not None:
         ps = packagesettings.PackageSettings.from_mapping(
             "test-pkg",
-            {"purl": purl},
+            package_overrides,
             source="test",
             has_config=True,
         )

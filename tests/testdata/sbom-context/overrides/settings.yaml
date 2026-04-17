@@ -1,0 +1,5 @@
+sbom:
+  supplier: "Organization: ExampleCo"
+  namespace: "https://www.example.com"
+  creators:
+    - "Organization: ExampleCo"

@@ -1,0 +1,4 @@
+purl:
+  type: generic
+  name: custom-name
+  upstream: "pkg:github/org/repo@v1.0.0"
