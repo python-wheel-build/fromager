@@ -2,6 +2,7 @@ args
 backend
 backends
 backoff
+bootstrapper
 canonicalize
 canonicalized
 changelog
@@ -34,6 +35,7 @@ lexicographically
 libcurl
 linter
 localhost
+lookups
 matcher
 mypy
 namespace
@@ -73,6 +75,7 @@ txt
 unshare
 url
 urls
+uv
 vendored
 vendoring
 versionless
