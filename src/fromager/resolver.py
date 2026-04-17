@@ -10,6 +10,7 @@ import functools
 import logging
 import os
 import re
+import threading
 import typing
 from collections.abc import Iterable
 from operator import attrgetter
@@ -428,7 +429,21 @@ type VersionSource = typing.Callable[
 
 
 class BaseProvider(ExtrasProvider):
+    """Base class for Fromager's dependency resolver (resolvelib + extras).
+
+    Subclasses implement ``find_candidates``, ``cache_key``, and
+    ``provider_description`` to list versions from PyPI, a version map, etc.
+
+    Candidate lists are cached per package in one global dict, with a lock per
+    package so parallel work on different packages does not clash.
+
+    ``find_matches`` keeps only versions that fit the requirements and
+    constraints, then picks newest first.
+    """
+
     resolver_cache: typing.ClassVar[ResolverCache] = {}
+    _cache_locks: typing.ClassVar[dict[str, threading.Lock]] = {}
+    _meta_lock: typing.ClassVar[threading.Lock] = threading.Lock()
     provider_description: typing.ClassVar[str]
 
     def __init__(
@@ -471,16 +486,20 @@ class BaseProvider(ExtrasProvider):
 
     @classmethod
     def clear_cache(cls, identifier: str | None = None) -> None:
-        """Clear global resolver cache
+        """Clear global resolver cache and associated per-identifier locks.
 
         ``None`` clears all caches, an ``identifier`` string clears the
         cache for an identifier. Raises :exc:`KeyError` for unknown
         identifiers.
         """
-        if identifier is None:
-            cls.resolver_cache.clear()
-        else:
-            cls.resolver_cache.pop(canonicalize_name(identifier))
+        with cls._meta_lock:
+            if identifier is None:
+                cls.resolver_cache.clear()
+                cls._cache_locks.clear()
+            else:
+                canon_name = canonicalize_name(identifier)
+                cls.resolver_cache.pop(canon_name)
+                cls._cache_locks.pop(canon_name, None)
 
     def get_extras_for(
         self,
@@ -558,46 +577,85 @@ class BaseProvider(ExtrasProvider):
         # return candidate.dependencies
         return []
 
-    def _get_cached_candidates(self, identifier: str) -> list[Candidate]:
-        """Get list of cached candidates for identifier and provider
+    def _get_identifier_lock(self, identifier: str) -> threading.Lock:
+        """Get or create a per-identifier lock for thread-safe cache access.
 
-        The method always returns a list. If the cache did not have an entry
-        before, a new empty list is stored in the cache and returned to the
-        caller. The caller can mutate the list in place to update the cache.
+        Uses a short-lived meta-lock to protect the lock dict itself.
+        The per-identifier lock ensures threads resolving different packages
+        proceed concurrently, while threads resolving the same package
+        wait for the first to populate the cache.
+
+        The identifier is canonicalized to match the cache keys used by
+        ``_get_cached_candidates`` and ``clear_cache``.
+        """
+        canonical = canonicalize_name(identifier)
+        with self._meta_lock:
+            if canonical not in self._cache_locks:
+                self._cache_locks[canonical] = threading.Lock()
+            return self._cache_locks[canonical]
+
+    def _get_cached_candidates(self, identifier: str) -> list[Candidate] | None:
+        """Get a copy of cached candidates for identifier and provider.
+
+        Returns None if no entry exists in the cache, or a copy of the cached
+        list (which may be empty). A copy is returned so callers cannot
+        accidentally corrupt the cache.
+
+        Must be called under the per-identifier lock from _get_identifier_lock.
+        """
+        cls = type(self)
+        provider_cache = cls.resolver_cache.get(identifier, {})
+        candidate_cache = provider_cache.get((cls, self.cache_key))
+        if candidate_cache is None:
+            return None
+        return list(candidate_cache)
+
+    def _set_cached_candidates(
+        self, identifier: str, candidates: list[Candidate]
+    ) -> None:
+        """Store candidates in the cache for identifier and provider.
+
+        Must be called under the per-identifier lock from _get_identifier_lock.
         """
         cls = type(self)
         provider_cache = cls.resolver_cache.setdefault(identifier, {})
-        candidate_cache = provider_cache.setdefault((cls, self.cache_key), [])
-        return candidate_cache
+        provider_cache[(cls, self.cache_key)] = list(candidates)
 
     def _find_cached_candidates(self, identifier: str) -> Candidates:
-        """Find candidates with caching"""
-        cached_candidates: list[Candidate] = []
-        if self.use_cache_candidates:
+        """Find candidates with caching.
+
+        Uses a per-identifier lock so threads resolving different packages
+        proceed concurrently, while threads resolving the same package
+        wait for the first to populate the cache.
+        """
+        if not self.use_cache_candidates:
+            candidates = list(self.find_candidates(identifier))
+            logger.debug(
+                "%s: got %i unfiltered candidates, ignoring cache",
+                identifier,
+                len(candidates),
+            )
+            return candidates
+
+        lock = self._get_identifier_lock(identifier)
+        with lock:
             cached_candidates = self._get_cached_candidates(identifier)
-            if cached_candidates:
+            if cached_candidates is not None:
                 logger.debug(
                     "%s: use %i cached candidates",
                     identifier,
                     len(cached_candidates),
                 )
                 return cached_candidates
-        candidates = list(self.find_candidates(identifier))
-        if self.use_cache_candidates:
-            # mutate list object in-place
-            cached_candidates[:] = candidates
+
+            candidates = list(self.find_candidates(identifier))
+            self._set_cached_candidates(identifier, candidates)
             logger.debug(
                 "%s: cache %i unfiltered candidates",
                 identifier,
                 len(candidates),
             )
-        else:
-            logger.debug(
-                "%s: got %i unfiltered candidates, ignoring cache",
-                identifier,
-                len(candidates),
-            )
-        return candidates
+            return candidates
 
     def _get_no_match_error_message(
         self, identifier: str, requirements: RequirementsMap

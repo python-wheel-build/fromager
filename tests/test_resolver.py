@@ -1,5 +1,7 @@
 import datetime
 import re
+import threading
+import time
 import typing
 
 import pytest
@@ -11,6 +13,7 @@ from packaging.version import Version
 
 from fromager import constraints, resolver
 from fromager.__main__ import main as fromager
+from fromager.candidate import Candidate
 
 _hydra_core_simple_response = """
 <!DOCTYPE html>
@@ -58,7 +61,9 @@ _numpy_simple_response = """
 
 
 @pytest.fixture(autouse=True)
-def reset_cache() -> None:
+def reset_cache() -> typing.Generator[None, None, None]:
+    resolver.BaseProvider.clear_cache()
+    yield
     resolver.BaseProvider.clear_cache()
 
 
@@ -143,8 +148,10 @@ def test_provider_cache_key_pypi(pypi_hydra_resolver: typing.Any) -> None:
     # fill the cache
     provider = pypi_hydra_resolver.provider
     assert provider.cache_key == "https://pypi.org/simple/"
-    req_cache = provider._get_cached_candidates(req.name)
-    assert req_cache == []
+    lock = provider._get_identifier_lock(req.name)
+    with lock:
+        req_cache = provider._get_cached_candidates(req.name)
+    assert req_cache is None
 
     result = pypi_hydra_resolver.resolve([req])
     candidate = result.mapping[req.name]
@@ -153,10 +160,9 @@ def test_provider_cache_key_pypi(pypi_hydra_resolver: typing.Any) -> None:
     resolver_cache = resolver.BaseProvider.resolver_cache
     assert req.name in resolver_cache
     assert (resolver.PyPIProvider, provider.cache_key) in resolver_cache[req.name]
-    # mutated in place
-    assert provider._get_cached_candidates(req.name) is req_cache
-    assert len(provider._get_cached_candidates(req.name)) == 7
-    assert len(req_cache) == 7
+    # _get_cached_candidates returns a defensive copy, not the same object
+    with lock:
+        assert len(provider._get_cached_candidates(req.name)) == 7
 
 
 def test_provider_cache_key_gitlab(gitlab_decile_resolver: typing.Any) -> None:
@@ -1278,3 +1284,221 @@ def test_cli_package_resolver(
     assert "- PyPI versions: 1.2.2, 1.3.1+local, 1.3.2, 2.0.0a1" in result.stdout
     assert "- only wheels on PyPI: 1.3.1+local, 2.0.0a1" in result.stdout
     assert "- missing from Fromager: 1.3.1+local, 2.0.0a1" in result.stdout
+
+
+def _make_candidate(name: str, version: str) -> Candidate:
+    """Create a minimal Candidate for testing."""
+    return Candidate(
+        name=name, version=Version(version), url="https://example.com", is_sdist=False
+    )
+
+
+class _StubProvider(resolver.BaseProvider):
+    """Minimal BaseProvider subclass for cache tests."""
+
+    provider_description = "stub"
+
+    @property
+    def cache_key(self) -> str:
+        return "stub-key"
+
+    def find_candidates(self, identifier: str) -> list[Candidate]:
+        return []
+
+
+class _SlowProvider(resolver.BaseProvider):
+    """BaseProvider subclass whose find_candidates delegates to a callback.
+
+    The callback receives the identifier and can sleep, record timestamps,
+    or count calls — whatever the test needs.
+    """
+
+    provider_description = "slow"
+
+    def __init__(
+        self,
+        callback: typing.Callable[[str], list[Candidate]],
+        **kwargs: typing.Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._callback = callback
+
+    @property
+    def cache_key(self) -> str:
+        return "slow-key"
+
+    def find_candidates(self, identifier: str) -> list[Candidate]:
+        return self._callback(identifier)
+
+
+def test_get_cached_candidates_returns_defensive_copy() -> None:
+    """Mutating the list returned by _get_cached_candidates must not corrupt the cache."""
+    provider = _StubProvider()
+    identifier = "test-pkg"
+
+    # Seed the cache directly so the test doesn't depend on the aliasing bug
+    resolver.BaseProvider.resolver_cache[identifier] = {
+        (type(provider), provider.cache_key): [_make_candidate("test-pkg", "1.0.0")]
+    }
+
+    # Get candidates and mutate the returned list (hold the lock per the
+    # documented contract, even though single-threaded)
+    lock = provider._get_identifier_lock(identifier)
+    with lock:
+        first = provider._get_cached_candidates(identifier)
+        assert first is not None
+    first.append(_make_candidate("test-pkg", "2.0.0"))
+
+    # The cache should not reflect the caller's mutation
+    with lock:
+        second = provider._get_cached_candidates(identifier)
+        assert second is not None
+    assert len(second) == 1, (
+        "_get_cached_candidates should return a defensive copy, "
+        "not a direct reference to the internal cache"
+    )
+    assert second[0].version == Version("1.0.0")
+
+
+def test_find_cached_candidates_thread_safe() -> None:
+    """Concurrent threads must not bypass the cache and call find_candidates multiple times."""
+    call_count = 0
+    call_count_lock = threading.Lock()
+
+    def slow_find(identifier: str) -> list[Candidate]:
+        nonlocal call_count
+        with call_count_lock:
+            call_count += 1
+        time.sleep(0.1)
+        return [_make_candidate(identifier, "1.0.0")]
+
+    barrier = threading.Barrier(4)
+
+    def resolve_in_thread(provider: _SlowProvider, ident: str) -> None:
+        barrier.wait(timeout=5)
+        list(provider._find_cached_candidates(ident))
+
+    providers = [_SlowProvider(callback=slow_find) for _ in range(4)]
+    threads = [
+        threading.Thread(
+            target=resolve_in_thread,
+            args=(thread_provider, "shared-pkg"),
+            name=f"resolver-{i}",
+        )
+        for i, thread_provider in enumerate(providers)
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert not any(t.is_alive() for t in threads), "Threads did not complete in time"
+
+    assert call_count == 1, (
+        f"find_candidates() was called {call_count} times; expected 1. "
+        "Without thread-safe caching, multiple threads bypass the cache "
+        "and redundantly call find_candidates()."
+    )
+
+
+def test_find_cached_candidates_different_packages_concurrent() -> None:
+    """Threads resolving different packages must not block each other."""
+    # Record start and end times so we can prove overlap without tight tolerances
+    call_spans: dict[str, tuple[float, float]] = {}
+    call_spans_lock = threading.Lock()
+
+    def timed_find(identifier: str) -> list[Candidate]:
+        start = time.monotonic()
+        time.sleep(0.3)
+        end = time.monotonic()
+        with call_spans_lock:
+            call_spans[identifier] = (start, end)
+        return [_make_candidate(identifier, "1.0.0")]
+
+    barrier = threading.Barrier(2)
+
+    def resolve_in_thread(provider: _SlowProvider, ident: str) -> None:
+        barrier.wait(timeout=5)
+        list(provider._find_cached_candidates(ident))
+
+    providers = [_SlowProvider(callback=timed_find) for _ in range(2)]
+    threads = [
+        threading.Thread(
+            target=resolve_in_thread,
+            args=(providers[i], f"pkg-{i}"),
+            name=f"resolver-{i}",
+        )
+        for i in range(2)
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert not any(t.is_alive() for t in threads), "Threads did not complete in time"
+
+    # Both packages should have been resolved
+    assert "pkg-0" in call_spans
+    assert "pkg-1" in call_spans
+    # Prove concurrency: each call must have started before the other finished.
+    # If a global lock serialized them, one would start only after the other ended.
+    start_0, end_0 = call_spans["pkg-0"]
+    start_1, end_1 = call_spans["pkg-1"]
+    assert start_0 < end_1 and start_1 < end_0, (
+        "find_candidates for different packages should run concurrently, "
+        "not be serialized by a global lock"
+    )
+
+
+def test_clear_cache_cleans_up_locks() -> None:
+    """clear_cache() must remove per-identifier locks so they don't accumulate."""
+    provider = _StubProvider()
+
+    # Populate the cache and create a per-identifier lock
+    provider._find_cached_candidates("pkg-a")
+    provider._find_cached_candidates("pkg-b")
+    assert "pkg-a" in resolver.BaseProvider._cache_locks
+    assert "pkg-b" in resolver.BaseProvider._cache_locks
+
+    # Clear everything
+    resolver.BaseProvider.clear_cache()
+    assert resolver.BaseProvider._cache_locks == {}
+    assert resolver.BaseProvider.resolver_cache == {}
+
+
+def test_clear_cache_single_identifier_cleans_up_lock() -> None:
+    """clear_cache(identifier) must remove only the lock for that identifier."""
+    provider = _StubProvider()
+
+    provider._find_cached_candidates("pkg-a")
+    provider._find_cached_candidates("pkg-b")
+
+    resolver.BaseProvider.clear_cache("pkg-a")
+    assert "pkg-a" not in resolver.BaseProvider._cache_locks
+    assert "pkg-b" in resolver.BaseProvider._cache_locks
+
+
+def test_empty_candidate_list_is_cached() -> None:
+    """An empty find_candidates result must be cached, not re-fetched."""
+    call_count = 0
+
+    def counting_find(identifier: str) -> list[Candidate]:
+        nonlocal call_count
+        call_count += 1
+        return []
+
+    provider = _SlowProvider(callback=counting_find)
+    provider._find_cached_candidates("empty-pkg")
+    provider._find_cached_candidates("empty-pkg")
+    assert call_count == 1, (
+        f"find_candidates() was called {call_count} times; expected 1. "
+        "Empty candidate lists must be treated as valid cache entries."
+    )
+
+
+def test_find_cached_candidates_cache_disabled() -> None:
+    """With use_resolver_cache=False, results must bypass the cache entirely."""
+    provider = _StubProvider(use_resolver_cache=False)
+    result = list(provider._find_cached_candidates("uncached-pkg"))
+    assert result == []
+    assert "uncached-pkg" not in resolver.BaseProvider.resolver_cache
