@@ -2,9 +2,12 @@ import json
 import pathlib
 from unittest.mock import Mock, patch
 
+import pytest
+import requests.exceptions
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
+from resolvelib.resolvers import ResolverException
 
 from fromager import bootstrapper, requirements_file
 from fromager.context import WorkContext
@@ -408,3 +411,143 @@ def test_download_wheel_from_cache_bypasses_hooks(
         constraints=tmp_context.constraints,
     )
     mock_find_all.assert_called_once_with(mock_provider, Requirement("test-pkg==1.0.0"))
+
+
+def _make_cache_bootstrapper(
+    tmp_context: WorkContext,
+) -> bootstrapper.Bootstrapper:
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.cache_wheel_server_url = "https://cache.test/simple"
+    return bt
+
+
+def test_cache_lookup_resolver_exception_logs_info(
+    tmp_context: WorkContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ResolverException (wheel not found) returns (None, None) and logs info."""
+    bt = _make_cache_bootstrapper(tmp_context)
+
+    with patch(
+        "fromager.resolver.find_all_matching_from_provider",
+        side_effect=ResolverException("no matching version"),
+    ):
+        result = bt._download_wheel_from_cache(
+            req=Requirement("test-package"),
+            resolved_version=Version("1.0.0"),
+        )
+
+    assert result == (None, None)
+    assert "did not find wheel for" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "exc_class,exc_msg",
+    [
+        (requests.exceptions.ConnectionError, "DNS failure"),
+        (requests.exceptions.Timeout, "timed out"),
+        (requests.exceptions.HTTPError, "401 Unauthorized"),
+    ],
+)
+def test_cache_lookup_request_exception_logs_warning(
+    tmp_context: WorkContext,
+    caplog: pytest.LogCaptureFixture,
+    exc_class: type[Exception],
+    exc_msg: str,
+) -> None:
+    """RequestException subtypes return (None, None) and log warning."""
+    bt = _make_cache_bootstrapper(tmp_context)
+
+    with patch(
+        "fromager.resolver.find_all_matching_from_provider",
+        side_effect=exc_class(exc_msg),
+    ):
+        result = bt._download_wheel_from_cache(
+            req=Requirement("test-package"),
+            resolved_version=Version("1.0.0"),
+        )
+
+    assert result == (None, None)
+    assert "network error checking wheel cache" in caplog.text
+
+
+def test_cache_lookup_unexpected_exception_logs_warning(
+    tmp_context: WorkContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Unexpected exceptions return (None, None) and log warning."""
+    bt = _make_cache_bootstrapper(tmp_context)
+
+    with patch(
+        "fromager.resolver.find_all_matching_from_provider",
+        side_effect=ValueError("unexpected parsing error"),
+    ):
+        result = bt._download_wheel_from_cache(
+            req=Requirement("test-package"),
+            resolved_version=Version("1.0.0"),
+        )
+
+    assert result == (None, None)
+    assert "unexpected error checking wheel cache" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "exc_class,exc_msg,expected_log",
+    [
+        (
+            requests.exceptions.ConnectionError,
+            "connection reset",
+            "network error checking wheel cache",
+        ),
+        (OSError, "disk full", "unexpected error checking wheel cache"),
+    ],
+)
+def test_cache_lookup_download_wheel_error_logs_warning(
+    tmp_context: WorkContext,
+    caplog: pytest.LogCaptureFixture,
+    exc_class: type[Exception],
+    exc_msg: str,
+    expected_log: str,
+) -> None:
+    """Errors from download_wheel (after resolve succeeds) are caught."""
+    bt = _make_cache_bootstrapper(tmp_context)
+
+    with (
+        patch(
+            "fromager.resolver.find_all_matching_from_provider",
+            return_value=[
+                (
+                    "https://cache.test/simple/test-package/test_package-1.0.0-py3-none-any.whl",
+                    Version("1.0.0"),
+                ),
+            ],
+        ),
+        patch(
+            "fromager.bootstrapper.wheels.extract_info_from_wheel_file",
+            return_value=("test_package", "1.0.0", None, None),
+        ),
+        patch(
+            "fromager.bootstrapper.wheels.download_wheel",
+            side_effect=exc_class(exc_msg),
+        ),
+    ):
+        result = bt._download_wheel_from_cache(
+            req=Requirement("test-package"),
+            resolved_version=Version("1.0.0"),
+        )
+
+    assert result == (None, None)
+    assert expected_log in caplog.text
+
+
+def test_cache_lookup_no_cache_url_returns_none(tmp_context: WorkContext) -> None:
+    """When no cache URL is configured, returns (None, None) immediately."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.cache_wheel_server_url = ""
+
+    result = bt._download_wheel_from_cache(
+        req=Requirement("test-package"),
+        resolved_version=Version("1.0.0"),
+    )
+
+    assert result == (None, None)
