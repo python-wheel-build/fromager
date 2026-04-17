@@ -6,3 +6,4 @@ Fromager Enhancement Proposals
 
    new-patcher-config
    new-resolver-config
+   release-cooldown
