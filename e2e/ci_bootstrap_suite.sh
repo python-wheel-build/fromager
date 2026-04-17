@@ -27,6 +27,13 @@ run_test "bootstrap_cache"
 run_test "bootstrap_sdist_only"
 run_test "bootstrap_multiple_versions"
 
+test_section "bootstrap cooldown tests"
+run_test "bootstrap_cooldown"
+run_test "bootstrap_cooldown_transitive"
+run_test "bootstrap_cooldown_gitlab"
+run_test "bootstrap_cooldown_github"
+run_test "bootstrap_cooldown_override"
+
 test_section "bootstrap git URL tests"
 run_test "bootstrap_git_url"
 run_test "bootstrap_git_url_tag"

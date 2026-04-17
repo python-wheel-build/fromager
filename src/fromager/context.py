@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import collections
+import dataclasses
+import datetime
 import logging
 import os
 import pathlib
@@ -31,6 +33,20 @@ BuildRequirements = dict[str, list[tuple[str, NormalizedName, Version, Requireme
 ROOT_BUILD_REQUIREMENT = canonicalize_name("", validate=False)
 
 
+@dataclasses.dataclass
+class Cooldown:
+    """Policy for rejecting recently-published package versions.
+
+    bootstrap_time is fixed at construction so all resolutions in a single run
+    share the same cutoff.
+    """
+
+    min_age: datetime.timedelta
+    bootstrap_time: datetime.datetime = dataclasses.field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
+    )
+
+
 class WorkContext:
     def __init__(
         self,
@@ -46,6 +62,7 @@ class WorkContext:
         max_jobs: int | None = None,
         settings_dir: pathlib.Path | None = None,
         wheel_server_url: str = "",
+        cooldown: Cooldown | None = None,
     ):
         if active_settings is None:
             active_settings = packagesettings.Settings(
@@ -94,6 +111,8 @@ class WorkContext:
         self.time_description_store: dict[str, str] = {}
 
         self._parallel_builds = False
+
+        self.cooldown: Cooldown | None = cooldown
 
     def enable_parallel_builds(self) -> None:
         self._parallel_builds = True
