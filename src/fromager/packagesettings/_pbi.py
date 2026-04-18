@@ -50,6 +50,7 @@ class PackageBuildInfo:
     """
 
     def __init__(self, settings: Settings, ps: PackageSettings) -> None:
+        self._settings = settings
         self._variant = typing.cast(Variant, settings.variant)
         self._patches_dir = settings.patches_dir
         self._variant_changelog = settings.variant_changelog()
@@ -284,7 +285,18 @@ class PackageBuildInfo:
         return variant_changelog + package_changelog
 
     def build_tag(self, version: Version) -> BuildTag:
-        """Build tag for version's changelog and this variant
+        """Build tag for version's changelog and dependencies
+
+        The build tag is calculated as:
+            own_changelog_count + sum(dependency_build_tags)
+
+        Dependencies are resolved recursively and transitively.
+
+        Args:
+            version: Package version to calculate build tag for
+
+        Raises:
+            ValueError: If circular dependency detected
 
         .. versionchanged 0.54.0::
 
@@ -292,16 +304,53 @@ class PackageBuildInfo:
            the build tag from changelog, e.g. version `1.0.3+local.suffix`
            uses `1.0.3`.
         """
+        return self._calculate_build_tag(version, visited=set())
+
+    def _calculate_build_tag(
+        self, version: Version, visited: set[NormalizedName]
+    ) -> BuildTag:
+        """Recursively calculate build tag including dependencies
+
+        Args:
+            version: Package version to calculate build tag for
+            visited: Set of already-visited packages for cycle detection
+
+        Raises:
+            ValueError: If circular dependency detected
+        """
         if self.pre_built:
             # pre-built wheels have no built tag
             return ()
+
+        # Check for circular dependency
+        if self.package in visited:
+            raise ValueError(
+                f"Circular dependency detected: {self.package} appears in "
+                f"dependency chain: {' -> '.join(sorted(visited))} -> {self.package}"
+            )
+
+        # Add current package to visited set (immutable update)
+        visited = visited | {self.package}
+
+        # Calculate own changelog count
         pv = typing.cast(PackageVersion, version)
-        release = len(self.get_changelog(pv))
-        if release == 0:
+        own_changelog_count = len(self.get_changelog(pv))
+
+        # Calculate dependency contribution
+        dependency_contribution = 0
+        for dep_pkg in self._ps.dependencies:
+            dep_pbi = self._settings.package_build_info(dep_pkg)
+            dep_tag = dep_pbi._calculate_build_tag(version, visited=visited)
+            if dep_tag:  # Only count if dependency has a build tag
+                dependency_contribution += dep_tag[0]
+
+        total = own_changelog_count + dependency_contribution
+
+        if total == 0:
             return ()
-        # suffix = "." + self.variant.replace("-", "_")
+
         suffix = ""
-        return release, suffix
+        return total, suffix
 
     def get_extra_environ(
         self,

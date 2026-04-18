@@ -1,0 +1,5 @@
+dependencies:
+  - test-dep-chain-b
+changelog:
+  "1.0.0":
+    - "Initial release"
