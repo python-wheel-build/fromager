@@ -32,6 +32,7 @@ iteratively
 json
 lexicographically
 libcurl
+libtorch
 linter
 localhost
 matcher
@@ -57,6 +58,7 @@ setuptools
 statelessly
 stderr
 stdin
+stdlib
 stdout
 subcommands
 subdirectory
