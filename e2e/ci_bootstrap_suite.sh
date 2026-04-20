@@ -39,6 +39,7 @@ run_test "bootstrap_cooldown_transitive"
 run_test "bootstrap_cooldown_gitlab"
 run_test "bootstrap_cooldown_github"
 run_test "bootstrap_cooldown_override"
+run_test "bootstrap_cooldown_prebuilt"
 
 test_section "bootstrap git URL tests"
 run_test "bootstrap_git_url"

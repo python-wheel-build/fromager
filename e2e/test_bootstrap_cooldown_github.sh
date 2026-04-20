@@ -43,7 +43,7 @@ find "$OUTDIR/wheels-repo/" -name '*.whl'
 
 pass=true
 
-# Resolution must succeed despite the 9999-day cooldown — GitHub timestamps
+# Resolution must succeed despite the large cooldown — GitHub timestamps
 # are not yet supported, so the cooldown is skipped rather than enforced.
 if ! find "$OUTDIR/wheels-repo/downloads/" -name 'stevedore-*.whl' | grep -q .; then
   echo "FAIL: no stevedore wheel found — resolution should have succeeded despite cooldown" 1>&2

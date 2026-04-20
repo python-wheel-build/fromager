@@ -104,14 +104,7 @@ def resolve(
         req_type=req_type,
         ignore_platform=ignore_platform,
     )
-    # Apply cooldown settings to sdist resolution only. Wheel-only lookups
-    # (cache servers, pre_built packages) use a different trust model.
-    pbi = ctx.package_build_info(req)
-    provider.cooldown = (
-        resolve_package_cooldown(ctx.cooldown, pbi.resolver_min_release_age)
-        if include_sdists
-        else None
-    )
+    provider.cooldown = resolve_package_cooldown(ctx, req)
     results = find_all_matching_from_provider(provider, req)
     return results[0]
 
@@ -143,19 +136,20 @@ def default_resolver_provider(
 
 
 def resolve_package_cooldown(
-    global_cooldown: Cooldown | None,
-    per_package_days: int | None,
+    ctx: context.WorkContext,
+    req: Requirement,
 ) -> Cooldown | None:
     """Compute the effective cooldown for a single package.
 
     Args:
-        global_cooldown: The run-wide cooldown from ``--min-release-age``.
-        per_package_days: The ``resolver_dist.min_release_age`` setting for
-            this package (None = inherit, 0 = disabled, positive = override).
+        ctx: The current work context (provides the global cooldown).
+        req: The package requirement being resolved.
 
     Returns:
         The cooldown to pass to the provider, or ``None`` if disabled.
     """
+    per_package_days = ctx.package_build_info(req).resolver_min_release_age
+    global_cooldown = ctx.cooldown
     if per_package_days is None:
         return global_cooldown
     if per_package_days == 0:
@@ -470,6 +464,7 @@ type VersionSource = typing.Callable[
 class BaseProvider(ExtrasProvider):
     resolver_cache: typing.ClassVar[ResolverCache] = {}
     provider_description: typing.ClassVar[str]
+    _cooldown_unsupported_warned: typing.ClassVar[set[str]] = set()
 
     def __init__(
         self,
@@ -486,16 +481,11 @@ class BaseProvider(ExtrasProvider):
 
         # cooldown specific settings
         self.cooldown = cooldown
-        self.cooldown_unsupported_previously_warned = False
-        """
-        Does this provider supply upload timestamps for candidates?
-
-        Defaults to False (safe/unknown). Subclasses that reliably populate
-        upload_time on every candidate should set this to True in their __init__.
-
-        When a cooldown is active and this is False, the cooldown check is
-        skipped with a warning rather than failing closed.
-        """
+        # Does this provider supply upload timestamps for candidates?
+        # Defaults to False (safe/unknown). Subclasses that reliably populate
+        # upload_time on every candidate should set this to True in their __init__.
+        # When a cooldown is active and this is False, the cooldown check is
+        # skipped with a warning rather than failing closed.
         self.supports_upload_time: bool = False
 
     @property
@@ -607,46 +597,61 @@ class BaseProvider(ExtrasProvider):
                 )
             return False
 
-        # Release-age cooldown: reject candidates published too recently.
-        if self.cooldown is not None:
-            if candidate.upload_time is None:
-                if not self.supports_upload_time:
-                    # Provider does not yet support timestamp retrieval (e.g. GitHub).
-                    # Warn once per provider instance (i.e. per package) rather than
-                    # once per candidate.
-                    if not self.cooldown_unsupported_previously_warned:
-                        self.cooldown_unsupported_previously_warned = True
-                        logger.warning(
-                            "%s: release-age cooldown cannot be enforced — upload "
-                            "timestamp support is not yet implemented for %s; "
-                            "cooldown check skipped",
-                            requirement.name,
-                            self.get_provider_description(),
-                        )
-                    return True
-                # Provider should supply timestamps but this candidate is missing one.
-                # Fail closed: we cannot verify the age, so reject it.
-                if DEBUG_RESOLVER:
-                    logger.debug(
-                        "%s: skipping %s — upload_time unknown, required for cooldown",
-                        requirement.name,
-                        candidate.version,
-                    )
-                return False
-            cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
-            if candidate.upload_time > cutoff:
-                if DEBUG_RESOLVER:
-                    age = self.cooldown.bootstrap_time - candidate.upload_time
-                    logger.debug(
-                        "%s: skipping %s uploaded %s ago (cooldown: %s)",
-                        requirement.name,
-                        candidate.version,
-                        age,
-                        self.cooldown.min_age,
-                    )
-                return False
+        if self.is_blocked_by_cooldown(candidate):
+            return False
 
         return True
+
+    def is_blocked_by_cooldown(self, candidate: Candidate) -> bool:
+        """Return True if the candidate is rejected by the release-age cooldown."""
+
+        # a cooldown is not specified...
+        if self.cooldown is None:
+            return False
+
+        # the target candidate doesn't provide a valid upload timestamp
+        if candidate.upload_time is None:
+            if not self.supports_upload_time:
+                # this provider does not yet support timestamp retrieval (e.g. GitHub).
+                # Warn once per package name across all provider instances.
+                if candidate.name not in BaseProvider._cooldown_unsupported_warned:
+                    BaseProvider._cooldown_unsupported_warned.add(candidate.name)
+                    logger.warning(
+                        "%s: release-age cooldown cannot be enforced — upload "
+                        "timestamp support is not yet implemented for %s; "
+                        "cooldown check skipped",
+                        candidate.name,
+                        self.get_provider_description(),
+                    )
+                return False
+            # this provider is expected to supply timestamps,
+            # but this candidate is missing one.
+            # Fail closed: we cannot verify the age of this candidate, so reject it.
+            if DEBUG_RESOLVER:
+                logger.debug(
+                    "%s: skipping %s — upload_time unknown, required for cooldown",
+                    candidate.name,
+                    candidate.version,
+                )
+            return True
+
+        # cooldowns are enabled, and this candidate has a valid upload timestamp
+        # so we can do the math to determine whether or not the candidate should
+        # be blocked/skipped
+        cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
+        if candidate.upload_time > cutoff:
+            # if this candidate is "too new", block/skip it
+            if DEBUG_RESOLVER:
+                age = self.cooldown.bootstrap_time - candidate.upload_time
+                logger.debug(
+                    "%s: skipping %s uploaded %s ago (cooldown: %s)",
+                    candidate.name,
+                    candidate.version,
+                    age,
+                    self.cooldown.min_age,
+                )
+            return True
+        return False
 
     def get_dependencies(self, candidate: Candidate) -> list[Requirement]:
         # return candidate.dependencies
@@ -751,7 +756,7 @@ class PyPIProvider(BaseProvider):
         use_resolver_cache: bool = True,
         override_download_url: str | None = None,
         cooldown: Cooldown | None = None,
-        supports_upload_time: bool = True,
+        supports_upload_time: bool | None = None,
     ):
         super().__init__(
             constraints=constraints,
@@ -760,13 +765,10 @@ class PyPIProvider(BaseProvider):
             cooldown=cooldown,
         )
 
-        # not all PyPI indexes reliably support
-        # https://peps.python.org/pep-0691/, which is necessary
-        # to reliably supply upload times for packages
-        #
-        # consumers of this provider which specify a custom sdist_server_url
-        # that only provides support for https://peps.python.org/pep-0503/
-        # Simple Repository API should specify support_upload_time=False
+        # Only pypi.org reliably supports PEP 691 upload timestamps.
+        # Default to True for pypi.org, False for all other indexes.
+        if supports_upload_time is None:
+            supports_upload_time = sdist_server_url.startswith(PYPI_SERVER_URL)
         self.supports_upload_time = supports_upload_time
         self.include_sdists = include_sdists
         self.include_wheels = include_wheels

@@ -19,7 +19,7 @@ import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import context, packagesettings, resolver, sources
+from fromager import context, packagesettings, resolver, sources, wheels
 from fromager.context import Cooldown
 
 _BOOTSTRAP_TIME = datetime.datetime(2026, 3, 26, 0, 0, 0, tzinfo=datetime.UTC)
@@ -93,6 +93,7 @@ def clear_resolver_cache() -> typing.Generator[None, None, None]:
     incorrect results.
     """
     resolver.BaseProvider.clear_cache()
+    resolver.BaseProvider._cooldown_unsupported_warned.clear()
     yield
 
 
@@ -273,16 +274,15 @@ def test_cooldown_applied_via_get_source_provider(tmp_path: pathlib.Path) -> Non
     assert provider.cooldown == _COOLDOWN
 
 
-def test_wheel_only_resolution_ignores_cooldown_without_upload_time(
+def test_non_pypi_index_allows_without_upload_time(
     tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """resolve() with include_sdists=False suppresses cooldown for wheel-only lookups.
+    """resolve() against a non-pypi.org index warns and allows when upload_time is missing.
 
-    Cache servers and prebuilt wheel servers (fromager wheel-server, Pulp,
-    GitLab package registry) serve Simple HTML v1.0 with no upload_time.
-    Cooldown only applies to sdist resolution from a public index; wheel-only
-    lookups use a different trust model and must never fail-closed against
-    servers that structurally cannot provide timestamps.
+    PyPIProvider auto-detects supports_upload_time=False for any URL that is not
+    https://pypi.org/simple, so missing timestamps on mirrors or internal indexes
+    produce a warning rather than fail-closed rejection.
     """
     ctx = context.WorkContext(
         active_settings=None,
@@ -301,56 +301,94 @@ def test_wheel_only_resolution_ignores_cooldown_without_upload_time(
                 "filename": "test_pkg-1.3.2-py3-none-any.whl",
                 "url": "https://cache.example.com/packages/test_pkg-1.3.2-py3-none-any.whl",
                 "hashes": {"sha256": "bbb"},
-                # no upload-time — as served by Simple HTML v1.0
+                # no upload-time — as served by Simple HTML v1.0 / PEP 503
             },
         ],
     }
-    with requests_mock.Mocker() as r:
-        r.get(
-            "https://cache.example.com/simple/test-pkg/",
-            json=no_timestamp_response,
-            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
-        )
-        _, version = resolver.resolve(
-            ctx=ctx,
-            req=Requirement("test-pkg==1.3.2"),
-            sdist_server_url="https://cache.example.com/simple/",
-            include_sdists=False,
-            include_wheels=True,
-        )
-        assert str(version) == "1.3.2"
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                "https://cache.example.com/simple/test-pkg/",
+                json=no_timestamp_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            _, version = resolver.resolve(
+                ctx=ctx,
+                req=Requirement("test-pkg==1.3.2"),
+                sdist_server_url="https://cache.example.com/simple/",
+                include_sdists=False,
+                include_wheels=True,
+            )
+
+    assert str(version) == "1.3.2"
+    assert "cooldown check skipped" in caplog.text
 
 
-def test_resolve_package_cooldown_inherits_global() -> None:
-    """None per-package override returns the global cooldown unchanged."""
-    result = resolver.resolve_package_cooldown(_COOLDOWN, None)
+def _make_ctx(
+    tmp_path: pathlib.Path,
+    *,
+    cooldown: Cooldown | None,
+    min_release_age: int | None = None,
+) -> context.WorkContext:
+    """Build a WorkContext with an optional per-package min_release_age setting."""
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir(exist_ok=True)
+    if min_release_age is not None:
+        (settings_dir / "test-pkg.yaml").write_text(
+            yaml.dump({"resolver_dist": {"min_release_age": min_release_age}})
+        )
+    return context.WorkContext(
+        active_settings=packagesettings.Settings.from_files(
+            settings_file=tmp_path / "settings.yaml",
+            settings_dir=settings_dir,
+            patches_dir=tmp_path / "patches",
+            variant="cpu",
+            max_jobs=None,
+        ),
+        constraints_file=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=cooldown,
+    )
+
+
+def test_resolve_package_cooldown_inherits_global(tmp_path: pathlib.Path) -> None:
+    """No per-package override returns the global cooldown unchanged."""
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+    result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
     assert result is _COOLDOWN
 
 
-def test_resolve_package_cooldown_disabled_per_package() -> None:
-    """per_package_days=0 disables the cooldown for the package even when global is set."""
-    result = resolver.resolve_package_cooldown(_COOLDOWN, 0)
+def test_resolve_package_cooldown_disabled_per_package(tmp_path: pathlib.Path) -> None:
+    """min_release_age=0 disables the cooldown for the package even when global is set."""
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN, min_release_age=0)
+    result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
     assert result is None
 
 
-def test_resolve_package_cooldown_disabled_no_global() -> None:
-    """per_package_days=0 with no global cooldown still returns None."""
-    result = resolver.resolve_package_cooldown(None, 0)
+def test_resolve_package_cooldown_disabled_no_global(tmp_path: pathlib.Path) -> None:
+    """min_release_age=0 with no global cooldown still returns None."""
+    ctx = _make_ctx(tmp_path, cooldown=None, min_release_age=0)
+    result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
     assert result is None
 
 
-def test_resolve_package_cooldown_override_days() -> None:
+def test_resolve_package_cooldown_override_days(tmp_path: pathlib.Path) -> None:
     """Positive per-package override creates a new Cooldown with the given days."""
-    result = resolver.resolve_package_cooldown(_COOLDOWN, 30)
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN, min_release_age=30)
+    result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
     assert result is not None
     assert result.min_age.days == 30
     # bootstrap_time is inherited from the global cooldown for a consistent cutoff.
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
 
 
-def test_resolve_package_cooldown_override_no_global() -> None:
+def test_resolve_package_cooldown_override_no_global(tmp_path: pathlib.Path) -> None:
     """Positive per-package override works even without a global cooldown."""
-    result = resolver.resolve_package_cooldown(None, 14)
+    ctx = _make_ctx(tmp_path, cooldown=None, min_release_age=14)
+    result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
     assert result is not None
     assert result.min_age.days == 14
 
@@ -580,4 +618,58 @@ def test_github_cooldown_skips_with_warning(
 
     assert result is True
     assert "cooldown cannot be enforced" in caplog.text
-    assert "not yet implemented" in caplog.text
+
+
+def test_local_wheel_server_allows_without_upload_time(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """resolve_all_prebuilt_wheels() allows candidates from the local wheel server
+    even when upload_time is missing.
+
+    The local fromager wheel server is PEP 503-only and serves packages that were
+    already resolved and built earlier in the same run. They are trusted and must
+    not be fail-closed by the cooldown just because the local server cannot supply
+    upload timestamps.
+    """
+    local_server_url = "http://127.0.0.1:9999/simple/"
+    ctx = context.WorkContext(
+        active_settings=None,
+        constraints_file=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
+    ctx.wheel_server_url = local_server_url
+
+    no_timestamp_response = {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": "test_pkg-1.3.2-py3-none-any.whl",
+                "url": f"{local_server_url}test-pkg/test_pkg-1.3.2-py3-none-any.whl",
+                "hashes": {"sha256": "bbb"},
+                # no upload-time — as served by fromager's local PEP 503 server
+            },
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{local_server_url}test-pkg/",
+                json=no_timestamp_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            results = wheels.resolve_all_prebuilt_wheels(
+                ctx=ctx,
+                req=Requirement("test-pkg"),
+                wheel_server_urls=[local_server_url],
+            )
+
+    assert len(results) == 1
+    _, version = results[0]
+    assert str(version) == "1.3.2"
+    assert "cooldown check skipped" in caplog.text

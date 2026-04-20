@@ -549,6 +549,12 @@ def resolve_all_prebuilt_wheels(
             provider = get_prebuilt_wheel_provider(
                 ctx=ctx, req=req, wheel_server_url=url, req_type=req_type
             )
+            provider.cooldown = resolver.resolve_package_cooldown(ctx, req)
+            # The local fromager wheel server is PEP 503-only and serves
+            # packages that were already resolved and vetted earlier in the
+            # same run. Don't fail-closed on missing upload_time there.
+            if ctx.wheel_server_url and url == ctx.wheel_server_url:
+                provider.supports_upload_time = False
 
             # Get all matching candidates from provider
             results = resolver.find_all_matching_from_provider(provider, req)

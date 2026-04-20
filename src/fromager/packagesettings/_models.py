@@ -178,7 +178,7 @@ class ResolverDist(pydantic.BaseModel):
     0: disable the release-age cooldown for this package.
     Positive integer: override the cooldown with this many days.
 
-    .. versionadded:: 0.81
+    .. versionadded:: 0.82
     """
 
     @pydantic.model_validator(mode="after")

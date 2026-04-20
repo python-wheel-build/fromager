@@ -41,43 +41,50 @@ A value of ``0`` (the default) disables the check entirely.
 Scope
 -----
 
-The cooldown applies to **sdist resolution** — selecting which version of a
-package to build from source, including transitive dependencies. It does not
-apply to:
+The cooldown applies to both **sdist resolution** and **pre-built wheel
+resolution** — any candidate whose ``upload-time`` is more recent than the
+cutoff is rejected, regardless of whether it is an sdist or a prebuilt wheel.
 
-* Wheel-only lookups, including cache servers (``--cache-wheel-server-url``) and
-  packages configured as ``pre_built: true`` in variant settings. These use a
-  different trust model and are not subject to the cooldown regardless of which
-  server they are fetched from.
-* Packages resolved from Git URLs that do not provide timestamp metadata.
+The following are **not** subject to the cooldown:
 
-Note that sdist resolution from a private package index depends on
+* Fromager's internal build and cache wheel servers. These are not used for
+  version selection — they are checked only for already-resolved pinned
+  versions — so the cooldown has no insertion point.
+* Packages resolved from Git URLs. Git timestamps are set by the client, not
+  the server, and cannot be trusted for cooldown enforcement.
+
+Resolution from a private package index (sdist or wheel) depends on
 ``upload-time`` being present in the index's PEP 691 JSON responses. If the
-index does not provide that metadata, candidates will be rejected under the
-fail-closed policy described below.
+index does not provide that metadata, candidates are rejected under the
+fail-closed policy described below. Use ``resolver_dist.min_release_age: 0``
+to bypass cooldown for packages from indexes that structurally cannot supply
+timestamps.
 
 
 Fail-Closed Behavior
 --------------------
 
-If a candidate has no ``upload-time`` metadata — which can occur with older
-PyPI Simple HTML responses — it is rejected when a cooldown is active. Fromager
-uses the `PEP 691 JSON Simple API`_ when fetching package metadata, which
-reliably includes upload timestamps.
+If a candidate has no ``upload-time`` metadata — whether it is an sdist or a
+wheel — it is rejected when a cooldown is active. Fromager uses the
+`PEP 691 JSON Simple API`_ when fetching package metadata, which reliably
+includes upload timestamps for PyPI.org.
 
 .. _PEP 691 JSON Simple API: https://peps.python.org/pep-0691/
+
+For indexes that only implement the `PEP 503`_ HTML API and cannot supply
+timestamps, use the per-package ``resolver_dist.min_release_age: 0`` override
+to bypass the cooldown for affected packages rather than disabling it globally.
+
+.. _PEP 503: https://peps.python.org/pep-0503/
 
 .. note::
 
    If you are writing a ``get_resolver_provider`` plugin that uses
    :class:`~fromager.resolver.PyPIProvider` with a private index that only
-   implements the `PEP 503`_ HTML API (and therefore cannot supply upload
-   timestamps), pass ``supports_upload_time=False`` to ``PyPIProvider``. This
-   switches the provider from fail-closed to warn-and-skip, so candidates
-   without upload timestamps are skipped with a warning rather than causing
-   resolution to fail.
-
-.. _PEP 503: https://peps.python.org/pep-0503/
+   implements the PEP 503 HTML API, pass ``supports_upload_time=False`` to
+   ``PyPIProvider``. This switches the provider from fail-closed to
+   warn-and-skip, so candidates without upload timestamps are skipped with a
+   warning rather than causing resolution to fail.
 
 Example
 -------

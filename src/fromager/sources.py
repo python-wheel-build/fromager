@@ -153,11 +153,7 @@ def get_source_provider(
             ignore_platform=pbi.resolver_ignore_platform,
         ),
     )
-    provider.cooldown = (
-        resolver.resolve_package_cooldown(ctx.cooldown, pbi.resolver_min_release_age)
-        if pbi.resolver_include_sdists
-        else None
-    )
+    provider.cooldown = resolver.resolve_package_cooldown(ctx, req)
     return provider
 
 
