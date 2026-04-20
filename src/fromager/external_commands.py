@@ -25,6 +25,19 @@ else:
     BUILD_ISOLATION = None
 
 
+def _get_scrub_env_vars() -> frozenset[str]:
+    """Return the set of environment variable names to remove during build isolation.
+
+    Reads from the ``FROMAGER_SCRUB_ENV_VARS`` environment variable, which
+    should be a comma-separated list of variable names. Returns an empty set
+    if the variable is not set.
+    """
+    raw = os.environ.get("FROMAGER_SCRUB_ENV_VARS", "")
+    if not raw:
+        return frozenset()
+    return frozenset(v.strip() for v in raw.split(",") if v.strip())
+
+
 def network_isolation_cmd() -> typing.Sequence[str]:
     """Detect network isolation wrapper
 
@@ -115,6 +128,11 @@ def run(
         # by the ephemeral build user.
         if cwd:
             env["FROMAGER_BUILD_DIR"] = cwd
+        # Remove variables listed in FROMAGER_SCRUB_ENV_VARS from the
+        # environment so they are not visible to build backends.
+        scrub_vars = _get_scrub_env_vars()
+        for var in scrub_vars:
+            env.pop(var, None)
         env.setdefault("CARGO_NET_OFFLINE", "true")
         network_isolation = True  # for error detection below
     elif network_isolation:
