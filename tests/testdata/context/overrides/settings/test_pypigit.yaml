@@ -1,0 +1,6 @@
+source:
+  provider: pypi-git
+  index_url: https://pypi.test/simple
+  clone_url: https://github.com/python-wheel-build/fromager.git
+  tag: 'v{version}'
+  build_sdist: pep517

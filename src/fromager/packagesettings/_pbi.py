@@ -20,6 +20,7 @@ from ._models import (
     ProjectOverride,
     VariantInfo,
 )
+from ._resolver import SourceResolver
 from ._templates import _resolve_template, substitute_template
 from ._typedefs import Annotations, PackageVersion, PatchMap, Template, Variant
 
@@ -174,6 +175,14 @@ class PackageBuildInfo:
         if vi is not None:
             return vi.pre_built
         return False
+
+    @property
+    def source_resolver(self) -> SourceResolver | None:
+        """Get source resolver settings (variant or global)"""
+        vi = self._ps.variants.get(self.variant)
+        if vi is not None and vi.source is not None:
+            return vi.source
+        return self._ps.source
 
     @property
     def wheel_server_url(self) -> str | None:
