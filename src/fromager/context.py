@@ -43,6 +43,7 @@ class WorkContext:
         cleanup: bool = True,
         variant: str = "cpu",
         network_isolation: bool = False,
+        build_isolation: bool = False,
         max_jobs: int | None = None,
         settings_dir: pathlib.Path | None = None,
         wheel_server_url: str = "",
@@ -81,6 +82,7 @@ class WorkContext:
         self.cleanup_buildenv = cleanup
         self.variant = variant
         self.network_isolation = network_isolation
+        self.build_isolation = build_isolation
         self.settings_dir = settings_dir
 
         self._constraints_filename = self.work_dir / "constraints.txt"
