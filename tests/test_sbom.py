@@ -41,8 +41,8 @@ def test_generate_sbom_structure(tmp_path: pathlib.Path) -> None:
     _validate_spdx(doc)
 
 
-def test_generate_sbom_default_settings(tmp_path: pathlib.Path) -> None:
-    """Verify defaults when no custom settings are provided."""
+def test_generate_sbom_default_purls(tmp_path: pathlib.Path) -> None:
+    """Verify default purls use pkg:pypi without qualifiers."""
     ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
     doc = sbom.generate_sbom(
         ctx=ctx,
@@ -50,12 +50,31 @@ def test_generate_sbom_default_settings(tmp_path: pathlib.Path) -> None:
         version=Version("2.0.0"),
     )
 
-    pkg = doc["packages"][0]
-    assert pkg["supplier"] == "NOASSERTION"
-    assert pkg["externalRefs"][0]["referenceLocator"] == "pkg:pypi/my-package@2.0.0"
-    assert doc["documentNamespace"] == (
-        "https://spdx.org/spdxdocs/my-package-2.0.0.spdx.json"
+    wheel = doc["packages"][0]
+    upstream = doc["packages"][1]
+    assert wheel["externalRefs"][0]["referenceLocator"] == "pkg:pypi/my-package@2.0.0"
+    assert (
+        upstream["externalRefs"][0]["referenceLocator"] == "pkg:pypi/my-package@2.0.0"
     )
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_repository_url_qualifier(tmp_path: pathlib.Path) -> None:
+    """Verify global repository_url adds qualifier to downstream but not upstream."""
+    settings = SbomSettings(repository_url="https://packages.redhat.com")
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=settings)
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("numpy==1.26.0"),
+        version=Version("1.26.0"),
+    )
+
+    wheel = doc["packages"][0]
+    upstream = doc["packages"][1]
+    assert wheel["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/numpy@1.26.0?repository_url=https://packages.redhat.com"
+    )
+    assert upstream["externalRefs"][0]["referenceLocator"] == "pkg:pypi/numpy@1.26.0"
     _validate_spdx(doc)
 
 
@@ -73,8 +92,8 @@ def test_generate_sbom_custom_settings(tmp_path: pathlib.Path) -> None:
         version=Version("2.0.0"),
     )
 
-    pkg = doc["packages"][0]
-    assert pkg["supplier"] == "Organization: ExampleCo"
+    wheel = doc["packages"][0]
+    assert wheel["supplier"] == "Organization: ExampleCo"
     assert doc["documentNamespace"] == (
         "https://www.example.com/my-package-2.0.0.spdx.json"
     )
@@ -84,12 +103,12 @@ def test_generate_sbom_custom_settings(tmp_path: pathlib.Path) -> None:
     _validate_spdx(doc)
 
 
-def test_generate_sbom_purl_override(tmp_path: pathlib.Path) -> None:
-    """Verify per-package purl override is used with template substitution."""
+def test_generate_sbom_purl_field_overrides(tmp_path: pathlib.Path) -> None:
+    """Verify individual purl field overrides work."""
     ctx = make_sbom_ctx(
         tmp_path,
         sbom_settings=SbomSettings(),
-        purl="pkg:generic/{name}@{version}",
+        package_overrides={"purl": {"type": "generic", "name": "custom-name"}},
     )
     doc = sbom.generate_sbom(
         ctx=ctx,
@@ -97,24 +116,71 @@ def test_generate_sbom_purl_override(tmp_path: pathlib.Path) -> None:
         version=Version("1.0.0"),
     )
 
-    pkg = doc["packages"][0]
-    ext_refs = pkg["externalRefs"]
-    assert len(ext_refs) == 1
-    assert ext_refs[0]["referenceLocator"] == "pkg:generic/test-pkg@1.0.0"
+    wheel = doc["packages"][0]
+    upstream = doc["packages"][1]
+    assert wheel["externalRefs"][0]["referenceLocator"] == (
+        "pkg:generic/custom-name@1.0.0"
+    )
+    # Field overrides carry through to upstream (without qualifiers)
+    assert upstream["externalRefs"][0]["referenceLocator"] == (
+        "pkg:generic/custom-name@1.0.0"
+    )
     _validate_spdx(doc)
 
 
-def test_generate_sbom_default_purl(tmp_path: pathlib.Path) -> None:
-    """Verify default pkg:pypi purl is used when no override is set."""
-    ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+def test_generate_sbom_package_repository_url_override(tmp_path: pathlib.Path) -> None:
+    """Verify per-package repository_url overrides the global value."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(repository_url="https://packages.redhat.com"),
+        package_overrides={
+            "purl": {"repository_url": "https://mirror.example.com/simple"},
+        },
+    )
     doc = sbom.generate_sbom(
         ctx=ctx,
-        req=Requirement("test==0.1.0"),
-        version=Version("0.1.0"),
+        req=Requirement("test-pkg==1.0.0"),
+        version=Version("1.0.0"),
     )
 
-    pkg = doc["packages"][0]
-    assert pkg["externalRefs"][0]["referenceLocator"] == "pkg:pypi/test@0.1.0"
+    wheel = doc["packages"][0]
+    upstream = doc["packages"][1]
+    assert wheel["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@1.0.0?repository_url=https://mirror.example.com/simple"
+    )
+    # Upstream never gets repository_url
+    assert upstream["externalRefs"][0]["referenceLocator"] == "pkg:pypi/test-pkg@1.0.0"
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_upstream_purl_override(tmp_path: pathlib.Path) -> None:
+    """Verify upstream purl override for GitHub-sourced packages."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(repository_url="https://packages.redhat.com"),
+        package_overrides={
+            "purl": {"upstream": "pkg:github/vllm-project/bart-plugin@v0.2.0"},
+        },
+    )
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.2.0"),
+        version=Version("0.2.0"),
+    )
+
+    wheel = doc["packages"][0]
+    upstream = doc["packages"][1]
+    # Downstream has repository_url qualifier
+    assert (
+        "repository_url=https://packages.redhat.com"
+        in (wheel["externalRefs"][0]["referenceLocator"])
+    )
+    # Upstream identity comes from the override purl
+    assert upstream["name"] == "bart-plugin"
+    assert upstream["versionInfo"] == "v0.2.0"
+    assert upstream["externalRefs"][0]["referenceLocator"] == (
+        "pkg:github/vllm-project/bart-plugin@v0.2.0"
+    )
     _validate_spdx(doc)
 
 
@@ -127,15 +193,15 @@ def test_generate_sbom_canonicalizes_name(tmp_path: pathlib.Path) -> None:
         version=Version("1.0.0"),
     )
 
-    pkg = doc["packages"][0]
-    assert pkg["name"] == "my-package"
+    wheel = doc["packages"][0]
+    assert wheel["name"] == "my-package"
     assert doc["name"] == "my-package-1.0.0"
-    assert pkg["externalRefs"][0]["referenceLocator"] == "pkg:pypi/my-package@1.0.0"
+    assert "pkg:pypi/my-package@1.0.0" in (wheel["externalRefs"][0]["referenceLocator"])
     _validate_spdx(doc)
 
 
-def test_generate_sbom_describes_relationship(tmp_path: pathlib.Path) -> None:
-    """Verify the DESCRIBES relationship exists."""
+def test_generate_sbom_relationships(tmp_path: pathlib.Path) -> None:
+    """Verify DESCRIBES and GENERATED_FROM relationships."""
     ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
     doc = sbom.generate_sbom(
         ctx=ctx,
@@ -144,10 +210,30 @@ def test_generate_sbom_describes_relationship(tmp_path: pathlib.Path) -> None:
     )
 
     rels = doc["relationships"]
-    assert len(rels) == 1
+    assert len(rels) == 2
     assert rels[0]["spdxElementId"] == "SPDXRef-DOCUMENT"
     assert rels[0]["relationshipType"] == "DESCRIBES"
     assert rels[0]["relatedSpdxElement"] == "SPDXRef-wheel"
+    assert rels[1]["spdxElementId"] == "SPDXRef-wheel"
+    assert rels[1]["relationshipType"] == "GENERATED_FROM"
+    assert rels[1]["relatedSpdxElement"] == "SPDXRef-upstream"
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_upstream_supplier(tmp_path: pathlib.Path) -> None:
+    """Verify upstream package always has supplier NOASSERTION."""
+    settings = SbomSettings(supplier="Organization: Red Hat")
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=settings)
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("numpy==1.26.0"),
+        version=Version("1.26.0"),
+    )
+
+    wheel = doc["packages"][0]
+    upstream = doc["packages"][1]
+    assert wheel["supplier"] == "Organization: Red Hat"
+    assert upstream["supplier"] == "NOASSERTION"
     _validate_spdx(doc)
 
 
