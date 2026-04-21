@@ -140,12 +140,14 @@ class BuildEnvironment:
         cwd: str | None = None,
         extra_environ: dict[str, str] | None = None,
         network_isolation: bool | None = None,
+        build_isolation: bool | None = None,
         log_filename: str | None = None,
         stdin: TextIOWrapper | None = None,
     ) -> str:
         """Run command in a virtual environment
 
         `network_isolation` defaults to context setting.
+        `build_isolation` defaults to context setting.
         """
         extra_environ = extra_environ.copy() if extra_environ else {}
         extra_environ.update(self.get_venv_environ(template_env=extra_environ))
@@ -153,6 +155,8 @@ class BuildEnvironment:
         # default from context
         if network_isolation is None:
             network_isolation = self._ctx.network_isolation
+        if build_isolation is None:
+            build_isolation = self._ctx.build_isolation
         if network_isolation:
             # Build Rust dependencies without network access
             extra_environ.setdefault("CARGO_NET_OFFLINE", "true")
@@ -162,6 +166,7 @@ class BuildEnvironment:
             cwd=cwd,
             extra_environ=extra_environ,
             network_isolation=network_isolation,
+            build_isolation=build_isolation,
             log_filename=log_filename,
             stdin=stdin,
         )
@@ -210,6 +215,7 @@ class BuildEnvironment:
             cmd,
             cwd=str(self.path.parent),
             network_isolation=False,
+            build_isolation=False,
         )
         logger.info(
             "installed dependencies %s into build environment in %s",

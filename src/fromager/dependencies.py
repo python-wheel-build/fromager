@@ -557,6 +557,7 @@ def get_build_backend_hook_caller(
             cwd=cwd,
             extra_environ=extra_environ,
             network_isolation=ctx.network_isolation,
+            build_isolation=ctx.build_isolation,
             log_filename=log_filename,
         )
 

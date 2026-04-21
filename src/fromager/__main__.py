@@ -30,6 +30,15 @@ else:
     SUPPORTS_NETWORK_ISOLATION = True
     NETWORK_ISOLATION_ERROR = None
 
+try:
+    external_commands.detect_build_isolation()
+except Exception as e:
+    SUPPORTS_BUILD_ISOLATION: bool = False
+    BUILD_ISOLATION_ERROR: str | None = str(e)
+else:
+    SUPPORTS_BUILD_ISOLATION = True
+    BUILD_ISOLATION_ERROR = None
+
 
 @click.group()
 @click.version_option(
@@ -143,6 +152,14 @@ else:
     help="Build sdist and when with network isolation (unshare -cn)",
     show_default=True,
 )
+@click.option(
+    "--build-isolation/--no-build-isolation",
+    default=False,
+    help="Sandbox build steps with mount, PID, IPC, and network namespace isolation. "
+    "Hides credentials, makes system directories read-only, and isolates /tmp. "
+    "Supersedes --network-isolation for build steps.",
+    show_default=True,
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -163,6 +180,7 @@ def main(
     variant: str,
     jobs: int | None,
     network_isolation: bool,
+    build_isolation: bool,
 ) -> None:
     # Save the debug flag so invoke_main() can use it.
     global _DEBUG
@@ -220,6 +238,7 @@ def main(
             logger.info(f"maximum concurrent jobs: {jobs}")
             logger.info(f"constraints file: {constraints_file}")
             logger.info(f"network isolation: {network_isolation}")
+            logger.info(f"build isolation: {build_isolation}")
             if build_wheel_server_url:
                 logger.info(f"external build wheel server: {build_wheel_server_url}")
             else:
@@ -229,6 +248,9 @@ def main(
 
     if network_isolation and not SUPPORTS_NETWORK_ISOLATION:
         ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
+
+    if build_isolation and not SUPPORTS_BUILD_ISOLATION:
+        ctx.fail(f"build isolation is not available: {BUILD_ISOLATION_ERROR}")
 
     wkctx = context.WorkContext(
         active_settings=packagesettings.Settings.from_files(
@@ -247,6 +269,7 @@ def main(
         cleanup=cleanup,
         variant=variant,
         network_isolation=network_isolation,
+        build_isolation=build_isolation,
         max_jobs=jobs,
         settings_dir=settings_dir,
     )
