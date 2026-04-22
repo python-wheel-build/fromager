@@ -138,7 +138,7 @@ def get_source_provider(
     pbi = ctx.package_build_info(req)
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
-    return typing.cast(
+    provider = typing.cast(
         resolver.BaseProvider,
         overrides.find_and_invoke(
             req.name,
@@ -153,6 +153,8 @@ def get_source_provider(
             ignore_platform=pbi.resolver_ignore_platform,
         ),
     )
+    provider.cooldown = resolver.resolve_package_cooldown(ctx, req)
+    return provider
 
 
 @metrics.timeit(description="resolve source")

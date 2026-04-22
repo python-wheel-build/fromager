@@ -84,6 +84,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "sdist_server_url": "https://sdist.test/egg",
         "ignore_platform": True,
         "use_pypi_org_metadata": True,
+        "min_release_age": None,
     },
     "variants": {
         "cpu": {
@@ -145,6 +146,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "include_wheels": False,
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
+        "min_release_age": None,
     },
     "variants": {},
 }
@@ -185,6 +187,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "include_wheels": False,
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
+        "min_release_age": None,
     },
     "variants": {
         "cpu": {
