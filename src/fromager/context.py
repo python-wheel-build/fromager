@@ -63,6 +63,7 @@ class WorkContext:
         settings_dir: pathlib.Path | None = None,
         wheel_server_url: str = "",
         cooldown: Cooldown | None = None,
+        max_release_age: datetime.timedelta | None = None,
     ):
         if active_settings is None:
             active_settings = packagesettings.Settings(
@@ -113,6 +114,17 @@ class WorkContext:
         self._parallel_builds = False
 
         self.cooldown: Cooldown | None = cooldown
+        self._max_release_age: datetime.timedelta | None = max_release_age
+
+    @property
+    def max_release_age(self) -> datetime.timedelta | None:
+        return self._max_release_age
+
+    def set_max_release_age(self, days: int) -> None:
+        """Set the maximum release age in days."""
+        if days < 1:
+            raise ValueError(f"max_release_age must be positive, got {days}")
+        self._max_release_age = datetime.timedelta(days=days)
 
     def enable_parallel_builds(self) -> None:
         self._parallel_builds = True

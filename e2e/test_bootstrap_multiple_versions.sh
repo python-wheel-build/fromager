@@ -16,6 +16,14 @@ cat > "$constraints_file" <<EOF
 flit-core>=3.9,<3.12
 EOF
 
+# Compute --max-release-age dynamically: days since tomli 2.0.0 was uploaded
+# to PyPI (2021-12-13) plus a buffer, so the oldest version is always included.
+MAX_AGE=$(python3 -c "
+from datetime import date
+age = (date.today() - date(2021, 12, 13)).days
+print(age + 30)
+")
+
 # Use tomli with a version range that matches exactly 3 versions (2.0.0, 2.0.1, 2.0.2)
 # tomli has no runtime dependencies, making it fast to bootstrap
 # It uses flit-core as build backend, and we allow multiple flit-core versions
@@ -31,6 +39,7 @@ fromager \
   --constraints-file="$constraints_file" \
   bootstrap \
   --multiple-versions \
+  --max-release-age="$MAX_AGE" \
   'tomli>=2.0,<=2.0.2'
 
 # Check that wheels were built

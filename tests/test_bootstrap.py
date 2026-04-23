@@ -2,6 +2,7 @@ import io
 import logging
 import pathlib
 import textwrap
+from datetime import timedelta
 from unittest.mock import Mock, patch
 
 import pytest
@@ -576,6 +577,8 @@ def test_multiple_versions_auto_disables_constraints(
                     "-r",
                     "req.txt",
                     "--multiple-versions",
+                    "--max-release-age",
+                    "45",
                 ],
                 obj=tmp_context,
             )
@@ -623,6 +626,8 @@ def test_multiple_versions_with_skip_constraints_no_duplicate_log(
                     "req.txt",
                     "--multiple-versions",
                     "--skip-constraints",
+                    "--max-release-age",
+                    "45",
                 ],
                 obj=tmp_context,
             )
@@ -677,6 +682,67 @@ def test_without_multiple_versions_constraints_not_disabled(
 
         # write_constraints_file should have been called (constraints NOT disabled)
         assert mock_write_constraints.called
+
+
+def test_max_release_age_rejects_zero(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Test that --max-release-age 0 is rejected by Click's IntRange(min=1)."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("req.txt").write_text("setuptools>=60\n")
+        result = runner.invoke(
+            bootstrap.bootstrap,
+            [
+                "-r",
+                "req.txt",
+                "--max-release-age",
+                "0",
+            ],
+            obj=tmp_context,
+        )
+    assert result.exit_code == 2
+
+
+@patch("fromager.commands.bootstrap.bootstrapper.Bootstrapper")
+@patch("fromager.commands.bootstrap.server.start_wheel_server")
+@patch("fromager.commands.bootstrap.progress.progress_context")
+@patch("fromager.commands.bootstrap.metrics.summarize")
+def test_max_release_age_sets_context(
+    mock_metrics: Mock,
+    mock_progress: Mock,
+    mock_server: Mock,
+    mock_bootstrapper: Mock,
+    tmp_context: context.WorkContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that --max-release-age stores the value on WorkContext."""
+    mock_progress.return_value.__enter__.return_value = Mock()
+    mock_progress.return_value.__exit__.return_value = None
+    mock_bt_instance = Mock()
+    mock_bt_instance.resolve_and_add_top_level.return_value = ("url", Version("1.0"))
+    mock_bt_instance.finalize.return_value = 0
+    mock_bootstrapper.return_value = mock_bt_instance
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("req.txt").write_text("setuptools>=60\n")
+        with caplog.at_level(logging.INFO):
+            result = runner.invoke(
+                bootstrap.bootstrap,
+                [
+                    "-r",
+                    "req.txt",
+                    "--multiple-versions",
+                    "--max-release-age",
+                    "45",
+                ],
+                obj=tmp_context,
+            )
+
+    assert result.exit_code == 0
+    assert tmp_context.max_release_age == timedelta(days=45)
+    assert "rejecting versions older than 45 days" in caplog.text
 
 
 @patch("fromager.gitutils.git_clone")

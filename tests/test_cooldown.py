@@ -673,3 +673,189 @@ def test_local_wheel_server_allows_without_upload_time(
     _, version = results[0]
     assert str(version) == "1.3.2"
     assert "cooldown check skipped" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# max-release-age tests
+# ---------------------------------------------------------------------------
+
+# Uses the same _cooldown_json_response fixture:
+#   2.0.0  uploaded 2026-03-24 →  2 days old
+#   1.3.2  uploaded 2026-03-15 → 11 days old
+#   1.2.2  uploaded 2026-01-01 → 84 days old
+# _BOOTSTRAP_TIME = 2026-03-26
+
+# max_age_cutoff = bootstrap_time - max_release_age
+# With 30 days: cutoff = 2026-02-24 → keeps 2.0.0 and 1.3.2, filters 1.2.2
+# With 5 days:  cutoff = 2026-03-21 → keeps only 2.0.0
+
+
+def test_max_release_age_filters_old_versions(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Versions older than max-release-age are filtered out."""
+    max_age_cutoff = _BOOTSTRAP_TIME - datetime.timedelta(days=30)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider, Requirement("test-pkg"), max_age_cutoff=max_age_cutoff
+            )
+
+    versions = [str(v) for _, v in results]
+    assert "2.0.0" in versions
+    assert "1.3.2" in versions
+    assert "1.2.2" not in versions
+    assert "found 3 candidate(s)" in caplog.text
+    assert "have 2 candidate(s)" in caplog.text
+    assert "published within" in caplog.text
+
+
+def test_max_release_age_keeps_only_recent(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """With a tight max-release-age, only very recent versions survive."""
+    max_age_cutoff = _BOOTSTRAP_TIME - datetime.timedelta(days=5)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider, Requirement("test-pkg"), max_age_cutoff=max_age_cutoff
+            )
+
+    versions = [str(v) for _, v in results]
+    assert versions == ["2.0.0"]
+    assert "found 3 candidate(s)" in caplog.text
+    assert "have 1 candidate(s)" in caplog.text
+    assert "published within" in caplog.text
+
+
+def test_max_release_age_disabled_returns_all() -> None:
+    """When max_age_cutoff is None, all versions are returned."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        results = resolver.find_all_matching_from_provider(
+            provider, Requirement("test-pkg"), max_age_cutoff=None
+        )
+
+    versions = [str(v) for _, v in results]
+    assert "2.0.0" in versions
+    assert "1.3.2" in versions
+    assert "1.2.2" in versions
+
+
+def test_max_release_age_all_too_old_keeps_all(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When all versions are older than cutoff, keep all candidates and warn."""
+    max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider, Requirement("test-pkg"), max_age_cutoff=max_age_cutoff
+            )
+    versions = [str(v) for _, v in results]
+    assert versions == ["2.0.0", "1.3.2", "1.2.2"]
+    assert "keeping all to avoid empty resolution" in caplog.text
+
+
+def test_max_release_age_candidates_without_upload_time_pass_through() -> None:
+    """Candidates without upload_time are not filtered out by max-release-age."""
+    no_timestamp_response = {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": "test_pkg-1.0.0-py3-none-any.whl",
+                "url": "https://files.pythonhosted.org/packages/test_pkg-1.0.0-py3-none-any.whl",
+                "hashes": {"sha256": "aaa"},
+            },
+        ],
+    }
+    max_age_cutoff = _BOOTSTRAP_TIME - datetime.timedelta(days=5)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=no_timestamp_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        results = resolver.find_all_matching_from_provider(
+            provider, Requirement("test-pkg"), max_age_cutoff=max_age_cutoff
+        )
+
+    assert len(results) == 1
+    assert str(results[0][1]) == "1.0.0"
+
+
+def test_max_release_age_combined_with_cooldown() -> None:
+    """Both cooldown (min-release-age) and max-release-age work together as a window."""
+    max_age_cutoff = _BOOTSTRAP_TIME - datetime.timedelta(days=30)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        # Cooldown blocks 2.0.0 (too new), max-release-age blocks 1.2.2 (too old)
+        provider = resolver.PyPIProvider(include_sdists=True, cooldown=_COOLDOWN)
+        results = resolver.find_all_matching_from_provider(
+            provider, Requirement("test-pkg"), max_age_cutoff=max_age_cutoff
+        )
+
+    versions = [str(v) for _, v in results]
+    assert versions == ["1.3.2"]
+
+
+def test_compute_max_age_cutoff_with_cooldown(
+    tmp_context: context.WorkContext,
+) -> None:
+    """_compute_max_age_cutoff uses cooldown's bootstrap_time when available."""
+    tmp_context.cooldown = Cooldown(
+        min_age=datetime.timedelta(days=7),
+        bootstrap_time=_BOOTSTRAP_TIME,
+    )
+    tmp_context.set_max_release_age(30)
+    cutoff = resolver._compute_max_age_cutoff(tmp_context)
+    assert cutoff == _BOOTSTRAP_TIME - datetime.timedelta(days=30)
+
+
+def test_compute_max_age_cutoff_without_cooldown(
+    tmp_context: context.WorkContext,
+) -> None:
+    """_compute_max_age_cutoff uses current time when no cooldown is set."""
+    tmp_context.cooldown = None
+    tmp_context.set_max_release_age(30)
+    cutoff = resolver._compute_max_age_cutoff(tmp_context)
+    assert cutoff is not None
+    expected = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=30)
+    assert abs((cutoff - expected).total_seconds()) < 2
+
+
+def test_compute_max_age_cutoff_disabled(
+    tmp_context: context.WorkContext,
+) -> None:
+    """_compute_max_age_cutoff returns None when max_release_age is not set."""
+    cutoff = resolver._compute_max_age_cutoff(tmp_context)
+    assert cutoff is None
