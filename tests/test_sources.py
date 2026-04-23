@@ -285,3 +285,24 @@ def test_scan_compiled_extensions(
         assert matches == [pathlib.Path(filename)]
     else:
         assert matches == []
+
+
+def test_scan_compiled_extensions_skips_broken_symlinks(
+    tmp_path: pathlib.Path,
+) -> None:
+    # Symlink whose target does not exist: open() raises FileNotFoundError.
+    # Must be skipped, not propagated.
+    broken = tmp_path / "broken_link"
+    broken.symlink_to(tmp_path / "does_not_exist")
+    assert sources.scan_compiled_extensions(tmp_path) == []
+
+
+def test_scan_compiled_extensions_skips_dangling_symlink_alongside_real_file(
+    tmp_path: pathlib.Path,
+) -> None:
+    # A broken symlink must not mask detection of a real compiled extension
+    # elsewhere in the tree.
+    (tmp_path / "broken_link").symlink_to(tmp_path / "missing_target")
+    real = tmp_path / "ext.so"
+    real.write_bytes(b"anything")
+    assert sources.scan_compiled_extensions(tmp_path) == [pathlib.Path("ext.so")]
