@@ -285,3 +285,11 @@ def test_scan_compiled_extensions(
         assert matches == [pathlib.Path(filename)]
     else:
         assert matches == []
+
+
+def test_scan_compiled_extensions_broken_symlink(tmp_path: pathlib.Path) -> None:
+    """Verify broken symlinks are skipped without raising an error."""
+    broken_link = tmp_path / "broken_link"
+    broken_link.symlink_to(tmp_path / "nonexistent_target")
+    matches = sources.scan_compiled_extensions(tmp_path)
+    assert matches == []
