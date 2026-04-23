@@ -138,7 +138,7 @@ def find_wheel(
     # comparison.
     for base in candidate_bases:
         logger.debug('looking for wheel as "%s"', base)
-        for filename in downloads_dir.glob("*"):
+        for filename in downloads_dir.glob("*.whl"):
             if str(filename.name).lower().startswith(base.lower()):
                 return filename
 

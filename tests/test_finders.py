@@ -58,6 +58,31 @@ def test_find_wheel(
     assert str(wheel) == str(actual)
 
 
+def test_find_wheel_ignores_non_wheel_files(tmp_path: pathlib.Path) -> None:
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    wheel = downloads / "mypkg-1.2-py3-none-any.whl"
+    wheel.write_text("not-empty")
+    (downloads / "mypkg-1.2-py3-none-any.tar.gz").write_text("not-a-wheel")
+    (downloads / "mypkg-1.2.metadata").write_text("not-a-wheel")
+
+    req = Requirement("mypkg")
+    actual = finders.find_wheel(downloads, req, "1.2", ())
+    assert str(wheel) == str(actual)
+
+
+def test_find_wheel_returns_none_when_only_non_wheel_files(
+    tmp_path: pathlib.Path,
+) -> None:
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    (downloads / "mypkg-1.2-py3-none-any.tar.gz").write_text("not-a-wheel")
+    (downloads / "mypkg-1.2.metadata").write_text("not-a-wheel")
+
+    req = Requirement("mypkg")
+    assert finders.find_wheel(downloads, req, "1.2", ()) is None
+
+
 @pytest.mark.parametrize(
     "dist_name,version_string,unpack_base,source_base",
     [
