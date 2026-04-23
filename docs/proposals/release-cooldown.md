@@ -60,7 +60,7 @@ References:
 Whether `==` pins in top-level requirements or constraints files
 should automatically bypass cooldown is deferred. The per-package
 `resolver_dist.min_release_age: 0` override already provides an
-explicit, reviewable escape hatch for packages that need to use
+explicit, auditable escape hatch for packages that need to use
 recently-published versions. Adding automatic `==` exemptions
 would introduce a special case that weakens the security model
 and requires users to understand the distinction. This can be
@@ -108,7 +108,7 @@ per-package override first, falling back to the global default.
 ### Enforcement
 
 During candidate validation, `BaseProvider` rejects candidates
-whose age is less than the effective cooldown. The behaviour
+whose age is less than the effective cooldown. The behavior
 depends on whether the provider can supply timestamps:
 
 - **Supports timestamps** (e.g. PyPI with PEP 691, GitLab):
@@ -203,7 +203,7 @@ cooldown check.
 
 These are also exempt by design:
 
-- Only allowed for top-level requirements, not transitive deps
+- Only allowed for top-level requirements, not transitive dependencies
 - The user explicitly specifies the URL and ref -- this is a
   deliberate pin, not automatic version selection
 - Git timestamps (author date, committer date) are set by the
