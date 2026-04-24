@@ -23,6 +23,7 @@ from fromager.packagesettings import (
     Variant,
     substitute_template,
 )
+from fromager.packagesettings._typedefs import PurlType, UpstreamPurl
 
 TEST_PKG = "test-pkg"
 TEST_EMPTY_PKG = "test-empty-pkg"
@@ -488,6 +489,32 @@ def test_type_builddirectory() -> None:
     assert ta.validate_python("../tmp/build") == pathlib.Path("../tmp/build")
     with pytest.raises(ValueError):
         ta.validate_python("/absolute/path")
+
+
+def test_type_purl_type() -> None:
+    """Verify PurlType normalizes and rejects empty strings."""
+    ta = pydantic.TypeAdapter(PurlType)
+    assert ta.validate_python("pypi") == "pypi"
+    assert ta.validate_python("  Generic  ") == "generic"
+    assert ta.validate_python("GITHUB") == "github"
+    with pytest.raises(ValueError):
+        ta.validate_python("")
+    with pytest.raises(ValueError):
+        ta.validate_python("   ")
+
+
+def test_type_upstream_purl() -> None:
+    """Verify UpstreamPurl accepts valid purls and rejects invalid strings."""
+    ta = pydantic.TypeAdapter(UpstreamPurl)
+    assert ta.validate_python("pkg:pypi/flask@2.0") == "pkg:pypi/flask@2.0"
+    assert (
+        ta.validate_python("pkg:github/vllm-project/bart-plugin@v0.2.0")
+        == "pkg:github/vllm-project/bart-plugin@v0.2.0"
+    )
+    with pytest.raises(ValueError):
+        ta.validate_python("invalid-not-purl")
+    with pytest.raises(ValueError):
+        ta.validate_python("")
 
 
 def test_global_settings(testdata_path: pathlib.Path) -> None:
