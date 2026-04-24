@@ -10,7 +10,7 @@ source "$SCRIPTDIR/common.sh"
 # Create constraints file with generous ranges to test multiple versions
 # of build dependencies (not just top-level packages)
 constraints_file=$(mktemp)
-trap "rm -f $constraints_file" EXIT
+trap 'rm -f "$constraints_file"; on_exit' EXIT
 cat > "$constraints_file" <<EOF
 # Allow a range of flit-core versions to verify multiple-versions works for dependencies
 flit-core>=3.9,<3.12
