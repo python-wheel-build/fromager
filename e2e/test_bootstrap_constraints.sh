@@ -11,7 +11,7 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 
 constraints_file=$(mktemp)
-trap "rm -f $constraints_file" EXIT
+trap 'rm -f "$constraints_file"; on_exit' EXIT
 echo "stevedore==4.0.0" > "$constraints_file"
 
 # passing settings to bootstrap but should have 0 effect on it
