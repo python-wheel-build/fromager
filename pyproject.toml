@@ -44,7 +44,6 @@ dependencies = [
     "rich",
     "requests",
     "resolvelib",
-    "requests-mock",
     "starlette",
     "stevedore",
     "tomlkit",
