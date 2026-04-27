@@ -181,6 +181,7 @@ def test_get_build_system_dependencies_cached(
 
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
+@pytest.mark.network
 def test_get_build_backend_dependencies(
     _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
 ) -> None:
@@ -238,6 +239,7 @@ def test_get_build_backend_dependencies_cached(
 
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
+@pytest.mark.network
 def test_get_build_sdist_dependencies(
     _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
 ) -> None:
