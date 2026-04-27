@@ -784,3 +784,361 @@ def build_graph(
         topo.done(*nodes_to_build)
 
     print(f"\nBuilding {len(graph)} packages in {rounds} rounds.")
+
+
+# ---------------------------------------------------------------------------
+# graph check — pre-rebuild structural and conflict analysis
+# ---------------------------------------------------------------------------
+
+
+def _check_well_formed(graph_dict: dict[str, typing.Any]) -> list[str]:
+    """Check that all edge targets exist as nodes in the graph."""
+    dangling: dict[str, int] = {}
+    for _key, node_dict in graph_dict.items():
+        for edge in node_dict.get("edges", []):
+            target = edge["key"]
+            if target not in graph_dict:
+                dangling[target] = dangling.get(target, 0) + 1
+    return [
+        f"DANGLING EDGE: {target} not in graph ({n} edge(s))"
+        for target, n in sorted(dangling.items())
+    ]
+
+
+def _check_acyclicity(
+    graph_dict: dict[str, typing.Any],
+) -> tuple[list[str], list[str]]:
+    """Check for cycles and self-loops in the raw graph dict.
+
+    Operates on the raw JSON dict rather than DependencyGraph because
+    from_dict absorbs self-loops and flattens cycles during construction,
+    making them undetectable afterward.
+
+    Returns (cycles, self_loops).  Cycles are errors; self-loops are
+    warnings (common in extras like safetensors[numpy] and harmless
+    for install deps).
+    """
+    cycles: list[str] = []
+    self_loops: list[str] = []
+
+    # Self-loops: edge target equals the node's own key
+    for key, node_dict in graph_dict.items():
+        for edge in node_dict.get("edges", []):
+            if edge["key"] == key:
+                self_loops.append(
+                    f"SELF-LOOP: {key} depends on itself (req: {edge['req']})"
+                )
+
+    # Cycle detection via DFS on raw adjacency
+    # (0=unvisited, 1=in-stack, 2=done)
+    unvisited, in_stack, done = 0, 1, 2
+    color: dict[str, int] = {k: unvisited for k in graph_dict}
+    path: list[str] = []
+
+    def dfs(key: str) -> None:
+        color[key] = in_stack
+        path.append(key)
+        for edge in graph_dict.get(key, {}).get("edges", []):
+            tgt = edge["key"]
+            if tgt == key:
+                continue  # self-loops already reported
+            if tgt not in color:
+                continue  # dangling edge, reported by well-formed check
+            if color[tgt] == in_stack:
+                cycle_start = path.index(tgt)
+                cycle = path[cycle_start:] + [tgt]
+                cycles.append(f"CYCLE: {' -> '.join(cycle)}")
+            elif color[tgt] == unvisited:
+                dfs(tgt)
+        path.pop()
+        color[key] = done
+
+    for key in graph_dict:
+        if color[key] == unvisited:
+            dfs(key)
+
+    return cycles, self_loops
+
+
+def _classify_conflicts(
+    graph: DependencyGraph,
+) -> list[dict[str, typing.Any]]:
+    """Classify multi-version packages as collapsible or required.
+
+    Same specifier-matching logic as show_explain_duplicates: for each
+    multi-version package, check if any single version satisfies all
+    consumer specifiers.  Collapsible means a feasible pin exists;
+    required means no single version works.
+    """
+    conflicts = graph.get_install_dependency_versions()
+    entries: list[dict[str, typing.Any]] = []
+
+    for dep_name, nodes in sorted(conflicts.items()):
+        versions = [node.version for node in nodes]
+        if len(versions) <= 1:
+            continue
+
+        usable_versions: dict[str, list[str]] = {}
+        user_counter = 0
+        tightest: tuple[str, str, int] | None = None
+
+        for node in sorted(nodes, key=lambda x: x.version):
+            parents_by_req: dict[Requirement, set[str]] = {}
+            for parent_edge in node.get_incoming_install_edges():
+                parents_by_req.setdefault(parent_edge.req, set()).add(
+                    parent_edge.destination_node.key
+                )
+            # No top-level self-vote: matches show_explain_duplicates and
+            # is stricter than write_constraints_file (which self-votes
+            # without specifier checking).  Preserves conservatism.
+            for req, parents in parents_by_req.items():
+                match_versions = [str(v) for v in req.specifier.filter(versions)]
+                user_counter += len(parents)
+                for mv in match_versions:
+                    usable_versions.setdefault(mv, []).extend(parents)
+                n_match = len(match_versions)
+                pick_parent = sorted(parents)[0]
+                if tightest is None or n_match < tightest[2]:
+                    tightest = (str(req), pick_parent, n_match)
+
+        # Sort descending to prefer highest version, matching
+        # write_constraints_file's reversed(sorted(...))
+        all_usable = sorted(
+            (v for v, users in usable_versions.items() if len(users) == user_counter),
+            key=lambda s: Version(s),
+            reverse=True,
+        )
+
+        entry: dict[str, typing.Any] = {
+            "name": str(dep_name),
+            "versions": [str(v) for v in sorted(versions)],
+        }
+        if tightest:
+            entry["tightest_spec"] = tightest[0]
+            entry["tightest_parent"] = tightest[1]
+        if all_usable:
+            entry["pin"] = all_usable[0]  # highest feasible version
+            entry["also"] = all_usable[1:]
+        else:
+            entry["pin"] = None
+            entry["also"] = []
+        entries.append(entry)
+
+    return entries
+
+
+def _print_check(
+    wf_issues: list[str],
+    cycles: list[str],
+    self_loops: list[str],
+    entries: list[dict[str, typing.Any]],
+    n_nodes: int,
+    as_json: bool = False,
+    as_constraints: bool = False,
+) -> bool:
+    """Print check results. Returns True if all checks pass.
+
+    Self-loops are warnings (printed but don't cause failure).
+    Cycles, dangling edges, and version conflicts cause failure.
+    """
+    n_multi = len(entries)
+    collapsible = [e for e in entries if e.get("pin")]
+    required = [e for e in entries if not e.get("pin")]
+
+    if as_constraints:
+        for e in collapsible:
+            print(f"{e['name']}=={e['pin']}")
+        return not required and not wf_issues and not cycles
+
+    if as_json:
+        out: dict[str, typing.Any] = {
+            "well_formed": {"pass": not wf_issues, "issues": wf_issues},
+            "acyclic": {
+                "pass": not cycles,
+                "cycles": cycles,
+                "self_loops": self_loops,
+            },
+            "version_unique": {"pass": n_multi == 0, "n_conflicts": n_multi},
+            "conflict_analysis": entries,
+            "build_efficiency": {
+                "total_wheels": n_nodes,
+                "extra_builds": sum(len(e["versions"]) - 1 for e in collapsible),
+            },
+        }
+        print(json.dumps(out, indent=2))
+        return not wf_issues and not cycles and not n_multi
+
+    # Human-readable output
+    all_pass = True
+    print("=== Graph Check ===\n")
+
+    wf_status = "PASS" if not wf_issues else "FAIL"
+    ac_status = "PASS" if not cycles else "FAIL"
+    vu_status = "PASS" if not n_multi else "FAIL"
+    if wf_issues or cycles or n_multi:
+        all_pass = False
+
+    print(f"  [{wf_status}] Well-formed — all edge targets exist as nodes")
+    if self_loops and not cycles:
+        print(
+            f"  [{ac_status}] Acyclic — no dependency cycles "
+            f"({len(self_loops)} self-loop warning(s))"
+        )
+    else:
+        print(f"  [{ac_status}] Acyclic — no dependency cycles")
+    if n_multi:
+        print(
+            f"  [{vu_status}] Version-unique — "
+            f"{n_multi} package(s) have multiple versions"
+        )
+    else:
+        print(f"  [{vu_status}] Version-unique — one version per package name")
+
+    if all_pass:
+        if self_loops:
+            print()
+            print(f"--- {len(self_loops)} self-loop warning(s) ---\n")
+            for issue in self_loops:
+                print(f"  {issue}")
+            print()
+            print("All checks pass. Self-loops are informational only.")
+        else:
+            print("\nAll checks pass. No known issues blocking the next build.")
+        return True
+
+    print()
+
+    # Build efficiency
+    if entries:
+        n_extra = sum(len(e["versions"]) - 1 for e in collapsible)
+        print(
+            f"Build efficiency: {n_nodes} wheels built, "
+            f"{n_extra} install-dep extra can be eliminated"
+        )
+        print()
+
+    # Conflict classification
+    if entries:
+        n_coll = len(collapsible)
+        n_req = len(required)
+        print(
+            f"{n_multi} install-dep package(s) with multiple versions "
+            f"({n_coll} collapsible, {n_req} required):"
+        )
+        print()
+
+        if required:
+            print(
+                f"  {n_req} required — no single version satisfies "
+                "all consumers (update binding parent):"
+            )
+            for e in required:
+                spec = e.get("tightest_spec", "")
+                parent = e.get("tightest_parent", "unknown")
+                print(f"    {e['name']} — bound by {parent} ({spec})")
+            print()
+
+        if collapsible:
+            print(f"  {n_coll} collapsible — one version satisfies all consumers:")
+            for e in collapsible:
+                spec = e.get("tightest_spec", "")
+                parent = e.get("tightest_parent", "unknown")
+                print(f"    {e['name']}=={e['pin']} — bound by {parent} ({spec})")
+            print()
+
+            pin_list = ", ".join(f"{e['name']}=={e['pin']}" for e in collapsible)
+            print(f"  Or constrain to one version: {pin_list}")
+            print()
+
+    # Structural issues
+    if wf_issues:
+        print(f"--- {len(wf_issues)} dangling edge(s) ---\n")
+        for issue in wf_issues:
+            print(f"  {issue}")
+        print()
+
+    if cycles:
+        print(f"--- {len(cycles)} cycle(s) ---\n")
+        for issue in cycles:
+            print(f"  {issue}")
+        print()
+
+    if self_loops:
+        print(f"--- {len(self_loops)} self-loop warning(s) ---\n")
+        for issue in self_loops:
+            print(f"  {issue}")
+        print()
+
+    return False
+
+
+@graph.command()
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Output results as JSON.",
+)
+@click.option(
+    "--constraints",
+    "as_constraints",
+    is_flag=True,
+    default=False,
+    help="Output collapsible pins in constraints.txt format.",
+)
+@click.argument(
+    "graph-file",
+    type=str,
+)
+@click.pass_obj
+def check(
+    wkctx: context.WorkContext,
+    graph_file: str,
+    as_json: bool,
+    as_constraints: bool,
+) -> None:
+    """Check graph structure for version conflicts.
+
+    Pre-rebuild check that answers two questions in seconds:
+
+    1. Is this graph structurally sound? (well-formed, acyclic)
+
+    2. How many wheels are extra? (collapsible vs required)
+
+    Collapsible means one version satisfies all consumers — the extra
+    version is an unnecessary build.  Required means no single version
+    works — write_constraints_file will fail for this package.
+    """
+    if as_json and as_constraints:
+        raise click.UsageError("--json and --constraints are mutually exclusive")
+
+    # Load raw dict for well-formedness (needs access to raw edges)
+    with open(graph_file) as f:
+        graph_dict = json.load(f)
+
+    wf_issues = _check_well_formed(graph_dict)
+
+    # Acyclicity runs on raw dict (DependencyGraph absorbs cycles/self-loops)
+    cycles, self_loops = _check_acyclicity(graph_dict)
+
+    # Conflict classification needs DependencyGraph.  If the graph has
+    # dangling edges, from_dict will crash (KeyError), so skip.
+    entries: list[dict[str, typing.Any]] = []
+    n_nodes = len(graph_dict) - 1  # exclude root
+    if not wf_issues:
+        graph = DependencyGraph.from_dict(graph_dict)
+        entries = _classify_conflicts(graph)
+        n_nodes = len(graph) - 1  # exclude root
+
+    passed = _print_check(
+        wf_issues,
+        cycles,
+        self_loops,
+        entries,
+        n_nodes,
+        as_json=as_json,
+        as_constraints=as_constraints,
+    )
+    if not passed:
+        raise SystemExit(1)
