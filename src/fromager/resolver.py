@@ -105,7 +105,10 @@ def resolve(
         ignore_platform=ignore_platform,
     )
     provider.cooldown = resolve_package_cooldown(ctx, req)
-    results = find_all_matching_from_provider(provider, req)
+    max_age_cutoff = _compute_max_age_cutoff(ctx)
+    results = find_all_matching_from_provider(
+        provider, req, max_age_cutoff=max_age_cutoff
+    )
     return results[0]
 
 
@@ -167,6 +170,24 @@ def resolve_package_cooldown(
     )
 
 
+def _compute_max_age_cutoff(
+    ctx: context.WorkContext,
+) -> datetime.datetime | None:
+    """Compute the cutoff time for max release age filtering.
+
+    Returns the oldest acceptable upload time, or None if disabled.
+    Uses the cooldown's bootstrap_time for consistency across a single run.
+    """
+    if ctx.max_release_age is None:
+        return None
+    bootstrap_time = (
+        ctx.cooldown.bootstrap_time
+        if ctx.cooldown is not None
+        else datetime.datetime.now(datetime.UTC)
+    )
+    return bootstrap_time - ctx.max_release_age
+
+
 def extract_filename_from_url(url: str) -> str:
     """Extract filename from URL and decode it."""
     path = urlparse(url).path
@@ -203,12 +224,21 @@ class LogReporter(resolvelib.BaseReporter):
 
 
 def find_all_matching_from_provider(
-    provider: BaseProvider, req: Requirement
+    provider: BaseProvider,
+    req: Requirement,
+    max_age_cutoff: datetime.datetime | None = None,
 ) -> list[tuple[str, Version]]:
     """Find all matching candidates from provider without full dependency resolution.
 
     This function collects ALL candidates that match the requirement, rather than
     performing full dependency resolution to find a single best candidate.
+
+    Args:
+        provider: The provider to query for candidates.
+        req: The requirement to match.
+        max_age_cutoff: If set, reject candidates published before this time.
+            If all candidates are older than the cutoff, all are kept and
+            a warning is emitted to avoid empty resolution.
 
     Returns list of (url, version) tuples sorted by version (highest first).
 
@@ -242,10 +272,47 @@ def find_all_matching_from_provider(
             f"Unable to resolve requirement specifier {req} with constraint {constraint} using {provider_desc}: {original_msg}"
         ) from err
 
+    # Materialize candidates so we can iterate more than once if filtering
+    candidates_list = list(candidates)
+
+    if max_age_cutoff is not None:
+        logger.info(
+            "%s: found %d candidate(s) matching %s",
+            req.name,
+            len(candidates_list),
+            req,
+        )
+        max_age_days = (datetime.datetime.now(datetime.UTC) - max_age_cutoff).days
+        filtered = [
+            c
+            for c in candidates_list
+            if c.upload_time is None or c.upload_time >= max_age_cutoff
+        ]
+        dropped = len(candidates_list) - len(filtered)
+        if dropped:
+            logger.info(
+                "%s: have %d candidate(s) of %s published within %d days",
+                req.name,
+                len(filtered),
+                req,
+                max_age_days,
+            )
+        if filtered:
+            candidates_list = filtered
+        else:
+            logger.warning(
+                "%s: all %d candidate(s) of %s are older than %d days, "
+                "keeping all to avoid empty resolution",
+                req.name,
+                len(candidates_list),
+                req,
+                max_age_days,
+            )
+
     # Convert candidates to list of (url, version) tuples
     # Candidates are sorted by version (highest first) by BaseProvider.find_matches()
     # which calls sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
-    return [(candidate.url, candidate.version) for candidate in candidates]
+    return [(c.url, c.version) for c in candidates_list]
 
 
 def get_project_from_pypi(

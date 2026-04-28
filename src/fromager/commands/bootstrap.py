@@ -110,6 +110,13 @@ def _get_requirements_from_args(
     default=False,
     help="Bootstrap all matching versions instead of only the highest version",
 )
+@click.option(
+    "--max-release-age",
+    "max_release_age",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Reject package versions published more than this many days ago.",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -121,6 +128,7 @@ def bootstrap(
     skip_constraints: bool,
     test_mode: bool,
     multiple_versions: bool,
+    max_release_age: int | None,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -167,6 +175,13 @@ def bootstrap(
                 "(incompatible with --multiple-versions)"
             )
             skip_constraints = True
+
+    if max_release_age is not None:
+        wkctx.set_max_release_age(max_release_age)
+        logger.info(
+            "max release age: rejecting versions older than %d days",
+            max_release_age,
+        )
 
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
@@ -492,6 +507,13 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     default=False,
     help="Bootstrap all matching versions instead of only the highest version",
 )
+@click.option(
+    "--max-release-age",
+    "max_release_age",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Reject package versions published more than this many days ago.",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 @click.pass_context
@@ -506,6 +528,7 @@ def bootstrap_parallel(
     force: bool,
     max_workers: int | None,
     multiple_versions: bool,
+    max_release_age: int | None,
     toplevel: list[str],
 ) -> None:
     """Bootstrap and build-parallel
@@ -533,6 +556,7 @@ def bootstrap_parallel(
         sdist_only=True,
         skip_constraints=skip_constraints,
         multiple_versions=multiple_versions,
+        max_release_age=max_release_age,
         toplevel=toplevel,
     )
 

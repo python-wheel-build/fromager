@@ -181,7 +181,10 @@ def resolve_source(
         )
 
         # Get all matching candidates from provider
-        results = resolver.find_all_matching_from_provider(provider, req)
+        max_age_cutoff = resolver._compute_max_age_cutoff(ctx)
+        results = resolver.find_all_matching_from_provider(
+            provider, req, max_age_cutoff=max_age_cutoff
+        )
 
         # Return highest version (first in sorted list)
         url, version = results[0]

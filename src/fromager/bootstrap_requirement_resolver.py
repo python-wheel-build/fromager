@@ -173,7 +173,10 @@ class BootstrapRequirementResolver:
                 sdist_server_url=resolver.PYPI_SERVER_URL,
                 req_type=req_type,
             )
-            return resolver.find_all_matching_from_provider(provider, req)
+            max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
+            return resolver.find_all_matching_from_provider(
+                provider, req, max_age_cutoff=max_age_cutoff
+            )
 
     def get_cached_resolution(
         self,

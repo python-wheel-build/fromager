@@ -26,6 +26,7 @@ run_test "bootstrap_prerelease"
 run_test "bootstrap_cache"
 run_test "bootstrap_sdist_only"
 run_test "bootstrap_multiple_versions"
+run_test "bootstrap_max_release_age"
 
 test_section "bootstrap test-mode tests"
 run_test "mode_resolution"
