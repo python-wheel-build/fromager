@@ -51,9 +51,11 @@ class BootstrapRequirementResolver:
         self.prev_graph = prev_graph
         # Session-level resolution cache to avoid re-resolving same requirements
         # Key: (requirement_string, pre_built) to distinguish source vs prebuilt
-        # Value: list of (url, version) tuples sorted by version (highest first)
+        # Value: tuple of (url, version) tuples sorted by version (highest first)
+        # Values are stored as immutable tuples to prevent accidental corruption
+        # when callers modify the returned reference.
         self._resolved_requirements: dict[
-            tuple[str, bool], list[tuple[str, Version]]
+            tuple[str, bool], tuple[tuple[str, Version], ...]
         ] = {}
 
     def resolve(
@@ -106,7 +108,7 @@ class BootstrapRequirementResolver:
         cached_result = self.get_cached_resolution(req, pre_built)
         if cached_result is not None:
             logger.debug(f"resolved {req} from cache")
-            return cached_result if return_all_versions else [cached_result[0]]
+            return list(cached_result) if return_all_versions else [cached_result[0]]
 
         # Resolve using strategies
         results = self._resolve(req, req_type, parent_req, pre_built)
@@ -182,15 +184,17 @@ class BootstrapRequirementResolver:
         self,
         req: Requirement,
         pre_built: bool,
-    ) -> list[tuple[str, Version]] | None:
+    ) -> tuple[tuple[str, Version], ...] | None:
         """Get a cached resolution result if it exists.
+
+        Returns an immutable tuple to prevent accidental cache corruption.
 
         Args:
             req: Package requirement to look up in cache
             pre_built: Whether looking for prebuilt or source resolution
 
         Returns:
-            List of (url, version) tuples if cached, None otherwise
+            Tuple of (url, version) tuples if cached, None otherwise
         """
         cache_key = (str(req), pre_built)
         return self._resolved_requirements.get(cache_key)
@@ -203,6 +207,9 @@ class BootstrapRequirementResolver:
     ) -> None:
         """Cache a resolution result.
 
+        The result is stored as an immutable tuple to prevent accidental
+        corruption when callers modify the original list.
+
         Used by Bootstrapper to cache git URL resolutions that are
         handled externally (outside this resolver).
 
@@ -212,7 +219,7 @@ class BootstrapRequirementResolver:
             result: List of (url, version) tuples
         """
         cache_key = (str(req), pre_built)
-        self._resolved_requirements[cache_key] = result
+        self._resolved_requirements[cache_key] = tuple(result)
 
     def _resolve_from_graph(
         self,

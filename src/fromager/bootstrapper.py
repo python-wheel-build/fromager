@@ -224,7 +224,9 @@ class Bootstrapper:
             cached_result = self._resolver.get_cached_resolution(req, pre_built=False)
             if cached_result is not None:
                 logger.debug(f"resolved {req} from cache")
-                return cached_result if return_all_versions else [cached_result[0]]
+                return (
+                    list(cached_result) if return_all_versions else [cached_result[0]]
+                )
 
             logger.info("resolving source via URL, ignoring any plugins")
             source_url, resolved_version = self._resolve_version_from_git_url(req=req)
