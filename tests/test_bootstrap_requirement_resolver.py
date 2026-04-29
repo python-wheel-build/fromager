@@ -562,6 +562,86 @@ def test_resolve_auto_routes_to_source(
         assert version == Version("2.0")
 
 
+def test_cache_resolution_stores_immutable_tuple(tmp_context: WorkContext) -> None:
+    """cache_resolution() stores an immutable tuple, not the original list."""
+    resolver = BootstrapRequirementResolver(tmp_context)
+    req = Requirement("mypkg>=1.0")
+    original = [("https://example.com/mypkg-1.0.tar.gz", Version("1.0"))]
+
+    resolver.cache_resolution(req, pre_built=False, result=original)
+    cached = resolver.get_cached_resolution(req, pre_built=False)
+
+    # Cached value should be a tuple
+    assert isinstance(cached, tuple)
+
+    # Mutating the original list must not affect the cache
+    original.append(("https://example.com/mypkg-2.0.tar.gz", Version("2.0")))
+    cached_after = resolver.get_cached_resolution(req, pre_built=False)
+    assert cached_after is not None
+    assert len(cached_after) == 1
+
+
+def test_get_cached_resolution_returns_immutable(tmp_context: WorkContext) -> None:
+    """get_cached_resolution() returns a tuple that cannot be mutated."""
+    resolver = BootstrapRequirementResolver(tmp_context)
+    req = Requirement("mypkg>=1.0")
+
+    resolver.cache_resolution(
+        req,
+        pre_built=False,
+        result=[("https://example.com/mypkg-1.0.tar.gz", Version("1.0"))],
+    )
+    cached = resolver.get_cached_resolution(req, pre_built=False)
+    assert cached is not None
+
+    with pytest.raises(AttributeError):
+        cached.append(("https://example.com/bad.tar.gz", Version("2.0")))  # type: ignore[attr-defined, union-attr]
+
+    with pytest.raises(TypeError):
+        cached[0] = ("https://example.com/bad.tar.gz", Version("2.0"))  # type: ignore[index]
+
+
+@patch("fromager.resolver.find_all_matching_from_provider")
+def test_resolve_cache_returns_independent_lists(
+    mock_resolve: MagicMock,
+    tmp_context: WorkContext,
+) -> None:
+    """resolve() returns independent list copies from the cache, not shared references."""
+    req = Requirement("mypkg>=1.0")
+    mock_resolve.return_value = [
+        ("https://example.com/mypkg-2.0.tar.gz", Version("2.0")),
+        ("https://example.com/mypkg-1.5.tar.gz", Version("1.5")),
+    ]
+
+    resolver = BootstrapRequirementResolver(tmp_context)
+
+    # First call populates cache
+    results1 = resolver.resolve(
+        req=req,
+        req_type=RequirementType.INSTALL,
+        parent_req=None,
+        pre_built=False,
+        return_all_versions=True,
+    )
+
+    # Mutate the returned list
+    results1.append(("https://example.com/injected.tar.gz", Version("9.9")))
+
+    # Second call should return clean cached data, unaffected by mutation
+    results2 = resolver.resolve(
+        req=req,
+        req_type=RequirementType.INSTALL,
+        parent_req=None,
+        pre_built=False,
+        return_all_versions=True,
+    )
+
+    assert len(results2) == 2
+    assert results1 is not results2
+    # Only called once — second call used cache
+    mock_resolve.assert_called_once()
+
+
 @patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_prebuilt_after_source_uses_separate_cache(
     mock_resolve: MagicMock,
