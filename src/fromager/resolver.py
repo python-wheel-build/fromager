@@ -1320,8 +1320,7 @@ class VersionMapProvider(BaseProvider):
         objects with the associated URLs.
         """
         candidates: list[Candidate] = []
-        for version in self.version_map.versions():
-            url = self.version_map[version]
+        for version, url in self.version_map.iter_pairs():
             candidate = Candidate(
                 name=identifier,
                 version=version,

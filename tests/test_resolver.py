@@ -844,9 +844,9 @@ def test_resolve_versionmap() -> None:
 
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
-            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+            Version("1.2"): "https://example.com/pkg-1.2.tar.gz",
+            Version("1.3"): "https://example.com/pkg-1.3.tar.gz",
+            Version("1.4.1"): "https://example.com/pkg-1.4.1.tar.gz",
         }
     )
 
@@ -877,9 +877,9 @@ def test_resolve_versionmap_with_constraint() -> None:
 
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
-            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+            Version("1.2"): "https://example.com/pkg-1.2.tar.gz",
+            Version("1.3"): "https://example.com/pkg-1.3.tar.gz",
+            Version("1.4.1"): "https://example.com/pkg-1.4.1.tar.gz",
         }
     )
 
@@ -905,8 +905,8 @@ def test_resolve_versionmap_no_match() -> None:
 
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
+            Version("1.2"): "https://example.com/pkg-1.2.tar.gz",
+            Version("1.3"): "https://example.com/pkg-1.3.tar.gz",
         }
     )
 
