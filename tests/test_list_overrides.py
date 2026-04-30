@@ -70,6 +70,7 @@ def test_list_overrides_details_table(
     assert "test-other-pkg" in result.stdout
     assert "test-pkg" in result.stdout
     assert "test-pkg-library" in result.stdout
+    assert "Min Release Age (days)" in result.stdout
 
 
 def test_list_overrides_details_json(
@@ -112,6 +113,7 @@ def test_list_overrides_details_json(
     assert "version" in first_item
     assert "patches" in first_item
     assert "plugin_hooks" in first_item
+    assert "min_release_age" in first_item
     assert "rocm" in first_item  # variant column
 
 
@@ -148,6 +150,7 @@ def test_list_overrides_details_csv(
     assert '"version"' in header
     assert '"patches"' in header
     assert '"plugin_hooks"' in header
+    assert '"min_release_age"' in header
     assert '"rocm"' in header  # variant column
 
     # Check data rows
@@ -251,3 +254,43 @@ def test_list_overrides_warnings_without_details(
         in result.output
     )
     assert "test-other-pkg" in result.output
+
+
+def test_list_overrides_min_release_age(
+    testdata_path: pathlib.Path, cli_runner: CliRunner
+) -> None:
+    """Test that min_release_age per-package override appears in --details output."""
+    overrides_dir = testdata_path / "context" / "overrides"
+    settings_file = overrides_dir / "settings.yaml"
+    settings_dir = overrides_dir / "settings"
+    patches_dir = overrides_dir / "patches"
+
+    result = cli_runner.invoke(
+        fromager,
+        [
+            "--settings-file",
+            str(settings_file),
+            "--settings-dir",
+            str(settings_dir),
+            "--patches-dir",
+            str(patches_dir),
+            "list-overrides",
+            "--details",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+
+    json_output = _extract_json_from_output(result.stdout)
+    data = json.loads(json_output)
+
+    # test-cooldown-pkg has resolver_dist.min_release_age: 7 in its settings YAML
+    test_cooldown_pkg = next(
+        item for item in data if item["package"] == "test-cooldown-pkg"
+    )
+    assert test_cooldown_pkg["min_release_age"] == "7"
+
+    # test-other-pkg has no min_release_age override — should be empty
+    test_other_pkg = next(item for item in data if item["package"] == "test-other-pkg")
+    assert test_other_pkg["min_release_age"] == ""

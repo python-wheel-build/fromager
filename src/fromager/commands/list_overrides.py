@@ -111,6 +111,11 @@ def list_overrides(
             [v for v in all_patches.keys() if v is not None]
         )
 
+        min_release_age = ps.resolver_dist.min_release_age
+        min_release_age_str = (
+            str(min_release_age) if min_release_age is not None else ""
+        )
+
         if not all_pkg_versions:
             # This package has overrides, but none are version-specific.
             patches_str = str(num_global_patches) if num_global_patches else ""
@@ -119,6 +124,7 @@ def list_overrides(
                 "version": "",
                 "patches": patches_str,
                 "plugin_hooks": plugin_hooks_str,
+                "min_release_age": min_release_age_str,
             }
             # Add variant information
             row_data.update(variant_info)
@@ -135,6 +141,7 @@ def list_overrides(
                     "version": str(version),
                     "patches": patches_str,
                     "plugin_hooks": plugin_hooks_str,
+                    "min_release_age": min_release_age_str,
                 }
                 # Add variant information
                 row_data.update(variant_info)
@@ -166,7 +173,11 @@ def _export_csv(
 ) -> None:
     """Export data as CSV."""
     # Define field names in the order we want them
-    fieldnames = ["package", "version", "patches"] + variants + ["plugin_hooks"]
+    fieldnames = (
+        ["package", "version", "patches"]
+        + variants
+        + ["plugin_hooks", "min_release_age"]
+    )
 
     if output:
         with open(output, "w", newline="") as outfile:
@@ -194,9 +205,14 @@ def _export_table(data: list[dict], variants: list[str]) -> None:
         table.add_column(v, justify="left", no_wrap=True)
 
     table.add_column("Plugin", justify="left")
+    table.add_column("Min Release Age (days)", justify="left", no_wrap=True)
 
     # Define column keys in the same order as CSV exporter
-    column_keys = ["package", "version", "patches"] + variants + ["plugin_hooks"]
+    column_keys = (
+        ["package", "version", "patches"]
+        + variants
+        + ["plugin_hooks", "min_release_age"]
+    )
 
     for row_data in data:
         row = [row_data.get(key, "") for key in column_keys]
