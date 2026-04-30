@@ -67,18 +67,27 @@ else:
     help="save error messages to a file",
 )
 @click.option(
+    "-O",
+    "--output-dir",
+    default=pathlib.Path("."),
+    type=clickext.ClickPath(),
+    help="base directory for sdists-repo, wheels-repo, and work-dir (default: current directory)",
+)
+@click.option(
     "-o",
     "--sdists-repo",
-    default=pathlib.Path("sdists-repo"),
+    default=None,
     type=clickext.ClickPath(),
-    help="location to manage source distributions",
+    hidden=True,
+    help="location to manage source distributions (overrides --output-dir)",
 )
 @click.option(
     "-w",
     "--wheels-repo",
-    default=pathlib.Path("wheels-repo"),
+    default=None,
     type=clickext.ClickPath(),
-    help="location to manage wheel repository",
+    hidden=True,
+    help="location to manage wheel repository (overrides --output-dir)",
 )
 @click.option(
     "--build-wheel-server-url",
@@ -87,9 +96,10 @@ else:
 @click.option(
     "-t",
     "--work-dir",
-    default=pathlib.Path("work-dir"),
+    default=None,
     type=clickext.ClickPath(),
-    help="location to manage working files, including builds and logs",
+    hidden=True,
+    help="location to manage working files, including builds and logs (overrides --output-dir)",
 )
 @click.option(
     "-p",
@@ -158,10 +168,11 @@ def main(
     log_file: pathlib.Path,
     log_format: str,
     error_log_file: pathlib.Path,
-    sdists_repo: pathlib.Path,
-    wheels_repo: pathlib.Path,
+    output_dir: pathlib.Path,
+    sdists_repo: pathlib.Path | None,
+    wheels_repo: pathlib.Path | None,
     build_wheel_server_url: str,
-    work_dir: pathlib.Path,
+    work_dir: pathlib.Path | None,
     patches_dir: pathlib.Path,
     settings_file: pathlib.Path,
     settings_dir: pathlib.Path,
@@ -175,6 +186,15 @@ def main(
     # Save the debug flag so invoke_main() can use it.
     global _DEBUG
     _DEBUG = debug
+
+    # Resolve output directories: explicit per-directory flags take
+    # precedence, otherwise derive from --output-dir.
+    if not sdists_repo:
+        sdists_repo = output_dir / "sdists-repo"
+    if not wheels_repo:
+        wheels_repo = output_dir / "wheels-repo"
+    if not work_dir:
+        work_dir = output_dir / "work-dir"
 
     # Set custom log factory to prepend requirement name.
     logging.setLogRecordFactory(log.FromagerLogRecord)
