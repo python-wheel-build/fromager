@@ -7,8 +7,10 @@ import typing
 from collections.abc import Mapping
 
 import pydantic
+from packageurl import PackageURL
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
+from pydantic import StringConstraints
 from pydantic_core import CoreSchema, core_schema
 
 # common settings
@@ -97,6 +99,31 @@ Variant = typing.NewType("Variant", str)
 # Changelog
 GlobalChangelog = Mapping[Variant, list[str]]
 VariantChangelog = Mapping[PackageVersion, list[str]]
+
+
+# purl type (e.g. "pypi", "generic", "github")
+PurlType = typing.Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, to_lower=True, min_length=1),
+]
+
+
+# full purl string identifying an upstream source package
+def _validate_upstream_purl(v: str) -> str:
+    """Validate that *v* is a well-formed purl string."""
+    try:
+        PackageURL.from_string(v)
+    except ValueError as err:
+        raise ValueError(f"invalid upstream purl {v!r}: {err}") from err
+    return v
+
+
+UpstreamPurl = typing.Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1),
+    pydantic.AfterValidator(_validate_upstream_purl),
+]
+
 
 # Annotations
 RawAnnotations = Mapping[str, str]

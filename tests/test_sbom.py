@@ -61,7 +61,9 @@ def test_generate_sbom_default_purls(tmp_path: pathlib.Path) -> None:
 
 def test_generate_sbom_repository_url_qualifier(tmp_path: pathlib.Path) -> None:
     """Verify global repository_url adds qualifier to downstream but not upstream."""
-    settings = SbomSettings(repository_url="https://packages.redhat.com")
+    settings = SbomSettings(
+        repository_url="https://packages.redhat.com/simple",  # type: ignore[arg-type]
+    )
     ctx = make_sbom_ctx(tmp_path, sbom_settings=settings)
     doc = sbom.generate_sbom(
         ctx=ctx,
@@ -72,7 +74,7 @@ def test_generate_sbom_repository_url_qualifier(tmp_path: pathlib.Path) -> None:
     wheel = doc["packages"][0]
     upstream = doc["packages"][1]
     assert wheel["externalRefs"][0]["referenceLocator"] == (
-        "pkg:pypi/numpy@1.26.0?repository_url=https://packages.redhat.com"
+        "pkg:pypi/numpy@1.26.0?repository_url=https://packages.redhat.com/simple"
     )
     assert upstream["externalRefs"][0]["referenceLocator"] == "pkg:pypi/numpy@1.26.0"
     _validate_spdx(doc)
@@ -82,7 +84,7 @@ def test_generate_sbom_custom_settings(tmp_path: pathlib.Path) -> None:
     """Verify custom supplier, namespace, and creators are used."""
     settings = SbomSettings(
         supplier="Organization: ExampleCo",
-        namespace="https://www.example.com",
+        namespace="https://www.example.com/spdx",  # type: ignore[arg-type]
         creators=["Organization: ExampleCo"],
     )
     ctx = make_sbom_ctx(tmp_path, sbom_settings=settings)
@@ -95,7 +97,7 @@ def test_generate_sbom_custom_settings(tmp_path: pathlib.Path) -> None:
     wheel = doc["packages"][0]
     assert wheel["supplier"] == "Organization: ExampleCo"
     assert doc["documentNamespace"] == (
-        "https://www.example.com/my-package-2.0.0.spdx.json"
+        "https://www.example.com/spdx/my-package-2.0.0.spdx.json"
     )
     creators = doc["creationInfo"]["creators"]
     assert "Organization: ExampleCo" in creators
@@ -132,7 +134,9 @@ def test_generate_sbom_package_repository_url_override(tmp_path: pathlib.Path) -
     """Verify per-package repository_url overrides the global value."""
     ctx = make_sbom_ctx(
         tmp_path,
-        sbom_settings=SbomSettings(repository_url="https://packages.redhat.com"),
+        sbom_settings=SbomSettings(
+            repository_url="https://packages.redhat.com/simple",  # type: ignore[arg-type]
+        ),
         package_overrides={
             "purl": {"repository_url": "https://mirror.example.com/simple"},
         },
@@ -157,7 +161,9 @@ def test_generate_sbom_upstream_purl_override(tmp_path: pathlib.Path) -> None:
     """Verify upstream purl override for GitHub-sourced packages."""
     ctx = make_sbom_ctx(
         tmp_path,
-        sbom_settings=SbomSettings(repository_url="https://packages.redhat.com"),
+        sbom_settings=SbomSettings(
+            repository_url="https://packages.redhat.com/simple",  # type: ignore[arg-type]
+        ),
         package_overrides={
             "purl": {"upstream": "pkg:github/vllm-project/bart-plugin@v0.2.0"},
         },
@@ -172,7 +178,7 @@ def test_generate_sbom_upstream_purl_override(tmp_path: pathlib.Path) -> None:
     upstream = doc["packages"][1]
     # Downstream has repository_url qualifier
     assert (
-        "repository_url=https://packages.redhat.com"
+        "repository_url=https://packages.redhat.com/simple"
         in (wheel["externalRefs"][0]["referenceLocator"])
     )
     # Upstream identity comes from the override purl

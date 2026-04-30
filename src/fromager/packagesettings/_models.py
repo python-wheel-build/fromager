@@ -10,10 +10,9 @@ from collections.abc import Mapping
 
 import pydantic
 import yaml
-from packageurl import PackageURL
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
-from pydantic import Field
+from pydantic import AnyUrl, Field
 from pydantic_core import core_schema
 
 from ._typedefs import (
@@ -21,8 +20,10 @@ from ._typedefs import (
     BuildDirectory,
     EnvVars,
     Package,
+    PurlType,
     RawAnnotations,
     Template,
+    UpstreamPurl,
     Variant,
     VariantChangelog,
 )
@@ -49,7 +50,7 @@ class SbomSettings(pydantic.BaseModel):
     supplier: str = "NOASSERTION"
     """SPDX supplier field for the wheel package (e.g. ``Organization: ExampleCo``)"""
 
-    namespace: str = "https://spdx.org/spdxdocs"
+    namespace: AnyUrl = AnyUrl("https://spdx.org/spdxdocs")
     """Base URL for the SPDX documentNamespace"""
 
     creators: list[str] = Field(default_factory=list)
@@ -58,10 +59,10 @@ class SbomSettings(pydantic.BaseModel):
     The fromager tool creator entry is always added automatically.
     """
 
-    purl_type: str = "pypi"
+    purl_type: PurlType = "pypi"
     """Default purl type for all packages (e.g. ``pypi``, ``generic``)"""
 
-    repository_url: str | None = None
+    repository_url: AnyUrl | None = None
     """Default purl ``repository_url`` qualifier for all packages
 
     When set, this URL is added to every purl as a qualifier
@@ -89,7 +90,7 @@ class PurlConfig(pydantic.BaseModel):
 
     model_config = MODEL_CONFIG
 
-    type: str | None = None
+    type: PurlType | None = None
     """Override the purl type (e.g. ``generic`` instead of ``pypi``)"""
 
     namespace: str | None = None
@@ -101,13 +102,13 @@ class PurlConfig(pydantic.BaseModel):
     version: str | None = None
     """Override the purl version component (defaults to the resolved version)"""
 
-    repository_url: str | None = None
+    repository_url: AnyUrl | None = None
     """Per-package override for the purl ``repository_url`` qualifier.
 
     Overrides the global ``sbom.repository_url`` setting for this package.
     """
 
-    upstream: str | None = None
+    upstream: UpstreamPurl | None = None
     """Full purl string identifying the upstream source package.
 
     When set, this is used as the upstream identity in the SBOM's
@@ -117,18 +118,6 @@ class PurlConfig(pydantic.BaseModel):
     When absent, the upstream purl is auto-derived from the downstream
     purl without the ``repository_url`` qualifier.
     """
-
-    @pydantic.field_validator("upstream")
-    @classmethod
-    def validate_upstream_purl(cls, v: str | None) -> str | None:
-        """Validate that upstream is a valid purl string."""
-        if v is None:
-            return v
-        try:
-            PackageURL.from_string(v)
-        except ValueError as err:
-            raise ValueError(f"invalid upstream purl {v!r}") from err
-        return v
 
 
 class ResolverDist(pydantic.BaseModel):

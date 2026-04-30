@@ -44,7 +44,7 @@ def _build_downstream_purl(
     qualifiers: dict[str, str] = {}
     repo_url = (pc.repository_url if pc else None) or sbom_settings.repository_url
     if repo_url:
-        qualifiers["repository_url"] = repo_url
+        qualifiers["repository_url"] = str(repo_url)
 
     return PackageURL(
         type=purl_type,
@@ -109,7 +109,7 @@ def generate_sbom(
     creators = list(sbom_settings.creators)
     creators.append(f"Tool: fromager-{fromager_version}")
 
-    namespace = f"{sbom_settings.namespace}/{name}-{version}.spdx.json"
+    namespace = f"{sbom_settings.namespace!s}/{name}-{version}.spdx.json"
 
     downstream = _build_downstream_purl(
         name=name,
