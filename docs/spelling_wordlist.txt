@@ -1,7 +1,9 @@
+allowlist
 args
 backend
 backends
 backoff
+blocklist
 canonicalize
 canonicalized
 changelog
@@ -21,6 +23,7 @@ dir
 downloader
 env
 environ
+exfiltrate
 filesystem
 formatters
 fromager
@@ -48,6 +51,7 @@ numpy
 openssl
 platlib
 podman
+passthrough
 pre
 prebuilt
 purelib
@@ -60,6 +64,7 @@ recurses
 reproducibility
 repo
 rollout
+reproducibility
 scm
 sdist
 sdists
@@ -73,6 +78,7 @@ subcommands
 subgraph
 subgraphs
 subdirectory
+sudoers
 submodule
 submodules
 subprocesses
