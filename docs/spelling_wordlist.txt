@@ -36,6 +36,7 @@ json
 keyring
 lexicographically
 libcurl
+libtorch
 linter
 linters
 localhost
@@ -67,6 +68,7 @@ setuptools
 statelessly
 stderr
 stdin
+stdlib
 stdout
 subcommand
 subcommands
