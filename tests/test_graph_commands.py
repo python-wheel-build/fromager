@@ -1,15 +1,22 @@
 """Test graph command functions that display constraint information."""
 
+import json
+import pathlib
 from unittest.mock import Mock
 
+import click
 import pytest
 from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from fromager import dependency_graph
 from fromager.commands.graph import (
+    _compute_collection_impact,
     _find_customized_dependencies_for_node,
+    _find_shared_packages,
+    _get_collection_packages,
+    _suggest_base_impl,
     find_why,
     show_explain_duplicates,
 )
@@ -458,3 +465,406 @@ def test_requirement_preservation_through_chain() -> None:
     assert "<2.0" in requirement_str or "< 2.0" in requirement_str
     # Should NOT be B's requirement of C
     assert "package-c" not in requirement_str
+
+
+# ---------------------------------------------------------------------------
+# Helpers for suggest_base tests
+# ---------------------------------------------------------------------------
+
+
+def _make_graph_file(tmp_path: pathlib.Path, stem: str, packages: list[str]) -> str:
+    """Write a minimal graph JSON file containing the given top-level packages."""
+    graph = dependency_graph.DependencyGraph()
+    for pkg in packages:
+        graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=Requirement(pkg),
+            req_version=Version("1.0.0"),
+            download_url=f"https://example.com/{pkg}-1.0.0.tar.gz",
+        )
+    path = tmp_path / f"{stem}.json"
+    with open(path, "w") as f:
+        graph.serialize(f)
+    return str(path)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for helper functions
+# ---------------------------------------------------------------------------
+
+
+def test_get_collection_packages(tmp_path: pathlib.Path) -> None:
+    """_get_collection_packages returns normalized names, excluding ROOT."""
+    path = _make_graph_file(tmp_path, "col-a", ["package-one", "PackageTwo"])
+    result = _get_collection_packages(path)
+    assert NormalizedName("package-one") in result
+    assert NormalizedName("packagetwo") in result
+    assert NormalizedName("") not in result  # ROOT excluded
+
+
+def test_find_shared_packages_basic() -> None:
+    """Basic overlap: packages in >= 2 of 3 collections are returned."""
+    collections: dict[str, set[NormalizedName]] = {
+        "a": {NormalizedName("b"), NormalizedName("c"), NormalizedName("d")},
+        "b": {NormalizedName("b"), NormalizedName("c"), NormalizedName("e")},
+        "c": {NormalizedName("c"), NormalizedName("f")},
+    }
+    results = _find_shared_packages(collections, min_collections=2)
+    packages = {r["package"] for r in results}
+    assert NormalizedName("b") in packages
+    assert NormalizedName("c") in packages
+    assert NormalizedName("d") not in packages  # only in 1
+    assert NormalizedName("e") not in packages  # only in 1
+    assert NormalizedName("f") not in packages  # only in 1
+
+
+def test_find_shared_packages_threshold() -> None:
+    """min_collections=3 returns only packages in all 3 collections."""
+    collections: dict[str, set[NormalizedName]] = {
+        "a": {NormalizedName("b"), NormalizedName("c"), NormalizedName("d")},
+        "b": {
+            NormalizedName("b"),
+            NormalizedName("c"),
+            NormalizedName("d"),
+            NormalizedName("e"),
+        },
+        "c": {NormalizedName("c"), NormalizedName("d"), NormalizedName("f")},
+    }
+    results = _find_shared_packages(collections, min_collections=3)
+    packages = {r["package"] for r in results}
+    assert NormalizedName("c") in packages
+    assert NormalizedName("d") in packages
+    assert NormalizedName("b") not in packages  # only in 2
+
+
+def test_find_shared_packages_sorting() -> None:
+    """Results sorted by count desc then package name asc."""
+    collections: dict[str, set[NormalizedName]] = {
+        "a": {NormalizedName("z"), NormalizedName("m"), NormalizedName("a")},
+        "b": {NormalizedName("z"), NormalizedName("m"), NormalizedName("a")},
+        "c": {NormalizedName("z")},
+    }
+    results = _find_shared_packages(collections, min_collections=2)
+    # z is in 3 collections, m and a in 2
+    assert results[0]["package"] == NormalizedName("z")
+    # Among count=2 entries, 'a' comes before 'm'
+    remaining = [r["package"] for r in results[1:]]
+    assert remaining == sorted(remaining)
+
+
+# ---------------------------------------------------------------------------
+# Command output tests
+# ---------------------------------------------------------------------------
+
+
+def test_suggest_base_table_output(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """suggest_base command produces table output with key strings."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b),
+        base_graph=None,
+        min_collections=2,
+        output_format="table",
+    )
+
+    captured = capsys.readouterr()
+    assert "pkg-shared" in captured.out
+    assert "Total unique packages: 3" in captured.out
+    assert "Packages in >= 2 collections: 1" in captured.out
+    # pkg-only-* appear in the Remaining Packages section, not the candidates table
+    assert "pkg-only-a" in captured.out
+    assert "pkg-only-b" in captured.out
+
+
+def test_suggest_base_dynamic_default_min_collections(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """Default --min-collections is 50% of provided graphs (rounded up)."""
+    # 4 graphs → default threshold = ceil(4/2) = 2
+    # pkg-shared-ab is in A and B (2/4), pkg-shared-abc is in A, B, C (3/4)
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared-ab", "pkg-shared-abc"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared-ab", "pkg-shared-abc"])
+    path_c = _make_graph_file(tmp_path, "coll-c", ["pkg-shared-abc"])
+    path_d = _make_graph_file(tmp_path, "coll-d", ["pkg-only-d"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b, path_c, path_d),
+        base_graph=None,
+        min_collections=None,  # dynamic default: ceil(4/2) = 2
+        output_format="json",
+    )
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["metadata"]["min_collections"] == 2
+    packages = {c["package"] for c in data["candidates"]}
+    assert "pkg-shared-ab" in packages
+    assert "pkg-shared-abc" in packages
+    assert "pkg-only-d" not in packages
+
+
+def test_suggest_base_json_output(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """suggest_base command produces valid JSON output."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b),
+        base_graph=None,
+        min_collections=2,
+        output_format="json",
+    )
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "metadata" in data
+    assert "candidates" in data
+    assert data["metadata"]["total_collections"] == 2
+    assert data["metadata"]["total_unique_packages"] == 3
+    assert data["metadata"]["packages_meeting_threshold"] == 1
+    assert data["metadata"]["min_collections"] == 2
+    assert len(data["candidates"]) == 1
+    candidate = data["candidates"][0]
+    assert candidate["package"] == "pkg-shared"
+    assert candidate["collection_count"] == 2
+    assert candidate["coverage_percentage"] == 100.0
+    assert "in_base" not in candidate
+
+
+def test_suggest_base_with_base_graph(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """--base flag marks packages that are already in the base graph."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-new"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-new"])
+    path_base = _make_graph_file(tmp_path, "base", ["pkg-shared"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b),
+        base_graph=path_base,
+        min_collections=2,
+        output_format="json",
+    )
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    candidates_by_pkg = {c["package"]: c for c in data["candidates"]}
+    assert candidates_by_pkg["pkg-shared"]["in_base"] is True
+    assert candidates_by_pkg["pkg-new"]["in_base"] is False
+    assert data["metadata"]["base_graph"] == path_base
+
+
+def test_suggest_base_too_few_graphs(tmp_path: pathlib.Path) -> None:
+    """Error raised when fewer than 2 graphs are provided."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-a"])
+
+    with pytest.raises(click.UsageError, match="At least 2 collection graphs"):
+        _suggest_base_impl(
+            collection_graphs=(path_a,),
+            base_graph=None,
+            min_collections=2,
+            output_format="table",
+        )
+
+
+def test_suggest_base_invalid_min_collections(tmp_path: pathlib.Path) -> None:
+    """Error raised when --min-collections exceeds number of graphs."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-a"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-b"])
+
+    with pytest.raises(click.UsageError, match="cannot exceed number of graphs"):
+        _suggest_base_impl(
+            collection_graphs=(path_a, path_b),
+            base_graph=None,
+            min_collections=3,
+            output_format="table",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests for _compute_collection_impact
+# ---------------------------------------------------------------------------
+
+
+def test_compute_collection_impact_basic() -> None:
+    """Remaining counts and per-package cross-collection counts are correct."""
+    # Arrange: 3 collections with known overlap
+    # base candidates: pkg-shared (in all 3)
+    # remaining: pkg-ab (in a, b), pkg-only-a (in a only), etc.
+    collections: dict[str, set[NormalizedName]] = {
+        "coll-a": {
+            NormalizedName("pkg-shared"),
+            NormalizedName("pkg-ab"),
+            NormalizedName("pkg-only-a"),
+        },
+        "coll-b": {
+            NormalizedName("pkg-shared"),
+            NormalizedName("pkg-ab"),
+            NormalizedName("pkg-only-b"),
+        },
+        "coll-c": {
+            NormalizedName("pkg-shared"),
+            NormalizedName("pkg-only-c"),
+        },
+    }
+    base_package_names: set[NormalizedName] = {NormalizedName("pkg-shared")}
+
+    # Act
+    result = _compute_collection_impact(collections, base_package_names)
+
+    # Assert: each collection entry has correct counts
+    by_coll = {entry["collection"]: entry for entry in result}
+    assert by_coll["coll-a"]["total_packages"] == 3
+    assert by_coll["coll-a"]["base_packages"] == 1
+    assert by_coll["coll-a"]["remaining_packages"] == 2
+    assert by_coll["coll-b"]["remaining_packages"] == 2
+    assert by_coll["coll-c"]["remaining_packages"] == 1
+
+    # pkg-ab appears in 2 collections, should have collection_count=2
+    coll_a_remaining = {r["package"]: r for r in by_coll["coll-a"]["remaining"]}
+    assert coll_a_remaining[NormalizedName("pkg-ab")]["collection_count"] == 2
+    assert coll_a_remaining[NormalizedName("pkg-only-a")]["collection_count"] == 1
+
+    # reduction_percentage for coll-a: 1/3 * 100 = 33.3%
+    assert by_coll["coll-a"]["reduction_percentage"] == 33.3
+
+
+def test_compute_collection_impact_sorting() -> None:
+    """Results sorted by remaining_packages desc, then collection name asc."""
+    collections: dict[str, set[NormalizedName]] = {
+        "coll-z": {NormalizedName("pkg-shared"), NormalizedName("r1")},
+        "coll-a": {
+            NormalizedName("pkg-shared"),
+            NormalizedName("r2"),
+            NormalizedName("r3"),
+        },
+        "coll-m": {NormalizedName("pkg-shared")},
+    }
+    base_package_names: set[NormalizedName] = {NormalizedName("pkg-shared")}
+
+    result = _compute_collection_impact(collections, base_package_names)
+
+    # coll-a has 2 remaining, coll-z has 1, coll-m has 0
+    assert result[0]["collection"] == "coll-a"
+    assert result[1]["collection"] == "coll-z"
+    assert result[2]["collection"] == "coll-m"
+
+
+def test_suggest_base_table_includes_impact(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """Table output includes Collection Impact section."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b),
+        base_graph=None,
+        min_collections=2,
+        output_format="table",
+    )
+
+    captured = capsys.readouterr()
+    assert "Collection Impact" in captured.out
+    assert "Total Pkgs" in captured.out
+    assert "In Base" in captured.out
+    assert "Remaining" in captured.out
+    assert "% Saved" in captured.out
+    # Title may be word-wrapped by Rich; check for the prefix
+    assert "Remaining Packages (not in proposed" in captured.out
+
+
+def test_suggest_base_json_includes_impact(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """JSON output includes collection_impact key with correct structure."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b),
+        base_graph=None,
+        min_collections=2,
+        output_format="json",
+    )
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert "collection_impact" in data
+    impact = data["collection_impact"]
+    assert len(impact) == 2
+
+    by_coll = {entry["collection"]: entry for entry in impact}
+    # Each collection has 2 total packages, 1 shared (in base), 1 remaining
+    for coll_name in ("coll-a", "coll-b"):
+        entry = by_coll[coll_name]
+        assert entry["total_packages"] == 2
+        assert entry["base_packages"] == 1
+        assert entry["remaining_packages"] == 1
+        assert entry["reduction_percentage"] == 50.0
+        assert len(entry["remaining"]) == 1
+
+
+def test_suggest_base_json_base_only_packages(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """Packages in --base that are not candidates appear in base_only_packages."""
+    # pkg-shared is a candidate (in both collections); pkg-base-only is only in the base
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
+    path_base = _make_graph_file(tmp_path, "base", ["pkg-shared", "pkg-base-only"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b),
+        base_graph=path_base,
+        min_collections=2,
+        output_format="json",
+    )
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+
+    # pkg-base-only is in the base but not a candidate
+    assert "base_only_packages" in data
+    assert "pkg-base-only" in data["base_only_packages"]
+    # pkg-shared is a candidate and in the base; it should NOT be in base_only_packages
+    assert "pkg-shared" not in data["base_only_packages"]
+
+
+def test_suggest_base_json_base_only_impacts_collection_impact(
+    capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+) -> None:
+    """Base-only packages count toward collection impact when --base is provided."""
+    # pkg-shared is a candidate; pkg-base-only is base-only but appears in coll-a
+    path_a = _make_graph_file(
+        tmp_path, "coll-a", ["pkg-shared", "pkg-base-only", "pkg-only-a"]
+    )
+    path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
+    path_base = _make_graph_file(tmp_path, "base", ["pkg-shared", "pkg-base-only"])
+
+    _suggest_base_impl(
+        collection_graphs=(path_a, path_b),
+        base_graph=path_base,
+        min_collections=2,
+        output_format="json",
+    )
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+
+    by_coll = {entry["collection"]: entry for entry in data["collection_impact"]}
+    # coll-a has 3 packages; pkg-shared and pkg-base-only are both in the proposed
+    # base, so base_packages=2 and remaining_packages=1
+    assert by_coll["coll-a"]["base_packages"] == 2
+    assert by_coll["coll-a"]["remaining_packages"] == 1
+    # coll-b has 2 packages; only pkg-shared is in the proposed base
+    assert by_coll["coll-b"]["base_packages"] == 1
+    assert by_coll["coll-b"]["remaining_packages"] == 1
