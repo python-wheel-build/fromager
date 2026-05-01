@@ -180,6 +180,9 @@ def resolve_source(
             ctx=ctx, req=req, sdist_server_url=sdist_server_url, req_type=req_type
         )
 
+        # PEP 792: check quarantine status on PyPI regardless of resolver type.
+        resolver.check_pypi_quarantine_status(req.name)
+
         # Get all matching candidates from provider
         max_age_cutoff = resolver._compute_max_age_cutoff(ctx)
         results = resolver.find_all_matching_from_provider(
