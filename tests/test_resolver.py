@@ -1278,3 +1278,61 @@ def test_cli_package_resolver(
     assert "- PyPI versions: 1.2.2, 1.3.1+local, 1.3.2, 2.0.0a1" in result.stdout
     assert "- only wheels on PyPI: 1.3.1+local, 2.0.0a1" in result.stdout
     assert "- missing from Fromager: 1.3.1+local, 2.0.0a1" in result.stdout
+
+
+_quarantined_simple_response = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="pypi:repository-version" content="1.2">
+<meta name="pypi:project-status" content="quarantined">
+<meta name="pypi:project-status-reason" content="security concern">
+<title>Links for testpkg</title>
+</head>
+<body>
+<h1>Links for testpkg</h1>
+</body>
+</html>
+"""
+
+_active_simple_response = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="pypi:repository-version" content="1.2">
+<meta name="pypi:project-status" content="active">
+<title>Links for testpkg</title>
+</head>
+<body>
+<h1>Links for testpkg</h1>
+</body>
+</html>
+"""
+
+
+def test_check_pypi_quarantine_status_raises_for_quarantined() -> None:
+    with requests_mock.Mocker() as m:
+        m.get(
+            "https://pypi.org/simple/testpkg/",
+            text=_quarantined_simple_response,
+        )
+        with pytest.raises(ValueError, match="quarantined"):
+            resolver.check_pypi_quarantine_status("testpkg")
+
+
+def test_check_pypi_quarantine_status_passes_for_active() -> None:
+    with requests_mock.Mocker() as m:
+        m.get(
+            "https://pypi.org/simple/testpkg/",
+            text=_active_simple_response,
+        )
+        resolver.check_pypi_quarantine_status("testpkg")
+
+
+def test_check_pypi_quarantine_status_handles_fetch_failure() -> None:
+    with requests_mock.Mocker() as m:
+        m.get(
+            "https://pypi.org/simple/testpkg/",
+            status_code=404,
+        )
+        resolver.check_pypi_quarantine_status("testpkg")

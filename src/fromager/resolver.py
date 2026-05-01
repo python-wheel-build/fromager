@@ -77,6 +77,30 @@ def match_py_req(py_req: str, *, python_version: Version = PYTHON_VERSION) -> bo
     return python_version in SpecifierSet(py_req)
 
 
+def check_pypi_quarantine_status(project: str) -> None:
+    """Check if a project is quarantined on PyPI (PEP 792).
+
+    Raises ValueError if the project is quarantined.
+    """
+    client = pypi_simple.PyPISimple(
+        endpoint=PYPI_SERVER_URL,
+        session=session,
+        accept=pypi_simple.ACCEPT_JSON_PREFERRED,
+    )
+    try:
+        package = client.get_project_page(project)
+    except Exception:
+        logger.debug(
+            "failed to check quarantine status for %s on PyPI, skipping check",
+            project,
+        )
+        return
+    if package.status == pypi_simple.ProjectStatus.QUARANTINED:
+        raise ValueError(
+            f"project {project!r} is quarantined on PyPI: {package.status_reason}"
+        )
+
+
 def resolve(
     *,
     ctx: context.WorkContext,
@@ -104,6 +128,7 @@ def resolve(
         req_type=req_type,
         ignore_platform=ignore_platform,
     )
+    check_pypi_quarantine_status(req.name)
     provider.cooldown = resolve_package_cooldown(ctx, req)
     max_age_cutoff = _compute_max_age_cutoff(ctx)
     results = find_all_matching_from_provider(
@@ -349,7 +374,8 @@ def get_project_from_pypi(
         )
         raise
 
-    # PEP 792 package status
+    # PEP 792 package status (quarantine is checked separately
+    # via check_pypi_quarantine_status at the resolution entry points)
     match package.status:
         case None:
             logger.debug("no package status")
@@ -361,10 +387,6 @@ def get_project_from_pypi(
                 project,
                 package.status,
                 package.status_reason,
-            )
-        case pypi_simple.ProjectStatus.QUARANTINED:
-            raise ValueError(
-                f"project {project!r} is quarantined: {package.status_reason}"
             )
         case _:
             logger.warning(
