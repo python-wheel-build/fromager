@@ -529,6 +529,17 @@ type VersionSource = typing.Callable[
 
 
 class BaseProvider(ExtrasProvider):
+    """Base class for Fromager's dependency resolver (resolvelib + extras).
+
+    Subclasses implement ``find_candidates``, ``cache_key``, and
+    ``provider_description`` to list versions from PyPI, a version map, etc.
+
+    Candidate lists are cached per package in one global dict.
+
+    ``find_matches`` keeps only versions that fit the requirements and
+    constraints, then picks newest first.
+    """
+
     resolver_cache: typing.ClassVar[ResolverCache] = {}
     provider_description: typing.ClassVar[str]
     _cooldown_unsupported_warned: typing.ClassVar[set[str]] = set()
@@ -583,7 +594,7 @@ class BaseProvider(ExtrasProvider):
 
     @classmethod
     def clear_cache(cls, identifier: str | None = None) -> None:
-        """Clear global resolver cache
+        """Clear global resolver cache.
 
         ``None`` clears all caches, an ``identifier`` string clears the
         cache for an identifier. Raises :exc:`KeyError` for unknown
@@ -724,45 +735,55 @@ class BaseProvider(ExtrasProvider):
         # return candidate.dependencies
         return []
 
-    def _get_cached_candidates(self, identifier: str) -> list[Candidate]:
-        """Get list of cached candidates for identifier and provider
+    def _get_cached_candidates(self, identifier: str) -> list[Candidate] | None:
+        """Get a copy of cached candidates for identifier and provider.
 
-        The method always returns a list. If the cache did not have an entry
-        before, a new empty list is stored in the cache and returned to the
-        caller. The caller can mutate the list in place to update the cache.
+        Returns ``None`` if no entry exists in the cache, or a copy of the
+        cached list (which may be empty). A copy is returned so callers
+        cannot accidentally corrupt the cache.
         """
         cls = type(self)
+        provider_cache = cls.resolver_cache.get(identifier, {})
+        candidate_cache = provider_cache.get((cls, self.cache_key))
+        if candidate_cache is None:
+            return None
+        return list(candidate_cache)
+
+    def _set_cached_candidates(
+        self, identifier: str, candidates: list[Candidate]
+    ) -> None:
+        """Store candidates in the cache for identifier and provider."""
+        cls = type(self)
         provider_cache = cls.resolver_cache.setdefault(identifier, {})
-        candidate_cache = provider_cache.setdefault((cls, self.cache_key), [])
-        return candidate_cache
+        provider_cache[(cls, self.cache_key)] = list(candidates)
 
     def _find_cached_candidates(self, identifier: str) -> Candidates:
-        """Find candidates with caching"""
-        cached_candidates: list[Candidate] = []
-        if self.use_cache_candidates:
-            cached_candidates = self._get_cached_candidates(identifier)
-            if cached_candidates:
-                logger.debug(
-                    "%s: use %i cached candidates",
-                    identifier,
-                    len(cached_candidates),
-                )
-                return cached_candidates
-        candidates = list(self.find_candidates(identifier))
-        if self.use_cache_candidates:
-            # mutate list object in-place
-            cached_candidates[:] = candidates
-            logger.debug(
-                "%s: cache %i unfiltered candidates",
-                identifier,
-                len(candidates),
-            )
-        else:
+        """Find candidates with caching."""
+        if not self.use_cache_candidates:
+            candidates = list(self.find_candidates(identifier))
             logger.debug(
                 "%s: got %i unfiltered candidates, ignoring cache",
                 identifier,
                 len(candidates),
             )
+            return candidates
+
+        cached_candidates = self._get_cached_candidates(identifier)
+        if cached_candidates is not None:
+            logger.debug(
+                "%s: use %i cached candidates",
+                identifier,
+                len(cached_candidates),
+            )
+            return cached_candidates
+
+        candidates = list(self.find_candidates(identifier))
+        self._set_cached_candidates(identifier, candidates)
+        logger.debug(
+            "%s: cache %i unfiltered candidates",
+            identifier,
+            len(candidates),
+        )
         return candidates
 
     def _get_no_match_error_message(
