@@ -1,3 +1,5 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -45,6 +47,23 @@ repos:
         types_or: [python, pyi]
       - id: ruff-format
         types_or: [python, pyi]
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - test
+          - refactor
+          - perf
+          - chore
+          - ci
+          - build
+          - revert
 
   - repo: local
     hooks:

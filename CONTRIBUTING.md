@@ -78,20 +78,21 @@ git push origin feat/<short-description>
 
 ### Pre-commit Hook (Recommended)
 
-To ensure quality checks run automatically before each commit, install the pre-commit hook that runs both linting and mypy type checking:
+To ensure quality checks run automatically before each commit, install the pre-commit hooks that run linting, mypy type checking, and commit message validation:
 
 ```bash
-# Install the pre-commit hook (run once after cloning)
+# Install pre-commit hooks (run once after cloning)
 hatch run lint:install-hooks
 
-# The hook automatically runs a selection of linters before each commit.
+# The hooks automatically run linters before each commit and validate
+# that commit messages follow Conventional Commits format.
 
-# If the hook fails, it will prevent the commit and show helpful messages
-# You can fix some issues automatically with:
+# If a hook fails, it will prevent the commit and show helpful messages.
+# You can fix formatting issues automatically with:
 hatch run lint:fix
 ```
 
-The pre-commit hook prevents commits that would fail some CI quality checks, saving time and ensuring consistent code quality.
+The pre-commit hooks prevent commits that would fail CI quality checks, and enforce that all commit messages follow the [Conventional Commits](https://www.conventionalcommits.org/) format documented in the [Commit Guidelines](#commit-guidelines) section.
 
 ---
 
