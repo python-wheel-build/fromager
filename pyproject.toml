@@ -48,6 +48,7 @@ dependencies = [
     "stevedore",
     "tomlkit",
     "tqdm",
+    "trampoline",
     "wheel",
     "uv>=0.8.19",
     "uvicorn",
@@ -207,7 +208,7 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "spdx_tools.*", "stevedore"]
+module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "spdx_tools.*", "stevedore", "trampoline"]
 ignore_missing_imports = true
 
 [tool.basedpyright]

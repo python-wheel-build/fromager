@@ -1,5 +1,6 @@
 import json
 import pathlib
+import typing
 from unittest.mock import Mock, patch
 
 import pytest
@@ -8,6 +9,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 from resolvelib.resolvers import ResolverException
+from trampoline import trampoline
 
 from fromager import bootstrapper, requirements_file
 from fromager.context import WorkContext
@@ -270,21 +272,29 @@ def test_build_from_source_returns_dataclass(tmp_context: WorkContext) -> None:
     mock_wheel = tmp_context.work_dir / "package-1.0.0-py3-none-any.whl"
     expected_unpack_dir = mock_sdist_root.parent
 
+    def mock_prepare_gen(
+        *args: typing.Any, **kwargs: typing.Any
+    ) -> typing.Generator[typing.Any, typing.Any, set[Requirement]]:
+        return set()
+        yield
+
     with (
         patch("fromager.sources.download_source", return_value=mock_source_file),
         patch("fromager.sources.prepare_source", return_value=mock_sdist_root),
         patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
-        patch.object(bt, "_prepare_build_dependencies"),
+        patch.object(bt, "_prepare_build_dependencies", side_effect=mock_prepare_gen),
         patch.object(bt, "_build_wheel", return_value=(mock_wheel, None)),
     ):
-        result = bt._build_from_source(
-            req=Requirement("test-package"),
-            resolved_version=Version("1.0.0"),
-            source_url="https://pypi.org/simple/test-package",
-            req_type=requirements_file.RequirementType.TOP_LEVEL,
-            build_sdist_only=False,
-            cached_wheel_filename=None,
-            unpacked_cached_wheel=None,
+        result = trampoline(
+            bt._build_from_source(
+                req=Requirement("test-package"),
+                resolved_version=Version("1.0.0"),
+                source_url="https://pypi.org/simple/test-package",
+                req_type=requirements_file.RequirementType.TOP_LEVEL,
+                build_sdist_only=False,
+                cached_wheel_filename=None,
+                unpacked_cached_wheel=None,
+            )
         )
 
         # Verify return type is SourceBuildResult
@@ -323,12 +333,14 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
             source_url: str,
             resolved_version: Version,
             build_sdist_only: bool,
-        ) -> None:
+        ) -> typing.Generator[typing.Any, typing.Any, None]:
             call_count["count"] += 1
             if str(resolved_version) == "1.5":
                 raise ValueError("Simulated failure for version 1.5")
             # For other versions, just mark as seen to avoid actual build
             bt._mark_as_seen(req, resolved_version, build_sdist_only)
+            return
+            yield
 
         with patch.object(bt, "_bootstrap_impl", side_effect=mock_bootstrap_impl):
             # Mock _has_been_seen to return False so we attempt bootstrap

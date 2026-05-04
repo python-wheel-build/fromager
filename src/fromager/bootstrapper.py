@@ -19,6 +19,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 from resolvelib.resolvers import ResolverException
+from trampoline import trampoline
 
 from . import (
     bootstrap_requirement_resolver,
@@ -274,6 +275,16 @@ class Bootstrapper:
     def bootstrap(self, req: Requirement, req_type: RequirementType) -> None:
         """Bootstrap a package and its dependencies.
 
+        Public entry point that drives the generator-based implementation
+        via trampoline() for iterative (non-recursive) execution.
+        """
+        trampoline(self._bootstrap_gen(req, req_type))
+
+    def _bootstrap_gen(
+        self, req: Requirement, req_type: RequirementType
+    ) -> typing.Generator[typing.Any, typing.Any, None]:
+        """Generator that bootstraps a package and its dependencies.
+
         Handles setup, validation, and error handling. Delegates actual build
         work to _bootstrap_impl().
 
@@ -307,7 +318,9 @@ class Bootstrapper:
 
         # Bootstrap each resolved version
         for source_url, resolved_version in resolved_versions:
-            self._bootstrap_single_version(req, req_type, source_url, resolved_version)
+            yield self._bootstrap_single_version(
+                req, req_type, source_url, resolved_version
+            )
 
         # In multiple versions mode, report any failures for this requirement
         if self.multiple_versions and self._failed_versions:
@@ -329,7 +342,7 @@ class Bootstrapper:
         req_type: RequirementType,
         source_url: str,
         resolved_version: Version,
-    ) -> None:
+    ) -> typing.Generator[typing.Any, typing.Any, None]:
         """Bootstrap a single version of a package.
 
         Extracted from bootstrap() to handle both single and multiple version modes.
@@ -365,7 +378,7 @@ class Bootstrapper:
         # Track dependency chain - context manager ensures cleanup even on exception
         with self._track_why(req_type, req, resolved_version):
             try:
-                self._bootstrap_impl(
+                yield self._bootstrap_impl(
                     req, req_type, source_url, resolved_version, build_sdist_only
                 )
             except Exception as err:
@@ -400,7 +413,7 @@ class Bootstrapper:
         source_url: str,
         resolved_version: Version,
         build_sdist_only: bool,
-    ) -> None:
+    ) -> typing.Generator[typing.Any, typing.Any, None]:
         """Internal implementation - performs the actual bootstrap work.
 
         Called by bootstrap() after setup, validation, and seen-checking.
@@ -453,7 +466,7 @@ class Bootstrapper:
             )
 
             # Build from source (handles test-mode fallback internally)
-            build_result = self._build_from_source(
+            build_result = yield self._build_from_source(
                 req=req,
                 resolved_version=resolved_version,
                 source_url=source_url,
@@ -520,9 +533,7 @@ class Bootstrapper:
         self.progressbar.update_total(len(install_dependencies))
         for dep in self._sort_requirements(install_dependencies):
             with req_ctxvar_context(dep):
-                # In test mode, bootstrap() catches and records failures internally.
-                # In normal mode, it raises immediately which we propagate.
-                self.bootstrap(req=dep, req_type=RequirementType.INSTALL)
+                yield self._bootstrap_gen(req=dep, req_type=RequirementType.INSTALL)
             self.progressbar.update()
 
         # Clean up build directories
@@ -643,7 +654,7 @@ class Bootstrapper:
         resolved_version: Version | None,
         sdist_root_dir: pathlib.Path,
         build_env: build_environment.BuildEnvironment,
-    ) -> set[Requirement]:
+    ) -> typing.Generator[typing.Any, typing.Any, set[Requirement]]:
         # build system
         build_system_dependencies = dependencies.get_build_system_dependencies(
             ctx=self.ctx,
@@ -651,7 +662,7 @@ class Bootstrapper:
             version=resolved_version,
             sdist_root_dir=sdist_root_dir,
         )
-        self._handle_build_requirements(
+        yield self._handle_build_requirements(
             req,
             RequirementType.BUILD_SYSTEM,
             build_system_dependencies,
@@ -667,7 +678,7 @@ class Bootstrapper:
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
         )
-        self._handle_build_requirements(
+        yield self._handle_build_requirements(
             req,
             RequirementType.BUILD_BACKEND,
             build_backend_dependencies,
@@ -681,7 +692,7 @@ class Bootstrapper:
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
         )
-        self._handle_build_requirements(
+        yield self._handle_build_requirements(
             req,
             RequirementType.BUILD_SDIST,
             build_sdist_dependencies,
@@ -702,14 +713,12 @@ class Bootstrapper:
         req: Requirement,
         build_type: RequirementType,
         build_dependencies: set[Requirement],
-    ) -> None:
+    ) -> typing.Generator[typing.Any, typing.Any, None]:
         self.progressbar.update_total(len(build_dependencies))
 
         for dep in self._sort_requirements(build_dependencies):
             with req_ctxvar_context(dep):
-                # In test mode, bootstrap() catches and records failures internally.
-                # In normal mode, it raises immediately which we propagate.
-                self.bootstrap(req=dep, req_type=build_type)
+                yield self._bootstrap_gen(req=dep, req_type=build_type)
             self.progressbar.update()
 
     def _download_prebuilt(
@@ -896,7 +905,7 @@ class Bootstrapper:
         build_sdist_only: bool,
         cached_wheel_filename: pathlib.Path | None,
         unpacked_cached_wheel: pathlib.Path | None,
-    ) -> SourceBuildResult:
+    ) -> typing.Generator[typing.Any, typing.Any, SourceBuildResult]:
         """Build package from source.
 
         Orchestrates download, preparation, build environment setup, and build.
@@ -939,9 +948,7 @@ class Bootstrapper:
             )
 
             # Prepare build dependencies (always needed)
-            # Note: This may recursively call bootstrap() for build deps,
-            # which has its own error handling.
-            self._prepare_build_dependencies(
+            yield self._prepare_build_dependencies(
                 req=req,
                 resolved_version=resolved_version,
                 sdist_root_dir=sdist_root_dir,
@@ -1334,11 +1341,13 @@ class Bootstrapper:
             ctx=self.ctx,
             parent_dir=source_dir.parent,
         )
-        build_dependencies = self._prepare_build_dependencies(
-            req=req,
-            resolved_version=None,
-            sdist_root_dir=source_dir,
-            build_env=build_env,
+        build_dependencies = trampoline(
+            self._prepare_build_dependencies(
+                req=req,
+                resolved_version=None,
+                sdist_root_dir=source_dir,
+                build_env=build_env,
+            )
         )
         build_env.install(build_dependencies)
 
