@@ -29,6 +29,7 @@ class PyprojectFix:
 
     - add missing pyproject.toml
     - add or update `[build-system] requires`
+    - add fields to `[project] dynamic` (PEP 621)
 
     Requirements in `update_build_requires` are added to
     `[build-system] requires`. If a requirement name matches an existing
@@ -36,6 +37,8 @@ class PyprojectFix:
 
     Requirements in `remove_build_requires` are removed from
     `[build-system] requires`.
+
+    Entries in `add_dynamic_field` are merged into `[project] dynamic`.
     """
 
     def __init__(
@@ -45,11 +48,13 @@ class PyprojectFix:
         build_dir: pathlib.Path,
         update_build_requires: list[str],
         remove_build_requires: list[NormalizedName],
+        add_dynamic_field: list[str] | None = None,
     ) -> None:
         self.req = req
         self.build_dir = build_dir
         self.update_requirements = update_build_requires
         self.remove_requirements = remove_build_requires
+        self.add_dynamic = add_dynamic_field or []
         self.pyproject_toml = self.build_dir / "pyproject.toml"
         self.setup_py = self.build_dir / "setup.py"
 
@@ -57,6 +62,7 @@ class PyprojectFix:
         doc = self._load()
         build_system = self._default_build_system(doc)
         self._update_build_requires(build_system)
+        self._update_dynamic_fields(doc)
         logger.debug(
             "pyproject.toml %s: %s=%r, %s=%r",
             BUILD_SYSTEM,
@@ -132,6 +138,25 @@ class PyprojectFix:
                 new_requires,
             )
 
+    def _update_dynamic_fields(self, doc: tomlkit.TOMLDocument) -> None:
+        """Merge new entries into ``[project] dynamic``."""
+        if not self.add_dynamic:
+            return
+        project: TomlDict = doc.setdefault("project", {})
+        old_dynamic: list[str] = project.get("dynamic", [])
+        merged = list(old_dynamic)
+        for field in self.add_dynamic:
+            if field not in merged:
+                merged.append(field)
+        merged.sort()
+        if set(merged) != set(old_dynamic):
+            project["dynamic"] = merged
+            logger.info(
+                "changed project dynamic from %r to %r",
+                old_dynamic,
+                merged,
+            )
+
 
 def apply_project_override(
     ctx: context.WorkContext, req: Requirement, sdist_root_dir: pathlib.Path
@@ -140,10 +165,12 @@ def apply_project_override(
     pbi = ctx.package_build_info(req)
     update_build_requires = pbi.project_override.update_build_requires
     remove_build_requires = pbi.project_override.remove_build_requires
-    if update_build_requires or remove_build_requires:
+    add_dynamic_field = pbi.project_override.add_dynamic_field
+    if update_build_requires or remove_build_requires or add_dynamic_field:
         logger.debug(
             f"applying project_override: "
-            f"{update_build_requires=}, {remove_build_requires=}"
+            f"{update_build_requires=}, {remove_build_requires=}, "
+            f"{add_dynamic_field=}"
         )
         build_dir = pbi.build_dir(sdist_root_dir)
         PyprojectFix(
@@ -151,6 +178,7 @@ def apply_project_override(
             build_dir=build_dir,
             update_build_requires=update_build_requires,
             remove_build_requires=remove_build_requires,
+            add_dynamic_field=add_dynamic_field,
         ).run()
     else:
         logger.debug("no project_override")

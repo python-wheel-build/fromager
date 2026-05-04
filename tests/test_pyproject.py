@@ -177,3 +177,66 @@ def test_pyproject_override_multiple_requires(tmp_path: pathlib.Path) -> None:
             "setuptools",
         ]
     ]
+
+
+def test_pyproject_add_dynamic_field_no_project_section(
+    tmp_path: pathlib.Path,
+) -> None:
+    tmp_path.joinpath("pyproject.toml").write_text(PYPROJECT_TOML)
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        add_dynamic_field=["readme", "version"],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    assert isinstance(doc["project"], typing.Container)
+    assert dict(doc["project"].items())["dynamic"] == ["readme", "version"]
+
+
+def test_pyproject_add_dynamic_field_merges_existing(
+    tmp_path: pathlib.Path,
+) -> None:
+    tmp_path.joinpath("pyproject.toml").write_text(
+        textwrap.dedent("""
+            [project]
+            name = "testproject"
+            dynamic = ["version", "description"]
+        """)
+    )
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        add_dynamic_field=["readme", "version"],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    assert isinstance(doc["project"], typing.Container)
+    assert dict(doc["project"].items())["dynamic"] == [
+        "description",
+        "readme",
+        "version",
+    ]
+
+
+def test_pyproject_add_dynamic_field_empty_list(
+    tmp_path: pathlib.Path,
+) -> None:
+    tmp_path.joinpath("pyproject.toml").write_text(PYPROJECT_TOML)
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        add_dynamic_field=[],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    assert "project" not in doc

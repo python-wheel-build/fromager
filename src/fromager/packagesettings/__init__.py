@@ -2,6 +2,7 @@
 
 from ._hooks import default_update_extra_environ, get_extra_environ
 from ._models import (
+    PEP621_DYNAMIC_FIELDS,
     BuildOptions,
     DownloadSource,
     GitOptions,
@@ -33,6 +34,7 @@ from ._typedefs import (
 
 __all__ = (
     "MODEL_CONFIG",
+    "PEP621_DYNAMIC_FIELDS",
     "Annotations",
     "BuildDirectory",
     "BuildOptions",

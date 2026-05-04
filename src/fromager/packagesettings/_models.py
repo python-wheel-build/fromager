@@ -260,6 +260,27 @@ class BuildOptions(pydantic.BaseModel):
     """If true, this package must be built on its own (not in parallel with other packages). Default: False."""
 
 
+PEP621_DYNAMIC_FIELDS: frozenset[str] = frozenset(
+    {
+        "version",
+        "description",
+        "readme",
+        "requires-python",
+        "license",
+        "authors",
+        "maintainers",
+        "keywords",
+        "classifiers",
+        "urls",
+        "scripts",
+        "gui-scripts",
+        "entry-points",
+        "dependencies",
+        "optional-dependencies",
+    }
+)
+
+
 class ProjectOverride(pydantic.BaseModel):
     """Override pyproject.toml settings
 
@@ -271,6 +292,9 @@ class ProjectOverride(pydantic.BaseModel):
         - ninja
       requires_external:
         - openssl-libs
+      add_dynamic_field:
+        - readme
+        - version
     """
 
     model_config = MODEL_CONFIG
@@ -296,11 +320,31 @@ class ProjectOverride(pydantic.BaseModel):
        ``tomlkit.loads(dist(pkgname).read_text("fromager-build-settings"))``.
     """
 
+    add_dynamic_field: list[str] = Field(default_factory=list)
+    """Add fields to ``[project] dynamic`` in pyproject.toml (PEP 621)
+
+    Each entry must be a valid PEP 621 dynamic field name.
+    See https://peps.python.org/pep-0621/#dynamic
+    """
+
     @pydantic.field_validator("update_build_requires")
     @classmethod
     def validate_update_build_requires(cls, v: list[str]) -> list[str]:
         for reqstr in v:
             Requirement(reqstr)
+        return v
+
+    @pydantic.field_validator("add_dynamic_field")
+    @classmethod
+    def validate_add_dynamic_field(cls, v: list[str]) -> list[str]:
+        invalid = sorted(set(v) - PEP621_DYNAMIC_FIELDS)
+        if invalid:
+            allowed = sorted(PEP621_DYNAMIC_FIELDS)
+            raise ValueError(
+                f"invalid dynamic field(s): {invalid}. "
+                f"Allowed values per PEP 621: {allowed}. "
+                f"See https://peps.python.org/pep-0621/#dynamic"
+            )
         return v
 
 

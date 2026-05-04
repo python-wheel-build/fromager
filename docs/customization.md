@@ -373,6 +373,10 @@ Packages are matched by canonical name.
 - `update_build_requires` a list of requirement specifiers. Existing specs
   are replaced and missing specs are added. The option can be used to add,
   remove, or change a version constraint.
+- `add_dynamic_field` is a list of
+  [PEP 621](https://peps.python.org/pep-0621/#dynamic) field names to add
+  to `[project] dynamic`. New entries are merged with any existing dynamic
+  fields without duplicates.
 
 ```yaml
 project_override:
@@ -382,6 +386,9 @@ project_override:
         - setuptools>=68.0.0
         - torch
         - triton
+    add_dynamic_field:
+        - readme
+        - version
 ```
 
 Incoming `pyproject.toml`:
@@ -396,6 +403,9 @@ Output:
 ```yaml
 [build-system]
 requires = ["setuptools>=68.0.0", "torch", "triton"]
+
+[project]
+dynamic = ["readme", "version"]
 ```
 
 ## Override plugins

@@ -10,6 +10,7 @@ from packaging.version import Version
 
 from fromager import build_environment, context
 from fromager.packagesettings import (
+    PEP621_DYNAMIC_FIELDS,
     Annotations,
     BuildDirectory,
     EnvVars,
@@ -77,6 +78,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "remove_build_requires": ["cmake"],
         "update_build_requires": ["setuptools>=68.0.0", "torch"],
         "requires_external": ["openssl-libs"],
+        "add_dynamic_field": ["readme"],
     },
     "resolver_dist": {
         "include_sdists": True,
@@ -139,6 +141,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "remove_build_requires": [],
         "update_build_requires": [],
         "requires_external": [],
+        "add_dynamic_field": [],
     },
     "resolver_dist": {
         "sdist_server_url": None,
@@ -180,6 +183,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "remove_build_requires": [],
         "update_build_requires": [],
         "requires_external": [],
+        "add_dynamic_field": [],
     },
     "resolver_dist": {
         "sdist_server_url": None,
@@ -902,3 +906,44 @@ env:
     result = pbi.get_extra_environ(template_env={}, version=None)
     assert result["FOO"] == "bar"
     assert "__version__" not in result
+
+
+def test_add_dynamic_field_from_yaml() -> None:
+    ps = PackageSettings.from_string(
+        "test-pkg",
+        """
+project_override:
+    add_dynamic_field:
+        - readme
+        - version
+""",
+    )
+    assert ps.project_override.add_dynamic_field == ["readme", "version"]
+
+
+@pytest.mark.parametrize("invalid_field", ["name", "typo", "Name"])
+def test_add_dynamic_field_rejects_invalid(invalid_field: str) -> None:
+    with pytest.raises(RuntimeError, match="Allowed values per PEP 621"):
+        PackageSettings.from_string(
+            "test-pkg",
+            f"""
+project_override:
+    add_dynamic_field:
+        - {invalid_field}
+""",
+        )
+
+
+def test_add_dynamic_field_accepts_all_pep621_fields() -> None:
+    fields_yaml = "\n".join(f"        - {f}" for f in sorted(PEP621_DYNAMIC_FIELDS))
+    ps = PackageSettings.from_string(
+        "test-pkg",
+        f"""
+project_override:
+    add_dynamic_field:
+{fields_yaml}
+""",
+    )
+    assert sorted(ps.project_override.add_dynamic_field) == sorted(
+        PEP621_DYNAMIC_FIELDS
+    )
