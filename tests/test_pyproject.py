@@ -225,6 +225,30 @@ def test_pyproject_add_dynamic_field_merges_existing(
     ]
 
 
+def test_pyproject_add_dynamic_field_does_not_modify_build_system(
+    tmp_path: pathlib.Path,
+) -> None:
+    tmp_path.joinpath("pyproject.toml").write_text(
+        textwrap.dedent("""
+            [project]
+            name = "testproject"
+        """)
+    )
+    req = Requirement("testproject==1.0.0")
+    fixer = pyproject.PyprojectFix(
+        req,
+        build_dir=tmp_path,
+        update_build_requires=[],
+        remove_build_requires=[],
+        add_dynamic_field=["version"],
+    )
+    fixer.run()
+    doc = tomlkit.loads(tmp_path.joinpath("pyproject.toml").read_text())
+    assert "build-system" not in doc
+    assert isinstance(doc["project"], typing.Container)
+    assert dict(doc["project"].items())["dynamic"] == ["version"]
+
+
 def test_pyproject_add_dynamic_field_empty_list(
     tmp_path: pathlib.Path,
 ) -> None:

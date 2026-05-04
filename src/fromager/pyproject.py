@@ -60,17 +60,24 @@ class PyprojectFix:
 
     def run(self) -> None:
         doc = self._load()
-        build_system = self._default_build_system(doc)
-        self._update_build_requires(build_system)
-        self._update_dynamic_fields(doc)
-        logger.debug(
-            "pyproject.toml %s: %s=%r, %s=%r",
-            BUILD_SYSTEM,
-            BUILD_BACKEND,
-            build_system.get(BUILD_BACKEND),
-            BUILD_REQUIRES,
-            build_system.get(BUILD_REQUIRES),
-        )
+        # Previously run() was only called when update_requirements or
+        # remove_requirements was set. Now that add_dynamic can also
+        # trigger a run(), we guard the build-system path to avoid the
+        # side-effect of _default_build_system injecting setuptools and
+        # creating [build-system] when only dynamic fields are requested.
+        if self.update_requirements or self.remove_requirements:
+            build_system = self._default_build_system(doc)
+            self._update_build_requires(build_system)
+            logger.debug(
+                "pyproject.toml %s: %s=%r, %s=%r",
+                BUILD_SYSTEM,
+                BUILD_BACKEND,
+                build_system.get(BUILD_BACKEND),
+                BUILD_REQUIRES,
+                build_system.get(BUILD_REQUIRES),
+            )
+        if self.add_dynamic:
+            self._update_dynamic_fields(doc)
         self._save(doc)
 
     def _load(self) -> tomlkit.TOMLDocument:
