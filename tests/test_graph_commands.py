@@ -472,7 +472,9 @@ def test_requirement_preservation_through_chain() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_graph_file(tmp_path: pathlib.Path, stem: str, packages: list[str]) -> str:
+def _make_graph_file(
+    tmp_path: pathlib.Path, stem: str, packages: list[str]
+) -> pathlib.Path:
     """Write a minimal graph JSON file containing the given top-level packages."""
     graph = dependency_graph.DependencyGraph()
     for pkg in packages:
@@ -487,7 +489,7 @@ def _make_graph_file(tmp_path: pathlib.Path, stem: str, packages: list[str]) -> 
     path = tmp_path / f"{stem}.json"
     with open(path, "w") as f:
         graph.serialize(f)
-    return str(path)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -659,7 +661,7 @@ def test_suggest_base_with_base_graph(
     candidates_by_pkg = {c["package"]: c for c in data["candidates"]}
     assert candidates_by_pkg["pkg-shared"]["in_base"] is True
     assert candidates_by_pkg["pkg-new"]["in_base"] is False
-    assert data["metadata"]["base_graph"] == path_base
+    assert data["metadata"]["base_graph"] == str(path_base)
 
 
 def test_suggest_base_too_few_graphs(tmp_path: pathlib.Path) -> None:
@@ -685,6 +687,22 @@ def test_suggest_base_invalid_min_collections(tmp_path: pathlib.Path) -> None:
             collection_graphs=(path_a, path_b),
             base_graph=None,
             min_collections=3,
+            output_format="table",
+        )
+
+
+def test_suggest_base_all_but_one_empty(tmp_path: pathlib.Path) -> None:
+    """Error raised when all but one graph are empty after filtering."""
+    path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-a"])
+    path_b = _make_graph_file(tmp_path, "coll-b", [])
+
+    with pytest.raises(
+        click.UsageError, match="At least 2 non-empty collection graphs"
+    ):
+        _suggest_base_impl(
+            collection_graphs=(path_a, path_b),
+            base_graph=None,
+            min_collections=2,
             output_format="table",
         )
 

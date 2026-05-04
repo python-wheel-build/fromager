@@ -790,12 +790,12 @@ def build_graph(
     print(f"\nBuilding {len(graph)} packages in {rounds} rounds.")
 
 
-def _get_collection_name(graph_path: str) -> str:
+def _get_collection_name(graph_path: pathlib.Path | str) -> str:
     """Derive collection name from file path stem."""
     return pathlib.Path(graph_path).stem
 
 
-def _get_collection_packages(graph_path: str) -> set[NormalizedName]:
+def _get_collection_packages(graph_path: pathlib.Path | str) -> set[NormalizedName]:
     """Load graph and return all canonical package names, excluding ROOT."""
     graph = DependencyGraph.from_file(graph_path)
     return {
@@ -1002,7 +1002,7 @@ def _suggest_base_json(
     collection_names: list[str],
     min_collections: int,
     base_packages: set[NormalizedName] | None,
-    base_graph: str | None,
+    base_graph: pathlib.Path | None,
     total_unique_packages: int,
     impact: list[dict[str, typing.Any]],
     base_only_packages: set[NormalizedName],
@@ -1020,7 +1020,7 @@ def _suggest_base_json(
         "collection_impact": impact,
     }
     if base_graph is not None:
-        output["metadata"]["base_graph"] = base_graph
+        output["metadata"]["base_graph"] = str(base_graph)
 
     for entry in candidates:
         pkg = entry["package"]
@@ -1043,8 +1043,8 @@ def _suggest_base_json(
 
 
 def _suggest_base_impl(
-    collection_graphs: tuple[str, ...],
-    base_graph: str | None,
+    collection_graphs: tuple[pathlib.Path, ...],
+    base_graph: pathlib.Path | None,
     min_collections: int | None,
     output_format: str,
 ) -> None:
@@ -1053,8 +1053,6 @@ def _suggest_base_impl(
         raise click.UsageError("At least 2 collection graphs are required")
     if min_collections is None:
         min_collections = max(2, math.ceil(len(collection_graphs) / 2))
-    elif min_collections < 2:
-        raise click.UsageError("--min-collections must be >= 2")
     if min_collections > len(collection_graphs):
         raise click.UsageError(
             f"--min-collections ({min_collections}) cannot exceed number of graphs ({len(collection_graphs)})"
@@ -1064,7 +1062,7 @@ def _suggest_base_impl(
     collections: dict[str, set[NormalizedName]] = {}
     display_names: dict[str, str] = {}
     for path in collection_graphs:
-        key = str(pathlib.Path(path).resolve())
+        key = str(path.resolve())
         name = _get_collection_name(path)
         pkgs = _get_collection_packages(path)
         if not pkgs:
@@ -1072,6 +1070,9 @@ def _suggest_base_impl(
             continue
         collections[key] = pkgs
         display_names[key] = name
+
+    if len(collections) < 2:
+        raise click.UsageError("At least 2 non-empty collection graphs are required")
 
     # Load base graph if provided
     base_packages: set[NormalizedName] | None = None
@@ -1122,13 +1123,13 @@ def _suggest_base_impl(
 @click.option(
     "--base",
     "base_graph",
-    type=str,
+    type=clickext.ClickPath(exists=True),
     default=None,
     help="Existing base collection graph to enhance",
 )
 @click.option(
     "--min-collections",
-    type=int,
+    type=click.IntRange(min=2),
     default=None,
     help="Minimum collections a package must appear in (default: 50% of provided collections)",
 )
@@ -1139,12 +1140,12 @@ def _suggest_base_impl(
     default="table",
     help="Output format (default: table)",
 )
-@click.argument("collection_graphs", nargs=-1, required=True)
-@click.pass_obj
+@click.argument(
+    "collection_graphs", nargs=-1, required=True, type=clickext.ClickPath(exists=True)
+)
 def suggest_base(
-    wkctx: context.WorkContext,
-    collection_graphs: tuple[str, ...],
-    base_graph: str | None,
+    collection_graphs: tuple[pathlib.Path, ...],
+    base_graph: pathlib.Path | None,
     min_collections: int | None,
     output_format: str,
 ) -> None:
