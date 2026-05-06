@@ -1,4 +1,3 @@
-import time
 import typing
 from unittest import mock
 from unittest.mock import Mock, patch
@@ -97,10 +96,14 @@ class TestRetryHTTPAdapter:
         assert mock_super_send.call_count == 2
         mock_sleep.assert_called_once()
 
+    @patch("fromager.http_retry.time.time", return_value=100.0)
     @patch("time.sleep")
     @patch("requests.adapters.HTTPAdapter.send")
     def test_send_github_rate_limit_handling(
-        self, mock_super_send: typing.Any, mock_sleep: typing.Any
+        self,
+        mock_super_send: typing.Any,
+        mock_sleep: typing.Any,
+        mock_time: typing.Any,
     ) -> None:
         """Test GitHub API rate limit handling."""
         adapter = http_retry.RetryHTTPAdapter()
@@ -110,7 +113,7 @@ class TestRetryHTTPAdapter:
         rate_limit_response = Mock(spec=requests.Response)
         rate_limit_response.status_code = 403
         rate_limit_response.text = "API rate limit exceeded"
-        rate_limit_response.headers = {"X-RateLimit-Reset": str(int(time.time()) + 60)}
+        rate_limit_response.headers = {"X-RateLimit-Reset": str(160)}
         rate_limit_response.request = request
 
         success_response = Mock(spec=requests.Response)
@@ -163,20 +166,82 @@ class TestRetryHTTPAdapter:
         with pytest.raises(ConnectionError):
             adapter.send(request)
 
-    def test_handle_github_rate_limit_with_reset_header(self) -> None:
-        """Test GitHub rate limit handling with reset header."""
+    @patch("fromager.http_retry.time.time", return_value=100.0)
+    def test_handle_github_rate_limit_with_short_reset(
+        self, mock_time: typing.Any
+    ) -> None:
+        """Test GitHub rate limit sleeps and retries when reset is soon."""
         adapter = http_retry.RetryHTTPAdapter()
         response = Mock(spec=requests.Response)
-        response.headers = {"X-RateLimit-Reset": str(int(time.time()) + 1)}
+        response.headers = {"X-RateLimit-Reset": str(110)}
         response.request = Mock()
         response.request.url = "https://api.github.com"
 
         with patch("time.sleep") as mock_sleep:
             adapter._handle_github_rate_limit(response, 0, 3)
-            mock_sleep.assert_called_once()
+            mock_sleep.assert_called_once_with(15)  # 110 - 100 + 5
+
+    @patch("fromager.http_retry.time.time", return_value=100.0)
+    def test_handle_github_rate_limit_raises_on_long_wait(
+        self, mock_time: typing.Any
+    ) -> None:
+        """Test GitHub rate limit raises immediately when reset is far away."""
+        adapter = http_retry.RetryHTTPAdapter()
+        response = Mock(spec=requests.Response)
+        reset_in = http_retry.GITHUB_RATE_LIMIT_MAX_WAIT + 100
+        response.headers = {"X-RateLimit-Reset": str(100 + reset_in)}
+        response.request = Mock()
+        response.request.url = "https://api.github.com/repos/test"
+
+        with pytest.raises(http_retry.GitHubRateLimitError, match="GITHUB_TOKEN"):
+            adapter._handle_github_rate_limit(response, 0, 3)
+
+    @patch("fromager.http_retry.time.time", return_value=100.0)
+    def test_handle_github_rate_limit_at_threshold_boundary(
+        self, mock_time: typing.Any
+    ) -> None:
+        """Test wait_time exactly at threshold sleeps instead of raising."""
+        adapter = http_retry.RetryHTTPAdapter()
+        response = Mock(spec=requests.Response)
+        # wait_time = reset - current + 5 = threshold exactly
+        reset_ts = 100 + http_retry.GITHUB_RATE_LIMIT_MAX_WAIT - 5
+        response.headers = {"X-RateLimit-Reset": str(reset_ts)}
+        response.request = Mock()
+        response.request.url = "https://api.github.com/repos/test"
+
+        with patch("time.sleep") as mock_sleep:
+            adapter._handle_github_rate_limit(response, 0, 3)
+            mock_sleep.assert_called_once_with(http_retry.GITHUB_RATE_LIMIT_MAX_WAIT)
+
+    @patch("fromager.http_retry.time.time", return_value=100.0)
+    def test_handle_github_rate_limit_raises_on_max_attempts(
+        self, mock_time: typing.Any
+    ) -> None:
+        """Test GitHub rate limit raises when retries are exhausted."""
+        adapter = http_retry.RetryHTTPAdapter()
+        response = Mock(spec=requests.Response)
+        response.headers = {"X-RateLimit-Reset": str(110)}
+        response.request = Mock()
+        response.request.url = "https://api.github.com/repos/test"
+
+        with pytest.raises(http_retry.GitHubRateLimitError, match="GITHUB_TOKEN"):
+            adapter._handle_github_rate_limit(response, 2, 3)
+
+    def test_handle_github_rate_limit_raises_on_invalid_header_at_max_attempts(
+        self,
+    ) -> None:
+        """Test raises with 'Reset time unknown' when header is unparseable and retries exhausted."""
+        adapter = http_retry.RetryHTTPAdapter()
+        response = Mock(spec=requests.Response)
+        response.headers = {"X-RateLimit-Reset": "garbage"}
+        response.request = Mock()
+        response.request.url = "https://api.github.com/repos/test"
+
+        with pytest.raises(http_retry.GitHubRateLimitError, match="Reset time unknown"):
+            adapter._handle_github_rate_limit(response, 2, 3)
 
     def test_handle_github_rate_limit_without_reset_header(self) -> None:
-        """Test GitHub rate limit handling without reset header."""
+        """Test GitHub rate limit uses exponential backoff when reset header is missing."""
         adapter = http_retry.RetryHTTPAdapter()
         response = Mock(spec=requests.Response)
         response.headers = {}
@@ -493,3 +558,91 @@ def test_adapter_logging_on_github_rate_limit(mock_logger: typing.Any) -> None:
     mock_logger.warning.assert_called_once()
     args = mock_logger.warning.call_args[0]
     assert "GitHub API rate limit hit" in args[0]
+
+
+class TestGitHubRateLimitError:
+    """Test cases for GitHubRateLimitError behavior."""
+
+    def test_is_request_exception(self) -> None:
+        """Test that GitHubRateLimitError is a RequestException subclass."""
+        err = http_retry.GitHubRateLimitError("test")
+        assert isinstance(err, requests.exceptions.RequestException)
+
+    def test_not_in_retryable_exceptions(self) -> None:
+        """Test that GitHubRateLimitError is not caught by RETRYABLE_EXCEPTIONS."""
+        err = http_retry.GitHubRateLimitError("test")
+        assert not isinstance(err, http_retry.RETRYABLE_EXCEPTIONS)
+
+    @patch("fromager.http_retry.time.time", return_value=100.0)
+    @patch("time.sleep")
+    @patch("requests.adapters.HTTPAdapter.send")
+    def test_send_raises_on_long_rate_limit(
+        self,
+        mock_super_send: typing.Any,
+        mock_sleep: typing.Any,
+        mock_time: typing.Any,
+    ) -> None:
+        """Test that send() raises GitHubRateLimitError for long rate limit waits."""
+        adapter = http_retry.RetryHTTPAdapter()
+        request = Mock(spec=requests.PreparedRequest)
+        request.url = "https://api.github.com/repos/test"
+
+        rate_limit_response = Mock(spec=requests.Response)
+        rate_limit_response.status_code = 403
+        rate_limit_response.text = "API rate limit exceeded"
+        rate_limit_response.headers = {"X-RateLimit-Reset": str(3700)}
+        rate_limit_response.request = request
+
+        mock_super_send.return_value = rate_limit_response
+
+        with pytest.raises(http_retry.GitHubRateLimitError, match="GITHUB_TOKEN"):
+            adapter.send(request)
+
+        mock_sleep.assert_not_called()
+
+    @patch("fromager.http_retry.time.time", return_value=100.0)
+    @patch("time.sleep")
+    @patch("requests.adapters.HTTPAdapter.send")
+    def test_send_retries_on_short_rate_limit(
+        self,
+        mock_super_send: typing.Any,
+        mock_sleep: typing.Any,
+        mock_time: typing.Any,
+    ) -> None:
+        """Test that send() sleeps and retries for short rate limit waits."""
+        adapter = http_retry.RetryHTTPAdapter()
+        request = Mock(spec=requests.PreparedRequest)
+        request.url = "https://api.github.com/repos/test"
+
+        rate_limit_response = Mock(spec=requests.Response)
+        rate_limit_response.status_code = 403
+        rate_limit_response.text = "API rate limit exceeded"
+        rate_limit_response.headers = {"X-RateLimit-Reset": str(130)}
+        rate_limit_response.request = request
+
+        success_response = Mock(spec=requests.Response)
+        success_response.status_code = 200
+
+        mock_super_send.side_effect = [rate_limit_response, success_response]
+
+        result = adapter.send(request)
+
+        assert result == success_response
+        mock_sleep.assert_called_once()
+
+    @patch("fromager.http_retry.time.time", return_value=100.0)
+    def test_error_message_includes_reset_time(self, mock_time: typing.Any) -> None:
+        """Test that the error message includes the reset wait time."""
+        adapter = http_retry.RetryHTTPAdapter()
+        response = Mock(spec=requests.Response)
+        response.headers = {"X-RateLimit-Reset": str(3700)}
+        response.request = Mock()
+        response.request.url = "https://api.github.com/repos/test"
+
+        with pytest.raises(http_retry.GitHubRateLimitError) as exc_info:
+            adapter._handle_github_rate_limit(response, 0, 3)
+
+        msg = str(exc_info.value)
+        assert "Reset in 3605s" in msg
+        assert "GITHUB_TOKEN" in msg
+        assert "5000 requests/hour" in msg
