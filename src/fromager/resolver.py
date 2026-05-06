@@ -1065,15 +1065,14 @@ class GitHubTagProvider(GenericProvider):
     """
 
     provider_description: typing.ClassVar[str] = (
-        "GitHub tag resolver (repository: {self.organization}/{self.repo})"
+        "GitHub tag resolver (repository: {self.server_url} {self.organization}/{self.repo})"
     )
-    host = "github.com:443"
-    api_url = "https://api.{self.host}/repos/{self.organization}/{self.repo}/tags"
 
     def __init__(
         self,
         organization: str,
         repo: str,
+        server_url: str = "https://api.github.com",
         constraints: Constraints | None = None,
         matcher: MatchFunction | re.Pattern | None = None,
         *,
@@ -1092,11 +1091,13 @@ class GitHubTagProvider(GenericProvider):
         )
         self.organization = organization
         self.repo = repo
+        self.server_url = server_url.rstrip("/")
+        self.api_url = f"{self.server_url}/repos/{self.organization}/{self.repo}/tags"
         self.override_download_url = override_download_url
 
     @property
     def cache_key(self) -> str:
-        key = f"{self.organization}/{self.repo}"
+        key = f"{self.server_url}/{self.organization}/{self.repo}"
         if self.override_download_url is not None:
             key = f"{key}+{self.override_download_url}"
         return key
@@ -1118,7 +1119,7 @@ class GitHubTagProvider(GenericProvider):
         if github_token:
             headers["Authorization"] = f"token {github_token}"
 
-        nexturl = self.api_url.format(self=self)
+        nexturl = self.api_url
         while nexturl:
             resp = session.get(nexturl, headers=headers)
             resp.raise_for_status()

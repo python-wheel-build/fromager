@@ -100,11 +100,11 @@ def github_fromager_resolver() -> typing.Generator[
 ]:
     with requests_mock.Mocker() as r:
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            "https://api.github.com/repos/python-wheel-build/fromager",
             text=_github_fromager_repo_response,
         )
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            "https://api.github.com/repos/python-wheel-build/fromager/tags",
             text=_github_fromager_tag_response,
         )
 
@@ -168,7 +168,7 @@ def test_provider_cache_key_gitlab(gitlab_decile_resolver: typing.Any) -> None:
 
 def test_provider_cache_key_github(github_fromager_resolver: typing.Any) -> None:
     provider = github_fromager_resolver.provider
-    assert provider.cache_key == "python-wheel-build/fromager"
+    assert provider.cache_key == "https://api.github.com/python-wheel-build/fromager"
 
 
 def test_cache_not_overly_aggressive() -> None:
@@ -708,11 +708,11 @@ _github_fromager_tag_response = """
 def test_resolve_github() -> None:
     with requests_mock.Mocker() as r:
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            "https://api.github.com/repos/python-wheel-build/fromager",
             text=_github_fromager_repo_response,
         )
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            "https://api.github.com/repos/python-wheel-build/fromager/tags",
             text=_github_fromager_tag_response,
         )
 
@@ -740,11 +740,11 @@ def test_resolve_github() -> None:
 def test_resolve_github_override_download_url() -> None:
     with requests_mock.Mocker() as r:
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            "https://api.github.com/repos/python-wheel-build/fromager",
             text=_github_fromager_repo_response,
         )
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            "https://api.github.com/repos/python-wheel-build/fromager/tags",
             text=_github_fromager_tag_response,
         )
 
@@ -769,11 +769,11 @@ def test_github_constraint_mismatch() -> None:
     constraint.add_constraint("fromager>=1.0")
     with requests_mock.Mocker() as r:
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            "https://api.github.com/repos/python-wheel-build/fromager",
             text=_github_fromager_repo_response,
         )
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            "https://api.github.com/repos/python-wheel-build/fromager/tags",
             text=_github_fromager_tag_response,
         )
 
@@ -792,11 +792,11 @@ def test_github_constraint_match() -> None:
     constraint.add_constraint("fromager<0.9")
     with requests_mock.Mocker() as r:
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager",
+            "https://api.github.com/repos/python-wheel-build/fromager",
             text=_github_fromager_repo_response,
         )
         r.get(
-            "https://api.github.com:443/repos/python-wheel-build/fromager/tags",
+            "https://api.github.com/repos/python-wheel-build/fromager/tags",
             text=_github_fromager_tag_response,
         )
 
@@ -1206,7 +1206,7 @@ def test_custom_resolver_error_message_missing_tag() -> None:
     with requests_mock.Mocker() as r:
         # Mock GitHub API to return empty tags (simulating missing tag)
         r.get(
-            "https://api.github.com:443/repos/test-org/test-repo/tags",
+            "https://api.github.com/repos/test-org/test-repo/tags",
             json=[],  # Empty tags list - tag doesn't exist
         )
 
@@ -1244,7 +1244,7 @@ def test_custom_resolver_error_message_via_resolve() -> None:
     with requests_mock.Mocker() as r:
         # Mock GitHub API to return empty tags
         r.get(
-            "https://api.github.com:443/repos/test-org/test-repo/tags",
+            "https://api.github.com/repos/test-org/test-repo/tags",
             json=[],
         )
 

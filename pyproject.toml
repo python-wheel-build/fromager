@@ -185,6 +185,9 @@ ignore = [
     "UP015",  # Unnecessary open mode parameters
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"e2e/github_override_example/mock_api/serve.py" = ["N802"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["fromager"]
 

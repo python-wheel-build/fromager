@@ -55,42 +55,45 @@ export NETWORK_ISOLATION
 export WHEEL_PLATFORM_TAG
 export HAS_ELFDEP
 
-# Local web server management
-HTTP_SERVER_PID=""
+# Background server management
+_BACKGROUND_PIDS=()
 on_exit() {
-    if [ -n "$HTTP_SERVER_PID" ]; then
-        echo "Stopping wheel server"
-        kill "$HTTP_SERVER_PID"
-    fi
+    # ${arr[@]+...} avoids "unbound variable" under set -u when empty
+    for pid in "${_BACKGROUND_PIDS[@]+"${_BACKGROUND_PIDS[@]}"}"; do
+        kill "$pid" 2>/dev/null || true
+    done
 }
 trap on_exit EXIT SIGINT SIGTERM
 
-start_local_wheel_server() {
-    local serve_dir="${1:-$OUTDIR/wheels-repo}"
-    # Use the builtin fromager wheel-server (Starlette/uvicorn) instead of
-    # stdlib http.server.  Binding to 127.0.0.1 is safe on all platforms
-    # because uv pip install always runs on the host without network
-    # isolation (build_environment.py hardcodes network_isolation=False).
-    fromager \
-        --wheels-repo="$serve_dir" \
-        wheel-server --port 9999 --address 127.0.0.1 &
-    HTTP_SERVER_PID=$!
-    export WHEEL_SERVER_URL="http://127.0.0.1:9999/simple"
+# start_background_server NAME HEALTH_URL COMMAND...
+start_background_server() {
+    local name="$1" health_url="$2"
+    shift 2
 
-    # Wait for the server to accept connections (up to 15 s).
+    "$@" &
+    local pid=$!
+    _BACKGROUND_PIDS+=("$pid")
+
     { set +x; } 2>/dev/null
     local ready=false
     for _ in $(seq 1 30); do
-        kill -0 "$HTTP_SERVER_PID" 2>/dev/null || break
-        curl -sf "http://127.0.0.1:9999/simple" >/dev/null 2>&1 && { ready=true; break; }
+        kill -0 "$pid" 2>/dev/null || break
+        curl -sf "$health_url" >/dev/null 2>&1 && { ready=true; break; }
         sleep 0.5
     done
     set -x
 
     if $ready; then
-        echo "Wheel server is ready"
+        echo "$name is ready"
         return 0
     fi
-    echo "ERROR: wheel server did not become ready" >&2
+    echo "ERROR: $name did not become ready" >&2
     return 1
+}
+
+start_local_wheel_server() {
+    local serve_dir="${1:-$OUTDIR/wheels-repo}"
+    start_background_server "Wheel server" "http://127.0.0.1:9999/simple" \
+        fromager --wheels-repo="$serve_dir" wheel-server --port 9999 --address 127.0.0.1
+    export WHEEL_SERVER_URL="http://127.0.0.1:9999/simple"
 }

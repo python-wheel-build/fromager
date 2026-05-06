@@ -5,8 +5,12 @@
 # the GitHubTagProvider, the cooldown is NOT enforced (because GitHub does not
 # yet provide upload timestamps), but a warning is emitted for each candidate.
 #
-# The stevedore test repo (python-wheel-build/stevedore-test-repo) is used as
-# a convenient GitHub-hosted package with known tags.
+# A local mock server serves static tag JSON instead of hitting the real GitHub
+# API, so the test is deterministic and does not consume rate-limited API calls.
+#
+# The stevedore test repo (python-wheel-build/stevedore-test-repo) tag structure
+# is reproduced in mock_api/tags.json.  The latest version is 5.4.1 (released
+# 2025-02-20 on the real repo).
 #
 # MIN_AGE is anchored to stevedore 5.4.1 (2025-02-20), so it is large enough
 # that enforcement WOULD block the resolved candidate — confirming that the
@@ -25,9 +29,16 @@ age = (date.today() - date(2025, 2, 20)).days
 print(age + 1)
 ")
 
+# Start a local mock GitHub API server.
+MOCK_API_DIR="$SCRIPTDIR/github_override_example/mock_api"
+GITHUB_MOCK_PORT=9998
+start_background_server "Mock GitHub API" \
+  "http://127.0.0.1:${GITHUB_MOCK_PORT}/repos/python-wheel-build/stevedore-test-repo/tags" \
+  python3 "$MOCK_API_DIR/serve.py" "$GITHUB_MOCK_PORT"
+trap 'python3 -m pip uninstall -y github_override_example >/dev/null 2>&1 || true; on_exit' EXIT
+export GITHUB_API_URL="http://127.0.0.1:${GITHUB_MOCK_PORT}"
+
 # Install the override plugin that routes stevedore through GitHubTagProvider.
-# Uninstall on exit so its entry points don't leak into subsequent e2e tests.
-trap 'python3 -m pip uninstall -y github_override_example >/dev/null 2>&1 || true' EXIT
 pip install "$SCRIPTDIR/github_override_example"
 
 fromager \

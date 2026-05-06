@@ -1,0 +1,52 @@
+[
+  {
+    "name": "5.4.1",
+    "zipball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/zipball/refs/tags/5.4.1",
+    "tarball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/tarball/refs/tags/5.4.1",
+    "commit": {
+      "sha": "27e27c116c0e8b84415d683e958780f4607ca3cc",
+      "url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/commits/27e27c116c0e8b84415d683e958780f4607ca3cc"
+    },
+    "node_id": "REF_kwDOO7Smz69yZWZzL3RhZ3MvNS40LjE"
+  },
+  {
+    "name": "5.4.0",
+    "zipball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/zipball/refs/tags/5.4.0",
+    "tarball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/tarball/refs/tags/5.4.0",
+    "commit": {
+      "sha": "016740e3cc7b0f254cb952296314d7ea7d9cdd20",
+      "url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/commits/016740e3cc7b0f254cb952296314d7ea7d9cdd20"
+    },
+    "node_id": "REF_kwDOO7Smz69yZWZzL3RhZ3MvNS40LjA"
+  },
+  {
+    "name": "5.3.0",
+    "zipball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/zipball/refs/tags/5.3.0",
+    "tarball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/tarball/refs/tags/5.3.0",
+    "commit": {
+      "sha": "51134a4dc04872df9f736e5ae52d4b665c40e364",
+      "url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/commits/51134a4dc04872df9f736e5ae52d4b665c40e364"
+    },
+    "node_id": "REF_kwDOO7Smz69yZWZzL3RhZ3MvNS4zLjA"
+  },
+  {
+    "name": "5.2.0",
+    "zipball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/zipball/refs/tags/5.2.0",
+    "tarball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/tarball/refs/tags/5.2.0",
+    "commit": {
+      "sha": "21d601f3f568f2a8b1b6447931a73554eb60703a",
+      "url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/commits/21d601f3f568f2a8b1b6447931a73554eb60703a"
+    },
+    "node_id": "REF_kwDOO7Smz69yZWZzL3RhZ3MvNS4yLjA"
+  },
+  {
+    "name": "5.1.0",
+    "zipball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/zipball/refs/tags/5.1.0",
+    "tarball_url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/tarball/refs/tags/5.1.0",
+    "commit": {
+      "sha": "2d99cccf9a6c04509785e76a5c8e89ae2824c939",
+      "url": "https://api.github.com/repos/python-wheel-build/stevedore-test-repo/commits/2d99cccf9a6c04509785e76a5c8e89ae2824c939"
+    },
+    "node_id": "REF_kwDOO7Smz69yZWZzL3RhZ3MvNS4xLjA"
+  }
+]

@@ -1,3 +1,5 @@
+import os
+
 from packaging.requirements import Requirement
 
 from fromager import context, resolver
@@ -13,6 +15,10 @@ def get_resolver_provider(
     ignore_platform: bool = False,
 ) -> resolver.GitHubTagProvider:
     """Return a GitHubTagProvider for the stevedore test repo on github.com."""
+    kwargs: dict[str, str] = {}
+    github_api_url = os.environ.get("GITHUB_API_URL")
+    if github_api_url:
+        kwargs["server_url"] = github_api_url
     return resolver.GitHubTagProvider(
         organization="python-wheel-build",
         repo="stevedore-test-repo",
@@ -22,4 +28,5 @@ def get_resolver_provider(
             "https://github.com/{organization}/{repo}"
             "/archive/refs/tags/{tagname}.tar.gz"
         ),
+        **kwargs,
     )
