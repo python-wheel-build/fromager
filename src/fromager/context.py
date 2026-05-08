@@ -19,7 +19,6 @@ from . import (
     dependency_graph,
     external_commands,
     packagesettings,
-    request_session,
 )
 
 if typing.TYPE_CHECKING:
@@ -36,7 +35,7 @@ class WorkContext:
     def __init__(
         self,
         active_settings: packagesettings.Settings | None,
-        constraints_file: str | None,
+        constraints_file: str | tuple[str, ...] | None,
         patches_dir: pathlib.Path,
         sdists_repo: pathlib.Path,
         wheels_repo: pathlib.Path,
@@ -59,13 +58,16 @@ class WorkContext:
                 max_jobs=max_jobs,
             )
         self.settings = active_settings
-        self.input_constraints_uri: str | None
         self.constraints = constraints.Constraints()
-        if constraints_file is not None:
-            self.input_constraints_uri = constraints_file
-            self.constraints.load_constraints_file(constraints_file)
-        else:
-            self.input_constraints_uri = None
+        self.input_constraints_uris: list[str] = []
+        if constraints_file:
+            if isinstance(constraints_file, str):
+                files: tuple[str, ...] = (constraints_file,)
+            else:
+                files = constraints_file
+            for cf in files:
+                self.input_constraints_uris.append(cf)
+                self.constraints.load_constraints_file(cf)
         self.sdists_repo = pathlib.Path(sdists_repo).resolve()
         self.sdists_downloads = self.sdists_repo / "downloads"
         self.sdists_builds = self.sdists_repo / "builds"
@@ -135,16 +137,16 @@ class WorkContext:
 
     @property
     def pip_constraint_args(self) -> list[str]:
-        if not self.input_constraints_uri:
+        if not self.input_constraints_uris:
             return []
 
-        if self.input_constraints_uri.startswith(("https://", "http://", "file://")):
-            path_to_constraints_file = self.work_dir / "input-constraints.txt"
-            if not path_to_constraints_file.exists():
-                response = request_session.session.get(self.input_constraints_uri)
-                path_to_constraints_file.write_text(response.text)
-        else:
-            path_to_constraints_file = pathlib.Path(self.input_constraints_uri)
+        path_to_constraints_file = self.work_dir / "input-constraints.txt"
+        lines: list[str] = []
+        for constraint_name in self.constraints:
+            req = self.constraints.get_constraint(constraint_name)
+            if req is not None:
+                lines.append(f"{req}\n")
+        path_to_constraints_file.write_text("".join(lines), encoding="utf-8")
 
         path_to_constraints_file = path_to_constraints_file.absolute()
         return ["--constraint", os.fspath(path_to_constraints_file)]

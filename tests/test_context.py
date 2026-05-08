@@ -10,7 +10,7 @@ from fromager import context
 
 def _make_context(
     tmp_path: pathlib.Path,
-    constraints_file: str | None = None,
+    constraints_file: str | tuple[str, ...] | None = None,
     wheel_server_url: str = "",
     cleanup: bool = True,
 ) -> context.WorkContext:
@@ -43,14 +43,38 @@ def _all_setup_dirs(ctx: context.WorkContext) -> list[pathlib.Path]:
 
 def test_pip_constraints_args(tmp_path: pathlib.Path) -> None:
     constraints_file = tmp_path / "constraints.txt"
-    constraints_file.write_text("\n")  # the file has to exist
+    constraints_file.write_text("numpy>=1.24\n")
     ctx = _make_context(tmp_path, constraints_file=str(constraints_file))
     ctx.setup()
-    assert ["--constraint", os.fspath(constraints_file)] == ctx.pip_constraint_args
+    merged_path = ctx.work_dir / "input-constraints.txt"
+    assert ["--constraint", os.fspath(merged_path)] == ctx.pip_constraint_args
+    assert merged_path.exists()
+    assert "numpy>=1.24" in merged_path.read_text()
 
     ctx = _make_context(tmp_path)
     ctx.setup()
     assert [] == ctx.pip_constraint_args
+
+
+def test_pip_constraints_args_multiple_files(tmp_path: pathlib.Path) -> None:
+    file1 = tmp_path / "base.txt"
+    file1.write_text("numpy>=1.24\n")
+    file2 = tmp_path / "security.txt"
+    file2.write_text("numpy<2.0\nrequests>=2.28\n")
+
+    ctx = _make_context(tmp_path, constraints_file=(str(file1), str(file2)))
+    ctx.setup()
+    merged_path = ctx.work_dir / "input-constraints.txt"
+    assert ["--constraint", os.fspath(merged_path)] == ctx.pip_constraint_args
+    content = merged_path.read_text()
+    lines = [line for line in content.splitlines() if line.strip()]
+    numpy_lines = [line for line in lines if line.startswith("numpy")]
+    assert len(numpy_lines) == 1
+    assert ">=1.24" in numpy_lines[0]
+    assert "<2.0" in numpy_lines[0]
+    requests_lines = [line for line in lines if line.startswith("requests")]
+    assert len(requests_lines) == 1
+    assert ">=2.28" in requests_lines[0]
 
 
 def test_setup_creates_directories(tmp_path: pathlib.Path) -> None:

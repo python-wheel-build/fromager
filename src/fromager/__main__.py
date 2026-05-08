@@ -134,7 +134,8 @@ else:
     "-c",
     "--constraints-file",
     type=str,
-    help="location of the constraints file",
+    multiple=True,
+    help="location of constraint file(s), may be repeated",
 )
 @click.option(
     "--cleanup/--no-cleanup",
@@ -177,7 +178,7 @@ def main(
     patches_dir: pathlib.Path,
     settings_file: pathlib.Path,
     settings_dir: pathlib.Path,
-    constraints_file: str,
+    constraints_file: tuple[str, ...],
     cleanup: bool,
     variant: str,
     jobs: int | None,
@@ -247,7 +248,7 @@ def main(
             logger.info(f"variant: {variant}")
             logger.info(f"patches dir: {patches_dir}")
             logger.info(f"maximum concurrent jobs: {jobs}")
-            logger.info(f"constraints file: {constraints_file}")
+            logger.info(f"constraints file(s): {constraints_file}")
             logger.info(f"network isolation: {network_isolation}")
             if build_wheel_server_url:
                 logger.info(f"external build wheel server: {build_wheel_server_url}")

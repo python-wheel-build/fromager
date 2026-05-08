@@ -96,6 +96,34 @@ def test_output_dir_overridden_by_explicit_flags(
     assert not (out / "sdists-repo").exists()
 
 
+def test_multiple_constraints_files(
+    tmp_path: pathlib.Path, cli_runner: CliRunner
+) -> None:
+    """Multiple -c flags are accepted and constraints are merged."""
+    file1 = tmp_path / "base.txt"
+    file1.write_text("numpy>=1.24\n")
+    file2 = tmp_path / "extra.txt"
+    file2.write_text("numpy<2.0\n")
+
+    out = tmp_path / "output"
+    out.mkdir()
+
+    result = cli_runner.invoke(
+        fromager,
+        [
+            "-O",
+            str(out),
+            "-c",
+            str(file1),
+            "-c",
+            str(file2),
+            "canonicalize",
+            "some-package",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+
 KNOWN_COMMANDS: set[str] = {
     "bootstrap",
     "bootstrap-parallel",
