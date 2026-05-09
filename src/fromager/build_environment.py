@@ -195,6 +195,8 @@ class BuildEnvironment:
         # UV does not compile byte code by default
         cmd = [
             "uv",
+            "--config-file",
+            str(self._ctx.uv_toml),
             "pip",
             "install",
             "--verbose",
@@ -203,7 +205,7 @@ class BuildEnvironment:
             ":all:",
         ]
         cmd.extend(self._ctx.pip_constraint_args)
-        cmd.extend(self._ctx.pip_wheel_server_args)
+        # cmd.extend(self._ctx.pip_wheel_server_args)
         cmd.extend(str(req) for req in reqs)
 
         self.run(

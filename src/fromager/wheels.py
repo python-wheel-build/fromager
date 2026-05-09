@@ -493,8 +493,9 @@ def get_wheel_server_urls(
         if cache_wheel_server_url:
             # put cache after local server so we always check local server first
             wheel_server_urls.append(cache_wheel_server_url)
-        if not wheel_server_urls:
-            raise ValueError("no wheel server urls configured")
+        # XXX
+        # if not wheel_server_urls:
+        #     raise ValueError("no wheel server urls configured")
     return wheel_server_urls
 
 

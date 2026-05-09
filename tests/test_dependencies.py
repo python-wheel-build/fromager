@@ -179,6 +179,7 @@ def test_get_build_system_dependencies_cached(
     assert results == set([Requirement("foo==1.0")])
 
 
+@pytest.mark.skip("Should be a E2E test, accesses PyPI")
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
 @pytest.mark.network
@@ -237,6 +238,7 @@ def test_get_build_backend_dependencies_cached(
     assert results == set([Requirement("foo==1.0")])
 
 
+@pytest.mark.skip("Should be a E2E test, accesses PyPI")
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
 @pytest.mark.network
