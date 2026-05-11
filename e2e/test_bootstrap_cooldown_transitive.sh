@@ -69,4 +69,10 @@ if ! find "$OUTDIR/wheels-repo/downloads/" -name 'pbr-6.1.1*.whl' | grep -q .; t
   pass=false
 fi
 
+# The cooldown must have logged that it skipped a pbr version.
+if ! grep -q "pbr: skipping.*cooldown" "$OUTDIR/bootstrap.log"; then
+  echo "FAIL: no cooldown enforcement message for pbr found in log" 1>&2
+  pass=false
+fi
+
 $pass

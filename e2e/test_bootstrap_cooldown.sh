@@ -59,6 +59,12 @@ if ! find "$OUTDIR/wheels-repo/downloads/" -name 'stevedore-5.3.0*.whl' | grep -
   pass=false
 fi
 
+# The cooldown must have logged that it skipped a stevedore version.
+if ! grep -q "stevedore: skipping.*cooldown" "$OUTDIR/bootstrap-flag.log"; then
+  echo "FAIL (flag): no cooldown enforcement message for stevedore found in log" 1>&2
+  pass=false
+fi
+
 # --- Pass 2: enforce the same cooldown via environment variable (FROMAGER_MIN_RELEASE_AGE) ---
 
 # Wipe output so the second run starts clean.
@@ -79,6 +85,11 @@ fi
 
 if ! find "$OUTDIR/wheels-repo/downloads/" -name 'stevedore-5.3.0*.whl' | grep -q .; then
   echo "FAIL (envvar): stevedore-5.3.0 wheel not found in wheels-repo" 1>&2
+  pass=false
+fi
+
+if ! grep -q "stevedore: skipping.*cooldown" "$OUTDIR/bootstrap-envvar.log"; then
+  echo "FAIL (envvar): no cooldown enforcement message for stevedore found in log" 1>&2
   pass=false
 fi
 

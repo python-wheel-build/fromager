@@ -724,15 +724,14 @@ class BaseProvider(ExtrasProvider):
         cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
         if candidate.upload_time > cutoff:
             # if this candidate is "too new", block/skip it
-            if DEBUG_RESOLVER:
-                age = self.cooldown.bootstrap_time - candidate.upload_time
-                logger.debug(
-                    "%s: skipping %s uploaded %s ago (cooldown: %s)",
-                    candidate.name,
-                    candidate.version,
-                    age,
-                    self.cooldown.min_age,
-                )
+            age = self.cooldown.bootstrap_time - candidate.upload_time
+            logger.info(
+                "%s: skipping %s uploaded %s ago (cooldown: %s)",
+                candidate.name,
+                candidate.version,
+                age,
+                self.cooldown.min_age,
+            )
             return True
         return False
 

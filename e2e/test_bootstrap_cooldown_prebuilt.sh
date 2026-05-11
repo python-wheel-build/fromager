@@ -62,4 +62,10 @@ if find "$OUTDIR/sdists-repo/" \( -name 'stevedore*.tar.gz' -o -name 'stevedore*
   pass=false
 fi
 
+# The cooldown must have logged that it skipped a stevedore version.
+if ! grep -q "stevedore: skipping.*cooldown" "$OUTDIR/bootstrap.log"; then
+  echo "FAIL: no cooldown enforcement message for stevedore found in log" 1>&2
+  pass=false
+fi
+
 $pass

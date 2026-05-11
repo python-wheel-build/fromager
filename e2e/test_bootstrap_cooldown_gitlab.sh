@@ -75,4 +75,10 @@ if ! grep -q "GitLabTagProvider" "$OUTDIR/bootstrap.log"; then
   pass=false
 fi
 
+# The cooldown must have logged that it skipped a python-gitlab version.
+if ! grep -q "python-gitlab: skipping.*cooldown" "$OUTDIR/bootstrap.log"; then
+  echo "FAIL: no cooldown enforcement message for python-gitlab found in log" 1>&2
+  pass=false
+fi
+
 $pass
