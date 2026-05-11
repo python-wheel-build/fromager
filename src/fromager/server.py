@@ -33,7 +33,7 @@ def start_wheel_server(ctx: context.WorkContext) -> None:
     if ctx.wheel_server_url:
         logger.debug("using external wheel server at %s", ctx.wheel_server_url)
         return
-    run_wheel_server(ctx)
+    # run_wheel_server(ctx)
 
 
 def run_wheel_server(

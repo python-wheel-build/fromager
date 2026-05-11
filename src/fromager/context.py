@@ -31,6 +31,23 @@ logger = logging.getLogger(__name__)
 BuildRequirements = dict[str, list[tuple[str, NormalizedName, Version, Requirement]]]
 ROOT_BUILD_REQUIREMENT = canonicalize_name("", validate=False)
 
+# custom uv settings to use flat, local indexes
+UV_TOML = """
+cache-dir = "{ctx.uv_cache}"
+system-certs = true
+
+[[index]]
+name = "fromager-wheels-download"
+default = true
+url = "{ctx.wheels_downloads}"
+format = "flat"
+
+[[index]]
+name = "fromager-wheels-prebuilt"
+url = "{ctx.wheels_prebuilt}"
+format = "flat"
+"""
+
 
 class WorkContext:
     def __init__(
@@ -76,6 +93,7 @@ class WorkContext:
         self.wheel_server_dir = self.wheels_repo / "simple"
         self.work_dir = pathlib.Path(work_dir).resolve()
         self.graph_file = self.work_dir / "graph.json"
+        self.uv_toml = self.work_dir / "uv.toml"
         self.uv_cache = self.work_dir / "uv-cache"
         self.wheel_server_url = wheel_server_url
         self.logs_dir = self.work_dir / "logs"
@@ -201,6 +219,8 @@ class WorkContext:
             if not p.exists():
                 logger.debug("creating %s", p)
                 p.mkdir(parents=True)
+        logger.debug("create %s", self.uv_toml)
+        self.uv_toml.write_text(UV_TOML.format(ctx=self))
 
     def clean_build_dirs(
         self,
