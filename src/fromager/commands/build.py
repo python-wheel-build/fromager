@@ -353,17 +353,13 @@ def _build(
     pbi = wkctx.package_build_info(req)
     prebuilt = pbi.pre_built
 
-    wheel_server_urls = wheels.get_wheel_server_urls(
-        wkctx, req, cache_wheel_server_url=cache_wheel_server_url
-    )
-
     # See if we can reuse an existing wheel.
     if not force:
         wheel_filename = _is_wheel_built(
             wkctx,
             req.name,
             resolved_version,
-            wheel_server_urls,
+            cache_wheel_server_url=cache_wheel_server_url,
         )
         if wheel_filename:
             logger.info("using existing wheel from %s", wheel_filename)
@@ -476,65 +472,53 @@ def _is_wheel_built(
     wkctx: context.WorkContext,
     dist_name: str,
     resolved_version: Version,
-    wheel_server_urls: list[str],
+    *,
+    cache_wheel_server_url: str | None = None,
 ) -> pathlib.Path | None:
     req = Requirement(f"{dist_name}=={resolved_version}")
+    pbi = wkctx.package_build_info(req)
 
-    try:
-        logger.info(
-            "checking if a suitable wheel for %s was already built on %s",
-            req,
-            wheel_server_urls,
-        )
-        url, _ = wheels.resolve_prebuilt_wheel(
-            ctx=wkctx,
-            req=req,
-            wheel_server_urls=wheel_server_urls,
-        )
-        logger.info("found candidate wheel %s", url)
-        pbi = wkctx.package_build_info(req)
-        build_tag_from_settings = pbi.build_tag(resolved_version)
-        build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
-        wheel_basename = resolver.extract_filename_from_url(url)
-        _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_basename)
-        existing_build_tag = build_tag_from_name if build_tag_from_name else (0, "")
-        if (
-            existing_build_tag[0] > build_tag[0]
-            and existing_build_tag[1] == build_tag[1]
-        ):
-            raise ValueError(
-                f"{dist_name}: changelog for version {resolved_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
-            )
-        if existing_build_tag != build_tag:
-            logger.info(
-                f"candidate wheel build tag {existing_build_tag} does not match expected build tag {build_tag}"
-            )
-            return None
-
-        wheel_filename: pathlib.Path | None = None
-        if url.startswith(wkctx.wheel_server_url):
-            logging.debug("found wheel on local server")
-            wheel_filename = wkctx.wheels_downloads / wheel_basename
-            if not wheel_filename.exists():
-                logger.info("wheel not found in local cache, preparing to download")
-                wheel_filename = None
-
-        if not wheel_filename:
-            # if the found wheel was on an external server, then download it
-            logger.info("downloading wheel from %s", url)
-            wheel_filename = wheels.download_wheel(req, url, wkctx.wheels_downloads)
-
-        return wheel_filename
-    except Exception:
-        logger.debug(
-            "could not locate prebuilt wheel %s-%s on %s",
-            dist_name,
-            resolved_version,
-            wheel_server_urls,
-            exc_info=True,
-        )
-        logger.info("could not locate prebuilt wheel")
+    url = wheels.resolve_existing_wheel(
+        ctx=wkctx,
+        req=req,
+        pbi=pbi,
+        cache_wheel_server_url=cache_wheel_server_url,
+    )
+    if url is None:
+        logger.info("could not locate existing wheel")
         return None
+
+    logger.info("found candidate wheel %s", url)
+    build_tag_from_settings = pbi.build_tag(resolved_version)
+    build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
+    wheel_basename = resolver.extract_filename_from_url(url)
+    _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_basename)
+    existing_build_tag = build_tag_from_name if build_tag_from_name else (0, "")
+    if existing_build_tag[0] > build_tag[0] and existing_build_tag[1] == build_tag[1]:
+        raise ValueError(
+            f"{dist_name}: changelog for version {resolved_version} is inconsistent. "
+            f"Found build tag {existing_build_tag} but expected {build_tag}"
+        )
+    if existing_build_tag != build_tag:
+        logger.info(
+            f"candidate wheel build tag {existing_build_tag} "
+            f"does not match expected build tag {build_tag}"
+        )
+        return None
+
+    wheel_filename: pathlib.Path | None = None
+    if wkctx.wheel_server_url and url.startswith(wkctx.wheel_server_url):
+        logging.debug("found wheel on local server")
+        wheel_filename = wkctx.wheels_downloads / wheel_basename
+        if not wheel_filename.exists():
+            logger.info("wheel not found in local cache, preparing to download")
+            wheel_filename = None
+
+    if not wheel_filename:
+        logger.info("downloading wheel from %s", url)
+        wheel_filename = wheels.download_wheel(req, url, wkctx.wheels_downloads)
+
+    return wheel_filename
 
 
 def _build_parallel(

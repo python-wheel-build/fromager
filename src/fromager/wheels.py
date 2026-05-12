@@ -25,6 +25,7 @@ from packaging.version import Version
 from . import (
     dependencies,
     external_commands,
+    finders,
     metrics,
     overrides,
     packagesettings,
@@ -528,6 +529,82 @@ def get_prebuilt_wheel_provider(
     )
 
 
+def resolve_existing_wheel(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    pbi: packagesettings.PackageBuildInfo,
+    cache_wheel_server_url: str | None,
+) -> str | None:
+    """Probe wheel servers in priority order and return the first matching URL.
+
+    Tries cache servers first (local, remote), then pre-built servers.
+    """
+    cache_wheel_servers: list[str] = []
+    prebuilt_wheel_servers: list[str] = []
+
+    if pbi.wheel_server_url:
+        prebuilt_wheel_servers.append(pbi.wheel_server_url)
+    else:
+        if ctx.wheel_server_url:
+            cache_wheel_servers.append(ctx.wheel_server_url)
+        if cache_wheel_server_url:
+            cache_wheel_servers.append(cache_wheel_server_url)
+
+    all_servers = cache_wheel_servers + prebuilt_wheel_servers
+    if not all_servers:
+        return None
+
+    logger.info(
+        "checking if a suitable wheel for %s was already built on %s",
+        req,
+        all_servers,
+    )
+
+    for server_url in cache_wheel_servers:
+        try:
+            url, _ = resolve_cached_wheel(
+                ctx=ctx,
+                req=req,
+                cache_server_url=server_url,
+            )
+            return url
+        except Exception:
+            logger.debug("wheel not found on %s", server_url, exc_info=True)
+
+    for server_url in prebuilt_wheel_servers:
+        try:
+            url, _ = resolve_prebuilt_wheel(
+                ctx=ctx,
+                req=req,
+                wheel_server_urls=[server_url],
+            )
+            return str(url)
+        except Exception:
+            logger.debug("wheel not found on %s", server_url, exc_info=True)
+
+    return None
+
+
+def resolve_cached_wheel(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    cache_server_url: str,
+) -> tuple[str, Version]:
+    """Resolve a wheel from a trusted cache server (local or remote).
+
+    Uses ``PyPICacheProvider`` -- no cooldown, no hooks, no upload-time checks.
+    """
+    provider = finders.PyPICacheProvider(
+        cache_server_url=cache_server_url,
+        constraints=ctx.constraints,
+    )
+    results = resolver.find_all_matching_from_provider(provider, req)
+    wheel_url, version = results[0]
+    return str(wheel_url), version
+
+
 def resolve_all_prebuilt_wheels(
     *,
     ctx: context.WorkContext,
@@ -552,11 +629,6 @@ def resolve_all_prebuilt_wheels(
             provider.cooldown = resolver.resolve_package_cooldown(
                 ctx, req, req_type=req_type
             )
-            # The local fromager wheel server is PEP 503-only and serves
-            # packages that were already resolved and vetted earlier in the
-            # same run. Don't fail-closed on missing upload_time there.
-            if ctx.wheel_server_url and url == ctx.wheel_server_url:
-                provider.supports_upload_time = False
 
             # Get all matching candidates from provider
             results = resolver.find_all_matching_from_provider(provider, req)
@@ -579,10 +651,10 @@ def resolve_prebuilt_wheel(
     wheel_server_urls: list[str],
     req_type: requirements_file.RequirementType | None = None,
 ) -> tuple[str, Version]:
-    """Return (URL, version) for the best matching wheel version.
+    """Return (URL, version) for the best matching pre-built wheel.
 
-    Tries wheel servers in order and returns result from the first that succeeds.
-    Returns the highest matching version.
+    Tries wheel servers in order and returns the highest matching version
+    from the first server that succeeds.
     """
     results = resolve_all_prebuilt_wheels(
         ctx=ctx, req=req, wheel_server_urls=wheel_server_urls, req_type=req_type
