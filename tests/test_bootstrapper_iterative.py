@@ -477,6 +477,7 @@ class TestDispatchPhase:
             (BootstrapPhase.PREPARE_SOURCE, "_phase_prepare_source"),
             (BootstrapPhase.PREPARE_BUILD, "_phase_prepare_build"),
             (BootstrapPhase.BUILD, "_phase_build"),
+            (BootstrapPhase.UPDATE_BUILD_SEQUENCE, "_phase_update_build_sequence"),
             (BootstrapPhase.PROCESS_INSTALL_DEPS, "_phase_process_install_deps"),
             (BootstrapPhase.COMPLETE, "_phase_complete"),
         ],
@@ -555,7 +556,7 @@ class TestHandlePhaseError:
         assert len(result) == 1
         assert result[0] is item
         assert item.build_result is mock_fallback
-        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        assert item.phase == BootstrapPhase.UPDATE_BUILD_SEQUENCE
         assert len(bt.failed_packages) == 0
 
     def test_build_phase_test_mode_fallback_failure(
@@ -697,6 +698,9 @@ class TestIterativeBootstrapLoop:
                     build_env=None,
                     source_type=SourceType.SDIST,
                 )
+                item.phase = BootstrapPhase.UPDATE_BUILD_SEQUENCE
+                return [item]
+            if item.phase == BootstrapPhase.UPDATE_BUILD_SEQUENCE:
                 item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
                 return [item]
             if item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS:
@@ -722,6 +726,7 @@ class TestIterativeBootstrapLoop:
             BootstrapPhase.PREPARE_SOURCE,
             BootstrapPhase.PREPARE_BUILD,
             BootstrapPhase.BUILD,
+            BootstrapPhase.UPDATE_BUILD_SEQUENCE,
             BootstrapPhase.PROCESS_INSTALL_DEPS,
             BootstrapPhase.COMPLETE,
         ]

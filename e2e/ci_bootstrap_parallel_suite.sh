@@ -15,5 +15,6 @@ test_section "bootstrap parallel tests"
 run_test "bootstrap_parallel"
 run_test "bootstrap_parallel_git_url"
 run_test "bootstrap_parallel_git_url_tag"
+run_test "bootstrap_parallel_multiple_versions"
 
 finish_suite

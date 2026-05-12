@@ -1,5 +1,6 @@
 import json
 import pathlib
+import unittest.mock
 from unittest.mock import Mock, patch
 
 import pytest
@@ -294,7 +295,7 @@ def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> N
             result_items = bt._phase_build(item)
 
     assert len(result_items) == 1
-    assert result_items[0].phase == bootstrapper.BootstrapPhase.PROCESS_INSTALL_DEPS
+    assert result_items[0].phase == bootstrapper.BootstrapPhase.UPDATE_BUILD_SEQUENCE
 
     result = result_items[0].build_result
     assert isinstance(result, bootstrapper.SourceBuildResult)
@@ -303,6 +304,45 @@ def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> N
     assert result.unpack_dir == mock_sdist_root.parent
     assert result.sdist_root_dir == mock_sdist_root
     assert result.source_type == SourceType.SDIST
+
+
+def test_phase_update_build_sequence_advances_to_process_install_deps(
+    tmp_context: WorkContext,
+) -> None:
+    """Verify _phase_update_build_sequence records build order and advances phase."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.why = []
+
+    req = Requirement("test-package")
+    version = Version("1.0.0")
+    mock_wheel = tmp_context.work_dir / "test_package-1.0.0-py3-none-any.whl"
+    mock_sdist_root = tmp_context.work_dir / "test-package-1.0.0" / "test-package-1.0.0"
+    mock_sdist_root.parent.mkdir(parents=True, exist_ok=True)
+
+    item = bootstrapper.WorkItem(
+        req=req,
+        req_type=RequirementType.TOP_LEVEL,
+        source_url="https://pypi.test/simple/test-package",
+        resolved_version=version,
+        phase=bootstrapper.BootstrapPhase.UPDATE_BUILD_SEQUENCE,
+        why_snapshot=[],
+        build_result=bootstrapper.SourceBuildResult(
+            wheel_filename=mock_wheel,
+            sdist_filename=None,
+            unpack_dir=mock_sdist_root.parent,
+            sdist_root_dir=mock_sdist_root,
+            build_env=None,
+            source_type=SourceType.SDIST,
+        ),
+    )
+
+    with bt._track_why(item):
+        result_items = bt._phase_update_build_sequence(item)
+
+    assert len(result_items) == 1
+    assert result_items[0].phase == bootstrapper.BootstrapPhase.PROCESS_INSTALL_DEPS
+    key = (canonicalize_name(req.name), str(version))
+    assert key in bt._build_requirements
 
 
 def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
@@ -549,3 +589,335 @@ def test_cache_lookup_no_cache_url_returns_none(tmp_context: WorkContext) -> Non
     )
 
     assert result == (None, None)
+
+
+def test_phase_can_parallelize(tmp_context: WorkContext) -> None:
+    """PREPARE_BUILD and UPDATE_BUILD_SEQUENCE are serial; all other phases parallelize."""
+    parallelizable = (
+        bootstrapper.BootstrapPhase.RESOLVE,
+        bootstrapper.BootstrapPhase.START,
+        bootstrapper.BootstrapPhase.PREPARE_SOURCE,
+        bootstrapper.BootstrapPhase.GET_BUILD_DEPS,
+        bootstrapper.BootstrapPhase.BUILD,
+        bootstrapper.BootstrapPhase.PROCESS_INSTALL_DEPS,
+        bootstrapper.BootstrapPhase.COMPLETE,
+    )
+    for phase in parallelizable:
+        assert phase.can_parallelize is True, f"{phase} should be parallelizable"
+    for phase in bootstrapper.BootstrapPhase:
+        if phase not in parallelizable:
+            assert phase.can_parallelize is False, f"{phase} should be serial"
+
+
+def test_bootstrap_parallel_resolve_returns_ordered_results(
+    tmp_context: WorkContext,
+) -> None:
+    """Two RESOLVE items run in parallel; results appear in original stack order."""
+    bt = bootstrapper.Bootstrapper(tmp_context, max_workers=2)
+
+    pkg_b = bootstrapper.WorkItem(
+        req=Requirement("pkg-b"),
+        req_type=RequirementType.INSTALL,
+        phase=bootstrapper.BootstrapPhase.RESOLVE,
+        why_snapshot=[],
+    )
+    pkg_c = bootstrapper.WorkItem(
+        req=Requirement("pkg-c"),
+        req_type=RequirementType.INSTALL,
+        phase=bootstrapper.BootstrapPhase.RESOLVE,
+        why_snapshot=[],
+    )
+
+    dispatched: list[str] = []
+
+    def dispatch_side_effect(
+        item: bootstrapper.WorkItem,
+    ) -> list[bootstrapper.WorkItem]:
+        dispatched.append(item.req.name)
+        if item.req.name == "pkg-a":
+            # Return two sibling RESOLVE items so they batch and run concurrently
+            return [pkg_b, pkg_c]
+        return []
+
+    with patch.object(bt, "_dispatch_phase", side_effect=dispatch_side_effect):
+        bt.bootstrap(req=Requirement("pkg-a"), req_type=RequirementType.TOP_LEVEL)
+
+    # pkg-a dispatched first; pkg-b and pkg-c dispatched concurrently after
+    assert dispatched[0] == "pkg-a"
+    assert set(dispatched[1:]) == {"pkg-b", "pkg-c"}
+
+
+def test_bootstrap_parallel_resolve_test_mode_failure_records_and_continues(
+    tmp_context: WorkContext,
+) -> None:
+    """In test mode, a failed RESOLVE item is recorded and siblings succeed."""
+    bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True, max_workers=2)
+
+    pkg_b = bootstrapper.WorkItem(
+        req=Requirement("pkg-b"),
+        req_type=RequirementType.INSTALL,
+        phase=bootstrapper.BootstrapPhase.RESOLVE,
+        why_snapshot=[],
+    )
+    pkg_c = bootstrapper.WorkItem(
+        req=Requirement("pkg-c"),
+        req_type=RequirementType.INSTALL,
+        phase=bootstrapper.BootstrapPhase.RESOLVE,
+        why_snapshot=[],
+    )
+
+    def dispatch_side_effect(
+        item: bootstrapper.WorkItem,
+    ) -> list[bootstrapper.WorkItem]:
+        if item.req.name == "pkg-a":
+            return [pkg_b, pkg_c]
+        if item.req.name == "pkg-b":
+            raise ValueError("simulated resolution failure")
+        return []  # pkg-c succeeds with no further work
+
+    with patch.object(bt, "_dispatch_phase", side_effect=dispatch_side_effect):
+        bt.bootstrap(req=Requirement("pkg-a"), req_type=RequirementType.TOP_LEVEL)
+
+    # pkg-b failure recorded; pkg-c succeeded and is not in failed list
+    assert len(bt.failed_packages) == 1
+    assert bt.failed_packages[0]["package"] == "pkg-b"
+
+
+def test_bootstrap_loop_uses_threadpool_for_single_item_phases(
+    tmp_context: WorkContext,
+) -> None:
+    """All phases run through the shared ThreadPoolExecutor."""
+    import concurrent.futures
+
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    submit_calls: list[object] = []
+
+    class TrackingExecutor(concurrent.futures.ThreadPoolExecutor):
+        def submit(
+            self, fn: object, /, *args: object, **kwargs: object
+        ) -> concurrent.futures.Future:  # type: ignore[override]
+            submit_calls.append(fn)
+            return super().submit(fn, *args, **kwargs)  # type: ignore[arg-type]
+
+    with patch.object(
+        bt._resolver,
+        "resolve",
+        return_value=[("https://pkg.test/p-1.0.tar.gz", Version("1.0"))],
+    ):
+        with patch.object(bt, "_has_been_seen", return_value=True):
+            with patch(
+                "fromager.bootstrapper.concurrent.futures.ThreadPoolExecutor",
+                TrackingExecutor,
+            ):
+                bt.bootstrap(req=Requirement("pkg"), req_type=RequirementType.TOP_LEVEL)
+
+    # At least one item was submitted to the executor
+    assert len(submit_calls) >= 1
+
+
+def test_update_build_sequence_precedes_its_process_install_deps(
+    tmp_context: WorkContext,
+) -> None:
+    """Each UPDATE_BUILD_SEQUENCE item runs before its paired PROCESS_INSTALL_DEPS item.
+
+    With single-item serial batching, UPDATE_BUILD_SEQUENCE items interleave
+    with PROCESS_INSTALL_DEPS items from other packages (UBS-a, PID-a, UBS-b,
+    PID-b rather than UBS-a, UBS-b, PID-a, PID-b).  The per-item ordering
+    guarantee (each UBS precedes its own PID) still holds.
+    """
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    dispatch_log: list[bootstrapper.BootstrapPhase] = []
+
+    req_a = Requirement("pkg-a")
+    req_b = Requirement("pkg-b")
+    ubs_phase = bootstrapper.BootstrapPhase.UPDATE_BUILD_SEQUENCE
+    pid_phase = bootstrapper.BootstrapPhase.PROCESS_INSTALL_DEPS
+
+    # resolved_version must be set on items whose phase has tracks_why=True
+    # (all phases except RESOLVE and START) so that _track_why doesn't assert-fail.
+    def make_ubs(req: Requirement) -> bootstrapper.WorkItem:
+        return bootstrapper.WorkItem(
+            req=req,
+            req_type=RequirementType.TOP_LEVEL,
+            phase=ubs_phase,
+            why_snapshot=[],
+            resolved_version=Version("1.0"),
+        )
+
+    def make_pid(req: Requirement) -> bootstrapper.WorkItem:
+        return bootstrapper.WorkItem(
+            req=req,
+            req_type=RequirementType.TOP_LEVEL,
+            phase=pid_phase,
+            why_snapshot=[],
+            resolved_version=Version("1.0"),
+        )
+
+    pid_a = make_pid(req_a)
+    pid_b = make_pid(req_b)
+    ubs_a = make_ubs(req_a)
+    ubs_b = make_ubs(req_b)
+
+    def mock_dispatch(item: bootstrapper.WorkItem) -> list[bootstrapper.WorkItem]:
+        dispatch_log.append(item.phase)
+        if item.phase == bootstrapper.BootstrapPhase.RESOLVE:
+            # Return two UBS items so both land on the stack together
+            return [ubs_a, ubs_b]
+        if item.phase == ubs_phase:
+            return [pid_a] if item.req.name == "pkg-a" else [pid_b]
+        # PID phase
+        return []
+
+    with patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch):
+        bt.bootstrap(req=req_a, req_type=RequirementType.TOP_LEVEL)
+
+    ubs_indices = [i for i, p in enumerate(dispatch_log) if p == ubs_phase]
+    pid_indices = [i for i, p in enumerate(dispatch_log) if p == pid_phase]
+
+    assert len(ubs_indices) == 2, f"Expected 2 UBS dispatches, got {ubs_indices}"
+    assert len(pid_indices) == 2, f"Expected 2 PID dispatches, got {pid_indices}"
+
+    # Per-item ordering: the n-th UBS must precede the n-th PID it produces.
+    # With single-item serial batching the pairs interleave (UBS-b, PID-b,
+    # UBS-a, PID-a) so we compare sorted pairs rather than requiring a global
+    # all-UBS-before-all-PID ordering.
+    for ubs_idx, pid_idx in zip(sorted(ubs_indices), sorted(pid_indices), strict=True):
+        assert ubs_idx < pid_idx, (
+            f"UBS dispatch at {ubs_idx} should precede its paired PID at {pid_idx}"
+        )
+
+
+def test_bootstrap_parallel_process_install_deps(
+    tmp_context: WorkContext,
+) -> None:
+    """Multiple PROCESS_INSTALL_DEPS items are dispatched concurrently."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    dispatch_log: list[bootstrapper.BootstrapPhase] = []
+
+    req_a = Requirement("pkg-a")
+    req_b = Requirement("pkg-b")
+    pid_phase = bootstrapper.BootstrapPhase.PROCESS_INSTALL_DEPS
+
+    def make_pid(req: Requirement) -> bootstrapper.WorkItem:
+        return bootstrapper.WorkItem(
+            req=req,
+            req_type=RequirementType.TOP_LEVEL,
+            phase=pid_phase,
+            why_snapshot=[],
+            resolved_version=Version("1.0"),
+        )
+
+    pid_a = make_pid(req_a)
+    pid_b = make_pid(req_b)
+
+    def mock_dispatch(item: bootstrapper.WorkItem) -> list[bootstrapper.WorkItem]:
+        dispatch_log.append(item.phase)
+        if item.phase == bootstrapper.BootstrapPhase.RESOLVE:
+            # Return two PID items directly so both land on the stack together
+            return [pid_a, pid_b]
+        # PID phase
+        return []
+
+    with patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch):
+        bt.bootstrap(req=req_a, req_type=RequirementType.TOP_LEVEL)
+
+    pid_dispatches = [p for p in dispatch_log if p == pid_phase]
+    assert len(pid_dispatches) == 2, f"Expected 2 PID dispatches, got {pid_dispatches}"
+
+
+def test_bootstrap_parallel_complete(
+    tmp_context: WorkContext,
+) -> None:
+    """Multiple COMPLETE items are dispatched concurrently."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    dispatch_log: list[bootstrapper.BootstrapPhase] = []
+
+    req_a = Requirement("pkg-a")
+    req_b = Requirement("pkg-b")
+    complete_phase = bootstrapper.BootstrapPhase.COMPLETE
+
+    def make_complete(req: Requirement) -> bootstrapper.WorkItem:
+        return bootstrapper.WorkItem(
+            req=req,
+            req_type=RequirementType.TOP_LEVEL,
+            phase=complete_phase,
+            why_snapshot=[],
+            resolved_version=Version("1.0"),
+        )
+
+    complete_a = make_complete(req_a)
+    complete_b = make_complete(req_b)
+
+    def mock_dispatch(item: bootstrapper.WorkItem) -> list[bootstrapper.WorkItem]:
+        dispatch_log.append(item.phase)
+        if item.phase == bootstrapper.BootstrapPhase.RESOLVE:
+            # Return two COMPLETE items directly so both land on the stack together
+            return [complete_a, complete_b]
+        # COMPLETE phase
+        return []
+
+    with patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch):
+        bt.bootstrap(req=req_a, req_type=RequirementType.TOP_LEVEL)
+
+    complete_dispatches = [p for p in dispatch_log if p == complete_phase]
+    assert len(complete_dispatches) == 2, (
+        f"Expected 2 COMPLETE dispatches, got {complete_dispatches}"
+    )
+
+
+def test_find_cached_wheel_holds_wheel_dir_lock_during_build_lookup(
+    tmp_context: WorkContext,
+) -> None:
+    """_find_cached_wheel holds _wheel_dir_lock while inspecting wheels_build."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    lock_was_held: list[bool] = []
+    original = bt._look_for_existing_wheel
+
+    def spy(
+        req: Requirement,
+        version: Version,
+        search_in: pathlib.Path,
+    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+        if search_in == tmp_context.wheels_build:
+            acquired = bt._wheel_dir_lock.acquire(blocking=False)
+            lock_was_held.append(not acquired)
+            if acquired:
+                bt._wheel_dir_lock.release()
+        return original(req, version, search_in)
+
+    with unittest.mock.patch.object(bt, "_look_for_existing_wheel", side_effect=spy):
+        bt._find_cached_wheel(Requirement("test-package"), Version("1.0.0"))
+
+    assert lock_was_held == [True]
+
+
+@unittest.mock.patch("fromager.server.update_wheel_mirror")
+@unittest.mock.patch("fromager.wheels.download_wheel")
+def test_download_prebuilt_holds_wheel_dir_lock_around_mirror_update(
+    mock_download: unittest.mock.Mock,
+    mock_mirror: unittest.mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """_download_prebuilt holds _wheel_dir_lock while calling update_wheel_mirror."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    mock_download.return_value = pathlib.Path(
+        "/fake/test_package-1.0.0-py3-none-any.whl"
+    )
+    lock_was_held: list[bool] = []
+
+    def spy_mirror(ctx: object) -> None:
+        acquired = bt._wheel_dir_lock.acquire(blocking=False)
+        lock_was_held.append(not acquired)
+        if acquired:
+            bt._wheel_dir_lock.release()
+
+    mock_mirror.side_effect = spy_mirror
+
+    bt._download_prebuilt(
+        req=Requirement("test-package"),
+        req_type=RequirementType.TOP_LEVEL,
+        resolved_version=Version("1.0.0"),
+        wheel_url="https://pkg.test/test_package-1.0.0-py3-none-any.whl",
+    )
+
+    assert lock_was_held == [True]

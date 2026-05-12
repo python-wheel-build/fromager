@@ -130,6 +130,7 @@ def bootstrap(
     multiple_versions: bool,
     max_release_age: int | None,
     toplevel: list[str],
+    max_workers: int | None = 1,
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
 
@@ -198,6 +199,7 @@ def bootstrap(
             sdist_only=sdist_only,
             test_mode=test_mode,
             multiple_versions=multiple_versions,
+            max_workers=max_workers,
         )
 
         # Pre-resolution phase: Resolve all top-level dependencies before recursive
@@ -556,6 +558,7 @@ def bootstrap_parallel(
         sdist_only=True,
         skip_constraints=skip_constraints,
         multiple_versions=multiple_versions,
+        max_workers=max_workers,
         max_release_age=max_release_age,
         toplevel=toplevel,
     )
