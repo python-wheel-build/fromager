@@ -56,6 +56,14 @@ RETRYABLE_EXCEPTIONS = (
 )
 
 
+class GitHubRateLimitError(RequestException):
+    """Raised when GitHub API rate limit is exceeded and reset is too far away to wait."""
+
+
+# Maximum wait time (seconds) before raising GitHubRateLimitError instead of sleeping.
+GITHUB_RATE_LIMIT_MAX_WAIT = 120
+
+
 class RetryHTTPAdapter(HTTPAdapter):
     """HTTP adapter with enhanced retry logic and backoff."""
 
@@ -206,14 +214,13 @@ class RetryHTTPAdapter(HTTPAdapter):
     def _handle_github_rate_limit(
         self, response: requests.Response, attempt: int, max_attempts: int
     ) -> None:
-        """Handle GitHub API rate limiting with appropriate backoff."""
-        if attempt >= max_attempts - 1:
-            logger.error(
-                "GitHub API rate limit exceeded after %d attempts for %s",
-                max_attempts,
-                response.request.url or "<unknown>",
-            )
-            return
+        """Handle GitHub API rate limiting with appropriate backoff.
+
+        Raises GitHubRateLimitError immediately when the wait would exceed
+        GITHUB_RATE_LIMIT_MAX_WAIT, instead of sleeping for minutes and
+        retrying into the same 403.
+        """
+        url = response.request.url or "<unknown>"
 
         # Check for reset time in headers
         reset_time = response.headers.get("X-RateLimit-Reset")
@@ -221,30 +228,47 @@ class RetryHTTPAdapter(HTTPAdapter):
             try:
                 reset_timestamp = int(reset_time)
                 current_time = int(time.time())
-                wait_time = min(
-                    reset_timestamp - current_time + 5, 300
-                )  # Max 5 minutes
-                if wait_time > 0:
-                    logger.warning(
-                        "GitHub API rate limit hit for %s. Waiting %d seconds until reset.",
-                        response.request.url or "<unknown>",
-                        wait_time,
-                    )
-                    time.sleep(wait_time)
-                    return
+                wait_time = reset_timestamp - current_time + 5
             except (ValueError, TypeError):
                 logger.debug("Could not parse GitHub rate limit reset time")
+                wait_time = None
+        else:
+            wait_time = None
 
-        # Fallback to exponential backoff
-        wait_time = min(2**attempt + random.uniform(0, 1), 60)
+        # Fail fast when the wait is too long or retries are exhausted
+        if attempt >= max_attempts - 1 or (
+            wait_time is not None and wait_time > GITHUB_RATE_LIMIT_MAX_WAIT
+        ):
+            wait_msg = (
+                f"Reset in {wait_time}s."
+                if wait_time is not None
+                else "Reset time unknown."
+            )
+            raise GitHubRateLimitError(
+                f"GitHub API rate limit exceeded for {url}. {wait_msg} "
+                f"Set GITHUB_TOKEN environment variable to increase the "
+                f"rate limit from 60 to 5000 requests/hour."
+            )
+
+        if wait_time is not None and wait_time > 0:
+            logger.warning(
+                "GitHub API rate limit hit for %s. Waiting %d seconds until reset.",
+                url,
+                wait_time,
+            )
+            time.sleep(wait_time)
+            return
+
+        # Fallback to exponential backoff when reset time is unknown or already passed
+        wait_time_backoff = min(2**attempt + random.uniform(0, 1), 60)
         logger.warning(
             "GitHub API rate limit hit for %s. Retrying in %.1f seconds (attempt %d/%d)",
-            response.request.url or "<unknown>",
-            wait_time,
+            url,
+            wait_time_backoff,
             attempt + 1,
             max_attempts,
         )
-        time.sleep(wait_time)
+        time.sleep(wait_time_backoff)
 
     def _handle_retryable_exception(
         self,
