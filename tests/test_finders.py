@@ -4,6 +4,7 @@ import pytest
 from packaging.requirements import Requirement
 
 from fromager import context, finders
+from fromager.requirements_file import RequirementType
 
 
 @pytest.mark.parametrize(
@@ -110,3 +111,38 @@ def test_find_source_dir(
     req = Requirement(dist_name)
     actual = finders.find_source_dir(tmp_context, work_dir, req, version_string)
     assert str(source_dir) == str(actual)
+
+
+def test_pypi_cache_provider() -> None:
+    url = "https://cache.test/simple/"
+
+    # defaults: wheels only, hardcoded attributes
+    provider = finders.PyPICacheProvider(cache_server_url=url)
+    assert provider.sdist_server_url == url
+    assert provider.include_sdists is False
+    assert provider.include_wheels is True
+    assert provider.ignore_platform is False
+    assert provider.override_download_url is None
+    assert provider.cooldown is None
+    assert provider.supports_upload_time is False
+
+    # sdists only with req_type
+    provider = finders.PyPICacheProvider(
+        cache_server_url=url,
+        include_sdists=True,
+        include_wheels=False,
+        req_type=RequirementType.TOP_LEVEL,
+    )
+    assert provider.include_sdists is True
+    assert provider.include_wheels is False
+    assert provider.req_type == RequirementType.TOP_LEVEL
+
+    # mutually exclusive: both True or both False
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        finders.PyPICacheProvider(
+            cache_server_url=url, include_sdists=True, include_wheels=True
+        )
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        finders.PyPICacheProvider(
+            cache_server_url=url, include_sdists=False, include_wheels=False
+        )
