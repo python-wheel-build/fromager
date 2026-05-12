@@ -13,10 +13,10 @@ from packaging.version import Version
 from fromager import dependency_graph
 from fromager.commands.graph import (
     _compute_collection_impact,
+    _find_common_dependencies_impl,
     _find_customized_dependencies_for_node,
     _find_shared_packages,
     _get_collection_packages,
-    _suggest_base_impl,
     find_why,
     show_explain_duplicates,
 )
@@ -561,14 +561,14 @@ def test_find_shared_packages_sorting() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_suggest_base_table_output(
+def test_find_common_dependencies_table_output(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
-    """suggest_base command produces table output with key strings."""
+    """find_common_dependencies command produces table output with key strings."""
     path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b),
         base_graph=None,
         min_collections=2,
@@ -584,7 +584,7 @@ def test_suggest_base_table_output(
     assert "pkg-only-b" in captured.out
 
 
-def test_suggest_base_dynamic_default_min_collections(
+def test_find_common_dependencies_dynamic_default_min_collections(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
     """Default --min-collections is 50% of provided graphs (rounded up)."""
@@ -595,7 +595,7 @@ def test_suggest_base_dynamic_default_min_collections(
     path_c = _make_graph_file(tmp_path, "coll-c", ["pkg-shared-abc"])
     path_d = _make_graph_file(tmp_path, "coll-d", ["pkg-only-d"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b, path_c, path_d),
         base_graph=None,
         min_collections=None,  # dynamic default: ceil(4/2) = 2
@@ -611,14 +611,14 @@ def test_suggest_base_dynamic_default_min_collections(
     assert "pkg-only-d" not in packages
 
 
-def test_suggest_base_json_output(
+def test_find_common_dependencies_json_output(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
-    """suggest_base command produces valid JSON output."""
+    """find_common_dependencies command produces valid JSON output."""
     path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b),
         base_graph=None,
         min_collections=2,
@@ -641,7 +641,7 @@ def test_suggest_base_json_output(
     assert "in_base" not in candidate
 
 
-def test_suggest_base_with_base_graph(
+def test_find_common_dependencies_with_base_graph(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
     """--base flag marks packages that are already in the base graph."""
@@ -649,7 +649,7 @@ def test_suggest_base_with_base_graph(
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-new"])
     path_base = _make_graph_file(tmp_path, "base", ["pkg-shared"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b),
         base_graph=path_base,
         min_collections=2,
@@ -664,12 +664,12 @@ def test_suggest_base_with_base_graph(
     assert data["metadata"]["base_graph"] == str(path_base)
 
 
-def test_suggest_base_too_few_graphs(tmp_path: pathlib.Path) -> None:
+def test_find_common_dependencies_too_few_graphs(tmp_path: pathlib.Path) -> None:
     """Error raised when fewer than 2 graphs are provided."""
     path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-a"])
 
     with pytest.raises(click.UsageError, match="At least 2 collection graphs"):
-        _suggest_base_impl(
+        _find_common_dependencies_impl(
             collection_graphs=(path_a,),
             base_graph=None,
             min_collections=2,
@@ -677,13 +677,15 @@ def test_suggest_base_too_few_graphs(tmp_path: pathlib.Path) -> None:
         )
 
 
-def test_suggest_base_invalid_min_collections(tmp_path: pathlib.Path) -> None:
+def test_find_common_dependencies_invalid_min_collections(
+    tmp_path: pathlib.Path,
+) -> None:
     """Error raised when --min-collections exceeds number of graphs."""
     path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-a"])
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-b"])
 
     with pytest.raises(click.UsageError, match="cannot exceed number of graphs"):
-        _suggest_base_impl(
+        _find_common_dependencies_impl(
             collection_graphs=(path_a, path_b),
             base_graph=None,
             min_collections=3,
@@ -691,7 +693,7 @@ def test_suggest_base_invalid_min_collections(tmp_path: pathlib.Path) -> None:
         )
 
 
-def test_suggest_base_all_but_one_empty(tmp_path: pathlib.Path) -> None:
+def test_find_common_dependencies_all_but_one_empty(tmp_path: pathlib.Path) -> None:
     """Error raised when all but one graph are empty after filtering."""
     path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-a"])
     path_b = _make_graph_file(tmp_path, "coll-b", [])
@@ -699,7 +701,7 @@ def test_suggest_base_all_but_one_empty(tmp_path: pathlib.Path) -> None:
     with pytest.raises(
         click.UsageError, match="At least 2 non-empty collection graphs"
     ):
-        _suggest_base_impl(
+        _find_common_dependencies_impl(
             collection_graphs=(path_a, path_b),
             base_graph=None,
             min_collections=2,
@@ -776,14 +778,14 @@ def test_compute_collection_impact_sorting() -> None:
     assert result[2]["collection"] == "coll-m"
 
 
-def test_suggest_base_table_includes_impact(
+def test_find_common_dependencies_table_includes_impact(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
     """Table output includes Collection Impact section."""
     path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b),
         base_graph=None,
         min_collections=2,
@@ -800,14 +802,14 @@ def test_suggest_base_table_includes_impact(
     assert "Remaining Packages (not in proposed" in captured.out
 
 
-def test_suggest_base_json_includes_impact(
+def test_find_common_dependencies_json_includes_impact(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
     """JSON output includes collection_impact key with correct structure."""
     path_a = _make_graph_file(tmp_path, "coll-a", ["pkg-shared", "pkg-only-a"])
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b),
         base_graph=None,
         min_collections=2,
@@ -831,7 +833,7 @@ def test_suggest_base_json_includes_impact(
         assert len(entry["remaining"]) == 1
 
 
-def test_suggest_base_json_base_only_packages(
+def test_find_common_dependencies_json_base_only_packages(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
     """Packages in --base that are not candidates appear in base_only_packages."""
@@ -840,7 +842,7 @@ def test_suggest_base_json_base_only_packages(
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
     path_base = _make_graph_file(tmp_path, "base", ["pkg-shared", "pkg-base-only"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b),
         base_graph=path_base,
         min_collections=2,
@@ -857,7 +859,7 @@ def test_suggest_base_json_base_only_packages(
     assert "pkg-shared" not in data["base_only_packages"]
 
 
-def test_suggest_base_json_base_only_impacts_collection_impact(
+def test_find_common_dependencies_json_base_only_impacts_collection_impact(
     capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
 ) -> None:
     """Base-only packages count toward collection impact when --base is provided."""
@@ -868,7 +870,7 @@ def test_suggest_base_json_base_only_impacts_collection_impact(
     path_b = _make_graph_file(tmp_path, "coll-b", ["pkg-shared", "pkg-only-b"])
     path_base = _make_graph_file(tmp_path, "base", ["pkg-shared", "pkg-base-only"])
 
-    _suggest_base_impl(
+    _find_common_dependencies_impl(
         collection_graphs=(path_a, path_b),
         base_graph=path_base,
         min_collections=2,

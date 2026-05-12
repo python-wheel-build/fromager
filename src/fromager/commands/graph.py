@@ -883,7 +883,7 @@ def _compute_collection_impact(
     return result
 
 
-def _suggest_base_table(
+def _find_common_dependencies_table(
     candidates: list[dict[str, typing.Any]],
     total_collections: int,
     collection_names: list[str],
@@ -893,7 +893,7 @@ def _suggest_base_table(
     impact: list[dict[str, typing.Any]],
     base_only_packages: set[NormalizedName],
 ) -> None:
-    """Display suggest-base results as a rich table."""
+    """Display find-common-dependencies results as a rich table."""
     title = (
         f"Base collection candidates "
         f"(threshold: {min_collections}/{total_collections} collections)\n"
@@ -996,7 +996,7 @@ def _suggest_base_table(
         console.print(base_only_table)
 
 
-def _suggest_base_json(
+def _find_common_dependencies_json(
     candidates: list[dict[str, typing.Any]],
     total_collections: int,
     collection_names: list[str],
@@ -1007,7 +1007,7 @@ def _suggest_base_json(
     impact: list[dict[str, typing.Any]],
     base_only_packages: set[NormalizedName],
 ) -> None:
-    """Display suggest-base results as JSON."""
+    """Display find-common-dependencies results as JSON."""
     output: dict[str, typing.Any] = {
         "metadata": {
             "total_collections": total_collections,
@@ -1042,13 +1042,13 @@ def _suggest_base_json(
     json.dump(output, sys.stdout, indent=2)
 
 
-def _suggest_base_impl(
+def _find_common_dependencies_impl(
     collection_graphs: tuple[pathlib.Path, ...],
     base_graph: pathlib.Path | None,
     min_collections: int | None,
     output_format: str,
 ) -> None:
-    """Core implementation for suggest_base, testable without a click context."""
+    """Core implementation for find_common_dependencies, testable without a click context."""
     if len(collection_graphs) < 2:
         raise click.UsageError("At least 2 collection graphs are required")
     if min_collections is None:
@@ -1095,7 +1095,7 @@ def _suggest_base_impl(
     impact = _compute_collection_impact(collections, proposed_base, display_names)
 
     if output_format == "json":
-        _suggest_base_json(
+        _find_common_dependencies_json(
             candidates,
             total,
             list(display_names.values()),
@@ -1107,7 +1107,7 @@ def _suggest_base_impl(
             base_only_packages,
         )
     else:
-        _suggest_base_table(
+        _find_common_dependencies_table(
             candidates,
             total,
             list(display_names.values()),
@@ -1143,7 +1143,7 @@ def _suggest_base_impl(
 @click.argument(
     "collection_graphs", nargs=-1, required=True, type=clickext.ClickPath(exists=True)
 )
-def suggest_base(
+def find_common_dependencies(
     collection_graphs: tuple[pathlib.Path, ...],
     base_graph: pathlib.Path | None,
     min_collections: int | None,
@@ -1155,4 +1155,6 @@ def suggest_base(
     appearing across multiple collections. These are candidates for factoring
     into a base collection built once and reused.
     """
-    _suggest_base_impl(collection_graphs, base_graph, min_collections, output_format)
+    _find_common_dependencies_impl(
+        collection_graphs, base_graph, min_collections, output_format
+    )
