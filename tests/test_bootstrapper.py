@@ -376,18 +376,18 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
-@patch("fromager.resolver.PyPIProvider")
+@patch("fromager.finders.PyPICacheProvider")
 def test_download_wheel_from_cache_bypasses_hooks(
-    mock_pypi_provider: Mock,
+    mock_cache_provider: Mock,
     mock_find_all: Mock,
     tmp_context: WorkContext,
 ) -> None:
-    """Verify _download_wheel_from_cache uses PyPIProvider directly, not hooks."""
+    """Verify _download_wheel_from_cache uses PyPICacheProvider, not hooks."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    bt.cache_wheel_server_url = "https://cache.example.com/simple/"
+    bt.cache_wheel_server_url = "https://cache.test/simple/"
 
     mock_provider = Mock()
-    mock_pypi_provider.return_value = mock_provider
+    mock_cache_provider.return_value = mock_provider
     # Raise so the except clause returns (None, None) before hitting
     # network calls later in the function.
     mock_find_all.side_effect = RuntimeError("no match")
@@ -403,11 +403,9 @@ def test_download_wheel_from_cache_bypasses_hooks(
     # Hook system must NOT be called for cache lookups
     mock_override.assert_not_called()
 
-    # PyPIProvider must be instantiated directly
-    mock_pypi_provider.assert_called_once_with(
-        sdist_server_url="https://cache.example.com/simple/",
-        include_sdists=False,
-        include_wheels=True,
+    # PyPICacheProvider must be instantiated directly
+    mock_cache_provider.assert_called_once_with(
+        cache_server_url="https://cache.test/simple/",
         constraints=tmp_context.constraints,
     )
     mock_find_all.assert_called_once_with(mock_provider, Requirement("test-pkg==1.0.0"))
