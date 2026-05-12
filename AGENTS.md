@@ -15,6 +15,7 @@
 - Chain exceptions: `raise ValueError(...) from err`
 - Use `req_ctxvar_context()` for per-requirement logging
 - Run `hatch run lint:fix` to format code
+- Always use `git commit --signoff`
 
 ### Don't
 
@@ -93,22 +94,33 @@ Look at these before writing code:
 
 **Import rules:** All imports at the top of the file, no local imports. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
+**URLs:** Use the `.test` TLD (e.g. `https://pkg.test/simple/`) instead of `example.com` in tests. Use `.example` TLD in examples.
+
 **Testing:** Use Arrange/Act/Assert pattern, name functions `test_<behavior>()`. See `tests/test_context.py` for examples.
+
+## Documentation and doc strings
+
+- Use single backticks around function and class names in markdown (e.g. `req_ctxvar_context()`, `WorkContext`), double backticks in .rst (reStructuredText)
+- Use Sphinx `versionadded`, `versionremoved`, `versionchanged` directives for user-facing changes (get next version from last git tag)
 
 ## Commit Messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) — see [CONTRIBUTING.md](CONTRIBUTING.md) for format, types, and examples.
 
-When AI agents create or significantly modify code, add attribution:
+Use backticks around function and class names (e.g. `WorkContext`)
+
+Always use `--signoff` to add a DCO sign-off. When AI agents create or significantly modify code, also add attribution:
 
 ```text
-feat(scope): short summary
+git commit --signoff -m "feat(scope): short summary
 
 Body explaining what and why.
 
 Co-Authored-By: Claude <claude@anthropic.com>
 Closes: #123
 ```
+
+This produces a commit message with both the `Signed-off-by` trailer (from `--signoff`) and the `Co-Authored-By` trailer.
 
 ## Workflow for Complex Tasks
 
