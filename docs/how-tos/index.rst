@@ -47,6 +47,7 @@ Customize builds with overrides, variants, and version handling.
 
    pyproject-overrides
    multiple-versions
+   multiple-version-bootstrap
    pre-release-versions
    release-age-cooldown
 
