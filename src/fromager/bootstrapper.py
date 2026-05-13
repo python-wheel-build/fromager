@@ -1299,11 +1299,13 @@ class Bootstrapper:
         """RESOLVE phase: resolve versions and expand into START-phase items.
 
         Centralizes version resolution so all dependencies are expanded
-        uniformly. Future filtering (e.g. versions already on disk) and
-        parallelization can be added here in one place.
+        uniformly. In multiple_versions mode, filters out versions whose
+        wheels are already cached to avoid redundant builds and
+        transitive dependency processing.
 
         Returns:
-            One START-phase item per resolved version.
+            One START-phase item per resolved version that needs building.
+            Empty list if all versions are already cached.
         """
         resolved_versions = self.resolve_versions(
             item.req,
@@ -1315,6 +1317,27 @@ class Bootstrapper:
 
         if self.multiple_versions:
             logger.info(f"resolved {len(resolved_versions)} version(s) for {item.req}")
+            filtered: list[tuple[str, Version]] = []
+            for source_url, version in resolved_versions:
+                cached_wheel, _ = self._find_cached_wheel(item.req, version)
+                if cached_wheel:
+                    logger.info(
+                        f"{item.req.name}=={version}: wheel already cached "
+                        f"at {cached_wheel.name}, skipping"
+                    )
+                else:
+                    filtered.append((source_url, version))
+            if not filtered:
+                # Always process the highest version (first in
+                # resolved_versions) so new transitive dependencies
+                # are discovered even when every wheel is cached.
+                logger.info(
+                    f"all versions of {item.req.name} already cached, "
+                    f"keeping highest version {resolved_versions[0][1]} "
+                    f"for dependency discovery"
+                )
+                filtered.append(resolved_versions[0])
+            resolved_versions = filtered
 
         # Build list so highest version ends up on top of the stack
         # (last element after extend) and is processed first.

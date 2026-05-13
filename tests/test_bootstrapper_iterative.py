@@ -277,6 +277,82 @@ class TestPhaseResolve:
 
         assert result[0].why_snapshot == snapshot
 
+    def test_filters_cached_versions_in_multiple_versions_mode(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Cached versions are filtered out before creating START items."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        item = _make_resolve_item()
+
+        def mock_cache(req: Requirement, version: Version) -> tuple:
+            if str(version) == "2.0":
+                return (tmp_context.work_dir / "pkg-2.0-py3-none-any.whl", None)
+            return (None, None)
+
+        with (
+            patch.object(
+                bt,
+                "resolve_versions",
+                return_value=[
+                    ("url-3.0", Version("3.0")),
+                    ("url-2.0", Version("2.0")),
+                    ("url-1.0", Version("1.0")),
+                ],
+            ),
+            patch.object(bt, "_find_cached_wheel", side_effect=mock_cache),
+        ):
+            result = bt._phase_resolve(item)
+
+        assert len(result) == 2
+        versions = {str(it.resolved_version) for it in result}
+        assert versions == {"1.0", "3.0"}
+
+    def test_all_cached_keeps_highest_version(self, tmp_context: WorkContext) -> None:
+        """If all versions are cached, keeps the highest for dependency discovery."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        item = _make_resolve_item()
+
+        with (
+            patch.object(
+                bt,
+                "resolve_versions",
+                return_value=[
+                    ("url-3.0", Version("3.0")),
+                    ("url-2.0", Version("2.0")),
+                    ("url-1.0", Version("1.0")),
+                ],
+            ),
+            patch.object(
+                bt,
+                "_find_cached_wheel",
+                return_value=(tmp_context.work_dir / "cached.whl", None),
+            ),
+        ):
+            result = bt._phase_resolve(item)
+
+        assert len(result) == 1
+        assert result[0].resolved_version == Version("3.0")
+
+    def test_no_filtering_in_single_version_mode(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Cache filtering does not apply in single version mode."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=False)
+        item = _make_resolve_item()
+
+        with (
+            patch.object(
+                bt,
+                "resolve_versions",
+                return_value=[("url-1.0", Version("1.0"))],
+            ),
+            patch.object(bt, "_find_cached_wheel") as mock_cache,
+        ):
+            result = bt._phase_resolve(item)
+
+        assert len(result) == 1
+        mock_cache.assert_not_called()
+
 
 class TestPhaseStart:
     def test_new_item_advances_to_prepare_source(
