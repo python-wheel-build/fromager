@@ -188,6 +188,7 @@ class Bootstrapper:
         self._seen_requirements: set[SeenKey] = set()
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
+        self._stack_filename = self.ctx.work_dir / "bootstrap-stack.json"
 
         # Track failed packages in test mode (list of typed dicts for JSON export)
         self.failed_packages: list[FailureRecord] = []
@@ -371,6 +372,7 @@ class Bootstrapper:
 
         # Main iterative DFS loop
         while stack:
+            self._record_stack_state(stack)
             item = stack.pop()
             self.why = list(item.why_snapshot)
 
@@ -1268,6 +1270,41 @@ class Bootstrapper:
             # Requirement and Version instances that can't be
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
+
+    def _record_stack_state(self, stack: list[WorkItem]) -> None:
+        """Write the current bootstrap stack to `self._stack_filename`.
+
+        Index 0 in the output corresponds to `stack[-1]`, the next item to be
+        processed. Overwrites the file on each call.
+        """
+
+        def serialize(item: WorkItem) -> dict[str, typing.Any]:
+            return {
+                "req": str(item.req),
+                "req_type": str(item.req_type),
+                "phase": str(item.phase),
+                "resolved_version": str(item.resolved_version)
+                if item.resolved_version is not None
+                else None,
+                "source_url": item.source_url,
+                "build_sdist_only": item.build_sdist_only,
+                "why": [
+                    {"req_type": str(rt), "req": str(r), "version": str(v)}
+                    for rt, r, v in item.why_snapshot
+                ],
+                "parent": (
+                    {"req": str(item.parent[0]), "version": str(item.parent[1])}
+                    if item.parent
+                    else None
+                ),
+                "build_system_deps": sorted(str(r) for r in item.build_system_deps),
+                "build_backend_deps": sorted(str(r) for r in item.build_backend_deps),
+                "build_sdist_deps": sorted(str(r) for r in item.build_sdist_deps),
+            }
+
+        records = [serialize(item) for item in reversed(stack)]
+        with open(self._stack_filename, "w") as f:
+            json.dump(records, f, indent=2, default=str)
 
     # ---- Iterative bootstrap: phase handlers and helpers ----
 
