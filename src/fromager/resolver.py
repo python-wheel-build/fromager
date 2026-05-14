@@ -167,6 +167,17 @@ def resolve_package_cooldown(
             logger.info("cooldown bypassed as the top-level requirement uses == pin")
         return None
 
+    if req_type != RequirementType.TOP_LEVEL:
+        root = ctx.dependency_graph.get_root_node()
+        top_level_edges = root.get_outgoing_edges(req.name, RequirementType.TOP_LEVEL)
+        if any(_has_equality_pin(edge.req) for edge in top_level_edges):
+            if ctx.cooldown is not None:
+                logger.info(
+                    "cooldown bypassed — package has a top-level == pin "
+                    "in the dependency graph"
+                )
+            return None
+
     per_package_days = ctx.package_build_info(req).resolver_min_release_age
     global_cooldown = ctx.cooldown
     if per_package_days is None:
