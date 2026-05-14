@@ -1,0 +1,33 @@
+name: Bug Report
+description: Report a bug in fromager
+labels: ["bug"]
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Details about your build environment.
+      value: |
+        - Fromager version:
+        - Python version:
+        - OS / architecture:
+        - Container or local:
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug description
+      description: Describe the bug you encountered.
+      value: |
+        **Expected behavior:**
+
+
+        **Actual behavior:**
+
+
+        **Steps to reproduce / logs:**
+    validations:
+      required: true
