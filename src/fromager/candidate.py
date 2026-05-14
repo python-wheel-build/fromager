@@ -15,18 +15,25 @@ from .request_session import session
 logger = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class Cooldown:
     """Policy for rejecting recently-published package versions.
 
+    Frozen so that cooldown policy cannot be accidentally weakened after
+    construction — all parameters are set once and shared read-only.
+
     bootstrap_time is fixed at construction so all resolutions in a single run
     share the same cutoff.
+
+    exempt_versions bypasses the age check for specific versions that were
+    already approved via a top-level exact pin.
     """
 
     min_age: datetime.timedelta
     bootstrap_time: datetime.datetime = dataclasses.field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
+    exempt_versions: frozenset[Version] = dataclasses.field(default_factory=frozenset)
 
 
 @dataclasses.dataclass(frozen=True, order=True, slots=True, repr=False, kw_only=True)

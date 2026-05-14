@@ -147,6 +147,52 @@ def _has_equality_pin(req: Requirement) -> bool:
     return len(specs) == 1 and specs[0].operator == "==" and "*" not in specs[0].version
 
 
+def _get_toplevel_pinned_versions(
+    ctx: context.WorkContext, req: Requirement
+) -> frozenset[Version]:
+    """Return versions of *req* that have a top-level exact ``==`` pin in the graph."""
+    top_level_edges = ctx.dependency_graph.get_root_node().get_outgoing_edges(
+        req.name, RequirementType.TOP_LEVEL
+    )
+    return frozenset(
+        edge.destination_node.version
+        for edge in top_level_edges
+        if _has_equality_pin(edge.req)
+    )
+
+
+def _resolve_cooldown_params(
+    ctx: context.WorkContext,
+    req: Requirement,
+) -> tuple[datetime.timedelta, datetime.datetime] | None:
+    """Resolve min_age and bootstrap_time for a package's cooldown.
+
+    Returns ``None`` when cooldown is disabled (no global/per-package
+    configuration, or a per-package override of 0).  Otherwise returns
+    the effective ``(min_age, bootstrap_time)`` pair.
+    """
+    min_age_override = ctx.package_build_info(req).resolver_min_release_age
+
+    if ctx.cooldown is None and min_age_override is None:
+        return None
+    if min_age_override == 0:
+        return None
+
+    if min_age_override is not None:
+        min_age = datetime.timedelta(days=min_age_override)
+    elif ctx.cooldown is not None:
+        min_age = ctx.cooldown.min_age
+    else:
+        return None
+
+    bootstrap_time = (
+        ctx.cooldown.bootstrap_time
+        if ctx.cooldown is not None
+        else datetime.datetime.now(datetime.UTC)
+    )
+    return min_age, bootstrap_time
+
+
 def resolve_package_cooldown(
     ctx: context.WorkContext,
     req: Requirement,
@@ -154,35 +200,36 @@ def resolve_package_cooldown(
 ) -> Cooldown | None:
     """Compute the effective cooldown for a single package.
 
-    Args:
-        ctx: The current work context (provides the global cooldown).
-        req: The package requirement being resolved.
-        req_type: The requirement type (top-level, install, etc.).
+    Returns ``None`` (cooldown disabled) when:
 
-    Returns:
-        The cooldown to pass to the provider, or ``None`` if disabled.
+    * The requirement is a top-level exact ``==`` pin — the user explicitly
+      approved that version.
+    * A per-package ``min_release_age=0`` override disables cooldown.
+    * No global cooldown is configured and no per-package override enables one.
+
+    Otherwise a ``Cooldown`` is returned with:
+
+    * *min_age* from the per-package override (if set) or the global cooldown.
+    * *bootstrap_time* inherited from the global cooldown (for a consistent
+      cutoff across the entire run) or the current time.
+    * *exempt_versions* populated from top-level exact-pinned entries in the
+      dependency graph, so transitive resolutions of the same package honour
+      the user's explicit pin.
     """
     if req_type == RequirementType.TOP_LEVEL and _has_equality_pin(req):
         if ctx.cooldown is not None:
             logger.info("cooldown bypassed as the top-level requirement uses == pin")
         return None
 
-    per_package_days = ctx.package_build_info(req).resolver_min_release_age
-    global_cooldown = ctx.cooldown
-    if per_package_days is None:
-        return global_cooldown
-    if per_package_days == 0:
+    params = _resolve_cooldown_params(ctx, req)
+    if params is None:
         return None
-    # Per-package positive override: inherit bootstrap_time from global so all
-    # resolutions in a single run share the same fixed cutoff point.
-    bootstrap_time = (
-        global_cooldown.bootstrap_time
-        if global_cooldown is not None
-        else datetime.datetime.now(datetime.UTC)
-    )
+
+    min_age, bootstrap_time = params
     return Cooldown(
-        min_age=datetime.timedelta(days=per_package_days),
+        min_age=min_age,
         bootstrap_time=bootstrap_time,
+        exempt_versions=_get_toplevel_pinned_versions(ctx, req),
     )
 
 
@@ -699,11 +746,12 @@ class BaseProvider(ExtrasProvider):
     def is_blocked_by_cooldown(self, candidate: Candidate) -> bool:
         """Return True if the candidate is rejected by the release-age cooldown."""
 
-        # a cooldown is not specified...
         if self.cooldown is None:
             return False
 
-        # the target candidate doesn't provide a valid upload timestamp
+        if candidate.version in self.cooldown.exempt_versions:
+            return False
+
         if candidate.upload_time is None:
             if not self.supports_upload_time:
                 # this provider does not yet support timestamp retrieval (e.g. GitHub).
