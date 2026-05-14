@@ -166,6 +166,48 @@ def test_patch_sources_apply_only_unversioned(
     apply_patch.assert_called_once_with(req, unversioned_patch_file, source_root_dir)
 
 
+@pytest.mark.parametrize(
+    "pkg,version_str,url,expected_filename",
+    [
+        (
+            "mlserver-sklearn==1.6.0",
+            "1.6.0",
+            "https://github.test/SeldonIO/MLServer/archive/refs/tags/1.6.0.tar.gz",
+            "mlserver_sklearn-1.6.0.tar.gz",
+        ),
+        (
+            "some-pkg==2.0",
+            "2.0",
+            "https://github.test/owner/repo/archive/refs/tags/v2.0.zip",
+            "some_pkg-2.0.zip",
+        ),
+    ],
+)
+@patch("fromager.sources._download_source_check")
+def test_default_download_source_no_destination_filename(
+    download_source_check: Mock,
+    tmp_context: context.WorkContext,
+    pkg: str,
+    version_str: str,
+    url: str,
+    expected_filename: str,
+) -> None:
+    """When no destination_filename is configured, use PEP 625 normalized name."""
+    req = Requirement(pkg)
+    version = Version(version_str)
+
+    sources.default_download_source(
+        tmp_context, req, version, url, tmp_context.sdists_downloads
+    )
+
+    download_source_check.assert_called_with(
+        req=req,
+        destination_dir=tmp_context.sdists_downloads,
+        url=url,
+        destination_filename=expected_filename,
+    )
+
+
 @patch("fromager.sources.vendor_rust.vendor_rust")
 @patch("fromager.sources.pyproject.apply_project_override")
 @patch("fromager.sources.patch_source")
