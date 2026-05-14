@@ -91,7 +91,9 @@ class BootstrapPhase(StrEnum):
     """Processing phases for iterative bootstrap.
 
     All packages: RESOLVE -> START -> ...
-    Source packages: ... -> PREPARE_SOURCE -> PREPARE_BUILD (serial) -> GET_BUILD_DEPS
+    Source packages: ... -> PREPARE_SOURCE -> WAIT_BUILD_SYSTEM_DEPS (serial barrier)
+                     -> PREPARE_BUILD (serial) -> GET_BUILD_DEPS
+                     -> WAIT_BUILD_DEPS (serial barrier)
                      -> INSTALL_BUILD_DEPS (serial) -> BUILD
                      -> UPDATE_BUILD_SEQUENCE -> PROCESS_INSTALL_DEPS -> COMPLETE.
     Prebuilt packages: ... -> PREPARE_SOURCE -> UPDATE_BUILD_SEQUENCE
@@ -101,8 +103,10 @@ class BootstrapPhase(StrEnum):
     RESOLVE = "resolve"
     START = "start"
     PREPARE_SOURCE = "prepare-source"
+    WAIT_BUILD_SYSTEM_DEPS = "wait-build-system-deps"
     PREPARE_BUILD = "prepare-build"
     GET_BUILD_DEPS = "get-build-deps"
+    WAIT_BUILD_DEPS = "wait-build-deps"
     INSTALL_BUILD_DEPS = "install-build-deps"
     BUILD = "build"
     UPDATE_BUILD_SEQUENCE = "update-build-sequence"
@@ -118,13 +122,19 @@ class BootstrapPhase(StrEnum):
     def can_parallelize(self) -> bool:
         """Whether items in this phase can be processed in parallel.
 
-        Phases that install packages into build environments must be serial to
-        ensure a dependency's wheel exists in the mirror before any package that
-        needs it runs its install step.  Those phases are PREPARE_BUILD (installs
-        build system deps) and INSTALL_BUILD_DEPS (installs build backend/sdist
-        deps).  UPDATE_BUILD_SEQUENCE is also serial to serialise writes to
-        build-order.json.  All other phases, including BUILD itself, are safe to
-        parallelize.
+        Parallel phases: RESOLVE, START, PREPARE_SOURCE, GET_BUILD_DEPS, BUILD,
+        PROCESS_INSTALL_DEPS, COMPLETE.
+
+        Serial phases and their reasons:
+        - WAIT_BUILD_SYSTEM_DEPS: barrier between parallel PREPARE_SOURCE and
+          PREPARE_BUILD; ensures all discovered build-system deps are fully built
+          before any package installs them.  See _phase_wait_build_system_deps.
+        - PREPARE_BUILD: installs build-system deps into the build env.
+        - WAIT_BUILD_DEPS: barrier between parallel GET_BUILD_DEPS and
+          INSTALL_BUILD_DEPS; ensures all discovered build-backend/sdist deps are
+          fully built before any package installs them.  See _phase_wait_build_deps.
+        - INSTALL_BUILD_DEPS: installs build-backend/sdist deps into the build env.
+        - UPDATE_BUILD_SEQUENCE: serialises writes to build-order.json.
         """
         return self in (
             BootstrapPhase.RESOLVE,
@@ -451,6 +461,7 @@ class Bootstrapper:
                 max_workers=self._max_workers
             ) as executor:
                 while stack:
+                    self._write_stack_snapshot(stack)
                     top_phase = stack[-1].phase
 
                     if not top_phase.can_parallelize:
@@ -1620,7 +1631,11 @@ class Bootstrapper:
             item.resolved_version,
         )
 
-        item.phase = BootstrapPhase.PREPARE_BUILD
+        item.phase = (
+            BootstrapPhase.WAIT_BUILD_SYSTEM_DEPS
+            if dep_items
+            else BootstrapPhase.PREPARE_BUILD
+        )
         return [item] + dep_items
 
     def _phase_prepare_build(self, item: WorkItem) -> list[WorkItem]:
@@ -1687,8 +1702,58 @@ class Bootstrapper:
         )
         dep_items = backend_items + sdist_items
 
-        item.phase = BootstrapPhase.INSTALL_BUILD_DEPS
+        item.phase = (
+            BootstrapPhase.WAIT_BUILD_DEPS
+            if dep_items
+            else BootstrapPhase.INSTALL_BUILD_DEPS
+        )
         return [item] + dep_items
+
+    def _phase_wait_build_system_deps(self, item: WorkItem) -> list[WorkItem]:
+        """WAIT_BUILD_SYSTEM_DEPS phase: serial barrier after build-system-dep discovery.
+
+        WHY THIS PHASE EXISTS
+        ---------------------
+        PREPARE_SOURCE runs in parallel: multiple packages simultaneously download
+        their source archives and read their build-system requirements.  Each package
+        that discovers a new build-system dep pushes a RESOLVE work item for that dep
+        onto the LIFO stack *above* its own next-phase item.  Because the stack is
+        LIFO, those dep items are processed (resolved → built → mirrored) before any
+        package reaches its install step.
+
+        The serial barrier enforces this guarantee across packages: only one package
+        at a time advances past this point.  By the time a package's
+        WAIT_BUILD_SYSTEM_DEPS item runs, every dep item that was pushed above it
+        during the preceding parallel PREPARE_SOURCE batch has already been fully
+        processed.  PREPARE_BUILD can therefore safely call build_env.install()
+        without racing against a dep that is still being built.
+
+        This phase does no work of its own — it exists solely to hold the serial slot.
+        """
+        item.phase = BootstrapPhase.PREPARE_BUILD
+        return [item]
+
+    def _phase_wait_build_deps(self, item: WorkItem) -> list[WorkItem]:
+        """WAIT_BUILD_DEPS phase: serial barrier after build-backend/sdist dep discovery.
+
+        WHY THIS PHASE EXISTS
+        ---------------------
+        GET_BUILD_DEPS runs in parallel: multiple packages simultaneously ask their
+        build backends for build-backend and build-sdist requirements.  Each package
+        that discovers new deps pushes RESOLVE work items for those deps onto the
+        LIFO stack *above* its own next-phase item, so the deps are built first.
+
+        The serial barrier enforces this guarantee across packages: only one package
+        at a time advances past this point.  By the time a package's WAIT_BUILD_DEPS
+        item runs, every dep item pushed above it during the preceding parallel
+        GET_BUILD_DEPS batch has already been fully processed.  INSTALL_BUILD_DEPS
+        can therefore safely call build_env.install() without racing against a dep
+        that is still being built.
+
+        This phase does no work of its own — it exists solely to hold the serial slot.
+        """
+        item.phase = BootstrapPhase.INSTALL_BUILD_DEPS
+        return [item]
 
     def _phase_install_build_deps(self, item: WorkItem) -> list[WorkItem]:
         """INSTALL_BUILD_DEPS phase: install build backend/sdist deps (serial).
@@ -1852,6 +1917,49 @@ class Bootstrapper:
             )
         return []
 
+    def _write_stack_snapshot(self, stack: list[WorkItem]) -> None:
+        """Write the current work stack to a JSON file for debugging.
+
+        Overwrites ``bootstrap-stack.json`` in the work directory at the start
+        of every loop iteration so the file always reflects the stack state at
+        the moment of the last batch, making it easy to diagnose ordering bugs
+        or install failures.
+
+        Items are listed top-of-stack first (i.e. what will be processed next
+        appears first in the array).
+        """
+        snapshot = [
+            {
+                "phase": item.phase.value,
+                "req": str(item.req),
+                "req_type": str(item.req_type),
+                "resolved_version": (
+                    str(item.resolved_version) if item.resolved_version else None
+                ),
+                "why": [
+                    {
+                        "req_type": str(req_type),
+                        "req": str(req),
+                        "version": str(version),
+                    }
+                    for req_type, req, version in item.why_snapshot
+                ],
+                "build_system_deps": [
+                    str(r) for r in self._sort_requirements(item.build_system_deps)
+                ],
+                "build_backend_deps": [
+                    str(r) for r in self._sort_requirements(item.build_backend_deps)
+                ],
+                "build_sdist_deps": [
+                    str(r) for r in self._sort_requirements(item.build_sdist_deps)
+                ],
+            }
+            for item in reversed(stack)
+        ]
+        stack_file = self.ctx.work_dir / "bootstrap-stack.json"
+        with open(stack_file, "w") as f:
+            json.dump(snapshot, f, indent=2)
+
     def _dispatch_phase(self, item: WorkItem) -> list[WorkItem]:
         """Route a work item to the appropriate phase handler."""
         match item.phase:
@@ -1861,10 +1969,14 @@ class Bootstrapper:
                 return self._phase_start(item)
             case BootstrapPhase.PREPARE_SOURCE:
                 return self._phase_prepare_source(item)
+            case BootstrapPhase.WAIT_BUILD_SYSTEM_DEPS:
+                return self._phase_wait_build_system_deps(item)
             case BootstrapPhase.PREPARE_BUILD:
                 return self._phase_prepare_build(item)
             case BootstrapPhase.GET_BUILD_DEPS:
                 return self._phase_get_build_deps(item)
+            case BootstrapPhase.WAIT_BUILD_DEPS:
+                return self._phase_wait_build_deps(item)
             case BootstrapPhase.INSTALL_BUILD_DEPS:
                 return self._phase_install_build_deps(item)
             case BootstrapPhase.BUILD:
@@ -1901,8 +2013,10 @@ class Bootstrapper:
                 item.phase
                 in (
                     BootstrapPhase.PREPARE_SOURCE,
+                    BootstrapPhase.WAIT_BUILD_SYSTEM_DEPS,
                     BootstrapPhase.PREPARE_BUILD,
                     BootstrapPhase.GET_BUILD_DEPS,
+                    BootstrapPhase.WAIT_BUILD_DEPS,
                     BootstrapPhase.INSTALL_BUILD_DEPS,
                     BootstrapPhase.BUILD,
                 )

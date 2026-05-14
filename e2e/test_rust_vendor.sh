@@ -15,6 +15,8 @@ VERSION="1.6.0"
 # Bootstrap the test project
 fromager \
     $NETWORK_ISOLATION \
+    --log-file="$OUTDIR/bootstrap.log" \
+    --error-log-file="$OUTDIR/fromager-errors.log" \
     --sdists-repo="$OUTDIR/sdists-repo" \
     --wheels-repo="$OUTDIR/wheels-repo" \
     --work-dir="$OUTDIR/work-dir" \

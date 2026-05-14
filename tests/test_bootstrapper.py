@@ -592,7 +592,12 @@ def test_cache_lookup_no_cache_url_returns_none(tmp_context: WorkContext) -> Non
 
 
 def test_phase_can_parallelize(tmp_context: WorkContext) -> None:
-    """PREPARE_BUILD and UPDATE_BUILD_SEQUENCE are serial; all other phases parallelize."""
+    """RESOLVE, START, PREPARE_SOURCE, GET_BUILD_DEPS, BUILD, PROCESS_INSTALL_DEPS, COMPLETE parallelize.
+
+    Serial phases: WAIT_BUILD_SYSTEM_DEPS, PREPARE_BUILD, WAIT_BUILD_DEPS,
+    INSTALL_BUILD_DEPS, UPDATE_BUILD_SEQUENCE.  The two WAIT phases are serial
+    barriers that ensure dep builds complete before the subsequent install step runs.
+    """
     parallelizable = (
         bootstrapper.BootstrapPhase.RESOLVE,
         bootstrapper.BootstrapPhase.START,
