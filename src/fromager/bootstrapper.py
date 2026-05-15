@@ -189,6 +189,7 @@ class Bootstrapper:
 
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
         self._stack_filename = self.ctx.work_dir / "bootstrap-stack.json"
+        logger.info("recording bootstrap stack state to %s", self._stack_filename)
 
         # Track failed packages in test mode (list of typed dicts for JSON export)
         self.failed_packages: list[FailureRecord] = []
