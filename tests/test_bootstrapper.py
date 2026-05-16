@@ -1,5 +1,6 @@
 import json
 import pathlib
+import typing
 from unittest.mock import Mock, patch
 
 import pytest
@@ -549,3 +550,170 @@ def test_cache_lookup_no_cache_url_returns_none(tmp_context: WorkContext) -> Non
     )
 
     assert result == (None, None)
+
+
+def _make_resolve_item(
+    req: str = "testpkg",
+    req_type: RequirementType = RequirementType.TOP_LEVEL,
+    why_snapshot: list[tuple[RequirementType, Requirement, Version]] | None = None,
+    parent: tuple[Requirement, Version] | None = None,
+) -> bootstrapper.WorkItem:
+    return bootstrapper.WorkItem(
+        req=Requirement(req),
+        req_type=req_type,
+        phase=bootstrapper.BootstrapPhase.RESOLVE,
+        why_snapshot=why_snapshot or [],
+        parent=parent,
+    )
+
+
+def _record_and_load(
+    bt: bootstrapper.Bootstrapper, stack: list[bootstrapper.WorkItem]
+) -> list[typing.Any]:
+    bt._record_stack_state(stack)
+    return typing.cast(list[typing.Any], json.loads(bt._stack_filename.read_text()))
+
+
+def test_record_stack_state_minimal_item(tmp_context: WorkContext) -> None:
+    """Minimal RESOLVE-phase item serializes with all optional fields None/empty."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    contents = _record_and_load(bt, [_make_resolve_item()])
+
+    result = contents[0]
+    assert result["req"] == "testpkg"
+    assert result["req_type"] == str(RequirementType.TOP_LEVEL)
+    assert result["phase"] == str(bootstrapper.BootstrapPhase.RESOLVE)
+    assert result["resolved_version"] is None
+    assert result["source_url"] is None
+    assert result["build_sdist_only"] is False
+    assert result["why"] == []
+    assert result["parent"] is None
+    assert result["build_system_deps"] == []
+    assert result["build_backend_deps"] == []
+    assert result["build_sdist_deps"] == []
+
+
+def test_record_stack_state_full_item(tmp_context: WorkContext) -> None:
+    """Fully-populated item serializes resolved_version, parent, why, and dep sets."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    parent_req = Requirement("parent-pkg")
+    parent_version = Version("2.0")
+    why_snapshot = [(RequirementType.INSTALL, parent_req, parent_version)]
+
+    item = bootstrapper.WorkItem(
+        req=Requirement("child-pkg>=1.0"),
+        req_type=RequirementType.INSTALL,
+        phase=bootstrapper.BootstrapPhase.BUILD,
+        why_snapshot=why_snapshot,
+        parent=(parent_req, parent_version),
+        resolved_version=Version("1.5"),
+        source_url="https://pypi.test/child-pkg-1.5.tar.gz",
+        build_sdist_only=True,
+        build_system_deps={Requirement("setuptools")},
+        build_backend_deps={Requirement("wheel")},
+        build_sdist_deps={Requirement("flit-core")},
+    )
+
+    contents = _record_and_load(bt, [item])
+    result = contents[0]
+
+    assert result["resolved_version"] == "1.5"
+    assert result["source_url"] == "https://pypi.test/child-pkg-1.5.tar.gz"
+    assert result["build_sdist_only"] is True
+    assert result["why"] == [
+        {
+            "req_type": str(RequirementType.INSTALL),
+            "req": "parent-pkg",
+            "version": "2.0",
+        }
+    ]
+    assert result["parent"] == {"req": "parent-pkg", "version": "2.0"}
+    assert result["build_system_deps"] == ["setuptools"]
+    assert result["build_backend_deps"] == ["wheel"]
+    assert result["build_sdist_deps"] == ["flit-core"]
+
+
+def test_record_stack_state_dep_sets_are_sorted(tmp_context: WorkContext) -> None:
+    """Mixed-order dep sets come out alphabetically sorted."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    item = bootstrapper.WorkItem(
+        req=Requirement("mypkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        phase=bootstrapper.BootstrapPhase.BUILD,
+        why_snapshot=[],
+        build_system_deps={Requirement("zzz"), Requirement("aaa"), Requirement("mmm")},
+    )
+
+    contents = _record_and_load(bt, [item])
+    assert contents[0]["build_system_deps"] == ["aaa", "mmm", "zzz"]
+
+
+def test_record_stack_state_writes_file(tmp_context: WorkContext) -> None:
+    """File is created; list length matches stack size."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    stack = [_make_resolve_item("pkga"), _make_resolve_item("pkgb")]
+
+    bt._record_stack_state(stack)
+
+    assert bt._stack_filename.exists()
+    contents = json.loads(bt._stack_filename.read_text())
+    assert isinstance(contents, list)
+    assert len(contents) == 2
+
+
+def test_record_stack_state_ordering(tmp_context: WorkContext) -> None:
+    """Index 0 = stack[-1] (next to pop); last index = stack[0]."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    stack = [
+        _make_resolve_item("pkga"),
+        _make_resolve_item("pkgb"),
+        _make_resolve_item("pkgc"),
+    ]
+
+    contents = _record_and_load(bt, stack)
+
+    assert contents[0]["req"] == "pkgc"
+    assert contents[-1]["req"] == "pkga"
+
+
+def test_record_stack_state_overwrites_each_call(tmp_context: WorkContext) -> None:
+    """Second call replaces first call's content."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+
+    bt._record_stack_state([_make_resolve_item("pkga"), _make_resolve_item("pkgb")])
+    first_content = bt._stack_filename.read_text()
+
+    bt._record_stack_state([_make_resolve_item("pkgc")])
+    second_content = bt._stack_filename.read_text()
+
+    assert first_content != second_content
+    contents = json.loads(second_content)
+    assert len(contents) == 1
+    assert contents[0]["req"] == "pkgc"
+
+
+def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
+    """`_record_stack_state` is called at least once during `bootstrap()`."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    call_count = {"n": 0}
+
+    original = bt._record_stack_state
+
+    def counting_record(stack: list[bootstrapper.WorkItem]) -> None:
+        call_count["n"] += 1
+        original(stack)
+
+    req = Requirement("testpkg")
+
+    with (
+        patch.object(bt, "_record_stack_state", side_effect=counting_record),
+        patch.object(
+            bt._resolver,
+            "resolve",
+            return_value=[("https://pypi.test/testpkg-1.0.tar.gz", Version("1.0"))],
+        ),
+        patch.object(bt, "_phase_start", return_value=[]),
+    ):
+        bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+
+    assert call_count["n"] >= 1
