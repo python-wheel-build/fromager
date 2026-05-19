@@ -796,6 +796,30 @@ def test_max_release_age_all_too_old_keeps_all(
     assert "keeping all to avoid empty resolution" in caplog.text
 
 
+def test_max_release_age_all_too_old_returns_empty_when_fallback_disabled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When fallback is disabled and all versions are too old, return empty list."""
+    max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider,
+                Requirement("test-pkg"),
+                max_age_cutoff=max_age_cutoff,
+                fallback_on_empty_age_filter=False,
+            )
+    assert results == []
+    assert "all 3 candidate(s)" in caplog.text
+    assert "keeping all to avoid empty resolution" not in caplog.text
+
+
 def test_max_release_age_candidates_without_upload_time_pass_through() -> None:
     """Candidates without upload_time are not filtered out by max-release-age."""
     no_timestamp_response = {

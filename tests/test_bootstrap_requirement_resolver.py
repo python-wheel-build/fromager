@@ -694,3 +694,172 @@ def test_resolve_prebuilt_after_source_uses_separate_cache(
     url2, version2 = results2[0]
     assert url2 == "https://files.pythonhosted.org/testpkg-1.5-py3-none-any.whl"
     assert version2 == Version("1.5")
+
+
+class TestResolveFromCacheServer:
+    """Tests for the cache server fallback in _resolve_from_cache_server."""
+
+    def test_returns_newest_version_from_cache(self, tmp_context: WorkContext) -> None:
+        """Falls back to cache server and returns only the newest version."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=True,
+            cache_wheel_server_url="http://cache.test/simple",
+        )
+        req = Requirement("testpkg")
+
+        with patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            return_value=[
+                ("http://cache.test/testpkg-3.0.whl", Version("3.0")),
+                ("http://cache.test/testpkg-2.0.whl", Version("2.0")),
+            ],
+        ):
+            result = brr._resolve_from_cache_server(req)
+
+        assert len(result) == 1
+        assert result[0][1] == Version("3.0")
+
+    def test_returns_empty_when_cache_has_no_match(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Returns empty list when cache server has nothing."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=True,
+            cache_wheel_server_url="http://cache.test/simple",
+        )
+        req = Requirement("testpkg")
+
+        with patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            return_value=[],
+        ):
+            result = brr._resolve_from_cache_server(req)
+
+        assert result == []
+
+    def test_returns_empty_on_exception(self, tmp_context: WorkContext) -> None:
+        """Returns empty list when cache server query fails."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=True,
+            cache_wheel_server_url="http://cache.test/simple",
+        )
+        req = Requirement("testpkg")
+
+        with patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            side_effect=RuntimeError("connection refused"),
+        ):
+            result = brr._resolve_from_cache_server(req)
+
+        assert result == []
+
+    def test_resolve_uses_cache_fallback_when_age_filter_empties(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """resolve() falls back to cache server when age filter produces empty result."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=True,
+            cache_wheel_server_url="http://cache.test/simple",
+        )
+        req = Requirement("testpkg")
+
+        with (
+            patch.object(brr, "_resolve_from_graph", return_value=None),
+            patch(
+                "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            ),
+            patch(
+                "fromager.bootstrap_requirement_resolver.resolver"
+                ".find_all_matching_from_provider",
+                return_value=[],
+            ) as mock_pypi,
+            patch.object(
+                brr,
+                "_resolve_from_cache_server",
+                return_value=[("http://cache.test/testpkg-1.0.whl", Version("1.0"))],
+            ) as mock_cache,
+        ):
+            result = brr.resolve(
+                req,
+                RequirementType.INSTALL,
+                parent_req=None,
+                pre_built=False,
+                return_all_versions=True,
+            )
+
+        mock_pypi.assert_called_once()
+        mock_cache.assert_called_once_with(req)
+        assert len(result) == 1
+        assert result[0][1] == Version("1.0")
+
+    def test_resolve_skips_cache_fallback_in_single_version_mode(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """resolve() does not fall back to cache server in single-version mode."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=False,
+            cache_wheel_server_url="http://cache.test/simple",
+        )
+        req = Requirement("testpkg")
+
+        with (
+            patch.object(brr, "_resolve_from_graph", return_value=None),
+            patch(
+                "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            ),
+            patch(
+                "fromager.bootstrap_requirement_resolver.resolver"
+                ".find_all_matching_from_provider",
+                return_value=[("url", Version("1.0"))],
+            ),
+            patch.object(brr, "_resolve_from_cache_server") as mock_cache,
+        ):
+            brr.resolve(
+                req,
+                RequirementType.INSTALL,
+                parent_req=None,
+                pre_built=False,
+            )
+
+        mock_cache.assert_not_called()
+
+    def test_resolve_skips_cache_fallback_when_no_server_url(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """resolve() does not fall back when no cache_wheel_server_url is set."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=True,
+            cache_wheel_server_url="",
+        )
+        req = Requirement("testpkg")
+
+        with (
+            patch.object(brr, "_resolve_from_graph", return_value=None),
+            patch(
+                "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            ),
+            patch(
+                "fromager.bootstrap_requirement_resolver.resolver"
+                ".find_all_matching_from_provider",
+                return_value=[],
+            ),
+            patch.object(brr, "_resolve_from_cache_server") as mock_cache,
+        ):
+            brr.resolve(
+                req,
+                RequirementType.INSTALL,
+                parent_req=None,
+                pre_built=False,
+                return_all_versions=True,
+            )
+
+        mock_cache.assert_not_called()

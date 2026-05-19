@@ -243,6 +243,7 @@ def find_all_matching_from_provider(
     provider: BaseProvider,
     req: Requirement,
     max_age_cutoff: datetime.datetime | None = None,
+    fallback_on_empty_age_filter: bool = True,
 ) -> list[tuple[str, Version]]:
     """Find all matching candidates from provider without full dependency resolution.
 
@@ -255,6 +256,10 @@ def find_all_matching_from_provider(
         max_age_cutoff: If set, reject candidates published before this time.
             If all candidates are older than the cutoff, all are kept and
             a warning is emitted to avoid empty resolution.
+        fallback_on_empty_age_filter: If ``True`` (default), keep all
+            candidates when age filtering would produce an empty result.
+            If ``False``, return an empty list instead, allowing the
+            caller to implement its own fallback strategy.
 
     Returns list of (url, version) tuples sorted by version (highest first).
 
@@ -315,7 +320,7 @@ def find_all_matching_from_provider(
             )
         if filtered:
             candidates_list = filtered
-        else:
+        elif fallback_on_empty_age_filter:
             logger.warning(
                 "%s: all %d candidate(s) of %s are older than %d days, "
                 "keeping all to avoid empty resolution",
@@ -324,6 +329,15 @@ def find_all_matching_from_provider(
                 req,
                 max_age_days,
             )
+        else:
+            logger.info(
+                "%s: all %d candidate(s) of %s are older than %d days",
+                req.name,
+                len(candidates_list),
+                req,
+                max_age_days,
+            )
+            candidates_list = []
 
     # Convert candidates to list of (url, version) tuples
     # Candidates are sorted by version (highest first) by BaseProvider.find_matches()

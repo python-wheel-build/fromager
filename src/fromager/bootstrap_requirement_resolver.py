@@ -12,7 +12,7 @@ import typing
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from . import resolver, sources, wheels
+from . import finders, resolver, sources, wheels
 from .dependency_graph import DependencyGraph
 from .requirements_file import RequirementType
 
@@ -40,15 +40,25 @@ class BootstrapRequirementResolver:
         self,
         ctx: context.WorkContext,
         prev_graph: DependencyGraph | None = None,
+        multiple_versions: bool = False,
+        cache_wheel_server_url: str = "",
     ) -> None:
         """Initialize requirement resolver.
 
         Args:
             ctx: Work context with constraints and settings
             prev_graph: Optional previous dependency graph for caching
+            multiple_versions: If ``True`` and no results are found through
+                any other approach, takes the latest candidate from the
+                cache server, ignoring the age filters.  In all other
+                cases, returns an empty list when no candidates are found.
+            cache_wheel_server_url: URL of the remote wheel cache server.
+                Used as a fallback when age filtering produces no candidates.
         """
         self.ctx = ctx
         self.prev_graph = prev_graph
+        self.multiple_versions = multiple_versions
+        self.cache_wheel_server_url = cache_wheel_server_url
         # Session-level resolution cache to avoid re-resolving same requirements
         # Key: (requirement_string, pre_built) to distinguish source vs prebuilt
         # Value: tuple of (url, version) tuples sorted by version (highest first)
@@ -72,6 +82,8 @@ class BootstrapRequirementResolver:
         1. Session cache (if previously resolved)
         2. Previous dependency graph
         3. PyPI resolution (source or prebuilt based on package build info)
+        4. Remote wheel cache server (multi-version mode only, when age
+           filtering produced no candidates)
 
         Args:
             req: Package requirement
@@ -110,36 +122,7 @@ class BootstrapRequirementResolver:
             logger.debug(f"resolved {req} from cache")
             return list(cached_result) if return_all_versions else [cached_result[0]]
 
-        # Resolve using strategies
-        results = self._resolve(req, req_type, parent_req, pre_built)
-
-        # Cache the result
-        self.cache_resolution(req, pre_built, results)
-        return results if return_all_versions else [results[0]]
-
-    def _resolve(
-        self,
-        req: Requirement,
-        req_type: RequirementType,
-        parent_req: Requirement | None,
-        pre_built: bool,
-    ) -> list[tuple[str, Version]]:
-        """Internal resolution logic without caching.
-
-        Tries resolution strategies in order:
-        1. Previous dependency graph
-        2. PyPI resolution (source or prebuilt)
-
-        Args:
-            req: Package requirement
-            req_type: Type of requirement
-            parent_req: Parent requirement from dependency chain
-            pre_built: Whether to resolve prebuilt (True) or source (False)
-
-        Returns:
-            List of (url, version) tuples sorted by version (highest first)
-        """
-        # Try graph
+        # Try previous dependency graph
         cached_resolution = self._resolve_from_graph(
             req=req,
             req_type=req_type,
@@ -151,17 +134,13 @@ class BootstrapRequirementResolver:
             logger.debug(
                 f"resolved from previous bootstrap: {len(cached_resolution)} version(s)"
             )
-            return cached_resolution
-
-        # Fallback to PyPI using provider pattern
-        if pre_built:
+            results = cached_resolution
+        elif pre_built:
             # Resolve prebuilt wheel
-            # Get wheel server URLs (use PyPI as cache/fallback server)
             wheel_server_urls = wheels.get_wheel_server_urls(
                 self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
             )
-            # Use shared retry loop logic from wheels module
-            return wheels.resolve_all_prebuilt_wheels(
+            results = wheels.resolve_all_prebuilt_wheels(
                 ctx=self.ctx,
                 req=req,
                 wheel_server_urls=wheel_server_urls,
@@ -176,9 +155,75 @@ class BootstrapRequirementResolver:
                 req_type=req_type,
             )
             max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
-            return resolver.find_all_matching_from_provider(
-                provider, req, max_age_cutoff=max_age_cutoff
+            results = resolver.find_all_matching_from_provider(
+                provider,
+                req,
+                max_age_cutoff=max_age_cutoff,
+                fallback_on_empty_age_filter=not self.multiple_versions,
             )
+
+            if not results and self.multiple_versions and self.cache_wheel_server_url:
+                logger.info(
+                    "no results found with normal resolution, "
+                    "falling back to the cache server %s",
+                    self.cache_wheel_server_url,
+                )
+                results = self._resolve_from_cache_server(req)
+
+            if not results:
+                logger.warning(
+                    "resolver returned no results "
+                    "(wheel server URL %s, %s version mode)",
+                    self.cache_wheel_server_url or "(none)",
+                    "multiple" if self.multiple_versions else "single",
+                )
+
+        # Only cache non-empty results.
+        if results:
+            self.cache_resolution(req, pre_built, results)
+
+        if not results:
+            return []
+        if return_all_versions:
+            return results
+        return [results[0]]
+
+    def _resolve_from_cache_server(self, req: Requirement) -> list[tuple[str, Version]]:
+        """Fall back to the remote wheel cache server for a cached version.
+
+        When age filtering removes all candidates in multi-version mode,
+        queries the remote cache server for the newest available wheel.
+        Returns at most one version so that transitive dependencies are
+        re-processed without rebuilding every old version.
+        """
+        logger.info(
+            "checking cache server %s for existing build",
+            self.cache_wheel_server_url,
+        )
+        best: tuple[str, Version] | None = None
+        for include_sdists, include_wheels in [(False, True), (True, False)]:
+            try:
+                provider = finders.PyPICacheProvider(
+                    cache_server_url=self.cache_wheel_server_url,
+                    constraints=self.ctx.constraints,
+                    include_sdists=include_sdists,
+                    include_wheels=include_wheels,
+                )
+                results = resolver.find_all_matching_from_provider(provider, req)
+                if results:
+                    url, version = results[0]
+                    if best is None or version > best[1]:
+                        best = (url, version)
+            except Exception as err:
+                logger.warning(
+                    "error checking cache server %s: %s",
+                    self.cache_wheel_server_url,
+                    err,
+                )
+        if best is not None:
+            logger.info("found version %s on cache server", best[1])
+            return [best]
+        return []
 
     def get_cached_resolution(
         self,
