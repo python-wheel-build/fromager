@@ -1,4 +1,5 @@
 import json
+import logging
 import pathlib
 import typing
 from unittest.mock import Mock, patch
@@ -427,9 +428,12 @@ def test_cache_lookup_resolver_exception_logs_info(
     """ResolverException (wheel not found) returns (None, None) and logs info."""
     bt = _make_cache_bootstrapper(tmp_context)
 
-    with patch(
-        "fromager.resolver.find_all_matching_from_provider",
-        side_effect=ResolverException("no matching version"),
+    with (
+        caplog.at_level(logging.INFO, logger="fromager.bootstrapper"),
+        patch(
+            "fromager.resolver.find_all_matching_from_provider",
+            side_effect=ResolverException("no matching version"),
+        ),
     ):
         result = bt._download_wheel_from_cache(
             req=Requirement("test-package"),
