@@ -1,6 +1,8 @@
 import pathlib
 import sys
+import tarfile
 import typing
+import zipfile
 from unittest.mock import Mock, patch
 
 import pytest
@@ -335,3 +337,476 @@ def test_scan_compiled_extensions_broken_symlink(tmp_path: pathlib.Path) -> None
     broken_link.symlink_to(tmp_path / "nonexistent_target")
     matches = sources.scan_compiled_extensions(tmp_path)
     assert matches == []
+
+
+def test_write_read_build_meta_roundtrip(tmp_path: pathlib.Path) -> None:
+    req = Requirement("numpy==1.0")
+    source_filename = tmp_path / "numpy-1.0.tar.gz"
+
+    meta_file = sources.write_build_meta(tmp_path, req, source_filename, Version("1.0"))
+
+    assert meta_file == tmp_path / "build-meta.json"
+    assert meta_file.is_file()
+
+    meta = sources.read_build_meta(tmp_path)
+
+    assert meta["req"] == "numpy==1.0"
+    assert meta["source-filename"] == str(source_filename)
+    assert meta["version"] == "1.0"
+
+
+def test_ensure_pkg_info_creates_stub_when_missing(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    sdist_root = tmp_path / "pkg-1.0"
+    sdist_root.mkdir()
+
+    result = sources.ensure_pkg_info(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+    )
+
+    assert result is False
+    pkg_info = sdist_root / "PKG-INFO"
+    assert pkg_info.is_file()
+    content = pkg_info.read_text()
+    assert "Name: pkg" in content
+    assert "Version: 1.0" in content
+
+
+def test_ensure_pkg_info_returns_true_when_exists(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    sdist_root = tmp_path / "pkg-1.0"
+    sdist_root.mkdir()
+    (sdist_root / "PKG-INFO").write_text("existing content")
+
+    result = sources.ensure_pkg_info(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+    )
+
+    assert result is True
+
+
+def test_ensure_pkg_info_does_not_overwrite_existing(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    sdist_root = tmp_path / "pkg-1.0"
+    sdist_root.mkdir()
+    pkg_info = sdist_root / "PKG-INFO"
+    pkg_info.write_text("existing content")
+
+    sources.ensure_pkg_info(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+    )
+
+    assert pkg_info.read_text() == "existing content"
+
+
+def test_ensure_pkg_info_creates_in_both_dirs(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    sdist_root = tmp_path / "pkg-1.0"
+    sdist_root.mkdir()
+    build_dir = tmp_path / "pkg-1.0" / "python"
+    build_dir.mkdir()
+
+    result = sources.ensure_pkg_info(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+        build_dir=build_dir,
+    )
+
+    assert result is False
+    assert (sdist_root / "PKG-INFO").is_file()
+    assert (build_dir / "PKG-INFO").is_file()
+
+
+def test_get_source_type_git(
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg @ git+https://github.com/org/pkg.git")
+    result = sources.get_source_type(tmp_context, req)
+
+    assert result == sources.SourceType.GIT
+
+
+@patch("fromager.overrides.find_override_method")
+def test_get_source_type_override_via_download_source(
+    mock_find: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    mock_find.side_effect = lambda name, method: (
+        (lambda: None) if method == "download_source" else None
+    )
+    req = Requirement("pkg==1.0")
+    result = sources.get_source_type(tmp_context, req)
+
+    assert result == sources.SourceType.OVERRIDE
+
+
+@patch("fromager.overrides.find_override_method")
+def test_get_source_type_override_via_resolver_provider(
+    mock_find: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    mock_find.side_effect = lambda name, method: (
+        (lambda: None) if method == "get_resolver_provider" else None
+    )
+    req = Requirement("pkg==1.0")
+    result = sources.get_source_type(tmp_context, req)
+
+    assert result == sources.SourceType.OVERRIDE
+
+
+@patch("fromager.overrides.find_override_method", return_value=None)
+def test_get_source_type_override_via_download_source_url(
+    mock_find: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    with patch.object(
+        type(tmp_context.package_build_info(Requirement("pkg==1.0"))),
+        "download_source_url",
+        return_value="https://pkg.test/pkg-1.0.tar.gz",
+    ):
+        req = Requirement("pkg==1.0")
+        result = sources.get_source_type(tmp_context, req)
+
+    assert result == sources.SourceType.OVERRIDE
+
+
+@patch("fromager.overrides.find_override_method", return_value=None)
+def test_get_source_type_sdist(
+    mock_find: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+    result = sources.get_source_type(tmp_context, req)
+
+    assert result == sources.SourceType.SDIST
+
+
+def test_unpack_source_tar_gz(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    req = Requirement("mypkg==1.0")
+    version = Version("1.0")
+    inner_dir = "mypkg-1.0"
+
+    tar_path = tmp_path / "mypkg-1.0.tar.gz"
+    content_dir = tmp_path / "tar_content" / inner_dir
+    content_dir.mkdir(parents=True)
+    (content_dir / "setup.py").write_text("# setup")
+    with tarfile.open(tar_path, "w:gz") as t:
+        t.add(content_dir.parent / inner_dir, arcname=inner_dir)
+
+    result, is_new = sources.unpack_source(
+        ctx=tmp_context, req=req, version=version, source_filename=tar_path
+    )
+
+    assert is_new is True
+    assert result.name == inner_dir
+    assert (result / "setup.py").is_file()
+
+
+def test_unpack_source_zip(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    req = Requirement("mypkg==1.0")
+    version = Version("1.0")
+    inner_dir = "mypkg-1.0"
+
+    zip_path = tmp_path / "mypkg-1.0.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr(f"{inner_dir}/setup.py", "# setup")
+
+    result, is_new = sources.unpack_source(
+        ctx=tmp_context, req=req, version=version, source_filename=zip_path
+    )
+
+    assert is_new is True
+    assert result.name == inner_dir
+    assert (result / "setup.py").is_file()
+
+
+def test_unpack_source_unknown_extension(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    req = Requirement("mypkg==1.0")
+    version = Version("1.0")
+    bad_file = tmp_path / "mypkg-1.0.fake"
+    bad_file.write_text("bad")
+
+    with pytest.raises(ValueError):
+        sources.unpack_source(
+            ctx=tmp_context, req=req, version=version, source_filename=bad_file
+        )
+
+
+def test_unpack_source_renames_mismatched_dir(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    req = Requirement("My-Pkg==1.0")
+    version = Version("1.0")
+    archive_inner = "My-Pkg-1.0"
+    expected_name = "my_pkg-1.0"
+
+    tar_path = tmp_path / "My-Pkg-1.0.tar.gz"
+    content_dir = tmp_path / "tar_content" / archive_inner
+    content_dir.mkdir(parents=True)
+    (content_dir / "setup.py").write_text("# setup")
+    with tarfile.open(tar_path, "w:gz") as t:
+        t.add(content_dir.parent / archive_inner, arcname=archive_inner)
+
+    result, is_new = sources.unpack_source(
+        ctx=tmp_context, req=req, version=version, source_filename=tar_path
+    )
+
+    assert is_new is True
+    assert result.name == expected_name
+
+
+def test_unpack_source_reuse_when_no_cleanup(
+    tmp_path: pathlib.Path,
+) -> None:
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "overrides/patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        wheel_server_url="",
+        cleanup=False,
+    )
+    ctx.setup()
+    req = Requirement("mypkg==1.0")
+    version = Version("1.0")
+
+    existing = ctx.work_dir / "mypkg-1.0" / "mypkg-1.0"
+    existing.mkdir(parents=True)
+    (existing / "setup.py").write_text("# old")
+
+    result, is_new = sources.unpack_source(
+        ctx=ctx,
+        req=req,
+        version=version,
+        source_filename=tmp_path / "mypkg-1.0.tar.gz",
+    )
+
+    assert is_new is False
+    assert result == existing
+    assert (result / "setup.py").read_text() == "# old"
+
+
+@patch("fromager.sources.download_git_source")
+def test_download_source_git_already_cloned(
+    mock_git: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    clone_dir = tmp_path / "cloned"
+    clone_dir.mkdir()
+    req = Requirement("pkg @ git+https://github.com/org/pkg.git")
+
+    result = sources.download_source(
+        ctx=tmp_context,
+        req=req,
+        version=Version("1.0"),
+        download_url=str(clone_dir),
+    )
+
+    assert result == clone_dir
+    mock_git.assert_not_called()
+
+
+@patch("fromager.sources.download_git_source")
+def test_download_source_git_with_ref(
+    mock_git: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg @ git+https://github.com/org/pkg.git@v2.0")
+
+    result = sources.download_source(
+        ctx=tmp_context,
+        req=req,
+        version=Version("2.0"),
+        download_url="/nonexistent",
+    )
+
+    mock_git.assert_called_once()
+    call_kwargs = mock_git.call_args[1]
+    assert call_kwargs["ref"] == "v2.0"
+    assert call_kwargs["url_to_clone"] == "git+https://github.com/org/pkg.git"
+    assert result == tmp_context.work_dir / "pkg-2.0" / "pkg-2.0"
+
+
+@patch("fromager.overrides.find_and_invoke")
+def test_download_source_regular_package(
+    mock_invoke: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    expected = tmp_path / "pkg-1.0.tar.gz"
+    expected.write_text("test")
+    mock_invoke.return_value = expected
+    req = Requirement("pkg==1.0")
+
+    result = sources.download_source(
+        ctx=tmp_context,
+        req=req,
+        version=Version("1.0"),
+        download_url="https://pkg.test/pkg-1.0.tar.gz",
+    )
+
+    assert result == expected
+    mock_invoke.assert_called_once()
+
+
+@patch("fromager.overrides.find_and_invoke", return_value="not-a-path")
+def test_download_source_invalid_return_raises(
+    mock_invoke: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+
+    with pytest.raises(ValueError):
+        sources.download_source(
+            ctx=tmp_context,
+            req=req,
+            version=Version("1.0"),
+            download_url="https://pkg.test/pkg-1.0.tar.gz",
+        )
+
+
+@patch("fromager.sources.write_build_meta")
+@patch("fromager.overrides.find_and_invoke")
+def test_prepare_source_plugin_returns_path(
+    mock_invoke: Mock,
+    mock_write_meta: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    source_dir = tmp_path / "pkg-1.0"
+    source_dir.mkdir()
+    mock_invoke.return_value = source_dir
+    req = Requirement("pkg==1.0")
+
+    result = sources.prepare_source(
+        ctx=tmp_context,
+        req=req,
+        source_filename=tmp_path / "pkg-1.0.tar.gz",
+        version=Version("1.0"),
+    )
+
+    assert result == source_dir
+
+
+@patch("fromager.sources.write_build_meta")
+@patch("fromager.overrides.find_and_invoke")
+def test_prepare_source_plugin_returns_tuple(
+    mock_invoke: Mock,
+    mock_write_meta: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    source_dir = tmp_path / "pkg-1.0"
+    source_dir.mkdir()
+    mock_invoke.return_value = (source_dir, True)
+    req = Requirement("pkg==1.0")
+
+    result = sources.prepare_source(
+        ctx=tmp_context,
+        req=req,
+        source_filename=tmp_path / "pkg-1.0.tar.gz",
+        version=Version("1.0"),
+    )
+
+    assert result == source_dir
+
+
+@patch("fromager.sources.write_build_meta")
+@patch("fromager.overrides.find_and_invoke")
+def test_prepare_source_plugin_returns_bad_tuple(
+    mock_invoke: Mock,
+    mock_write_meta: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    mock_invoke.return_value = (tmp_path, True, "bad")
+    req = Requirement("pkg==1.0")
+
+    with pytest.raises(ValueError):
+        sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=tmp_path / "pkg-1.0.tar.gz",
+            version=Version("1.0"),
+        )
+
+
+@patch("fromager.overrides.find_and_invoke")
+@patch("fromager.packagesettings.get_extra_environ", return_value={})
+def test_build_sdist_raises_file_not_found(
+    mock_environ: Mock,
+    mock_invoke: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    mock_invoke.return_value = tmp_context.sdists_builds / "nonexistent-1.0.tar.gz"
+
+    req = Requirement("pkg==1.0")
+    build_env = Mock()
+
+    with pytest.raises(FileNotFoundError):
+        sources.build_sdist(
+            ctx=tmp_context,
+            req=req,
+            version=Version("1.0"),
+            sdist_root_dir=tmp_path / "src",
+            build_env=build_env,
+        )
+
+
+@patch("fromager.overrides.find_and_invoke")
+@patch("fromager.packagesettings.get_extra_environ", return_value={})
+def test_build_sdist_raises_wrong_directory(
+    mock_environ: Mock,
+    mock_invoke: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    wrong_dir = tmp_path / "wrong"
+    wrong_dir.mkdir()
+    sdist_file = wrong_dir / "pkg-1.0.tar.gz"
+    sdist_file.write_text("fake sdist")
+    mock_invoke.return_value = sdist_file
+
+    req = Requirement("pkg==1.0")
+    build_env = Mock()
+
+    with pytest.raises(ValueError):
+        sources.build_sdist(
+            ctx=tmp_context,
+            req=req,
+            version=Version("1.0"),
+            sdist_root_dir=tmp_path / "src",
+            build_env=build_env,
+        )
