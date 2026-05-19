@@ -128,7 +128,7 @@ def test_cooldown_disabled_selects_latest() -> None:
             json=_cooldown_json_response,
             headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
         )
-        provider = resolver.PyPIProvider(include_sdists=True, cooldown=None)
+        provider = resolver.PyPIProvider(include_sdists=True)
         rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
         result = rslvr.resolve([Requirement("test-pkg")])
 
@@ -351,7 +351,7 @@ def test_non_pypi_index_allows_without_upload_time(
 def _make_ctx(
     tmp_path: pathlib.Path,
     *,
-    cooldown: candidate.Cooldown | None,
+    cooldown: candidate.Cooldown | None = None,
     min_release_age: int | None = None,
 ) -> context.WorkContext:
     """Build a WorkContext with an optional per-package min_release_age setting."""
@@ -381,7 +381,7 @@ def test_resolve_package_cooldown_inherits_global(tmp_path: pathlib.Path) -> Non
     """No per-package override returns a cooldown equal to the global one."""
     ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is not None
+    assert result.min_age
     assert result.min_age == _COOLDOWN.min_age
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
     assert result.exempt_versions == frozenset()
@@ -391,21 +391,21 @@ def test_resolve_package_cooldown_disabled_per_package(tmp_path: pathlib.Path) -
     """min_release_age=0 disables the cooldown for the package even when global is set."""
     ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN, min_release_age=0)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is None
+    assert not result.min_age
 
 
 def test_resolve_package_cooldown_disabled_no_global(tmp_path: pathlib.Path) -> None:
-    """min_release_age=0 with no global cooldown still returns None."""
-    ctx = _make_ctx(tmp_path, cooldown=None, min_release_age=0)
+    """min_release_age=0 with no global cooldown returns a disabled cooldown."""
+    ctx = _make_ctx(tmp_path, min_release_age=0)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is None
+    assert not result.min_age
 
 
 def test_resolve_package_cooldown_override_days(tmp_path: pathlib.Path) -> None:
     """Positive per-package override creates a new Cooldown with the given days."""
     ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN, min_release_age=30)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is not None
+    assert result.min_age
     assert result.min_age.days == 30
     # bootstrap_time is inherited from the global cooldown for a consistent cutoff.
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
@@ -413,9 +413,9 @@ def test_resolve_package_cooldown_override_days(tmp_path: pathlib.Path) -> None:
 
 def test_resolve_package_cooldown_override_no_global(tmp_path: pathlib.Path) -> None:
     """Positive per-package override works even without a global cooldown."""
-    ctx = _make_ctx(tmp_path, cooldown=None, min_release_age=14)
+    ctx = _make_ctx(tmp_path, min_release_age=14)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is not None
+    assert result.min_age
     assert result.min_age.days == 14
 
 
@@ -533,7 +533,7 @@ _gitlab_tags_response = """
 
 
 def _make_gitlab_provider(
-    cooldown: candidate.Cooldown | None,
+    cooldown: candidate.Cooldown | None = None,
 ) -> resolver.GitLabTagProvider:
     return resolver.GitLabTagProvider(
         project_path="test/pkg",
@@ -568,7 +568,7 @@ def test_gitlab_cooldown_disabled_selects_latest() -> None:
     """Without a cooldown, GitLabTagProvider selects the latest tag."""
     with requests_mock.Mocker() as r:
         r.get(_GITLAB_API_URL, text=_gitlab_tags_response)
-        provider = _make_gitlab_provider(cooldown=None)
+        provider = _make_gitlab_provider()
         rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
         result = rslvr.resolve([Requirement("test-pkg")])
         assert str(result.mapping["test-pkg"].version) == "0.0.3"
@@ -887,8 +887,8 @@ def test_compute_max_age_cutoff_with_cooldown(
 def test_compute_max_age_cutoff_without_cooldown(
     tmp_context: context.WorkContext,
 ) -> None:
-    """_compute_max_age_cutoff uses current time when no cooldown is set."""
-    tmp_context.cooldown = None
+    """_compute_max_age_cutoff uses disabled cooldown's bootstrap_time."""
+    tmp_context.cooldown = candidate.Cooldown.disabled()
     tmp_context.set_max_release_age(30)
     cutoff = resolver._compute_max_age_cutoff(tmp_context)
     assert cutoff is not None
@@ -912,7 +912,7 @@ def test_resolve_package_cooldown_exempt_toplevel_equality_pin(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.3.2"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is None
+    assert not result.min_age
 
 
 def test_resolve_package_cooldown_enforced_transitive_equality_pin(
@@ -923,7 +923,7 @@ def test_resolve_package_cooldown_enforced_transitive_equality_pin(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.3.2"), req_type=RequirementType.INSTALL
     )
-    assert result is not None
+    assert result.min_age
     assert result.min_age == _COOLDOWN.min_age
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
     assert result.exempt_versions == frozenset()
@@ -937,7 +937,7 @@ def test_resolve_package_cooldown_enforced_toplevel_no_pin(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is not None
+    assert result.min_age
     assert result.min_age == _COOLDOWN.min_age
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
     assert result.exempt_versions == frozenset()
@@ -951,7 +951,7 @@ def test_resolve_package_cooldown_none_req_type_not_exempt(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.3.2"), req_type=None
     )
-    assert result is not None
+    assert result.min_age
     assert result.min_age == _COOLDOWN.min_age
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
     assert result.exempt_versions == frozenset()
@@ -965,7 +965,7 @@ def test_resolve_package_cooldown_toplevel_wildcard_equality_not_exempt(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.*"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is not None
+    assert result.min_age
     assert result.min_age == _COOLDOWN.min_age
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
     assert result.exempt_versions == frozenset()
@@ -979,7 +979,7 @@ def test_resolve_package_cooldown_toplevel_compound_specifier_not_exempt(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.0,>0.9"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is not None
+    assert result.min_age
     assert result.min_age == _COOLDOWN.min_age
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
     assert result.exempt_versions == frozenset()
@@ -1025,7 +1025,7 @@ def test_non_exact_toplevel_entry_does_not_exempt(tmp_path: pathlib.Path) -> Non
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
     )
-    assert result is not None
+    assert result.min_age
     assert result.exempt_versions == frozenset()
 
 
@@ -1044,7 +1044,7 @@ def test_wildcard_toplevel_pin_does_not_exempt(tmp_path: pathlib.Path) -> None:
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
     )
-    assert result is not None
+    assert result.min_age
     assert result.exempt_versions == frozenset()
 
 
@@ -1070,7 +1070,7 @@ def test_name_normalization_across_requirement_and_graph(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("Test_Pkg>=1.0"), req_type=RequirementType.INSTALL
     )
-    assert result is not None
+    assert result.min_age
     assert result.exempt_versions == frozenset({Version("1.3.2")})
 
 
@@ -1086,7 +1086,7 @@ def test_toplevel_pin_takes_precedence_over_per_package_override(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.3.2"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is None
+    assert not result.min_age
 
 
 def test_transitive_dep_cooldown_blocks_non_pinned_version(
@@ -1157,7 +1157,7 @@ def test_transitive_dep_cooldown_not_bypassed_for_all_versions(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
     )
-    assert result is not None
+    assert result.min_age
     assert result.min_age == _COOLDOWN.min_age
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
     assert result.exempt_versions == frozenset({Version("2.0.0")})
@@ -1305,7 +1305,7 @@ def test_transitive_dep_exempts_pinned_version_from_cooldown(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
     )
-    assert result is not None
+    assert result.min_age
     assert result.exempt_versions == frozenset({Version("2.0.0")})
 
 

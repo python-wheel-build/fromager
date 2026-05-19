@@ -20,9 +20,10 @@ from . import (
     external_commands,
     packagesettings,
 )
+from .candidate import Cooldown
 
 if typing.TYPE_CHECKING:
-    from . import build_environment, candidate
+    from . import build_environment
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class WorkContext:
         max_jobs: int | None = None,
         settings_dir: pathlib.Path | None = None,
         wheel_server_url: str = "",
-        cooldown: candidate.Cooldown | None = None,
+        cooldown: Cooldown | None = None,
         max_release_age: datetime.timedelta | None = None,
     ):
         if active_settings is None:
@@ -95,7 +96,9 @@ class WorkContext:
 
         self._parallel_builds = False
 
-        self.cooldown: candidate.Cooldown | None = cooldown
+        self.cooldown: Cooldown = (
+            cooldown if cooldown is not None else Cooldown.disabled()
+        )
         self._max_release_age: datetime.timedelta | None = max_release_age
 
     @property
