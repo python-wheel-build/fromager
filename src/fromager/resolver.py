@@ -127,7 +127,8 @@ def resolve(
         req_type=req_type,
         ignore_platform=ignore_platform,
     )
-    check_pypi_quarantine_status(req.name)
+    if not ctx.package_build_info(req).resolver_skip_pypi_quarantine:
+        check_pypi_quarantine_status(req.name)
     provider.cooldown = resolve_package_cooldown(ctx, req, req_type=req_type)
     max_age_cutoff = _compute_max_age_cutoff(ctx)
     results = find_all_matching_from_provider(
@@ -402,6 +403,12 @@ def get_project_from_pypi(
                 "project %r is no longer active: %r: %s",
                 project,
                 package.status,
+                package.status_reason,
+            )
+        case pypi_simple.ProjectStatus.QUARANTINED:
+            logger.debug(
+                "project %r is quarantined on PyPI, check was skipped: %s",
+                project,
                 package.status_reason,
             )
         case _:

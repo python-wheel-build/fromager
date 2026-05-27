@@ -262,6 +262,14 @@ class PackageBuildInfo:
         return self._ps.resolver_dist.min_release_age
 
     @property
+    def resolver_skip_pypi_quarantine(self) -> bool:
+        """Skip PyPI quarantine status check for this package?
+
+        .. versionadded:: 0.86
+        """
+        return self._ps.resolver_dist.skip_pypi_quarantine
+
+    @property
     def use_pypi_org_metadata(self) -> bool:
         """Can use metadata from pypi.org JSON / Simple API?
 

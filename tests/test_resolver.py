@@ -1336,3 +1336,40 @@ def test_check_pypi_quarantine_status_handles_fetch_failure() -> None:
             status_code=404,
         )
         resolver.check_pypi_quarantine_status("testpkg")
+
+
+def test_check_pypi_quarantine_skipped_with_per_package_setting() -> None:
+    """resolve() skips quarantine check when skip_pypi_quarantine is True."""
+    from unittest.mock import MagicMock, patch
+
+    mock_ctx = MagicMock()
+    mock_pbi = MagicMock()
+    mock_pbi.resolver_skip_pypi_quarantine = True
+    mock_pbi.resolver_min_release_age = None
+    mock_ctx.package_build_info.return_value = mock_pbi
+    mock_ctx.cooldown = None
+    mock_ctx.max_release_age = None
+
+    req = Requirement("testpkg")
+
+    with (
+        patch.object(resolver, "check_pypi_quarantine_status") as mock_check,
+        patch.object(
+            resolver,
+            "overrides",
+        ) as mock_overrides,
+        patch.object(resolver, "find_all_matching_from_provider") as mock_find,
+    ):
+        mock_provider = MagicMock()
+        mock_overrides.find_and_invoke.return_value = mock_provider
+        mock_find.return_value = [
+            ("https://pypi.test/testpkg-1.0.tar.gz", Version("1.0"))
+        ]
+
+        resolver.resolve(
+            ctx=mock_ctx,
+            req=req,
+            sdist_server_url="https://pypi.test/simple",
+        )
+
+        mock_check.assert_not_called()

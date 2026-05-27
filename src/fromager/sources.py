@@ -181,7 +181,8 @@ def resolve_source(
         )
 
         # PEP 792: check quarantine status on PyPI regardless of resolver type.
-        resolver.check_pypi_quarantine_status(req.name)
+        if not ctx.package_build_info(req).resolver_skip_pypi_quarantine:
+            resolver.check_pypi_quarantine_status(req.name)
 
         # Get all matching candidates from provider
         max_age_cutoff = resolver._compute_max_age_cutoff(ctx)
