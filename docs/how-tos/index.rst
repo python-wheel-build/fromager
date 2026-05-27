@@ -21,6 +21,7 @@ Essential guides for initial setup and first builds.
 .. toctree::
    :maxdepth: 1
 
+   authentication
    containers
    bootstrap-constraints
 
