@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import logging
+import os
 import pathlib
 import re
 import typing
 
 from packaging.requirements import Requirement
-from packaging.utils import BuildTag, canonicalize_name
+from packaging.tags import Tag
+from packaging.utils import (
+    BuildTag,
+    canonicalize_name,
+    parse_sdist_filename,
+    parse_wheel_filename,
+)
 
-from . import overrides, resolver
+from . import overrides, requirements_file, resolver
+from .candidate import Candidate
 from .constraints import Constraints
 from .requirements_file import RequirementType
 
@@ -64,6 +72,129 @@ class PyPICacheProvider(resolver.PyPIProvider):
             cooldown=None,
             supports_upload_time=False,
         )
+
+
+class LocalIndexProvider(resolver.BaseProvider):
+    """Lookup distributions in a local directory
+
+    The local index provider is designed for Fromager's internal cache
+    directories. It looks up sdist and wheels files in a local directory or
+    directory tree. A flat provider has all files in one directory. If flat
+    is false, then the provider expects nested directories like on PyPI:
+
+    - flat: ``{path}/meson_python-0.19.0-2-py3-none-any.whl``
+    - nested: ``{path}/meson-python/meson_python-0.19.0-2-py3-none-any.whl``
+
+    Caching is disabled, so the provider picks up local changes immedately.
+    Local file lookups and wheel/sdist filename parsing are fast.
+    """
+
+    provider_description: typing.ClassVar[str] = (
+        "Local provider (path: {self.path}, flat: {self.flat})"
+    )
+
+    def __init__(
+        self,
+        *,
+        path: pathlib.Path,
+        flat: bool,
+        include_sdists: bool = True,
+        include_wheels: bool = True,
+        constraints: Constraints | None = None,
+        req_type: requirements_file.RequirementType | None = None,
+    ):
+        super().__init__(
+            constraints=constraints,
+            req_type=req_type,
+            use_resolver_cache=False,
+            cooldown=None,
+        )
+        self.path = path
+        self.flat = flat
+        self.include_sdists = include_sdists
+        self.include_wheels = include_wheels
+        self.supports_upload_time = False
+
+    @property
+    def cache_key(self) -> str:
+        """No caching, local lookup is fast"""
+        raise NotImplementedError()
+
+    def find_candidates(self, identifier: str) -> resolver.Candidates:
+        """Find matching distribution files for the given package identifier."""
+        normalized_identifier = canonicalize_name(identifier)
+        # directory uses normalized name with dash
+        path = self.path if self.flat else self.path / normalized_identifier
+
+        try:
+            entries = os.scandir(path)
+        except OSError as err:
+            logger.debug("cannot read from directory %r: %s", path, err)
+            return []
+
+        candidates: list[Candidate] = []
+        for entry in entries:
+            if not entry.is_file():
+                # not a file, ignore
+                continue
+
+            if entry.name.endswith((".tar.gz", ".zip")):
+                if not self.include_sdists:
+                    if resolver.DEBUG_RESOLVER:
+                        logger.debug("skipping %r because it is an sdist", entry.name)
+                    continue
+                is_sdist = True
+            elif entry.name.endswith(".whl"):
+                if not self.include_wheels:
+                    if resolver.DEBUG_RESOLVER:
+                        logger.debug("skipping %r because it is a wheel", entry.name)
+                    continue
+                is_sdist = False
+            else:
+                # ignore other files
+                continue
+
+            try:
+                if is_sdist:
+                    name, version = parse_sdist_filename(entry.name)
+                    tags: frozenset[Tag] = frozenset()
+                    build_tag: BuildTag = ()
+                else:
+                    name, version, build_tag, tags = parse_wheel_filename(entry.name)
+            except Exception as err:
+                # Ignore files with invalid versions
+                if resolver.DEBUG_RESOLVER:
+                    logger.debug("invalid file name %r: %s", entry.name, err)
+                continue
+
+            if name != normalized_identifier:
+                if resolver.DEBUG_RESOLVER:
+                    logger.debug(
+                        "dist name %r of %r does not match identifier %r",
+                        name,
+                        entry.name,
+                        identifier,
+                    )
+                continue
+
+            if not is_sdist and not tags.intersection(resolver.SUPPORTED_TAGS):
+                # ignore wheels unless they have supported tags
+                if resolver.DEBUG_RESOLVER:
+                    logger.debug("ignoring %r with tags %r", entry.name, tags)
+                continue
+
+            c = Candidate(
+                name=name,
+                version=version,
+                url=entry.path,
+                is_sdist=is_sdist,
+                build_tag=build_tag,
+                has_metadata=False,
+                upload_time=None,
+            )
+            candidates.append(c)
+
+        return candidates
 
 
 def _dist_name_to_filename(dist_name: str) -> str:
