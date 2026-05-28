@@ -20,7 +20,7 @@ The retry system provides:
 
 - **GitHub API rate limit handling** with proper reset time detection
 
-- **GitHub authentication** automatically applied for GitHub API requests via `GITHUB_TOKEN` environment variable
+- **Automatic authentication** for GitHub and GitLab APIs (see {doc}`how-tos/authentication`)
 
 - **Temporary file handling** to prevent partial downloads
 
@@ -37,10 +37,10 @@ export FROMAGER_HTTP_BACKOFF_FACTOR=2.0
 
 # Request timeout in seconds (default: 120)
 export FROMAGER_HTTP_TIMEOUT=180
-
-# Token for GitHub API authentication (prevents rate limiting)
-export GITHUB_TOKEN=your_github_token_here
 ```
+
+Authentication credentials (`GITHUB_TOKEN`, `GITLAB_PRIVATE_TOKEN`,
+etc.) are documented in {doc}`how-tos/authentication`.
 
 ## Error Types Handled
 
@@ -73,35 +73,27 @@ The retry functionality is automatically enabled for all HTTP operations in From
 
 ### For Plugin Developers
 
-If you're writing plugins that need HTTP functionality, you can use the retry session:
+If you're writing plugins that need HTTP functionality, use the
+shared session from `request_session`. It includes retry handling
+and automatic authentication for GitHub and GitLab:
 
 ```python
-from fromager.http_retry import get_retry_session
-
-# Get a session with retry capabilities
-session = get_retry_session()
+from fromager.request_session import session
 
 # Use it like a normal requests session
-response = session.get("https://example.com/api/data")
+response = session.get("https://pkg.test/api/data")
 response.raise_for_status()
 ```
 
-For more advanced retry configuration:
+To register authentication for additional hosts:
 
 ```python
-from fromager.http_retry import create_retry_session
+from fromager.request_session import session_auth
 
-# Custom retry configuration
-retry_config = {
-    "total": 5,
-    "backoff_factor": 2.0,
-    "status_forcelist": [429, 502, 503, 504],
-}
+def _resolve_my_auth(scheme: str, hostname: str) -> dict[str, str]:
+    return {"Authorization": "Bearer my-token"}
 
-session = create_retry_session(
-    retry_config=retry_config,
-    timeout=60.0
-)
+session_auth.add("https://my-registry.test", _resolve_my_auth)
 ```
 
 ### Decorating Functions with Retry Logic
@@ -128,7 +120,7 @@ The retry system logs important events:
 
 - **WARNING**: When retries are attempted with backoff times
 - **ERROR**: When all retry attempts are exhausted
-- **DEBUG**: Detailed retry configuration and GitHub token status
+- **DEBUG**: Detailed retry configuration and authentication resolution
 
 Example log output:
 
@@ -151,13 +143,13 @@ INFO saved /path/to/package.tar.gz
 
 If you're seeing many retries, consider:
 
-- Setting `GITHUB_TOKEN` for GitHub API calls (automatically applied to GitHub requests)
+- Configuring authentication credentials (see {doc}`how-tos/authentication`) to avoid API rate limits
 - Increasing timeout values for slow connections
 - Checking network connectivity and DNS resolution
 
 ### API Rate Limiting
 
-- Use `GITHUB_TOKEN` for GitHub repositories
+- Configure credentials via netrc or environment variables (see {doc}`how-tos/authentication`)
 - Consider using a local package mirror for PyPI
 - Monitor API usage if using private registries
 

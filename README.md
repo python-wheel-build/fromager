@@ -29,35 +29,11 @@ Fromager can also build wheels in collections, rather than individually. Managin
 
 This approach makes Fromager especially useful in Python-heavy domains like AI, where reproducibility and compatibility across complex dependency trees are essential.
 
-## Using private registries
+## Authentication
 
-Fromager uses the [requests](https://requests.readthedocs.io) library and `pip`
-at different points for talking to package registries. Both support
-authenticating to remote servers in various ways. The simplest way to integrate
-the authentication with fromager is to have a
-[netrc](https://docs.python.org/3/library/netrc.html) file with a valid entry
-for the host. The file will be read from `~/.netrc` by default. Another location
-can be specified by setting the `NETRC` environment variable.
-
-For example, to use a gitlab package registry, use a [personal
-access
-token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html#create-a-personal-access-token)
-as documented in [this
-issue](https://gitlab.com/gitlab-org/gitlab/-/issues/350582):
-
-```plaintext
-machine gitlab.com login oauth2 password $token
-```
-
-## Determining versions via GitHub tags
-
-In some cases, the builder might have to use tags on GitHub to determine the version of a project instead of looking at
-pypi.org. To avoid rate limit or to access private GitHub repository, a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) can be passed to fromager by setting
-the following environment variable:
-
-```shell
-GITHUB_TOKEN=<access_token>
-```
+Fromager automatically authenticates to GitHub and GitLab APIs using
+credentials from netrc or environment variables. See the
+[authentication guide](docs/how-tos/authentication.md) for details.
 
 ## Additional docs
 

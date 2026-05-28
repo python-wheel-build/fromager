@@ -1134,12 +1134,6 @@ class GitHubTagProvider(GenericProvider):
         identifier: str,
     ) -> Iterable[Candidate]:
         headers = {"accept": "application/vnd.github+json"}
-
-        # Add GitHub authentication if available
-        github_token = os.environ.get("GITHUB_TOKEN")
-        if github_token:
-            headers["Authorization"] = f"token {github_token}"
-
         nexturl = self.api_url.format(self=self)
         while nexturl:
             resp = session.get(nexturl, headers=headers)
