@@ -776,12 +776,17 @@ class BaseProvider(ExtrasProvider):
         return candidates
 
     def _get_no_match_error_message(
-        self, identifier: str, requirements: RequirementsMap
+        self,
+        identifier: str,
+        requirements: RequirementsMap,
+        incompatibilities: CandidatesMap | None = None,
     ) -> str:
         """Generate an error message when no candidates are found.
 
         Subclasses should override this to provide provider-specific error details.
         """
+        if incompatibilities is None:
+            incompatibilities = {}
         reqs = requirements.get(identifier, [])
         if reqs:
             r = next(iter(reqs))
@@ -816,7 +821,9 @@ class BaseProvider(ExtrasProvider):
             )
         if not candidates:
             raise resolvelib.resolvers.ResolverException(
-                self._get_no_match_error_message(identifier, requirements)
+                self._get_no_match_error_message(
+                    identifier, requirements, incompatibilities
+                )
             )
         return sorted(candidates, key=attrgetter("version", "build_tag"), reverse=True)
 
@@ -910,10 +917,21 @@ class PyPIProvider(BaseProvider):
             return False
         return True
 
+    def _accepts_distribution_type(self, candidate: Candidate) -> bool:
+        """Return True if the candidate's distribution type matches resolver settings."""
+        if candidate.is_sdist:
+            return self.include_sdists
+        return self.include_wheels
+
     def _get_no_match_error_message(
-        self, identifier: str, requirements: RequirementsMap
+        self,
+        identifier: str,
+        requirements: RequirementsMap,
+        incompatibilities: CandidatesMap | None = None,
     ) -> str:
         """Generate a PyPI-specific error message with file type and pre-release details."""
+        if incompatibilities is None:
+            incompatibilities = {}
         r = next(iter(requirements[identifier]))
 
         # Determine if pre-releases are allowed
@@ -931,32 +949,69 @@ class PyPIProvider(BaseProvider):
         else:
             file_type_info = "wheels"
 
-        # If a cooldown is active, check whether it's responsible for the
-        # failure so we can give a more actionable error message.
-        if self.cooldown is not None:
+        all_candidates = list(self._find_cached_candidates(identifier))
+        specifier_matched = [
+            candidate
+            for candidate in all_candidates
+            if super().validate_candidate(
+                identifier, requirements, incompatibilities, candidate
+            )
+        ]
+        type_matched = [
+            candidate
+            for candidate in specifier_matched
+            if self._accepts_distribution_type(candidate)
+        ]
+
+        # Version matches exist but none are the configured distribution type.
+        if specifier_matched and not type_matched:
+            wheels = [c for c in specifier_matched if not c.is_sdist]
+            sdists = [c for c in specifier_matched if c.is_sdist]
+            if self.include_sdists and not self.include_wheels and wheels:
+                wheel_count = len(wheels)
+                wheel_label = "wheel" if wheel_count == 1 else "wheels"
+                return (
+                    f"found {wheel_count} {wheel_label} for {r} but the resolver is "
+                    f"configured for sdists only (no sdist available on "
+                    f"{self.sdist_server_url!r})"
+                )
+            if self.include_wheels and not self.include_sdists and sdists:
+                sdist_count = len(sdists)
+                sdist_label = "sdist" if sdist_count == 1 else "sdists"
+                return (
+                    f"found {sdist_count} {sdist_label} for {r} but the resolver is "
+                    f"configured for wheels only (no wheel available on "
+                    f"{self.sdist_server_url!r})"
+                )
+
+        # If a cooldown is active, check whether it blocked all type-appropriate
+        # candidates so we can give a more actionable error message.
+        if self.cooldown is not None and type_matched:
             cutoff = self.cooldown.bootstrap_time - self.cooldown.min_age
-            all_candidates = list(self._find_cached_candidates(identifier))
-            missing_time = [c for c in all_candidates if c.upload_time is None]
-            cooldown_blocked = [
+            missing_time = [c for c in type_matched if c.upload_time is None]
+            age_blocked = [
                 c
-                for c in all_candidates
+                for c in type_matched
                 if c.upload_time is not None and c.upload_time > cutoff
             ]
-            if missing_time and not cooldown_blocked:
+            if missing_time and not age_blocked:
                 return (
                     f"found {len(missing_time)} candidate(s) for {r} but none have "
                     f"upload timestamp metadata; {self.sdist_server_url!r} may not "
                     f"support PEP 691 (JSON API), which is required to enforce the "
                     f"{self.cooldown.min_age.days}-day release-age cooldown"
                 )
-            if cooldown_blocked:
-                oldest_days = min(
-                    (self.cooldown.bootstrap_time - c.upload_time).days
-                    for c in cooldown_blocked
-                    if c.upload_time is not None
+            if age_blocked and len(age_blocked) == len(type_matched):
+                oldest_days = max(
+                    0,
+                    min(
+                        (self.cooldown.bootstrap_time - c.upload_time).days
+                        for c in age_blocked
+                        if c.upload_time is not None
+                    ),
                 )
                 return (
-                    f"found {len(cooldown_blocked)} candidate(s) for {r} but all "
+                    f"found {len(age_blocked)} candidate(s) for {r} but all "
                     f"were published within the last {self.cooldown.min_age.days} days "
                     f"(release-age cooldown; oldest is {oldest_days} day(s) old)"
                 )

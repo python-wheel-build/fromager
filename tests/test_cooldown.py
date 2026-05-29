@@ -155,6 +155,157 @@ def test_cooldown_all_blocked_raises_informative_error() -> None:
         assert "published within the last 7 days (release-age cooldown" in msg
 
 
+# ---------------------------------------------------------------------------
+# Wheel-only PyPI error messages (issue #1174)
+# ---------------------------------------------------------------------------
+
+# 3-day cooldown anchored to 2026-04-10. All three wheels were uploaded within
+# the cooldown window. Filenames must be parseable by pypi_simple (cpNNN-cpNNN
+# manylinux wheels are not). Modeled on flydsl==0.1.2 from issue #1174.
+_BOOTSTRAP_TIME_3DAY = datetime.datetime(2026, 4, 10, 0, 0, 0, tzinfo=datetime.UTC)
+_COOLDOWN_3DAY = candidate.Cooldown(
+    min_age=datetime.timedelta(days=3),
+    bootstrap_time=_BOOTSTRAP_TIME_3DAY,
+)
+
+_wheel_only_recent_json_response = {
+    "meta": {"api-version": "1.1"},
+    "name": "test-pkg",
+    "files": [
+        {
+            "filename": "test_pkg-1.0.0-py3-none-any.whl",
+            "url": "https://files.pythonhosted.org/packages/test_pkg-1.0.0-py3-none-any.whl",
+            "hashes": {"sha256": "aaa"},
+            "upload-time": "2026-04-09T10:15:40+00:00",
+        },
+        {
+            "filename": "test_pkg-1.0.0-cp312-abi3-manylinux_2_17_x86_64.whl",
+            "url": "https://files.pythonhosted.org/packages/test_pkg-1.0.0-cp312-abi3.whl",
+            "hashes": {"sha256": "bbb"},
+            "upload-time": "2026-04-10T10:15:44+00:00",
+        },
+        {
+            "filename": "test_pkg-1.0.0-cp312-abi3-manylinux2014_x86_64.whl",
+            "url": "https://files.pythonhosted.org/packages/test_pkg-1.0.0-cp312-manylinux.whl",
+            "hashes": {"sha256": "ccc"},
+            "upload-time": "2026-04-10T12:00:00+00:00",
+        },
+    ],
+}
+
+_sdist_recent_json_response = {
+    "meta": {"api-version": "1.1"},
+    "name": "test-pkg",
+    "files": [
+        {
+            "filename": "test_pkg-1.0.0.tar.gz",
+            "url": "https://files.pythonhosted.org/packages/test_pkg-1.0.0.tar.gz",
+            "hashes": {"sha256": "aaa"},
+            "upload-time": "2026-04-09T10:00:00+00:00",
+        },
+        {
+            "filename": "test_pkg-1.0.0-py3-none-any.whl",
+            "url": "https://files.pythonhosted.org/packages/test_pkg-1.0.0-py3-none-any.whl",
+            "hashes": {"sha256": "bbb"},
+            "upload-time": "2026-04-09T10:00:00+00:00",
+        },
+    ],
+}
+
+
+def test_cooldown_wheel_only_pypi_reports_missing_sdist() -> None:
+    """Wheel-only PyPI must not produce a cooldown error when sdists are required."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_wheel_only_recent_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(
+            include_sdists=True,
+            include_wheels=False,
+            cooldown=_COOLDOWN_3DAY,
+        )
+        rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
+
+        with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
+            rslvr.resolve([Requirement("test-pkg==1.0.0")])
+
+        msg = str(exc_info.value)
+        assert "release-age cooldown" not in msg, (
+            f"wheel-only resolution should not blame cooldown: {msg}"
+        )
+        assert "published within the last" not in msg, (
+            f"wheel-only resolution should not blame cooldown: {msg}"
+        )
+        assert "3 wheels" in msg
+        assert "sdists only" in msg
+        assert "no sdist available" in msg
+
+
+def test_cooldown_wheel_only_via_resolve_source_reports_missing_sdist(
+    tmp_path: pathlib.Path,
+) -> None:
+    """sources.resolve_source() must report missing sdists for wheel-only packages."""
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN_3DAY,
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_wheel_only_recent_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+
+        with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
+            sources.resolve_source(
+                ctx=ctx,
+                req=Requirement("test-pkg==1.0.0"),
+                sdist_server_url="https://pypi.org/simple/",
+            )
+
+        msg = str(exc_info.value)
+        assert "Unable to resolve requirement specifier test-pkg==1.0.0" in msg
+        assert "release-age cooldown" not in msg, (
+            f"wheel-only resolution should not blame cooldown: {msg}"
+        )
+        assert "published within the last" not in msg, (
+            f"wheel-only resolution should not blame cooldown: {msg}"
+        )
+        assert "3 wheels" in msg
+        assert "sdists only" in msg
+        assert "no sdist available" in msg
+
+
+def test_cooldown_sdist_within_cooldown_still_reports_cooldown() -> None:
+    """When an sdist exists but is blocked by cooldown, report cooldown."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_sdist_recent_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(
+            include_sdists=True,
+            include_wheels=False,
+            cooldown=_COOLDOWN_3DAY,
+        )
+        rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
+
+        with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
+            rslvr.resolve([Requirement("test-pkg==1.0.0")])
+
+        msg = str(exc_info.value)
+        assert "release-age cooldown" in msg
+        assert "published within the last 3 days" in msg
+
+
 def test_cooldown_rejects_candidate_without_upload_time(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
