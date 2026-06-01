@@ -30,83 +30,93 @@ def tmp_context(tmp_path: Path) -> WorkContext:
     pbi.resolver_ignore_platform = False
     pbi.resolver_sdist_server_url.return_value = "https://pypi.org/simple/"
     ctx.package_build_info.return_value = pbi
+    ctx.max_release_age = None
     return ctx
+
+
+_MOCK_VERSIONS = [
+    ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
+    ("https://pypi.org/testpkg-1.5.tar.gz", Version("1.5")),
+    ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
+]
 
 
 def test_resolve_return_all_versions_true(tmp_context: WorkContext) -> None:
     """resolve() with return_all_versions=True returns all matching versions."""
-    resolver = BootstrapRequirementResolver(tmp_context)
+    brr = BootstrapRequirementResolver(tmp_context)
 
-    # Mock the _resolve method to return multiple versions
-    with patch.object(
-        resolver,
-        "_resolve",
-        return_value=[
-            ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
-            ("https://pypi.org/testpkg-1.5.tar.gz", Version("1.5")),
-            ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
-        ],
+    with (
+        patch.object(brr, "_resolve_from_graph", return_value=None),
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+        ),
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            return_value=list(_MOCK_VERSIONS),
+        ),
     ):
         req = Requirement("testpkg>=1.0")
-        results = resolver.resolve(
+        results = brr.resolve(
             req=req,
             req_type=RequirementType.INSTALL,
             parent_req=None,
             return_all_versions=True,
         )
 
-        # Should return all 3 versions
         assert len(results) == 3
-        assert results[0] == ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0"))
-        assert results[1] == ("https://pypi.org/testpkg-1.5.tar.gz", Version("1.5"))
-        assert results[2] == ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0"))
+        assert results[0] == _MOCK_VERSIONS[0]
+        assert results[1] == _MOCK_VERSIONS[1]
+        assert results[2] == _MOCK_VERSIONS[2]
 
 
 def test_resolve_return_all_versions_false_default(tmp_context: WorkContext) -> None:
     """resolve() with return_all_versions=False (default) returns list with only highest version."""
-    resolver = BootstrapRequirementResolver(tmp_context)
+    brr = BootstrapRequirementResolver(tmp_context)
 
-    # Mock the _resolve method to return multiple versions
-    with patch.object(
-        resolver,
-        "_resolve",
-        return_value=[
-            ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
-            ("https://pypi.org/testpkg-1.5.tar.gz", Version("1.5")),
-            ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
-        ],
+    with (
+        patch.object(brr, "_resolve_from_graph", return_value=None),
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+        ),
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            return_value=list(_MOCK_VERSIONS),
+        ),
     ):
         req = Requirement("testpkg>=1.0")
-
-        # Call without return_all_versions (default False)
-        results = resolver.resolve(
+        results = brr.resolve(
             req=req,
             req_type=RequirementType.INSTALL,
             parent_req=None,
         )
 
-        # Should return list with only the highest version
         assert len(results) == 1
-        assert results[0] == ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0"))
+        assert results[0] == _MOCK_VERSIONS[0]
 
 
 def test_resolve_return_all_versions_uses_cache(tmp_context: WorkContext) -> None:
     """resolve() with return_all_versions=True uses cache correctly."""
-    resolver = BootstrapRequirementResolver(tmp_context)
+    brr = BootstrapRequirementResolver(tmp_context)
 
-    # First call - will populate cache
-    with patch.object(
-        resolver,
-        "_resolve",
-        return_value=[
-            ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
-            ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
-        ],
-    ) as mock_resolve:
+    with (
+        patch.object(brr, "_resolve_from_graph", return_value=None),
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+        ),
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            return_value=[
+                ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
+                ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
+            ],
+        ) as mock_resolve,
+    ):
         req = Requirement("testpkg>=1.0")
 
-        # First call
-        results1 = resolver.resolve(
+        results1 = brr.resolve(
             req=req,
             req_type=RequirementType.INSTALL,
             parent_req=None,
@@ -115,17 +125,15 @@ def test_resolve_return_all_versions_uses_cache(tmp_context: WorkContext) -> Non
         assert len(results1) == 2
         assert mock_resolve.call_count == 1
 
-        # Second call - should use cache
-        results2 = resolver.resolve(
+        results2 = brr.resolve(
             req=req,
             req_type=RequirementType.INSTALL,
             parent_req=None,
             return_all_versions=True,
         )
 
-        # Should not call _resolve again
+        # Should not call resolution again — cache hit
         assert mock_resolve.call_count == 1
-        # Should return same results
         assert results2 == results1
 
 
@@ -133,7 +141,6 @@ def test_resolve_return_all_versions_with_previous_graph(
     tmp_context: WorkContext,
 ) -> None:
     """resolve() with return_all_versions=True works with previous graph."""
-    # Create graph with multiple versions of the same package
     prev_graph = DependencyGraph()
     prev_graph.add_dependency(
         parent_name=None,
@@ -150,23 +157,19 @@ def test_resolve_return_all_versions_with_previous_graph(
         req_version=Version("1.0"),
     )
 
-    # Mock dependency_graph in context
     tmp_context.dependency_graph = prev_graph
 
-    resolver = BootstrapRequirementResolver(tmp_context, prev_graph)
+    brr = BootstrapRequirementResolver(tmp_context, prev_graph)
 
-    # Request with version spec that matches both
     req = Requirement("testpkg>=1.0")
-    results = resolver.resolve(
+    results = brr.resolve(
         req=req,
         req_type=RequirementType.TOP_LEVEL,
         parent_req=None,
         return_all_versions=True,
     )
 
-    # Should return both versions from graph
     assert len(results) == 2
-    # Verify versions (should be sorted highest first)
     versions = [v for _, v in results]
     assert Version("2.0") in versions
     assert Version("1.0") in versions

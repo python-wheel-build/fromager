@@ -353,6 +353,20 @@ class TestPhaseResolve:
         assert len(result) == 1
         mock_cache.assert_not_called()
 
+    def test_empty_resolution_raises_runtime_error(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Empty resolution raises RuntimeError regardless of mode."""
+        for multi in (False, True):
+            bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=multi)
+            item = _make_resolve_item()
+
+            with (
+                patch.object(bt, "resolve_versions", return_value=[]),
+                pytest.raises(RuntimeError, match="Could not resolve"),
+            ):
+                bt._phase_resolve(item)
+
 
 class TestPhaseStart:
     def test_new_item_advances_to_prepare_source(
