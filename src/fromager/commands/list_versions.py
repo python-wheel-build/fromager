@@ -38,11 +38,12 @@ def list_versions(
 ) -> None:
     """List all available versions for a package requirement specifier."""
     click.secho("use 'fromager package list-versions'", bold=True)
+    output_format = "requirements" if format_as_requirements else "versions"
     ctx.invoke(
         package.list_versions,
         requirement_spec=requirement_spec,
         distribution_type=distribution_type,
         sdist_server_url=sdist_server_url,
         ignore_no_versions=ignore_no_versions,
-        format_as_requirements=format_as_requirements,
+        output_format=output_format,
     )
