@@ -7,20 +7,27 @@ Tests cover:
 - _create_unresolved_work_items helper
 - _phase_resolve version expansion
 - _phase_start graph addition and seen-check
+- _phase_prepare_source all branches (prebuilt, source, cached, bad path)
+- _phase_prepare_build dep installation and extraction
+- _phase_build conditional install and result construction
+- _phase_process_install_deps hooks, dep extraction, error modes
 - _phase_complete cleanup
 - _dispatch_phase routing
 - _handle_phase_error for all three error modes
 - End-to-end iterative loop with LIFO ordering
 """
 
-from unittest.mock import Mock, patch
+from __future__ import annotations
+
+import pathlib
+from unittest.mock import Mock, call, patch
 
 import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
-from fromager import bootstrapper
+from fromager import bootstrapper, build_environment
 from fromager.bootstrapper import BootstrapPhase, SourceBuildResult, WorkItem
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
@@ -64,14 +71,37 @@ def _make_build_item(
     req: str = "testpkg",
     version: str = "1.0",
     phase: BootstrapPhase = BootstrapPhase.PREPARE_SOURCE,
+    source_url: str = "https://pypi.org/testpkg-1.0.tar.gz",
+    build_env: build_environment.BuildEnvironment | None = None,
+    sdist_root_dir: pathlib.Path | None = None,
+    unpack_dir: pathlib.Path | None = None,
+    build_result: SourceBuildResult | None = None,
+    build_system_deps: set[Requirement] | None = None,
+    build_backend_deps: set[Requirement] | None = None,
+    build_sdist_deps: set[Requirement] | None = None,
+    pbi_pre_built: bool = False,
+    cached_wheel_filename: pathlib.Path | None = None,
+    build_sdist_only: bool = False,
 ) -> WorkItem:
     return WorkItem(
         req=Requirement(req),
         req_type=RequirementType.INSTALL,
         phase=phase,
         why_snapshot=[],
-        source_url="https://pypi.org/testpkg-1.0.tar.gz",
+        source_url=source_url,
         resolved_version=Version(version),
+        build_env=build_env,
+        sdist_root_dir=sdist_root_dir,
+        unpack_dir=unpack_dir,
+        build_result=build_result,
+        build_system_deps=build_system_deps if build_system_deps is not None else set(),
+        build_backend_deps=build_backend_deps
+        if build_backend_deps is not None
+        else set(),
+        build_sdist_deps=build_sdist_deps if build_sdist_deps is not None else set(),
+        pbi_pre_built=pbi_pre_built,
+        cached_wheel_filename=cached_wheel_filename,
+        build_sdist_only=build_sdist_only,
     )
 
 
@@ -879,3 +909,723 @@ class TestIterativeBootstrapLoop:
         assert len(bt.failed_packages) == 1
         assert bt.failed_packages[0]["package"] == "fail-pkg"
         assert "ok-pkg" in items_completed
+
+
+class TestPhasePrepareSource:
+    """Tests for _phase_prepare_source: prebuilt, source, cache, and error paths."""
+
+    def test_prebuilt_downloads_and_skips_to_process_install_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Prebuilt package downloads wheel and advances to PROCESS_INSTALL_DEPS."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(
+            phase=BootstrapPhase.PREPARE_SOURCE,
+            pbi_pre_built=True,
+            source_url="https://pkg.test/testpkg-1.0-py3-none-any.whl",
+        )
+
+        mock_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
+        mock_unpack = tmp_context.work_dir / "testpkg-1.0"
+
+        with (
+            patch.object(
+                bt, "_download_prebuilt", return_value=(mock_wheel, mock_unpack)
+            ) as mock_dl,
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+        ):
+            result = bt._phase_prepare_source(item)
+
+        assert len(result) == 1
+        assert result[0] is item
+        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        assert item.build_result is not None
+        assert item.build_result.source_type == SourceType.PREBUILT
+        assert item.build_result.wheel_filename == mock_wheel
+        assert item.build_result.sdist_filename is None
+        assert item.build_result.build_env is None
+        mock_dl.assert_called_once()
+
+    def test_source_no_cache_downloads_and_prepares(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Source build with no cached wheel downloads and prepares source."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        source_filename = tmp_context.work_dir / "testpkg-1.0.tar.gz"
+        mock_env = Mock()
+        mock_dep_item = _make_resolve_item(req="setuptools")
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
+            patch.object(
+                bt, "_download_source", return_value=source_filename
+            ) as mock_dl_src,
+            patch.object(bt, "_prepare_source", return_value=sdist_root) as mock_prep,
+            patch.object(
+                bt, "_create_build_env", return_value=mock_env
+            ) as mock_create_env,
+            patch(
+                "fromager.dependencies.get_build_system_dependencies",
+                return_value={Requirement("setuptools")},
+            ),
+            patch.object(
+                bt, "_create_unresolved_work_items", return_value=[mock_dep_item]
+            ) as mock_create_items,
+        ):
+            result = bt._phase_prepare_source(item)
+
+        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        assert item.build_env is mock_env
+        assert item.sdist_root_dir == sdist_root
+        assert item.unpack_dir == sdist_root.parent
+        assert result[0] is item
+        assert result[1] is mock_dep_item
+        mock_dl_src.assert_called_once()
+        mock_prep.assert_called_once()
+        mock_create_env.assert_called_once()
+        mock_create_items.assert_called_once_with(
+            item.build_system_deps,
+            RequirementType.BUILD_SYSTEM,
+            item.req,
+            item.resolved_version,
+        )
+
+    def test_source_cached_wheel_skips_download(self, tmp_context: WorkContext) -> None:
+        """Cached wheel skips download/prepare, uses unpacked dir for sdist root."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        unpacked = tmp_context.work_dir / "testpkg-1.0"
+        unpacked.mkdir(parents=True)
+        cached_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
+        mock_env = Mock()
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(
+                bt, "_find_cached_wheel", return_value=(cached_wheel, unpacked)
+            ),
+            patch.object(bt, "_download_source") as mock_dl_src,
+            patch.object(bt, "_prepare_source") as mock_prep,
+            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.dependencies.get_build_system_dependencies",
+                return_value=set(),
+            ),
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            result = bt._phase_prepare_source(item)
+
+        assert item.cached_wheel_filename == cached_wheel
+        assert item.sdist_root_dir == unpacked / unpacked.stem
+        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        mock_dl_src.assert_not_called()
+        mock_prep.assert_not_called()
+        assert len(result) == 1
+
+    def test_bad_sdist_root_raises_valueerror(self, tmp_context: WorkContext) -> None:
+        """ValueError raised when sdist_root_dir.parent.parent != work_dir."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        bad_root = tmp_context.work_dir / "a" / "b" / "c"
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
+            patch.object(
+                bt,
+                "_download_source",
+                return_value=tmp_context.work_dir / "src.tar.gz",
+            ),
+            patch.object(bt, "_prepare_source", return_value=bad_root),
+        ):
+            with pytest.raises(ValueError, match="should be"):
+                bt._phase_prepare_source(item)
+
+    def test_constraint_logged_when_present(
+        self, tmp_context: WorkContext, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Constraint presence is logged without affecting phase advancement."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        mock_env = Mock()
+
+        with (
+            patch.object(
+                tmp_context.constraints,
+                "get_constraint",
+                return_value=Requirement("testpkg>=1.0"),
+            ),
+            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
+            patch.object(
+                bt,
+                "_download_source",
+                return_value=tmp_context.work_dir / "src.tar.gz",
+            ),
+            patch.object(bt, "_prepare_source", return_value=sdist_root),
+            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.dependencies.get_build_system_dependencies",
+                return_value=set(),
+            ),
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            bt._phase_prepare_source(item)
+
+        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        assert "matches constraint" in caplog.text
+
+
+class TestPhasePrepareBuild:
+    """Tests for _phase_prepare_build: dep installation and extraction."""
+
+    def test_installs_system_deps_and_returns_backend_sdist_items(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Installs build system deps, extracts backend/sdist deps, returns all."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        system_deps = {Requirement("setuptools")}
+        item = _make_build_item(
+            phase=BootstrapPhase.PREPARE_BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps=system_deps,
+        )
+
+        backend_item = _make_resolve_item(req="wheel")
+        sdist_item = _make_resolve_item(req="flit-core")
+
+        with (
+            patch(
+                "fromager.dependencies.get_build_backend_dependencies",
+                return_value={Requirement("wheel")},
+            ),
+            patch(
+                "fromager.dependencies.get_build_sdist_dependencies",
+                return_value={Requirement("flit-core")},
+            ),
+            patch.object(
+                bt,
+                "_create_unresolved_work_items",
+                side_effect=[[backend_item], [sdist_item]],
+            ),
+        ):
+            result = bt._phase_prepare_build(item)
+
+        assert item.phase == BootstrapPhase.BUILD
+        assert item.build_backend_deps == {Requirement("wheel")}
+        assert item.build_sdist_deps == {Requirement("flit-core")}
+        mock_env.install.assert_called_once_with(system_deps)
+        assert result == [item, backend_item, sdist_item]
+
+    def test_no_extra_deps_returns_item_only(self, tmp_context: WorkContext) -> None:
+        """When backend and sdist deps are empty, returns only the item."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        system_deps = {Requirement("setuptools")}
+        item = _make_build_item(
+            phase=BootstrapPhase.PREPARE_BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps=system_deps,
+        )
+
+        with (
+            patch(
+                "fromager.dependencies.get_build_backend_dependencies",
+                return_value=set(),
+            ),
+            patch(
+                "fromager.dependencies.get_build_sdist_dependencies",
+                return_value=set(),
+            ),
+            patch.object(
+                bt,
+                "_create_unresolved_work_items",
+                side_effect=[[], []],
+            ),
+        ):
+            result = bt._phase_prepare_build(item)
+
+        assert result == [item]
+        assert item.phase == BootstrapPhase.BUILD
+        mock_env.install.assert_called_once_with(system_deps)
+
+    def test_install_called_once_with_system_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """build_env.install is called exactly once with build_system_deps."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        system_deps = {Requirement("setuptools"), Requirement("wheel")}
+        item = _make_build_item(
+            phase=BootstrapPhase.PREPARE_BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps=system_deps,
+        )
+
+        with (
+            patch(
+                "fromager.dependencies.get_build_backend_dependencies",
+                return_value={Requirement("cython")},
+            ),
+            patch(
+                "fromager.dependencies.get_build_sdist_dependencies",
+                return_value=set(),
+            ),
+            patch.object(
+                bt,
+                "_create_unresolved_work_items",
+                side_effect=[[], []],
+            ),
+        ):
+            bt._phase_prepare_build(item)
+
+        mock_env.install.assert_called_once_with(system_deps)
+
+    def test_creates_items_with_correct_requirement_types(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Backend deps tagged BUILD_BACKEND, sdist deps tagged BUILD_SDIST."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        item = _make_build_item(
+            phase=BootstrapPhase.PREPARE_BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("setuptools")},
+        )
+
+        with (
+            patch(
+                "fromager.dependencies.get_build_backend_dependencies",
+                return_value={Requirement("wheel")},
+            ),
+            patch(
+                "fromager.dependencies.get_build_sdist_dependencies",
+                return_value={Requirement("flit-core")},
+            ),
+            patch.object(
+                bt,
+                "_create_unresolved_work_items",
+                side_effect=[[], []],
+            ) as mock_create_items,
+        ):
+            bt._phase_prepare_build(item)
+
+        calls = mock_create_items.call_args_list
+        assert calls[0] == call(
+            {Requirement("wheel")},
+            RequirementType.BUILD_BACKEND,
+            item.req,
+            item.resolved_version,
+        )
+        assert calls[1] == call(
+            {Requirement("flit-core")},
+            RequirementType.BUILD_SDIST,
+            item.req,
+            item.resolved_version,
+        )
+
+
+class TestPhaseBuild:
+    """Tests for _phase_build: conditional dep install and result construction."""
+
+    def _make_build_phase_item(self, tmp_context: WorkContext) -> WorkItem:
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        return _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("setuptools")},
+            build_backend_deps={Requirement("wheel")},
+            build_sdist_deps={Requirement("flit-core")},
+        )
+
+    def test_disjoint_deps_installs_remaining(self, tmp_context: WorkContext) -> None:
+        """Disjoint backend/sdist deps from system deps triggers install."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        item = _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("setuptools")},
+            build_backend_deps={Requirement("wheel")},
+            build_sdist_deps={Requirement("flit-core")},
+        )
+        mock_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
+
+        with (
+            patch.object(bt, "_do_build", return_value=(mock_wheel, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            result = bt._phase_build(item)
+
+        mock_env.install.assert_called_once_with(
+            {Requirement("wheel"), Requirement("flit-core")}
+        )
+        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        assert len(result) == 1
+
+    def test_overlapping_deps_skips_install(self, tmp_context: WorkContext) -> None:
+        """Overlapping backend/sdist deps with system deps skips install."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        item = _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("setuptools")},
+            build_backend_deps={Requirement("setuptools")},
+            build_sdist_deps=set(),
+        )
+
+        with (
+            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            bt._phase_build(item)
+
+        mock_env.install.assert_not_called()
+
+    def test_partial_overlap_deps_skips_install(self, tmp_context: WorkContext) -> None:
+        """isdisjoint is False on partial overlap, so install is skipped entirely
+        even for deps not in build_system_deps (here: cython).
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        item = _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("setuptools")},
+            build_backend_deps={Requirement("setuptools"), Requirement("cython")},
+            build_sdist_deps=set(),
+        )
+
+        with (
+            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            bt._phase_build(item)
+
+        mock_env.install.assert_not_called()
+
+    def test_do_build_receives_item_fields(self, tmp_context: WorkContext) -> None:
+        """build_sdist_only and cached_wheel_filename are forwarded to _do_build."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        cached_wheel = tmp_context.work_dir / "cached.whl"
+        item = _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_sdist_only=True,
+            cached_wheel_filename=cached_wheel,
+        )
+
+        with (
+            patch.object(bt, "_do_build", return_value=(None, None)) as mock_do_build,
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            bt._phase_build(item)
+
+        mock_do_build.assert_called_once_with(
+            req=item.req,
+            resolved_version=item.resolved_version,
+            sdist_root_dir=sdist_root,
+            build_env=mock_env,
+            build_sdist_only=True,
+            cached_wheel_filename=cached_wheel,
+        )
+
+    def test_build_result_references_item_build_env(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """build_result.build_env is the same object as item.build_env."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_build_phase_item(tmp_context)
+
+        with (
+            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            result = bt._phase_build(item)
+
+        assert result[0].build_result is not None
+        assert result[0].build_result.build_env is item.build_env
+
+    def test_build_result_uses_source_type_from_sources(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """source_type comes from sources.get_source_type, not hardcoded."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_build_phase_item(tmp_context)
+
+        with (
+            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.PREBUILT),
+        ):
+            bt._phase_build(item)
+
+        assert item.build_result is not None
+        assert item.build_result.source_type == SourceType.PREBUILT
+
+    def test_returns_single_item_at_process_install_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """_phase_build returns exactly [item] with phase PROCESS_INSTALL_DEPS."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_build_phase_item(tmp_context)
+
+        with (
+            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            result = bt._phase_build(item)
+
+        assert len(result) == 1
+        assert result[0] is item
+        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+
+
+class TestPhaseProcessInstallDeps:
+    """Tests for _phase_process_install_deps: hooks, dep extraction, error modes."""
+
+    def _make_process_item(self, tmp_context: WorkContext) -> WorkItem:
+        build_result = SourceBuildResult(
+            wheel_filename=tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl",
+            sdist_filename=tmp_context.work_dir / "testpkg-1.0.tar.gz",
+            unpack_dir=tmp_context.work_dir / "testpkg-1.0",
+            sdist_root_dir=tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0",
+            build_env=Mock(),
+            source_type=SourceType.SDIST,
+        )
+        return _make_build_item(
+            phase=BootstrapPhase.PROCESS_INSTALL_DEPS,
+            build_result=build_result,
+            source_url="https://pkg.test/testpkg-1.0.tar.gz",
+        )
+
+    def test_normal_path_returns_item_and_dep_items(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Normal path: hooks, deps, build order, returns [item, *dep_items]."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_process_item(tmp_context)
+        dep_item = _make_resolve_item(req="dep-a")
+
+        with (
+            patch("fromager.hooks.run_post_bootstrap_hooks"),
+            patch.object(
+                bt,
+                "_get_install_dependencies",
+                return_value=[Requirement("dep-a")],
+            ),
+            patch.object(
+                tmp_context,
+                "package_build_info",
+                return_value=Mock(pre_built=False),
+            ),
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(
+                bt, "_create_unresolved_work_items", return_value=[dep_item]
+            ) as mock_create_items,
+        ):
+            result = bt._phase_process_install_deps(item)
+
+        assert item.phase == BootstrapPhase.COMPLETE
+        assert result == [item, dep_item]
+        mock_build_order.assert_called_once()
+        mock_create_items.assert_called_once_with(
+            [Requirement("dep-a")],
+            RequirementType.INSTALL,
+            item.req,
+            item.resolved_version,
+        )
+
+    def test_hook_error_test_mode_records_and_continues(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Hook error in test mode records failure, dep extraction still runs."""
+        bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
+        item = self._make_process_item(tmp_context)
+
+        with (
+            patch(
+                "fromager.hooks.run_post_bootstrap_hooks",
+                side_effect=RuntimeError("hook failed"),
+            ),
+            patch.object(
+                bt, "_get_install_dependencies", return_value=[]
+            ) as mock_get_deps,
+            patch.object(
+                tmp_context,
+                "package_build_info",
+                return_value=Mock(pre_built=False),
+            ),
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            result = bt._phase_process_install_deps(item)
+
+        assert item.phase == BootstrapPhase.COMPLETE
+        assert result == [item]
+        assert len(bt.failed_packages) == 1
+        assert bt.failed_packages[0]["failure_type"] == "hook"
+        mock_get_deps.assert_called_once()
+        mock_build_order.assert_called_once()
+
+    def test_hook_error_normal_mode_raises(self, tmp_context: WorkContext) -> None:
+        """Hook error in normal mode propagates the exception."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_process_item(tmp_context)
+
+        with (
+            patch(
+                "fromager.hooks.run_post_bootstrap_hooks",
+                side_effect=RuntimeError("hook failed"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="hook failed"):
+                bt._phase_process_install_deps(item)
+
+    def test_dep_extraction_error_test_mode_uses_empty_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Dep extraction error in test mode uses empty dep list, still writes build order."""
+        bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
+        item = self._make_process_item(tmp_context)
+
+        with (
+            patch("fromager.hooks.run_post_bootstrap_hooks"),
+            patch.object(
+                bt,
+                "_get_install_dependencies",
+                side_effect=RuntimeError("dep failed"),
+            ),
+            patch.object(
+                tmp_context,
+                "package_build_info",
+                return_value=Mock(pre_built=False),
+            ),
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(
+                bt, "_create_unresolved_work_items", return_value=[]
+            ) as mock_create_items,
+        ):
+            result = bt._phase_process_install_deps(item)
+
+        assert item.phase == BootstrapPhase.COMPLETE
+        assert result == [item]
+        assert len(bt.failed_packages) == 1
+        assert bt.failed_packages[0]["failure_type"] == "dependency_extraction"
+        mock_build_order.assert_called_once()
+        mock_create_items.assert_called_once_with(
+            [],
+            RequirementType.INSTALL,
+            item.req,
+            item.resolved_version,
+        )
+
+    def test_dep_extraction_error_normal_mode_raises(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Dep extraction error in normal mode propagates the exception."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_process_item(tmp_context)
+
+        with (
+            patch("fromager.hooks.run_post_bootstrap_hooks"),
+            patch.object(
+                bt,
+                "_get_install_dependencies",
+                side_effect=RuntimeError("dep failed"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="dep failed"):
+                bt._phase_process_install_deps(item)
+
+    def test_no_install_deps_returns_item_only(self, tmp_context: WorkContext) -> None:
+        """When no install deps, returns [item] at COMPLETE phase."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_process_item(tmp_context)
+
+        with (
+            patch("fromager.hooks.run_post_bootstrap_hooks"),
+            patch.object(bt, "_get_install_dependencies", return_value=[]),
+            patch.object(
+                tmp_context,
+                "package_build_info",
+                return_value=Mock(pre_built=False),
+            ),
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(bt, "_add_to_build_order"),
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            result = bt._phase_process_install_deps(item)
+
+        assert result == [item]
+        assert item.phase == BootstrapPhase.COMPLETE
+
+    def test_build_order_called_with_correct_args(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """_add_to_build_order receives correct source_type, prebuilt, constraint."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_process_item(tmp_context)
+        constraint = Requirement("testpkg>=1.0")
+
+        with (
+            patch("fromager.hooks.run_post_bootstrap_hooks"),
+            patch.object(bt, "_get_install_dependencies", return_value=[]),
+            patch.object(
+                tmp_context,
+                "package_build_info",
+                return_value=Mock(pre_built=True),
+            ),
+            patch.object(
+                tmp_context.constraints,
+                "get_constraint",
+                return_value=constraint,
+            ),
+            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            bt._phase_process_install_deps(item)
+
+        mock_build_order.assert_called_once_with(
+            req=item.req,
+            version=item.resolved_version,
+            source_url=item.source_url,
+            source_type=SourceType.SDIST,
+            prebuilt=True,
+            constraint=constraint,
+        )
