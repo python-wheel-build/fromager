@@ -1347,3 +1347,96 @@ def test_transitive_dep_resolves_to_toplevel_pinned_version(
             req_type=RequirementType.INSTALL,
         )
         assert str(version) == "2.0.0"
+
+
+def _add_toplevel_equality_pin(
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+) -> None:
+    """Record a top-level == pin in the graph (simulates phase-1 pre-resolution)."""
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=req,
+        req_version=version,
+        download_url=f"https://files.test/{req.name}-{version}.whl",
+        pre_built=False,
+    )
+
+
+class TestTopLevelPinCooldownScenarios:
+    """Regression coverage for top-level == pin interactions with cooldown (#1153, #1187).
+
+    Three failure modes were identified during analysis:
+
+    1. **#1153** — Top-level ``==`` pin pre-resolved; transitive loose spec blocked.
+       Fixed by ``Cooldown.exempt_versions`` from the dependency graph.
+    2. **#1187 (different specifiers)** — ``A==2.0.0`` vs ``A>=1.0`` use different
+       session-cache keys; transitive resolution uses ``exempt_versions``.
+    3. **#1187 (session cache)** — Same requirement string with different top-level
+       vs non-top-level context must not share a cache entry (#1188). Covered in
+       ``tests/test_bootstrap_requirement_resolver.py``.
+    """
+
+    def test_issue_1153_transitive_loose_spec_honours_toplevel_pin(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """#1153: ``bar`` depends on ``foo>=0.9``; ``foo==2.0.0`` pinned within cooldown."""
+        ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+        _add_toplevel_equality_pin(
+            ctx, Requirement("test-pkg==2.0.0"), Version("2.0.0")
+        )
+
+        with requests_mock.Mocker() as r:
+            r.get(
+                "https://pypi.org/simple/test-pkg/",
+                json=_cooldown_json_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+
+            _, version = resolver.resolve(
+                ctx=ctx,
+                req=Requirement("test-pkg>=0.9"),
+                sdist_server_url="https://pypi.org/simple/",
+                include_sdists=True,
+                include_wheels=True,
+                req_type=RequirementType.INSTALL,
+            )
+
+        assert str(version) == "2.0.0"
+
+    def test_issue_1187_different_specifiers_use_exempt_versions(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """#1187: ``A>=1.0`` and ``A==2.0.0`` differ in cache key; exempt_versions applies."""
+        top_level_req = Requirement("test-pkg==2.0.0")
+        transitive_req = Requirement("test-pkg>=1.0")
+        assert str(top_level_req) != str(transitive_req)
+
+        ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+        _add_toplevel_equality_pin(ctx, top_level_req, Version("2.0.0"))
+
+        cooldown = resolver.resolve_package_cooldown(
+            ctx, transitive_req, req_type=RequirementType.INSTALL
+        )
+        assert cooldown.exempt_versions == frozenset({Version("2.0.0")})
+
+        with requests_mock.Mocker() as r:
+            r.get(
+                "https://pypi.org/simple/test-pkg/",
+                json=_cooldown_json_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+
+            _, version = resolver.resolve(
+                ctx=ctx,
+                req=transitive_req,
+                sdist_server_url="https://pypi.org/simple/",
+                include_sdists=True,
+                include_wheels=True,
+                req_type=RequirementType.INSTALL,
+            )
+
+        assert str(version) == "2.0.0"
