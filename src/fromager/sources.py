@@ -715,12 +715,15 @@ def default_build_sdist(
     is built from a repository checkout and error out when the PEP 517
     interface is used, so this function simply tars the tree back up.
     """
-    sdist.make_sdist_directory(
+    old_root = sdist_root_dir
+    sdist_root_dir = sdist.make_sdist_directory(
         sdist_root_dir,
         req.name,
         version,
         build_dir=build_dir,
     )
+    if sdist_root_dir != old_root and build_dir.is_relative_to(old_root):
+        build_dir = sdist_root_dir / build_dir.relative_to(old_root)
     sdist_filename = ctx.sdists_builds / f"{req.name}-{version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()

@@ -1,9 +1,10 @@
 import pathlib
 import tarfile
+from unittest import mock
 
 from packaging.version import Version
 
-from fromager import dependencies, sdist
+from fromager import dependencies, sdist, sources
 
 
 def test_make_sdist_directory_renames_and_adds_pkg_info(
@@ -117,6 +118,66 @@ def test_make_sdist_directory_rebases_build_dir_after_rename(
     assert (expected_build / "PKG-INFO").is_file()
 
 
+def test_make_sdist_directory_deeply_nested_build_dir(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Deeply nested build_dir (e.g. src/bindings/python/nixl-meta) is rebased correctly."""
+    src = tmp_path / "NixlRepo"
+    nested = src / "src" / "bindings" / "python" / "nixl-meta"
+    nested.mkdir(parents=True)
+    (nested / "pyproject.toml").write_text("[build-system]")
+
+    result = sdist.make_sdist_directory(
+        src, "nixl", Version("0.5.0"), build_dir=nested
+    )
+
+    assert result.name == "nixl-0.5.0"
+    rebased = result / "src" / "bindings" / "python" / "nixl-meta"
+    assert rebased.is_dir()
+    assert (rebased / "PKG-INFO").is_file()
+    assert (rebased / "pyproject.toml").is_file()
+    assert (result / "PKG-INFO").is_file()
+
+
+def test_make_sdist_directory_build_dir_not_child_of_source(
+    tmp_path: pathlib.Path,
+) -> None:
+    """build_dir outside source_dir is left unchanged (no rebase, no PKG-INFO)."""
+    src = tmp_path / "project"
+    src.mkdir()
+    external_build = tmp_path / "other" / "build"
+    external_build.mkdir(parents=True)
+
+    result = sdist.make_sdist_directory(
+        src, "project", Version("1.0"), build_dir=external_build
+    )
+
+    assert result.name == "project-1.0"
+    assert (result / "PKG-INFO").is_file()
+    assert (external_build / "PKG-INFO").is_file()
+
+
+def test_make_sdist_directory_build_dir_outside_not_rebased_on_rename(
+    tmp_path: pathlib.Path,
+) -> None:
+    """build_dir outside source_dir is NOT rebased when source is renamed."""
+    src = tmp_path / "WrongName"
+    src.mkdir()
+    external_build = tmp_path / "separate-build"
+    external_build.mkdir()
+    (external_build / "code.py").write_text("# code")
+
+    result = sdist.make_sdist_directory(
+        src, "mypkg", Version("2.0"), build_dir=external_build
+    )
+
+    assert result.name == "mypkg-2.0"
+    # external_build should still be at its original location
+    assert external_build.is_dir()
+    assert (external_build / "PKG-INFO").is_file()
+    assert (external_build / "code.py").is_file()
+
+
 def test_repack_as_sdist_creates_tarball(tmp_path: pathlib.Path) -> None:
     """Verify the archive is created with correct name and contents."""
     # Arrange
@@ -176,6 +237,48 @@ def test_repack_as_sdist_normalizes_name(tmp_path: pathlib.Path) -> None:
     assert result.name == "my_package-0.1.tar.gz"
 
 
+def test_repack_as_sdist_build_dir_with_rename(tmp_path: pathlib.Path) -> None:
+    """repack_as_sdist correctly rebases build_dir when source is renamed."""
+    src = tmp_path / "MonoRepo"
+    sub = src / "python"
+    sub.mkdir(parents=True)
+    (sub / "setup.py").write_text("# setup")
+    (sub / "mylib.py").write_text("# lib")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    result = sdist.repack_as_sdist(
+        src, "mylib", Version("1.0"), output_dir, build_dir=sub
+    )
+
+    assert result.name == "mylib-1.0.tar.gz"
+    assert result.is_file()
+    with tarfile.open(result, "r:gz") as tf:
+        names = tf.getnames()
+    assert any("mylib.py" in n for n in names)
+    assert any("PKG-INFO" in n for n in names)
+
+
+def test_repack_as_sdist_deeply_nested_build_dir(tmp_path: pathlib.Path) -> None:
+    """repack_as_sdist handles deeply nested build_dir with rename."""
+    src = tmp_path / "BigRepo"
+    nested = src / "clients" / "python"
+    nested.mkdir(parents=True)
+    (nested / "setup.cfg").write_text("[metadata]\nname = tacozip")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    result = sdist.repack_as_sdist(
+        src, "tacozip", Version("0.12.0"), output_dir, build_dir=nested
+    )
+
+    assert result.name == "tacozip-0.12.0.tar.gz"
+    assert result.is_file()
+    with tarfile.open(result, "r:gz") as tf:
+        names = tf.getnames()
+    assert any("setup.cfg" in n for n in names)
+
+
 def test_repack_as_sdist_overwrites_existing(tmp_path: pathlib.Path) -> None:
     """Pre-existing tarball with the same name is replaced."""
     # Arrange
@@ -193,3 +296,37 @@ def test_repack_as_sdist_overwrites_existing(tmp_path: pathlib.Path) -> None:
     # Assert
     assert result.is_file()
     assert result.read_bytes() != b"stale"
+
+
+def test_default_build_sdist_rebases_build_dir_after_rename(
+    tmp_path: pathlib.Path,
+) -> None:
+    """default_build_sdist updates build_dir when make_sdist_directory renames the root."""
+    from packaging.requirements import Requirement
+
+    src = tmp_path / "BadName"
+    sub = src / "python"
+    sub.mkdir(parents=True)
+    (sub / "setup.py").write_text("# setup")
+    sdists_builds = tmp_path / "sdists" / "builds"
+    sdists_builds.mkdir(parents=True)
+
+    ctx = mock.MagicMock()
+    ctx.sdists_builds = sdists_builds
+    build_env = mock.MagicMock()
+    req = Requirement("testpkg")
+
+    result = sources.default_build_sdist(
+        ctx=ctx,
+        extra_environ={},
+        req=req,
+        version=Version("1.0"),
+        sdist_root_dir=src,
+        build_env=build_env,
+        build_dir=sub,
+    )
+
+    assert result.is_file()
+    renamed_root = tmp_path / "testpkg-1.0"
+    assert renamed_root.is_dir()
+    assert (renamed_root / "python" / "PKG-INFO").is_file()
