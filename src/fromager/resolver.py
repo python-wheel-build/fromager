@@ -5,11 +5,15 @@
 #
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import functools
+import json
 import logging
 import os
+import pathlib
 import re
+import threading
 import typing
 from collections.abc import Iterable
 from operator import attrgetter
@@ -57,6 +61,82 @@ IGNORE_PLATFORM: str = "ignore"
 SUPPORTED_TAGS_IGNORE_PLATFORM: frozenset[Tag] = frozenset(
     Tag(t.interpreter, t.abi, IGNORE_PLATFORM) for t in SUPPORTED_TAGS
 )
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class CooldownBlockedEntry:
+    """Record of a single package version blocked by the cooldown policy."""
+
+    package: str
+    version: str
+    upload_time: str | None
+    cooldown_min_age_days: int
+    provider: str
+
+
+class CooldownReport:
+    """Accumulate cooldown-blocked versions across a resolution run."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._entries: list[CooldownBlockedEntry] = []
+        self._seen: set[tuple[str, str]] = set()
+
+    def record(self, entry: CooldownBlockedEntry) -> None:
+        """Record a blocked entry, deduplicating by (package, version)."""
+        key = (entry.package, entry.version)
+        with self._lock:
+            if key not in self._seen:
+                self._seen.add(key)
+                self._entries.append(entry)
+
+    def entries(self) -> list[CooldownBlockedEntry]:
+        """Return a copy of all recorded blocked entries."""
+        with self._lock:
+            return list(self._entries)
+
+    def clear(self) -> None:
+        """Remove all recorded entries and reset the deduplication set."""
+        with self._lock:
+            self._entries.clear()
+            self._seen.clear()
+
+    def write_to(self, path: pathlib.Path) -> None:
+        """Write JSON report to *path*.
+
+        The file is always created so downstream tooling can rely on its
+        presence.  When no versions were blocked the ``packages`` dict is
+        empty and ``total_blocked`` is 0.
+        """
+        entries = self.entries()
+        packages: dict[str, list[dict[str, typing.Any]]] = {}
+        for e in entries:
+            packages.setdefault(e.package, []).append(
+                {
+                    "version": e.version,
+                    "upload_time": e.upload_time,
+                    "cooldown_min_age_days": e.cooldown_min_age_days,
+                    "provider": e.provider,
+                }
+            )
+        report = {
+            "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
+            "total_blocked": len(entries),
+            "packages": packages,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        if entries:
+            logger.info(
+                "cooldown skipped %d version(s) across %d package(s); "
+                "report written to %s",
+                len(entries),
+                len(packages),
+                path,
+            )
+
+
+cooldown_report = CooldownReport()
 
 
 @functools.lru_cache(maxsize=200)
@@ -824,10 +904,29 @@ class BaseProvider(ExtrasProvider):
                 candidates.remove(b)
             versions = ", ".join(str(b.version) for b in blocked)
             logger.info(
-                "cooldown blocked %d version(s): %s",
+                "%s: cooldown blocked %d version(s): %s",
+                identifier,
                 len(blocked),
                 versions,
             )
+            for b in blocked:
+                cooldown_report.record(
+                    CooldownBlockedEntry(
+                        package=b.name,
+                        version=str(b.version),
+                        upload_time=(
+                            b.upload_time.isoformat()
+                            if b.upload_time is not None
+                            else None
+                        ),
+                        cooldown_min_age_days=(
+                            self.cooldown.min_age.days
+                            if self.cooldown is not None
+                            else 0
+                        ),
+                        provider=self.get_provider_description(),
+                    )
+                )
         if not candidates:
             raise resolvelib.resolvers.ResolverException(
                 self._get_no_match_error_message(identifier, requirements)

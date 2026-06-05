@@ -137,6 +137,8 @@ def bootstrap(
     and optional version constraints.
 
     """
+    resolver.cooldown_report.clear()
+
     logger.info(f"cache wheel server url: {cache_wheel_server_url}")
 
     to_build = _get_requirements_from_args(toplevel, requirements_files)
@@ -238,6 +240,8 @@ def bootstrap(
                 raise ValueError(
                     f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
                 )
+
+    resolver.cooldown_report.write_to(wkctx.work_dir / "cooldown-skipped-versions.json")
 
     logger.debug("match_py_req LRU cache: %r", resolver.match_py_req.cache_info())
 
