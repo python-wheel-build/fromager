@@ -1268,6 +1268,27 @@ def test_custom_resolver_error_message_via_resolve() -> None:
         )
 
 
+def test_resolver_error_includes_provenance() -> None:
+    """Resolver error message includes provenance when constraints have it."""
+    constraint = constraints.Constraints()
+    constraint.add_constraint("hydra-core<=0.1", provenance="/path/to/security.txt")
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/hydra-core/",
+            text=_hydra_core_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_wheels=False, constraints=constraint)
+
+        with pytest.raises(resolvelib.resolvers.ResolverException) as exc_info:
+            resolver.find_all_matching_from_provider(
+                provider, Requirement("hydra-core>=1.0")
+            )
+
+        error_message = str(exc_info.value)
+        assert "security.txt" in error_message
+
+
 def test_cli_package_resolver(
     cli_runner: CliRunner,
     pypi_hydra_resolver: typing.Any,
