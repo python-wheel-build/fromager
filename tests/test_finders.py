@@ -123,7 +123,7 @@ def test_pypi_cache_provider() -> None:
     assert provider.include_wheels is True
     assert provider.ignore_platform is False
     assert provider.override_download_url is None
-    assert provider.cooldown is None
+    assert not provider.cooldown.min_age
     assert provider.supports_upload_time is False
 
     # sdists only with req_type
