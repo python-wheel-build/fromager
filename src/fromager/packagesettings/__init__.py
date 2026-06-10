@@ -13,6 +13,20 @@ from ._models import (
     VariantInfo,
 )
 from ._pbi import PackageBuildInfo
+from ._resolver import (
+    BuildSDist,
+    GitHubTagCloneResolver,
+    GitHubTagDownloadResolver,
+    GitLabTagCloneResolver,
+    GitLabTagDownloadResolver,
+    HookResolver,
+    NotAvailableResolver,
+    PyPIDownloadResolver,
+    PyPIGitResolver,
+    PyPIPrebuiltResolver,
+    PyPISDistResolver,
+    pep440_tag_matcher,
+)
 from ._settings import Settings, SettingsFile
 from ._templates import substitute_template
 from ._typedefs import (
@@ -36,11 +50,18 @@ __all__ = (
     "Annotations",
     "BuildDirectory",
     "BuildOptions",
+    "BuildSDist",
     "DownloadSource",
     "EnvKey",
     "EnvVars",
+    "GitHubTagCloneResolver",
+    "GitHubTagDownloadResolver",
+    "GitLabTagCloneResolver",
+    "GitLabTagDownloadResolver",
     "GitOptions",
     "GlobalChangelog",
+    "HookResolver",
+    "NotAvailableResolver",
     "Package",
     "PackageBuildInfo",
     "PackageSettings",
@@ -48,6 +69,10 @@ __all__ = (
     "PatchMap",
     "ProjectOverride",
     "PurlConfig",
+    "PyPIDownloadResolver",
+    "PyPIGitResolver",
+    "PyPIPrebuiltResolver",
+    "PyPISDistResolver",
     "RawAnnotations",
     "ResolverDist",
     "SbomSettings",
@@ -59,5 +84,6 @@ __all__ = (
     "VariantInfo",
     "default_update_extra_environ",
     "get_extra_environ",
+    "pep440_tag_matcher",
     "substitute_template",
 )
