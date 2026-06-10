@@ -32,7 +32,7 @@ from resolvelib.resolvers import RequirementInformation
 
 from . import overrides
 from .candidate import Candidate, Cooldown
-from .constraints import Constraints
+from .constraints import Constraints, _format_provenance
 from .extras_provider import ExtrasProvider
 from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
@@ -287,10 +287,15 @@ def find_all_matching_from_provider(
         )
     except resolvelib.resolvers.ResolverException as err:
         constraint = provider.constraints.get_constraint(req.name)
+        provenance = provider.constraints.get_provenance(req.name)
         provider_desc = provider.get_provider_description()
         original_msg = str(err)
+        prov_msg = ""
+        if provenance:
+            prov_msg = f" (from {_format_provenance(provenance)})"
         raise resolvelib.resolvers.ResolverException(
-            f"Unable to resolve requirement specifier {req} with constraint {constraint} using {provider_desc}: {original_msg}"
+            f"Unable to resolve requirement specifier {req} with constraint "
+            f"{constraint}{prov_msg} using {provider_desc}: {original_msg}"
         ) from err
 
     # Materialize candidates so we can iterate more than once if filtering
@@ -689,8 +694,13 @@ class BaseProvider(ExtrasProvider):
         if not self.constraints.is_satisfied_by(requirement.name, candidate.version):
             if DEBUG_RESOLVER:
                 c = self.constraints.get_constraint(requirement.name)
+                provenance = self.constraints.get_provenance(requirement.name)
+                prov_msg = ""
+                if provenance:
+                    prov_msg = f" from {_format_provenance(provenance)}"
                 logger.debug(
-                    f"{requirement.name}: skipping {candidate.version} due to constraint {c}"
+                    f"{requirement.name}: skipping {candidate.version} "
+                    f"due to constraint {c}{prov_msg}"
                 )
             return False
 

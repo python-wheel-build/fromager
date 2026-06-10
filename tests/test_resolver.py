@@ -306,7 +306,7 @@ def test_provider_choose_sdist() -> None:
 
 def test_provider_choose_either_with_constraint() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("hydra-core==1.3.2")
+    constraint.add_constraint("hydra-core==1.3.2", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -333,7 +333,7 @@ def test_provider_choose_either_with_constraint() -> None:
 
 def test_provider_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("hydra-core<=1.1")
+    constraint.add_constraint("hydra-core<=1.1", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -350,7 +350,7 @@ def test_provider_constraint_mismatch() -> None:
 
 def test_provider_constraint_match() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("hydra-core<=1.3")
+    constraint.add_constraint("hydra-core<=1.3", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/hydra-core/",
@@ -766,7 +766,7 @@ def test_resolve_github_override_download_url() -> None:
 
 def test_github_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("fromager>=1.0")
+    constraint.add_constraint("fromager>=1.0", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://api.github.com:443/repos/python-wheel-build/fromager",
@@ -789,7 +789,7 @@ def test_github_constraint_mismatch() -> None:
 
 def test_github_constraint_match() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("fromager<0.9")
+    constraint.add_constraint("fromager<0.9", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://api.github.com:443/repos/python-wheel-build/fromager",
@@ -884,7 +884,7 @@ def test_resolve_versionmap_with_constraint() -> None:
     )
 
     c = constraints.Constraints()
-    c.add_constraint("testpkg<1.4")
+    c.add_constraint("testpkg<1.4", source="test")
 
     provider = resolver.VersionMapProvider(
         version_map=version_map, package_name="testpkg", constraints=c
@@ -1077,7 +1077,7 @@ def test_resolve_gitlab_override_download_url() -> None:
 
 def test_gitlab_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("submodlib>=1.0")
+    constraint.add_constraint("submodlib>=1.0", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
@@ -1099,7 +1099,7 @@ def test_gitlab_constraint_mismatch() -> None:
 
 def test_gitlab_constraint_match() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("submodlib<0.0.3")
+    constraint.add_constraint("submodlib<0.0.3", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://gitlab.com/api/v4/projects/mirrors%2Fgithub%2Fdecile-team%2Fsubmodlib/repository/tags",
@@ -1168,7 +1168,7 @@ def test_pep592_support_latest_version_yanked() -> None:
 
 def test_pep592_support_constraint_mismatch() -> None:
     constraint = constraints.Constraints()
-    constraint.add_constraint("setuptools-scm>=9.0.0")
+    constraint.add_constraint("setuptools-scm>=9.0.0", source="test")
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/setuptools-scm/", text=_response_with_data_yanked

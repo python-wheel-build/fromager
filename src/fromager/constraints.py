@@ -27,6 +27,23 @@ def _is_blocked_specifier(specifier: SpecifierSet) -> bool:
     )
 
 
+def _format_provenance(provenance: dict[str, list[str]]) -> str:
+    """Format a per-package provenance dict as a human-readable string.
+
+    Args:
+        provenance: Mapping of source file to original constraint lines.
+
+    Returns:
+        Formatted string, e.g.
+        ``"/path/to/base.txt (>=2.0), /path/to/override.txt (!=2.1.1)"``.
+    """
+    parts: list[str] = []
+    for source, lines in provenance.items():
+        specifiers = ", ".join(str(Requirement(line).specifier) for line in lines)
+        parts.append(f"{source} ({specifiers})")
+    return ", ".join(parts)
+
+
 class InvalidConstraintError(ValueError):
     pass
 
@@ -36,6 +53,8 @@ class Constraints:
         # mapping of canonical names to requirements
         # NOTE: Requirement.name is not normalized
         self._data: dict[NormalizedName, Requirement] = {}
+        # per-package provenance: {canonical_name: {source_file: [original_lines]}}
+        self._provenance: dict[NormalizedName, dict[str, list[str]]] = {}
 
     def __iter__(self) -> Generator[NormalizedName, None, None]:
         yield from self._data
@@ -46,13 +65,21 @@ class Constraints:
     def __len__(self) -> int:
         return len(self._data)
 
-    def add_constraint(self, unparsed: str) -> None:
-        """Add new constraint, must not conflict with any existing constraints
+    def add_constraint(self, unparsed: str, *, source: str) -> None:
+        """Add new constraint, must not conflict with any existing constraints.
 
-        .. versionchanged: 0.83.0
+        Args:
+            unparsed: Raw constraint string, e.g. ``"foo>=2.0"``.
+            source: Path or URL of the file that contains this constraint.
+                Required for provenance tracking.
+
+        .. versionchanged:: 0.83.0
            Non-conflicting constraints are now combined. Constraints with
            conflicts now raise :exc:`InvalidConstraintError`. Inputs without a
            version specifier or with extras or url are also refused.
+
+        .. versionchanged:: 0.84.0
+           Added *source* parameter for provenance tracking.
         """
         req = Requirement(unparsed)
         canon_name = canonicalize_name(req.name)
@@ -81,43 +108,77 @@ class Constraints:
         if previous is not None:
             prev_blocked = _is_blocked_specifier(previous.specifier)
             if blocked != prev_blocked:
+                prev_prov = _format_provenance(self._provenance.get(canon_name, {}))
                 raise InvalidConstraintError(
                     f"Cannot combine blocked and non-blocked constraints "
-                    f"(existing: {previous}, new: {req})"
+                    f"(existing: {previous} from {prev_prov}, "
+                    f"new: {req} from {source})"
                 )
             if not blocked:
                 logger.debug("combining constraints %s and %s", previous, req)
                 new_specifier = req.specifier & previous.specifier
                 if new_specifier.is_unsatisfiable():
+                    prev_prov = _format_provenance(self._provenance.get(canon_name, {}))
                     raise InvalidConstraintError(
                         f"Combined specifier '{new_specifier}' is not satisfiable "
-                        f"(existing: {previous}, new: {req})"
+                        f"(existing: {previous} from {prev_prov}, "
+                        f"new: {req} from {source})"
                     )
                 req.specifier = new_specifier
         else:
             logger.debug(f"adding constraint {req}")
 
         self._data[canon_name] = req
+        pkg_prov = self._provenance.setdefault(canon_name, {})
+        pkg_prov.setdefault(source, []).append(unparsed)
 
     def load_constraints_file(self, constraints_file: str | pathlib.Path) -> None:
-        """Load constraints from a constraints file or URL"""
+        """Load constraints from a constraints file or URL."""
         logger.info("loading constraints from %s", constraints_file)
+        source = str(constraints_file)
         content = requirements_file.parse_requirements_file(constraints_file)
         for line in content:
-            self.add_constraint(line)
+            self.add_constraint(line, source=source)
 
     def dump_constraints(self, output: typing.TextIO) -> None:
-        """Dump combined constraints to a text stream"""
-        # sort by normalized name
-        for _, req in sorted(self._data.items()):
-            # write requirement without markers. They have been evaluated
-            # in add_constraint()
-            output.write(f"{req.name}{req.specifier}\n")
+        """Dump combined constraints to a text stream.
+
+        Each line includes an inline comment showing which source file(s)
+        contributed each specifier.
+
+        Args:
+            output: Writable text stream.
+
+        .. versionchanged:: 0.84.0
+           Output now includes per-line provenance comments.
+        """
+        # sort by normalized name, write requirement without markers.
+        # They have been evaluated in add_constraint()
+        for name, req in sorted(self._data.items()):
+            line = f"{req.name}{req.specifier}"
+            prov = self._provenance.get(name, {})
+            if prov:
+                line = f"{line}  # {_format_provenance(prov)}"
+            output.write(f"{line}\n")
 
     def get_constraint(self, name: str) -> Requirement | None:
+        """Return the merged constraint for *name*, or ``None``."""
         return self._data.get(canonicalize_name(name))
 
+    def get_provenance(self, name: str) -> dict[str, list[str]]:
+        """Return provenance info for *name*.
+
+        Returns:
+            Mapping of ``{source_file: [original_constraint_lines]}``,
+            or an empty dict if the package has no constraints.
+
+        .. versionadded:: 0.84.0
+        """
+        prov = self._provenance.get(canonicalize_name(name), {})
+        return {source: list(lines) for source, lines in prov.items()}
+
     def allow_prerelease(self, pkg_name: str) -> bool:
+        """Return ``True`` if the constraint for *pkg_name* allows prereleases."""
         constraint = self.get_constraint(pkg_name)
         if constraint:
             return bool(constraint.specifier.prereleases)
@@ -131,6 +192,7 @@ class Constraints:
         return False
 
     def is_satisfied_by(self, pkg_name: str, version: Version) -> bool:
+        """Return ``True`` if *version* satisfies the constraint for *pkg_name*."""
         constraint = self.get_constraint(pkg_name)
         if constraint:
             return constraint.specifier.contains(version, prereleases=True)
