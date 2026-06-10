@@ -101,6 +101,7 @@ def build(
     separately.
 
     """
+    resolver.cooldown_report.clear()
     wkctx.wheel_server_url = wheel_server_url
     server.start_wheel_server(wkctx)
     req = Requirement(f"{dist_name}=={dist_version}")
@@ -122,6 +123,7 @@ def build(
             force=True,
             cache_wheel_server_url=None,
         )
+    resolver.cooldown_report.write_to(wkctx.work_dir / "cooldown-skipped-versions.json")
     print(entry.wheel_filename)
 
 
