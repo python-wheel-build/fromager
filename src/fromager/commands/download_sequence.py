@@ -52,10 +52,13 @@ def download_sequence(
     the build order file that have source_url_type as sdist.
 
     """
-    if wkctx.wheel_server_url:
-        wheel_servers = [wkctx.wheel_server_url]
-    else:
-        wheel_servers = [sdist_server_url]
+    # The local wheel server is a trusted cache (wheels built in this or
+    # prior runs).  An external sdist_server_url used as a wheel fallback
+    # is an upstream index that needs cooldown and override hooks.
+    use_cache_resolution = bool(wkctx.wheel_server_url)
+    wheel_server_url = (
+        wkctx.wheel_server_url if use_cache_resolution else sdist_server_url
+    )
 
     logger.info("reading build order from %s", build_order_file)
     with read.open_file_or_url(build_order_file) as f:
@@ -83,7 +86,6 @@ def download_sequence(
             except Exception as err:
                 logger.error(f"failed to download sdist for {req}: {err}")
                 if not ignore_missing_sdists:
-                    # Re-raise with package context since context var is lost across threads
                     raise RuntimeError(f"Failed to download sdist for {req}") from err
         else:
             logger.info(
@@ -92,12 +94,21 @@ def download_sequence(
 
         if include_wheels:
             try:
-                wheel_url, _ = wheels.resolve_prebuilt_wheel(
-                    ctx=wkctx, req=req, wheel_server_urls=wheel_servers
-                )
+                if use_cache_resolution:
+                    resolved_url, _ = wheels.resolve_cached_wheel(
+                        ctx=wkctx,
+                        req=req,
+                        cache_server_url=wheel_server_url,
+                    )
+                else:
+                    resolved_url, _ = wheels.resolve_prebuilt_wheel(
+                        ctx=wkctx,
+                        req=req,
+                        wheel_server_urls=[wheel_server_url],
+                    )
                 wheels.download_wheel(
                     req=req,
-                    wheel_url=wheel_url,
+                    wheel_url=resolved_url,
                     output_directory=wkctx.wheels_downloads,
                 )
             except Exception as err:
