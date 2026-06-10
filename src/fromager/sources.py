@@ -29,6 +29,7 @@ from . import (
     packagesettings,
     pyproject,
     resolver,
+    sdist,
     tarballs,
     vendor_rust,
 )
@@ -540,6 +541,15 @@ def prepare_source(
             source_root_dir=source_root_dir,
             version=version,
         )
+        source_root_dir = sdist.make_sdist_directory(
+            source_root_dir,
+            req.name,
+            version,
+        )
+        pbi = ctx.package_build_info(req)
+        build_dir = pbi.build_dir(source_root_dir)
+        if build_dir != source_root_dir:
+            sdist._write_pkg_info(build_dir, req.name, version)
     else:
         logger.info(f"preparing source for {req} from {source_filename}")
         prepare_source_details = overrides.find_and_invoke(
@@ -698,31 +708,30 @@ def default_build_sdist(
     build_env: build_environment.BuildEnvironment,
     build_dir: pathlib.Path,
 ) -> pathlib.Path:
-    # It seems like the "correct" way to do this would be to run the
-    # PEP 517 API in the source tree we have modified. However, quite
-    # a few packages assume their source distribution is being built
-    # from a source code repository checkout and those throw an error
-    # when we use the interface to try to rebuild the sdist. Since we
-    # know what we have is an exploded tarball, we just tar it back
-    # up.
-    #
-    # For cases where the PEP 517 approach works, use
-    # pep517_build_sdist().
+    """Rebuild an sdist by re-tarring a previously unpacked source tree.
+
+    For cases where the PEP 517 approach works, use
+    :func:`pep517_build_sdist` instead.  Many packages assume the sdist
+    is built from a repository checkout and error out when the PEP 517
+    interface is used, so this function simply tars the tree back up.
+    """
+    old_root = sdist_root_dir
+    sdist_root_dir = sdist.make_sdist_directory(
+        sdist_root_dir,
+        req.name,
+        version,
+        build_dir=build_dir,
+    )
+    if sdist_root_dir != old_root and build_dir.is_relative_to(old_root):
+        build_dir = sdist_root_dir / build_dir.relative_to(old_root)
     sdist_filename = ctx.sdists_builds / f"{req.name}-{version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()
-    ensure_pkg_info(
-        ctx=ctx,
-        req=req,
-        version=version,
-        sdist_root_dir=sdist_root_dir,
-        build_dir=build_dir,
-    )
     # The format argument is specified based on
     # https://peps.python.org/pep-0517/#build-sdist.
-    with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
+    with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist_tar:
         tarballs.tar_reproducible(
-            tar=sdist,
+            tar=sdist_tar,
             basedir=build_dir,
             prefix=build_dir.parent,
         )
@@ -754,14 +763,6 @@ def pep517_build_sdist(
     return ctx.sdists_builds / sdist_filename
 
 
-PKG_INFO_CONTENT = """\
-Metadata-Version: 1.0
-Name: {name}
-Version: {version}
-Summary: {summary}
-"""
-
-
 def ensure_pkg_info(
     *,
     ctx: context.WorkContext,
@@ -772,11 +773,11 @@ def ensure_pkg_info(
 ) -> bool:
     """Ensure that sdist has a PKG-INFO file.
 
-    Returns True if PKG-INFO is present, False if file is missing. The
-    function also updates build_dir if package has a non-standard build
-    directory. Every sdist must have a PKG-INFO file in the first directory.
-    The additional PKG-INFO file in build_dir is required for projects
-    with a non-standard layout and projects using setuptools-scm.
+    Delegates to :func:`fromager.sdist._write_pkg_info` to create stub
+    files when missing.
+
+    Returns True if PKG-INFO was already present in all directories,
+    False if any file had to be created.
     """
     had_pkg_info = True
     directories = [sdist_root_dir]
@@ -788,13 +789,7 @@ def ensure_pkg_info(
             logger.warning(
                 f"PKG-INFO file is missing from {directory}, creating stub file"
             )
-            pkg_info_file.write_text(
-                PKG_INFO_CONTENT.format(
-                    name=req.name,
-                    version=str(version),
-                    summary=dependencies.STUB_PKG_INFO_SUMMARY,
-                )
-            )
+            sdist._write_pkg_info(directory, req.name, version)
             had_pkg_info = False
     return had_pkg_info
 
