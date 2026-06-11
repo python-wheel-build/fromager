@@ -212,7 +212,7 @@ def bootstrap(
             result = bt.resolve_and_add_top_level(req)
             if result is not None:
                 resolved_reqs.append(req)
-            # If result is None, test_mode recorded the failure and we continue
+            # If result is None, test_mode or multiple_versions recorded the failure
             requirement_ctxvar.reset(token)
 
         # Bootstrap only packages that were successfully resolved
