@@ -247,9 +247,25 @@ class Bootstrapper:
                     constraint=self.ctx.constraints.get_constraint(req.name),
                 )
 
+            if not results:
+                if self.multiple_versions:
+                    err = RuntimeError(f"no versions found for {req}")
+                    self._record_failed_version(
+                        req, "unresolved", err, "no versions resolved, skipping"
+                    )
+                    if self.test_mode:
+                        self._record_test_mode_failure(req, None, err, "resolution")
+                    return None
+                raise RuntimeError(f"Could not resolve any versions for {req}")
+
             # Return first result for backward compatibility
             return results[0]
         except Exception as err:
+            if self.multiple_versions:
+                self._record_failed_version(req, "unresolved", err, "failed to resolve")
+                if self.test_mode:
+                    self._record_test_mode_failure(req, None, err, "resolution")
+                return None
             if not self.test_mode:
                 raise
             self._record_test_mode_failure(req, None, err, "resolution")
@@ -1739,10 +1755,22 @@ class Bootstrapper:
         Returns work items to continue processing (e.g. prebuilt fallback),
         or empty list to skip this item. Raises in normal mode (fail-fast).
         """
-        # Resolution failures: only recoverable in test mode
+        # Resolution failures: recoverable in test mode and multiple versions mode
         if item.phase == BootstrapPhase.RESOLVE:
             if self.test_mode:
                 self._record_test_mode_failure(item.req, None, err, "resolution")
+                if self.multiple_versions:
+                    self._record_failed_version(
+                        item.req,
+                        "unresolved",
+                        err,
+                        f"failed during {item.phase} phase",
+                    )
+                return []
+            if self.multiple_versions:
+                self._record_failed_version(
+                    item.req, "unresolved", err, f"failed during {item.phase} phase"
+                )
                 return []
             raise
 
@@ -1777,11 +1805,11 @@ class Bootstrapper:
         if self.multiple_versions:
             assert item.resolved_version is not None
             pkg_name = canonicalize_name(item.req.name)
-            self._failed_versions.append((pkg_name, str(item.resolved_version), err))
-            logger.warning(
-                f"{item.req.name}=={item.resolved_version}: "
-                f"failed to bootstrap during {item.phase} phase: "
-                f"{type(err).__name__}: {err}"
+            self._record_failed_version(
+                item.req,
+                str(item.resolved_version),
+                err,
+                f"failed during {item.phase} phase",
             )
             self.ctx.dependency_graph.remove_dependency(pkg_name, item.resolved_version)
             self._seen_requirements.discard(
@@ -1796,15 +1824,44 @@ class Bootstrapper:
         # Normal mode: fail-fast
         raise
 
+    def _record_failed_version(
+        self,
+        req: Requirement,
+        version: str,
+        err: Exception,
+        detail: str,
+    ) -> None:
+        """Record a version failure in multiple versions mode."""
+        pkg_name = canonicalize_name(req.name)
+        self._failed_versions.append((pkg_name, version, err))
+        logger.warning(
+            "%s==%s: %s: %s: %s",
+            req.name,
+            version,
+            detail,
+            type(err).__name__,
+            err,
+        )
+
+    def _log_failed_versions_table(self) -> None:
+        """Log a summary table of all failed versions."""
+        logger.warning("%d version(s) failed to bootstrap:", len(self._failed_versions))
+        for name, ver, exc in self._failed_versions:
+            logger.warning("  %s==%s: %s: %s", name, ver, type(exc).__name__, exc)
+
     def finalize(self) -> int:
         """Finalize bootstrap and return exit code.
 
+        Reports failed versions in multiple versions mode.
         In test mode, writes failure report and returns non-zero if there were failures.
 
         Returns:
-            0 if all packages built successfully (or not in test mode)
+            0 if all packages built successfully (or not in test/multiple versions mode)
             1 if any packages failed in test mode
         """
+        if self.multiple_versions and self._failed_versions:
+            self._log_failed_versions_table()
+
         if not self.test_mode:
             return 0
 
