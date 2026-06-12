@@ -1,10 +1,32 @@
+import contextlib
 import os
 import pathlib
+import sys
+import typing
 
 import click
 from packaging.version import Version
 
 from . import requirements_file
+
+
+@contextlib.contextmanager
+def output_file_or_stdout(
+    path: pathlib.Path | None,
+) -> typing.Generator[typing.TextIO, None, None]:
+    """Context manager that opens *path* for writing or yields stdout.
+
+    When *path* is ``None``, yields :data:`sys.stdout` (never closed).
+    Otherwise opens the file, yields it, and closes on exit.
+    """
+    if path:
+        fh = open(path, "w")
+        try:
+            yield fh
+        finally:
+            fh.close()
+    else:
+        yield sys.stdout
 
 
 class ClickPath(click.Path):

@@ -5,6 +5,7 @@ import sys
 
 import click
 import rich
+import rich.console
 from packaging.version import Version
 from rich.table import Table
 
@@ -26,13 +27,13 @@ from fromager.packagesettings import PatchMap
     "output_format",
     type=click.Choice(["table", "csv", "json"], case_sensitive=False),
     default="table",
-    help="Output format for detailed view (requires --details, default: table)",
+    help="Output format for detailed view (used with --details, default: table)",
 )
 @click.option(
     "-o",
     "--output",
     type=clickext.ClickPath(),
-    help="Output file to create (requires --details, default: stdout)",
+    help="Write output to file instead of stdout",
 )
 @click.pass_obj
 def list_overrides(
@@ -42,23 +43,11 @@ def list_overrides(
     output: pathlib.Path | None,
 ) -> None:
     """List all of the packages with overrides in the current configuration."""
-    # Warn if format/output options are used without --details
-    if not details:
-        if output_format != "table":
-            click.echo(
-                "Warning: --format option is ignored when --details is not used",
-                err=True,
-            )
-        if output is not None:
-            click.echo(
-                "Warning: --output option is ignored when --details is not used",
-                err=True,
-            )
-
     overridden_packages = sorted(wkctx.settings.list_overrides())
     if not details:
-        for name in overridden_packages:
-            print(name)
+        with clickext.output_file_or_stdout(output) as fh:
+            for name in overridden_packages:
+                print(name, file=fh)
         return
 
     # Collect data for export
@@ -140,7 +129,7 @@ def list_overrides(
         case "csv":
             _export_csv(export_data, variant_names, output)
         case "table":
-            _export_table(export_data, variant_names)
+            _export_table(export_data, variant_names, output)
         case _:
             raise ValueError(f"Invalid output format: {output_format}")
 
@@ -180,8 +169,10 @@ def _export_csv(
         writer.writerows(data)
 
 
-def _export_table(data: list[dict], variants: list[str]) -> None:
-    """Export data as Rich table (original behavior)."""
+def _export_table(
+    data: list[dict], variants: list[str], output: pathlib.Path | None = None
+) -> None:
+    """Export data as Rich table."""
     table = Table(title="Package Overrides")
     table.add_column("Package", justify="left", no_wrap=True)
     table.add_column("Version", justify="left", no_wrap=True)
@@ -194,7 +185,6 @@ def _export_table(data: list[dict], variants: list[str]) -> None:
 
     table.add_column("Plugin", justify="left")
 
-    # Define column keys in the same order as CSV exporter
     column_keys = (
         ["package", "version", "patches", "min_release_age"]
         + variants
@@ -205,4 +195,8 @@ def _export_table(data: list[dict], variants: list[str]) -> None:
         row = [row_data.get(key, "") for key in column_keys]
         table.add_row(*row)
 
-    rich.get_console().print(table)
+    if output:
+        with open(output, "w") as fh:
+            rich.console.Console(file=fh, width=120).print(table)
+    else:
+        rich.get_console().print(table)
