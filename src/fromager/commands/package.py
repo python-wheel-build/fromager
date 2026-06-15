@@ -121,7 +121,7 @@ def package() -> None:
     "-o",
     "--output",
     type=clickext.ClickPath(),
-    help="Output file (default: stdout)",
+    help="Write output to file instead of stdout",
 )
 @click.option(
     "--ignore-per-package-overrides",
@@ -228,18 +228,12 @@ def list_versions(
         provider.supports_upload_time,
     )
 
-    if output is not None and output_format in ("versions", "requirements"):
-        click.echo(
-            "Warning: --output option is ignored for 'versions' and 'requirements' formats",
-            err=True,
-        )
-
     match output_format:
         case "versions":
-            _export_versions_plain(version_rows, req.name, cooldown)
+            _export_versions_plain(version_rows, req.name, cooldown, output=output)
         case "requirements":
             _export_versions_plain(
-                version_rows, req.name, cooldown, as_requirements=True
+                version_rows, req.name, cooldown, as_requirements=True, output=output
             )
         case "table":
             _export_versions_table(version_rows, req.name, cooldown, output)
@@ -350,15 +344,17 @@ def _export_versions_plain(
     cooldown: Cooldown | None,
     *,
     as_requirements: bool = False,
+    output: pathlib.Path | None = None,
 ) -> None:
     """Export versions as a plain list, filtering out cooldown-blocked entries."""
-    for row in data:
-        if cooldown is not None and row["cooldown"] == "blocked":
-            continue
-        if as_requirements:
-            print(f"{package_name}=={row['version']}")
-        else:
-            print(row["version"])
+    with clickext.output_file_or_stdout(output) as fh:
+        for row in data:
+            if cooldown is not None and row["cooldown"] == "blocked":
+                continue
+            if as_requirements:
+                print(f"{package_name}=={row['version']}", file=fh)
+            else:
+                print(row["version"], file=fh)
 
 
 def _export_versions_json(
