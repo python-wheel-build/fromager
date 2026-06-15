@@ -569,18 +569,24 @@ class TestHandlePhaseError:
             except RuntimeError:
                 bt._handle_phase_error(item, err)
 
-    def test_resolve_error_in_multiple_versions_mode_raises(
+    def test_resolve_error_in_multiple_versions_mode_continues(
         self, tmp_context: WorkContext
     ) -> None:
+        """RESOLVE failures in multiple versions mode are recorded, not raised."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
         err = RuntimeError("resolution failed")
 
-        with pytest.raises(RuntimeError, match="resolution failed"):
-            try:
-                raise err
-            except RuntimeError:
-                bt._handle_phase_error(item, err)
+        try:
+            raise err
+        except RuntimeError:
+            result = bt._handle_phase_error(item, err)
+
+        assert result == []
+        assert len(bt._failed_versions) == 1
+        assert bt._failed_versions[0][0] == canonicalize_name("testpkg")
+        assert bt._failed_versions[0][1] == "unresolved"
+        assert bt._failed_versions[0][2] is err
 
     # -- Build phase errors in test mode --
 
@@ -877,6 +883,43 @@ class TestIterativeBootstrapLoop:
         # Other versions processed successfully (in graph)
         assert f"{canonicalize_name('pkg')}==2.0" in tmp_context.dependency_graph.nodes
         assert f"{canonicalize_name('pkg')}==1.0" in tmp_context.dependency_graph.nodes
+
+    def test_multiple_versions_resolve_failure_continues(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """RESOLVE failure for one dependency does not crash the loop."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+
+        original_dispatch = bt._dispatch_phase
+        completed: list[str] = []
+
+        def mock_dispatch(item: WorkItem) -> list[WorkItem]:
+            if item.phase == BootstrapPhase.START:
+                return original_dispatch(item)
+            if item.phase == BootstrapPhase.RESOLVE:
+                if str(item.req.name) == "bad-dep":
+                    raise RuntimeError("Could not resolve any versions for bad-dep")
+                return original_dispatch(item)
+            completed.append(str(item.req.name))
+            return []
+
+        with (
+            patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch),
+            patch.object(
+                bt._resolver,
+                "resolve",
+                return_value=[("url-1.0", Version("1.0"))],
+            ),
+            patch.object(bt, "_has_been_seen", return_value=False),
+        ):
+            bt.bootstrap(Requirement("good-pkg"), RequirementType.INSTALL)
+            bt.bootstrap(Requirement("bad-dep"), RequirementType.INSTALL)
+            bt.bootstrap(Requirement("another-good"), RequirementType.INSTALL)
+
+        assert "good-pkg" in completed
+        assert "another-good" in completed
+        failed_names = [name for name, _, _ in bt._failed_versions]
+        assert canonicalize_name("bad-dep") in failed_names
 
     def test_test_mode_continues_after_failure(self, tmp_context: WorkContext) -> None:
         """In test mode, failed items are recorded and processing continues."""
