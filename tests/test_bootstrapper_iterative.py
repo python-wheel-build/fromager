@@ -19,7 +19,9 @@ Tests cover:
 
 from __future__ import annotations
 
+import concurrent.futures
 import pathlib
+import typing
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -31,6 +33,15 @@ from fromager import bootstrapper, build_environment
 from fromager.bootstrapper import BootstrapPhase, SourceBuildResult, WorkItem
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
+
+
+def _make_resolved_future(
+    result: typing.Any,
+) -> concurrent.futures.Future[typing.Any]:
+    """Return an already-completed Future carrying *result*."""
+    future: concurrent.futures.Future[typing.Any] = concurrent.futures.Future()
+    future.set_result(result)
+    return future
 
 
 def _make_resolve_item(
@@ -252,13 +263,11 @@ class TestPhaseResolve:
         item = _make_resolve_item()
         parent = (Requirement("parent"), Version("2.0"))
         item.parent = parent
+        item.bg_future = _make_resolved_future(
+            [("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0"))]
+        )
 
-        with patch.object(
-            bt,
-            "resolve_versions",
-            return_value=[("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0"))],
-        ):
-            result = bt._phase_resolve(item)
+        result = bt._phase_resolve(item)
 
         assert len(result) == 1
         assert result[0].phase == BootstrapPhase.START
@@ -269,16 +278,14 @@ class TestPhaseResolve:
     def test_multiple_versions(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
-
-        with patch.object(
-            bt,
-            "resolve_versions",
-            return_value=[
+        item.bg_future = _make_resolved_future(
+            [
                 ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
                 ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
-            ],
-        ):
-            result = bt._phase_resolve(item)
+            ]
+        )
+
+        result = bt._phase_resolve(item)
 
         assert len(result) == 2
         # Reversed so highest version ends up on top of stack (last element)
@@ -288,22 +295,18 @@ class TestPhaseResolve:
     def test_empty_resolution_raises(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future([])
 
-        with patch.object(bt, "resolve_versions", return_value=[]):
-            with pytest.raises(RuntimeError, match="Could not resolve"):
-                bt._phase_resolve(item)
+        with pytest.raises(RuntimeError, match="Could not resolve"):
+            bt._phase_resolve(item)
 
     def test_preserves_why_snapshot(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         snapshot = [(RequirementType.TOP_LEVEL, Requirement("root"), Version("1.0"))]
         item = _make_resolve_item(why_snapshot=list(snapshot))
+        item.bg_future = _make_resolved_future([("url", Version("1.0"))])
 
-        with patch.object(
-            bt,
-            "resolve_versions",
-            return_value=[("url", Version("1.0"))],
-        ):
-            result = bt._phase_resolve(item)
+        result = bt._phase_resolve(item)
 
         assert result[0].why_snapshot == snapshot
 
@@ -313,24 +316,22 @@ class TestPhaseResolve:
         """Cached versions are filtered out before creating START items."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future(
+            [
+                ("url-3.0", Version("3.0")),
+                ("url-2.0", Version("2.0")),
+                ("url-1.0", Version("1.0")),
+            ]
+        )
 
-        def mock_cache(req: Requirement, version: Version) -> tuple:
+        def mock_cache(
+            ctx: object, cache_url: object, req: Requirement, version: Version
+        ) -> tuple:
             if str(version) == "2.0":
                 return (tmp_context.work_dir / "pkg-2.0-py3-none-any.whl", None)
             return (None, None)
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[
-                    ("url-3.0", Version("3.0")),
-                    ("url-2.0", Version("2.0")),
-                    ("url-1.0", Version("1.0")),
-                ],
-            ),
-            patch.object(bt, "_find_cached_wheel", side_effect=mock_cache),
-        ):
+        with patch("fromager.bootstrapper._find_cached_wheel", side_effect=mock_cache):
             result = bt._phase_resolve(item)
 
         assert len(result) == 2
@@ -341,22 +342,17 @@ class TestPhaseResolve:
         """If all versions are cached, keeps the highest for dependency discovery."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future(
+            [
+                ("url-3.0", Version("3.0")),
+                ("url-2.0", Version("2.0")),
+                ("url-1.0", Version("1.0")),
+            ]
+        )
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[
-                    ("url-3.0", Version("3.0")),
-                    ("url-2.0", Version("2.0")),
-                    ("url-1.0", Version("1.0")),
-                ],
-            ),
-            patch.object(
-                bt,
-                "_find_cached_wheel",
-                return_value=(tmp_context.work_dir / "cached.whl", None),
-            ),
+        with patch(
+            "fromager.bootstrapper._find_cached_wheel",
+            return_value=(tmp_context.work_dir / "cached.whl", None),
         ):
             result = bt._phase_resolve(item)
 
@@ -369,15 +365,9 @@ class TestPhaseResolve:
         """Cache filtering does not apply in single version mode."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=False)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[("url-1.0", Version("1.0"))],
-            ),
-            patch.object(bt, "_find_cached_wheel") as mock_cache,
-        ):
+        with patch("fromager.bootstrapper._find_cached_wheel") as mock_cache:
             result = bt._phase_resolve(item)
 
         assert len(result) == 1
@@ -390,11 +380,9 @@ class TestPhaseResolve:
         for multi in (False, True):
             bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=multi)
             item = _make_resolve_item()
+            item.bg_future = _make_resolved_future([])
 
-            with (
-                patch.object(bt, "resolve_versions", return_value=[]),
-                pytest.raises(RuntimeError, match="Could not resolve"),
-            ):
+            with pytest.raises(RuntimeError, match="Could not resolve"):
                 bt._phase_resolve(item)
 
     def test_filters_failed_versions_in_multiple_versions_mode(
@@ -407,18 +395,16 @@ class TestPhaseResolve:
         bt._failed_versions[(canonicalize_name("testpkg"), "2.0")] = RuntimeError(
             "boom"
         )
+        item.bg_future = _make_resolved_future(
+            [
+                ("url-3.0", Version("3.0")),
+                ("url-2.0", Version("2.0")),
+                ("url-1.0", Version("1.0")),
+            ]
+        )
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[
-                    ("url-3.0", Version("3.0")),
-                    ("url-2.0", Version("2.0")),
-                    ("url-1.0", Version("1.0")),
-                ],
-            ),
-            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
+        with patch(
+            "fromager.bootstrapper._find_cached_wheel", return_value=(None, None)
         ):
             result = bt._phase_resolve(item)
 
@@ -435,13 +421,9 @@ class TestPhaseResolve:
         bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = RuntimeError(
             "boom"
         )
+        item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        with patch.object(
-            bt,
-            "resolve_versions",
-            return_value=[("url-1.0", Version("1.0"))],
-        ):
-            result = bt._phase_resolve(item)
+        result = bt._phase_resolve(item)
 
         assert len(result) == 1
         assert result[0].resolved_version == Version("1.0")
@@ -456,15 +438,22 @@ class TestPhaseResolve:
         bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = RuntimeError(
             "boom"
         )
+        item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[("url-1.0", Version("1.0"))],
-            ),
-            pytest.raises(RuntimeError, match="failed previously"),
-        ):
+        with pytest.raises(RuntimeError, match="failed previously"):
+            bt._phase_resolve(item)
+
+    def test_bg_future_exception_propagates(self, tmp_context: WorkContext) -> None:
+        """Exceptions from the background resolver thread are surfaced by _phase_resolve."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_resolve_item()
+        future: concurrent.futures.Future[list[tuple[str, Version]]] = (
+            concurrent.futures.Future()
+        )
+        future.set_exception(ValueError("resolver exploded"))
+        item.bg_future = future
+
+        with pytest.raises(ValueError, match="resolver exploded"):
             bt._phase_resolve(item)
 
 
@@ -828,8 +817,8 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(bt, "_dispatch_phase", side_effect=tracking_dispatch),
             patch.object(
-                bt,
-                "resolve_versions",
+                bt._resolver,
+                "resolve",
                 return_value=[("https://pypi.org/pkg-1.0.tar.gz", Version("1.0"))],
             ),
         ):
@@ -893,8 +882,8 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(bt, "_dispatch_phase", side_effect=tracking_dispatch),
             patch.object(
-                bt,
-                "resolve_versions",
+                bt._resolver,
+                "resolve",
                 return_value=[("https://pypi.org/pkg-1.0.tar.gz", Version("1.0"))],
             ),
         ):
@@ -1008,8 +997,8 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch),
             patch.object(
-                bt,
-                "resolve_versions",
+                bt._resolver,
+                "resolve",
                 return_value=[("url", Version("1.0"))],
             ),
         ):
@@ -1026,10 +1015,8 @@ class TestIterativeBootstrapLoop:
 class TestPhasePrepareSource:
     """Tests for _phase_prepare_source: prebuilt, source, cache, and error paths."""
 
-    def test_prebuilt_downloads_and_skips_to_process_install_deps(
-        self, tmp_context: WorkContext
-    ) -> None:
-        """Prebuilt package downloads wheel and advances to PROCESS_INSTALL_DEPS."""
+    def test_prebuilt_uses_background_result(self, tmp_context: WorkContext) -> None:
+        """Prebuilt package uses bg_future result and advances to PROCESS_INSTALL_DEPS."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_build_item(
             phase=BootstrapPhase.PREPARE_SOURCE,
@@ -1039,13 +1026,13 @@ class TestPhasePrepareSource:
 
         mock_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
         mock_unpack = tmp_context.work_dir / "testpkg-1.0"
+        item.bg_future = _make_resolved_future(
+            bootstrapper.PreparedSourceData(
+                wheel_filename=mock_wheel, unpack_dir=mock_unpack
+            )
+        )
 
-        with (
-            patch.object(
-                bt, "_download_prebuilt", return_value=(mock_wheel, mock_unpack)
-            ) as mock_dl,
-            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-        ):
+        with patch.object(tmp_context.constraints, "get_constraint", return_value=None):
             result = bt._phase_prepare_source(item)
 
         assert len(result) == 1
@@ -1056,27 +1043,23 @@ class TestPhasePrepareSource:
         assert item.build_result.wheel_filename == mock_wheel
         assert item.build_result.sdist_filename is None
         assert item.build_result.build_env is None
-        mock_dl.assert_called_once()
 
-    def test_source_no_cache_downloads_and_prepares(
+    def test_source_no_cache_uses_background_result(
         self, tmp_context: WorkContext
     ) -> None:
-        """Source build with no cached wheel downloads and prepares source."""
+        """Source build with no cached wheel uses bg_future result."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
 
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
-        source_filename = tmp_context.work_dir / "testpkg-1.0.tar.gz"
         mock_env = Mock()
         mock_dep_item = _make_resolve_item(req="setuptools")
+        item.bg_future = _make_resolved_future(
+            bootstrapper.PreparedSourceData(sdist_root_dir=sdist_root)
+        )
 
         with (
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
-            patch.object(
-                bt, "_download_source", return_value=source_filename
-            ) as mock_dl_src,
-            patch.object(bt, "_prepare_source", return_value=sdist_root) as mock_prep,
             patch.object(
                 bt, "_create_build_env", return_value=mock_env
             ) as mock_create_env,
@@ -1094,10 +1077,9 @@ class TestPhasePrepareSource:
         assert item.build_env is mock_env
         assert item.sdist_root_dir == sdist_root
         assert item.unpack_dir == sdist_root.parent
+        assert item.cached_wheel_filename is None
         assert result[0] is item
         assert result[1] is mock_dep_item
-        mock_dl_src.assert_called_once()
-        mock_prep.assert_called_once()
         mock_create_env.assert_called_once()
         mock_create_items.assert_called_once_with(
             item.build_system_deps,
@@ -1106,8 +1088,10 @@ class TestPhasePrepareSource:
             item.resolved_version,
         )
 
-    def test_source_cached_wheel_skips_download(self, tmp_context: WorkContext) -> None:
-        """Cached wheel skips download/prepare, uses unpacked dir for sdist root."""
+    def test_source_cached_wheel_uses_background_result(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Cached wheel background result sets cached_wheel_filename and sdist_root."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
 
@@ -1115,14 +1099,15 @@ class TestPhasePrepareSource:
         unpacked.mkdir(parents=True)
         cached_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
         mock_env = Mock()
+        item.bg_future = _make_resolved_future(
+            bootstrapper.PreparedSourceData(
+                sdist_root_dir=unpacked / unpacked.stem,
+                cached_wheel_filename=cached_wheel,
+            )
+        )
 
         with (
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(
-                bt, "_find_cached_wheel", return_value=(cached_wheel, unpacked)
-            ),
-            patch.object(bt, "_download_source") as mock_dl_src,
-            patch.object(bt, "_prepare_source") as mock_prep,
             patch.object(bt, "_create_build_env", return_value=mock_env),
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
@@ -1135,8 +1120,6 @@ class TestPhasePrepareSource:
         assert item.cached_wheel_filename == cached_wheel
         assert item.sdist_root_dir == unpacked / unpacked.stem
         assert item.phase == BootstrapPhase.PREPARE_BUILD
-        mock_dl_src.assert_not_called()
-        mock_prep.assert_not_called()
         assert len(result) == 1
 
     def test_bad_sdist_root_raises_valueerror(self, tmp_context: WorkContext) -> None:
@@ -1145,17 +1128,11 @@ class TestPhasePrepareSource:
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
 
         bad_root = tmp_context.work_dir / "a" / "b" / "c"
+        item.bg_future = _make_resolved_future(
+            bootstrapper.PreparedSourceData(sdist_root_dir=bad_root)
+        )
 
-        with (
-            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
-            patch.object(
-                bt,
-                "_download_source",
-                return_value=tmp_context.work_dir / "src.tar.gz",
-            ),
-            patch.object(bt, "_prepare_source", return_value=bad_root),
-        ):
+        with patch.object(tmp_context.constraints, "get_constraint", return_value=None):
             with pytest.raises(ValueError, match="should be"):
                 bt._phase_prepare_source(item)
 
@@ -1168,6 +1145,9 @@ class TestPhasePrepareSource:
 
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
         mock_env = Mock()
+        item.bg_future = _make_resolved_future(
+            bootstrapper.PreparedSourceData(sdist_root_dir=sdist_root)
+        )
 
         with (
             patch.object(
@@ -1175,13 +1155,6 @@ class TestPhasePrepareSource:
                 "get_constraint",
                 return_value=Requirement("testpkg>=1.0"),
             ),
-            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
-            patch.object(
-                bt,
-                "_download_source",
-                return_value=tmp_context.work_dir / "src.tar.gz",
-            ),
-            patch.object(bt, "_prepare_source", return_value=sdist_root),
             patch.object(bt, "_create_build_env", return_value=mock_env),
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
@@ -2183,3 +2156,35 @@ class TestPhasePrepareBuildFiltering:
         calls = mock_create.call_args_list
         assert calls[0][0][0] == {Requirement("wheel")}
         assert result == [item, resolve_item]
+
+
+class TestThreadPoolSubmission:
+    """Tests that exercise the real ThreadPoolExecutor submission path."""
+
+    def test_push_items_submits_resolve_to_real_thread_pool(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """_push_items submits RESOLVE work to a real thread pool and result() returns correctly."""
+        expected = [("https://pkg.test/testpkg-1.0.tar.gz", Version("1.0"))]
+
+        with bootstrapper.Bootstrapper(tmp_context, num_bg_threads=1) as bt:
+            with patch.object(bt._resolver, "resolve", return_value=expected):
+                item = _make_resolve_item(req="testpkg")
+                stack: list[WorkItem] = []
+
+                bt._push_items(stack, [item])
+
+                # bg_future must be a real Future, not pre-set
+                assert item.bg_future is not None
+                assert isinstance(item.bg_future, concurrent.futures.Future)
+
+                # Blocking on result() exercises the actual thread submission path
+                result = item.bg_future.result(timeout=10)
+                assert result == expected
+
+                # _phase_resolve processes the future correctly
+                new_items = bt._phase_resolve(item)
+
+            assert len(new_items) == 1
+            assert new_items[0].phase == BootstrapPhase.START
+            assert new_items[0].resolved_version == Version("1.0")

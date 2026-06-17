@@ -296,6 +296,7 @@ build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail
 [tool.pytest.ini_options]
 # run tests in parallel with 3 pytest-xdist workers
 addopts = "-n 3"
+testpaths = ["tests"]
 markers = [
     "network: test that need network access",
 ]
