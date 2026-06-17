@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import typing
 from datetime import timedelta
@@ -117,6 +118,14 @@ def _get_requirements_from_args(
     default=None,
     help="Reject package versions published more than this many days ago.",
 )
+@click.option(
+    "--bg-threads",
+    "num_bg_threads",
+    type=click.IntRange(min=1),
+    default=max(1, (os.cpu_count() or 2) // 2),
+    show_default=True,
+    help="Number of background threads for parallel I/O pre-fetching (min 1).",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -129,6 +138,7 @@ def bootstrap(
     test_mode: bool,
     multiple_versions: bool,
     max_release_age: int | None,
+    num_bg_threads: int,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -198,6 +208,7 @@ def bootstrap(
             sdist_only=sdist_only,
             test_mode=test_mode,
             multiple_versions=multiple_versions,
+            num_bg_threads=num_bg_threads,
         )
 
         # Pre-resolution phase: Resolve all top-level dependencies before recursive

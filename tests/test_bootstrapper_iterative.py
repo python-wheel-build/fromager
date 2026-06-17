@@ -19,7 +19,9 @@ Tests cover:
 
 from __future__ import annotations
 
+import concurrent.futures
 import pathlib
+import typing
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -31,6 +33,15 @@ from fromager import bootstrapper, build_environment
 from fromager.bootstrapper import BootstrapPhase, SourceBuildResult, WorkItem
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
+
+
+def _make_resolved_future(
+    result: typing.Any,
+) -> concurrent.futures.Future[typing.Any]:
+    """Return an already-completed Future carrying *result*."""
+    future: concurrent.futures.Future[typing.Any] = concurrent.futures.Future()
+    future.set_result(result)
+    return future
 
 
 def _make_resolve_item(
@@ -252,13 +263,11 @@ class TestPhaseResolve:
         item = _make_resolve_item()
         parent = (Requirement("parent"), Version("2.0"))
         item.parent = parent
+        item.bg_future = _make_resolved_future(
+            [("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0"))]
+        )
 
-        with patch.object(
-            bt,
-            "resolve_versions",
-            return_value=[("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0"))],
-        ):
-            result = bt._phase_resolve(item)
+        result = bt._phase_resolve(item)
 
         assert len(result) == 1
         assert result[0].phase == BootstrapPhase.START
@@ -269,16 +278,14 @@ class TestPhaseResolve:
     def test_multiple_versions(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
-
-        with patch.object(
-            bt,
-            "resolve_versions",
-            return_value=[
+        item.bg_future = _make_resolved_future(
+            [
                 ("https://pypi.org/testpkg-2.0.tar.gz", Version("2.0")),
                 ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
-            ],
-        ):
-            result = bt._phase_resolve(item)
+            ]
+        )
+
+        result = bt._phase_resolve(item)
 
         assert len(result) == 2
         # Reversed so highest version ends up on top of stack (last element)
@@ -288,22 +295,18 @@ class TestPhaseResolve:
     def test_empty_resolution_raises(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future([])
 
-        with patch.object(bt, "resolve_versions", return_value=[]):
-            with pytest.raises(RuntimeError, match="Could not resolve"):
-                bt._phase_resolve(item)
+        with pytest.raises(RuntimeError, match="Could not resolve"):
+            bt._phase_resolve(item)
 
     def test_preserves_why_snapshot(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         snapshot = [(RequirementType.TOP_LEVEL, Requirement("root"), Version("1.0"))]
         item = _make_resolve_item(why_snapshot=list(snapshot))
+        item.bg_future = _make_resolved_future([("url", Version("1.0"))])
 
-        with patch.object(
-            bt,
-            "resolve_versions",
-            return_value=[("url", Version("1.0"))],
-        ):
-            result = bt._phase_resolve(item)
+        result = bt._phase_resolve(item)
 
         assert result[0].why_snapshot == snapshot
 
@@ -313,24 +316,20 @@ class TestPhaseResolve:
         """Cached versions are filtered out before creating START items."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future(
+            [
+                ("url-3.0", Version("3.0")),
+                ("url-2.0", Version("2.0")),
+                ("url-1.0", Version("1.0")),
+            ]
+        )
 
         def mock_cache(req: Requirement, version: Version) -> tuple:
             if str(version) == "2.0":
                 return (tmp_context.work_dir / "pkg-2.0-py3-none-any.whl", None)
             return (None, None)
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[
-                    ("url-3.0", Version("3.0")),
-                    ("url-2.0", Version("2.0")),
-                    ("url-1.0", Version("1.0")),
-                ],
-            ),
-            patch.object(bt, "_find_cached_wheel", side_effect=mock_cache),
-        ):
+        with patch.object(bt, "_find_cached_wheel", side_effect=mock_cache):
             result = bt._phase_resolve(item)
 
         assert len(result) == 2
@@ -341,22 +340,18 @@ class TestPhaseResolve:
         """If all versions are cached, keeps the highest for dependency discovery."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future(
+            [
+                ("url-3.0", Version("3.0")),
+                ("url-2.0", Version("2.0")),
+                ("url-1.0", Version("1.0")),
+            ]
+        )
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[
-                    ("url-3.0", Version("3.0")),
-                    ("url-2.0", Version("2.0")),
-                    ("url-1.0", Version("1.0")),
-                ],
-            ),
-            patch.object(
-                bt,
-                "_find_cached_wheel",
-                return_value=(tmp_context.work_dir / "cached.whl", None),
-            ),
+        with patch.object(
+            bt,
+            "_find_cached_wheel",
+            return_value=(tmp_context.work_dir / "cached.whl", None),
         ):
             result = bt._phase_resolve(item)
 
@@ -369,15 +364,9 @@ class TestPhaseResolve:
         """Cache filtering does not apply in single version mode."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=False)
         item = _make_resolve_item()
+        item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        with (
-            patch.object(
-                bt,
-                "resolve_versions",
-                return_value=[("url-1.0", Version("1.0"))],
-            ),
-            patch.object(bt, "_find_cached_wheel") as mock_cache,
-        ):
+        with patch.object(bt, "_find_cached_wheel") as mock_cache:
             result = bt._phase_resolve(item)
 
         assert len(result) == 1
@@ -390,11 +379,9 @@ class TestPhaseResolve:
         for multi in (False, True):
             bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=multi)
             item = _make_resolve_item()
+            item.bg_future = _make_resolved_future([])
 
-            with (
-                patch.object(bt, "resolve_versions", return_value=[]),
-                pytest.raises(RuntimeError, match="Could not resolve"),
-            ):
+            with pytest.raises(RuntimeError, match="Could not resolve"):
                 bt._phase_resolve(item)
 
 
@@ -759,8 +746,8 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(bt, "_dispatch_phase", side_effect=tracking_dispatch),
             patch.object(
-                bt,
-                "resolve_versions",
+                bt._resolver,
+                "resolve",
                 return_value=[("https://pypi.org/pkg-1.0.tar.gz", Version("1.0"))],
             ),
         ):
@@ -824,8 +811,8 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(bt, "_dispatch_phase", side_effect=tracking_dispatch),
             patch.object(
-                bt,
-                "resolve_versions",
+                bt._resolver,
+                "resolve",
                 return_value=[("https://pypi.org/pkg-1.0.tar.gz", Version("1.0"))],
             ),
         ):
@@ -939,8 +926,8 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch),
             patch.object(
-                bt,
-                "resolve_versions",
+                bt._resolver,
+                "resolve",
                 return_value=[("url", Version("1.0"))],
             ),
         ):

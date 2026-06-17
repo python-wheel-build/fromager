@@ -6,39 +6,45 @@ The bootstrap process builds packages via a serial iterative LIFO stack. Version
 
 The `exclusive_build` flag already exists in `PackageBuildInfo` and is the signal to drain the pool before an exclusive build starts.
 
+### Design Principles
+
+- Background callables are **module-level functions** (not inner closures). This mechanically prevents accidental access to mutable `Bootstrapper` instance state (`self.why`, `self._seen_requirements`, etc.) from background threads.
+- All state needed by a background function is captured as explicit arguments via `functools.partial` at submission time.
+- `ctx` (a `WorkContext`) and `cache_wheel_server_url` are effectively read-only after construction and safe to pass to background functions.
+
 ---
 
 ## Phase 1: `PreparedSourceData` dataclass
 
-**File:** `src/fromager/bootstrapper.py` (after `SourceBuildResult`, ~line 63)
+**File:** `src/fromager/bootstrapper.py` (after `SourceBuildResult`)
 
-New dataclass carrying the result of background I/O pre-fetching for PREPARE_SOURCE back to the main thread:
+New dataclass carrying the result of background I/O pre-fetching for `PREPARE_SOURCE` back to the main thread. Exactly one of (`sdist_root_dir`, `wheel_filename`) will be set:
 
 ```python
 @dataclasses.dataclass
 class PreparedSourceData:
-    """Result of background I/O pre-fetching for the PREPARE_SOURCE phase.
+    """Result of background I/O pre-fetching returned to the main thread.
 
-    For source builds, only sdist_root_dir (and optionally cached_wheel_filename
-    / cached_unpack_dir) are populated. unpack_dir is always sdist_root_dir.parent
-    and is never stored separately for the source path.
-
-    For prebuilt builds, wheel_filename and unpack_dir are populated.
+    Exactly one of (sdist_root_dir, wheel_filename) will be set depending
+    on whether this is a source or prebuilt result.
     """
-    sdist_root_dir: pathlib.Path | None = None        # source build path: populated after download+unpack
-    cached_wheel_filename: pathlib.Path | None = None  # source build path: found in cache
-    cached_unpack_dir: pathlib.Path | None = None      # source build path: cached wheel unpack dir
-    wheel_filename: pathlib.Path | None = None         # prebuilt path: downloaded wheel
-    unpack_dir: pathlib.Path | None = None             # prebuilt path: unpack dir
+    # Source path: set after download+unpack OR cache hit
+    sdist_root_dir: pathlib.Path | None = None
+    # Source path: set when the result came from the wheel cache
+    cached_wheel_filename: pathlib.Path | None = None
+    # Prebuilt path: downloaded wheel file
+    wheel_filename: pathlib.Path | None = None
+    # Prebuilt path: unpack directory (created by mkdir)
+    unpack_dir: pathlib.Path | None = None
 ```
 
-`server.update_wheel_mirror()` is already thread-safe, so the full `_download_prebuilt()` operation (download + create unpack dir + mirror update) can run in the background. `_create_unpack_dir()` already uses `exist_ok=True` (line 1184), so it is already thread-safe. For the source path, `_download_source()` + `_prepare_source()` are fully backgroundable. Note: `_create_unpack_dir()` is **not** called on the source path — `unpack_dir = sdist_root_dir.parent` is derived directly, so the source background callable omits any `_create_unpack_dir()` call.
+`unpack_dir` for the source path is always derived as `sdist_root_dir.parent` in the main-thread phase handler — it is never stored in `PreparedSourceData`.
 
 ---
 
 ## Phase 2: `WorkItem` changes
 
-**File:** `src/fromager/bootstrapper.py` (WorkItem dataclass, ~line 110)
+**File:** `src/fromager/bootstrapper.py` (`WorkItem` dataclass)
 
 Add one field:
 
@@ -54,9 +60,7 @@ bg_future: concurrent.futures.Future[typing.Any] | None = dataclasses.field(
 
 ## Phase 3: `Bootstrapper.__init__` changes
 
-**File:** `src/fromager/bootstrapper.py` (~line 148)
-
-Use a single pool with a minimum of 1 thread for architectural consistency and simplicity:
+**File:** `src/fromager/bootstrapper.py`
 
 - Add parameter `num_bg_threads: int = max(1, (os.cpu_count() or 2) // 2)`
 - Store effective thread count as `self._num_bg_threads = max(1, num_bg_threads)`
@@ -67,7 +71,7 @@ Use a single pool with a minimum of 1 thread for architectural consistency and s
   )
   ```
 
-`item.bg_future` is always set for RESOLVE and PREPARE_SOURCE items. The pool is never `None`.
+The pool is always created; `item.bg_future` is always set for RESOLVE and PREPARE_SOURCE items.
 
 ---
 
@@ -75,30 +79,20 @@ Use a single pool with a minimum of 1 thread for architectural consistency and s
 
 **File:** `src/fromager/bootstrap_requirement_resolver.py`
 
-- Add `self._cache_lock = threading.Lock()` in `__init__` (also add `import threading`)
+- Add `import threading`
+- Add `self._cache_lock = threading.Lock()` in `__init__`
 - Wrap `get_cached_resolution()` body with `with self._cache_lock:`
 - Wrap `cache_resolution()` body with `with self._cache_lock:`
 
-A single lock is sufficient — the critical section is a single dict read/write (O(1)).
+A single lock is sufficient — the critical section is a single dict read/write (O(1)). Concurrent threads calling `resolve()` for the same package produce identical deterministic results; a second cache write with the same value is benign.
 
 ---
 
 ## Phase 5: Refactor `resolve_versions()` to accept explicit `parent_req`
 
-**File:** `src/fromager/bootstrapper.py` (~line 274)
+**File:** `src/fromager/bootstrapper.py`
 
-Change the signature from:
-
-```python
-def resolve_versions(
-    self,
-    req: Requirement,
-    req_type: RequirementType,
-    return_all_versions: bool = False,
-) -> list[tuple[str, Version]]:
-```
-
-to:
+Change the signature to:
 
 ```python
 def resolve_versions(
@@ -110,121 +104,180 @@ def resolve_versions(
 ) -> list[tuple[str, Version]]:
 ```
 
-Replace the internal `self.why` read:
+Replace the internal `self.why` read with the explicit `parent_req` parameter. This makes the method callable from background threads without accessing mutable `self.why`.
 
-```python
-parent_req = self.why[-1][1] if self.why else None
-```
+Update all call sites to pass `parent_req` explicitly:
 
-with the explicit `parent_req` parameter (remove the local variable assignment entirely).
+- `resolve_and_add_top_level()`: `parent_req=None`
+- `_get_background_work()`: `parent_req=item.why_snapshot[-1][1] if item.why_snapshot else None`
 
-Update all existing call sites to pass `parent_req` explicitly:
-
-- `resolve_and_add_top_level()`: `parent_req=None` (top-level, no parent)
-- `_phase_resolve()` on main thread: `parent_req=item.why_snapshot[-1][1] if item.why_snapshot else None`
-- `_handle_test_mode_failure()`: already reads `self.why[-1][1]` — update to pass from caller context
-
-This refactor removes the `self.why` read from `resolve_versions()`, making the method safe to call from a background thread with a pre-captured `parent_req`. It also correctly handles git URL requirements (the git URL branch is in `resolve_versions()` and is preserved unchanged — only the `parent_req` source changes).
+The git URL branch in `resolve_versions()` is preserved unchanged — only the `parent_req` source changes.
 
 ---
 
-## Phase 6: `_get_background_work` method
+## Phase 6: Module-level background functions and `_get_background_work`
 
-**File:** `src/fromager/bootstrapper.py` (new method, near `_dispatch_phase`)
+**File:** `src/fromager/bootstrapper.py` (module-level, before `Bootstrapper` class)
 
-```python
-def _get_background_work(
-    self, item: WorkItem
-) -> typing.Callable[[], typing.Any] | None:
-```
+### Standalone helper functions
 
-Returns a zero-argument callable or `None`. **Background callables must be pure: they read fields captured at submission time and must not write to `item` or `self` mutable state.**
-
-**RESOLVE-phase items:**
-
-Capture `parent_req` from `item.why_snapshot` at submission time (not from `self.why`, which is mutable main-thread state):
+These extract the I/O logic from Bootstrapper instance methods, accepting all needed state as explicit parameters:
 
 ```python
-captured_req = item.req
-captured_req_type = item.req_type
-captured_parent_req = item.why_snapshot[-1][1] if item.why_snapshot else None
-captured_return_all = self.multiple_versions
-
-def _resolve_work() -> list[tuple[str, Version]]:
-    return self.resolve_versions(
-        req=captured_req,
-        req_type=captured_req_type,
-        parent_req=captured_parent_req,
-        return_all_versions=captured_return_all,
-    )
-return _resolve_work
+def _create_unpack_dir_standalone(work_dir, req, resolved_version) -> pathlib.Path
+def _unpack_metadata_from_wheel_standalone(work_dir, req, resolved_version, wheel_filename) -> pathlib.Path | None
+def _look_for_existing_wheel_standalone(ctx, req, resolved_version, search_in) -> tuple[...]
+def _download_wheel_from_cache_standalone(ctx, cache_wheel_server_url, req, resolved_version) -> tuple[...]
+def _find_cached_wheel_standalone(ctx, cache_wheel_server_url, req, resolved_version) -> tuple[...]
 ```
 
-This correctly handles git URL requirements because `resolve_versions()` contains the full git URL branch.
+The corresponding Bootstrapper instance methods delegate to these standalone functions.
 
-**PREPARE_SOURCE-phase items:**
+### Background callable functions
 
-- If `item.pbi_pre_built`: return callable that calls the full `_download_prebuilt()` (download wheel + create unpack dir + update mirror) and returns `PreparedSourceData(wheel_filename=<result>, unpack_dir=<result>)`.
-- If source build: return callable that calls `_find_cached_wheel()` then (if no cache hit) `_download_source()` + `_prepare_source()`, and returns `PreparedSourceData(...)` with appropriate fields populated. **Do not call `_create_unpack_dir()` in the source path** — `unpack_dir = sdist_root_dir.parent` is derived from the result directly in `_phase_prepare_source`.
+```python
+def _bg_resolve(
+    bg_resolver: BootstrapRequirementResolver,
+    req: Requirement,
+    req_type: RequirementType,
+    parent_req: Requirement | None,
+    return_all_versions: bool,
+) -> list[tuple[str, Version]]:
+    """Background-safe resolution: no Bootstrapper state accessed."""
+    return bg_resolver.resolve(req=req, req_type=req_type,
+                               parent_req=parent_req,
+                               return_all_versions=return_all_versions)
 
-**All other phases:** Return `None`.
+
+def _bg_prepare_source(
+    ctx: context.WorkContext,
+    cache_wheel_server_url: str | None,
+    req: Requirement,
+    resolved_version: Version,
+    source_url: str,
+) -> PreparedSourceData:
+    """Background-safe source download+unpack: no Bootstrapper state accessed."""
+    cached_wheel, unpacked = _find_cached_wheel_standalone(ctx, cache_wheel_server_url, req, resolved_version)
+    if unpacked is not None:
+        return PreparedSourceData(sdist_root_dir=unpacked / unpacked.stem,
+                                  cached_wheel_filename=cached_wheel)
+    source_filename = sources.download_source(ctx=ctx, req=req,
+                                               version=resolved_version,
+                                               download_url=source_url)
+    sdist_root_dir = sources.prepare_source(ctx=ctx, req=req,
+                                             source_filename=source_filename,
+                                             version=resolved_version)
+    return PreparedSourceData(sdist_root_dir=sdist_root_dir)
+
+
+def _bg_prepare_prebuilt(
+    ctx: context.WorkContext,
+    req: Requirement,
+    req_type: RequirementType,
+    resolved_version: Version,
+    wheel_url: str,
+) -> PreparedSourceData:
+    """Background-safe prebuilt download: no Bootstrapper state accessed."""
+    wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
+    unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
+    unpack_dir.mkdir(parents=True, exist_ok=True)
+    server.update_wheel_mirror(ctx)
+    return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
+```
+
+### `_get_background_work` method (on `Bootstrapper`)
+
+Uses `functools.partial` to bind module-level functions to captured values — the returned callable cannot access `self`:
+
+```python
+def _get_background_work(self, item: WorkItem) -> Callable[[], Any] | None:
+    if item.phase == BootstrapPhase.RESOLVE:
+        return functools.partial(
+            _bg_resolve, self._resolver, item.req, item.req_type,
+            item.why_snapshot[-1][1] if item.why_snapshot else None,
+            self.multiple_versions,
+        )
+    if item.phase == BootstrapPhase.PREPARE_SOURCE:
+        if item.pbi_pre_built:
+            return functools.partial(_bg_prepare_prebuilt, self.ctx, item.req,
+                                     item.req_type, item.resolved_version, item.source_url)
+        return functools.partial(_bg_prepare_source, self.ctx,
+                                 self.cache_wheel_server_url, item.req,
+                                 item.resolved_version, item.source_url)
+    return None
+```
 
 ---
 
 ## Phase 7: `_drain_background_pool` method
 
-**File:** `src/fromager/bootstrapper.py` (new method)
+**File:** `src/fromager/bootstrapper.py`
 
 ```python
 def _drain_background_pool(self) -> None:
-    self._bg_pool.shutdown(wait=True, cancel_futures=False)
-    self._bg_pool = concurrent.futures.ThreadPoolExecutor(
-        max_workers=self._num_bg_threads, thread_name_prefix="fromager-bg"
-    )
+    if self._bg_pool is not None:
+        self._bg_pool.shutdown(wait=True, cancel_futures=False)
+        self._bg_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self._num_bg_threads, thread_name_prefix="fromager-bg"
+        )
 ```
 
-Shutdown+recreate is simpler than maintaining a separate list of pending futures. `cancel_futures=False` ensures all submitted tasks complete before rebuilding. Note: exceptions from completed background tasks are stored in the futures but **not raised during drain** — they surface only when the calling code invokes `future.result()` on the item's future. Items with failed futures remain on the stack and their exceptions propagate through `_handle_phase_error` when the item is popped.
+`cancel_futures=False` ensures all submitted tasks complete before rebuilding (exclusive-build barrier must drain all pre-fetched I/O). Exceptions from completed background tasks are stored in their futures and surface via `future.result()` when the item is popped from the stack.
 
 ---
 
-## Phase 8: Bootstrap loop changes
+## Phase 8: `_push_items` helper and bootstrap loop
 
-**File:** `src/fromager/bootstrapper.py`, `bootstrap()` method (~line 413)
+**File:** `src/fromager/bootstrapper.py`
 
-After `stack.extend(new_items)`, submit background tasks for newly pushed items **in LIFO processing order** (same order the main loop will pop them):
+Replace all `stack.extend(items)` calls with a `_push_items` helper that pushes and submits background tasks together:
 
 ```python
-stack.extend(new_items)
-for new_item in reversed(new_items):
-    bg_work = self._get_background_work(new_item)
-    if bg_work is not None:
-        new_item.bg_future = self._bg_pool.submit(bg_work)
+def _push_items(self, stack: list[WorkItem], items: list[WorkItem]) -> None:
+    """Push items onto the stack and submit background tasks in LIFO order."""
+    stack.extend(items)
+    if self._bg_pool is not None:
+        for item in reversed(items):  # submit top-of-stack first
+            bg_work = self._get_background_work(item)
+            if bg_work is not None:
+                item.bg_future = self._bg_pool.submit(bg_work)
 ```
 
-`reversed(new_items)` submits the item that lands on top of the stack first (the one the main loop reaches soonest). Submitting after `extend` ensures the item is on the stack before the future starts (no race).
+This guarantees every RESOLVE and PREPARE_SOURCE item has `bg_future` set, including the initial item created in `bootstrap()`.
+
+**Initial item in `bootstrap()`:**
+
+```python
+initial_item = WorkItem(req=req, req_type=req_type, phase=BootstrapPhase.RESOLVE,
+                        why_snapshot=list(self.why), parent=parent)
+stack: list[WorkItem] = []
+self._push_items(stack, [initial_item])
+```
+
+**Main loop body:**
+
+```python
+self._push_items(stack, new_items)
+```
 
 ---
 
 ## Phase 9: `_phase_resolve` changes
 
-**File:** `src/fromager/bootstrapper.py` (~line 1354)
-
-All RESOLVE-phase items always have a background task submitted (via `_resolve_pool`), so `_phase_resolve` unconditionally waits for the future:
+All RESOLVE-phase items are guaranteed to have `bg_future` set (via `_push_items`), so `_phase_resolve` unconditionally asserts and waits:
 
 ```python
 assert item.bg_future is not None
 resolved_versions = item.bg_future.result()  # blocks if not done; re-raises background exceptions
 ```
 
-The existing post-resolution logic is **unchanged** — the multiple_versions filtering (calls to `_find_cached_wheel()` for each version) and WorkItem construction all continue to run on the main thread after `bg_future.result()` returns the raw resolution result.
+The existing post-resolution logic (multiple_versions filtering, WorkItem construction) continues unchanged on the main thread.
 
 ---
 
 ## Phase 10: `_phase_prepare_source` changes
 
-**File:** `src/fromager/bootstrapper.py` (~line 1461)
-
-At the top of the method, wait for the background result if present:
+At the top of the method, wait for the background result:
 
 ```python
 prepared: PreparedSourceData | None = None
@@ -234,20 +287,15 @@ if item.bg_future is not None:
 
 Then use `prepared` to skip already-done I/O:
 
-- If prebuilt and `prepared` is set with `wheel_filename` + `unpack_dir`: skip the full `_download_prebuilt()` call.
-- If source and `prepared.sdist_root_dir` is set: skip `_download_source()` + `_prepare_source()`, use result directly. Derive `unpack_dir = prepared.sdist_root_dir.parent` (no `_create_unpack_dir()` needed on the source path).
-- If source and `prepared.cached_wheel_filename` is set: use cached wheel path from background result.
-- If `prepared` is None (background disabled or phase reached without a bg task): existing logic unchanged.
+- If prebuilt and `prepared.wheel_filename` is set: use directly, skip `_download_prebuilt()`.
+- If source and `prepared.sdist_root_dir` is set: use directly, skip download+prepare; set `item.cached_wheel_filename = prepared.cached_wheel_filename`.
+- Fallback when `prepared` is None: existing inline I/O logic unchanged.
 
-`_create_build_env()` (line 1525) remains on the main thread regardless — it operates in a directory unique per package+version (thread-safe), but keeping it on the main thread is simpler and correct.
-
-Exceptions raised in the background task surface via `future.result()`, propagate through `_dispatch_phase`, and are caught by the existing `_handle_phase_error` machinery — correct behavior.
+`_create_build_env()` remains on the main thread (it's fast and operates in a unique directory per package).
 
 ---
 
 ## Phase 11: `_phase_build` exclusive-build drain
-
-**File:** `src/fromager/bootstrapper.py` (~line 1597)
 
 At the top of `_phase_build`:
 
@@ -258,55 +306,50 @@ if pbi.exclusive_build:
     self._drain_background_pool()
 ```
 
-`package_build_info()` reads package configuration (no network I/O), so adding it at the top of `_phase_build` does not add latency to the hot path. Placed before any build work begins. After the exclusive build completes, the pool (now recreated empty) continues accepting new submissions.
+After the exclusive build completes, the recreated pool accepts new submissions.
 
 ---
 
 ## Phase 12: `finalize()` pool shutdown
 
-**File:** `src/fromager/bootstrapper.py`, `finalize()` (~line 1852)
-
 At the start of `finalize()`:
 
 ```python
-self._bg_pool.shutdown(wait=True, cancel_futures=False)
-self._bg_pool = None
+if self._bg_pool is not None:
+    self._bg_pool.shutdown(wait=True, cancel_futures=True)
+    self._bg_pool = None
 ```
 
-The pool is created in `__init__` and lives across all `bootstrap()` calls; `finalize()` is the natural cleanup point.
+`cancel_futures=True` cancels pending-but-not-started futures immediately (their results will never be used), while already-running futures still complete. This avoids blocking on the error-abort path.
 
 ---
 
 ## Phase 13: CLI option
 
-**File:** `src/fromager/commands/bootstrap.py` (~line 113)
-
-Add Click option before `@click.argument("toplevel", ...)`:
+**File:** `src/fromager/commands/bootstrap.py`
 
 ```python
 @click.option(
     "--bg-threads",
     "num_bg_threads",
-    type=click.IntRange(min=0),
+    type=click.IntRange(min=1),
     default=max(1, (os.cpu_count() or 2) // 2),
     show_default=True,
-    help="Number of background threads for parallel I/O pre-fetching and resolution. Minimum 1 thread is always used.",
+    help="Number of background threads for parallel I/O pre-fetching (min 1).",
 )
 ```
 
-Add `num_bg_threads: int` to function signature. Pass `num_bg_threads=num_bg_threads` to `Bootstrapper(...)`.
+`IntRange(min=1)` enforces a meaningful minimum; 0 threads is not a valid configuration given the design always creates a pool.
 
 ---
 
-## Files to modify
+## Files modified
 
 | File | Changes |
 | -- | -- |
-| `src/fromager/bootstrapper.py` | New `PreparedSourceData`, `WorkItem.bg_future`, `Bootstrapper.__init__` (single pool, min 1 thread), refactor `resolve_versions()` to accept `parent_req`, new `_get_background_work`, new `_drain_background_pool`, bootstrap loop, `_phase_resolve`, `_phase_prepare_source`, `_phase_build`, `finalize()` |
+| `src/fromager/bootstrapper.py` | New `PreparedSourceData`; `WorkItem.bg_future`; `Bootstrapper.__init__` (pool); refactor `resolve_versions()` (`parent_req`); standalone helper functions; `_push_items`, `_get_background_work`, `_drain_background_pool`; updated `bootstrap()`, `_phase_resolve`, `_phase_prepare_source`, `_phase_build`, `finalize()` |
 | `src/fromager/bootstrap_requirement_resolver.py` | `threading.Lock` for `_resolved_requirements` cache |
 | `src/fromager/commands/bootstrap.py` | `--bg-threads` CLI option |
-
-No new files. `server.update_wheel_mirror()` is already thread-safe. `_create_unpack_dir()` already uses `exist_ok=True` (already thread-safe). No changes to `sources.py` expected — different packages use different source directories, so concurrent background tasks for different packages won't collide. Background callables must not mutate `WorkItem` fields directly — all results are returned as `PreparedSourceData` values.
 
 ---
 
@@ -314,19 +357,27 @@ No new files. `server.update_wheel_mirror()` is already thread-safe. `_create_un
 
 ```bash
 # Type check changed files
-hatch run mypy:check src/fromager/bootstrapper.py src/fromager/bootstrap_requirement_resolver.py src/fromager/commands/bootstrap.py
+hatch run mypy:check src/fromager/bootstrapper.py \
+    src/fromager/bootstrap_requirement_resolver.py \
+    src/fromager/commands/bootstrap.py
 
 # Run targeted tests
 hatch run test:test tests/test_bootstrapper.py tests/test_bootstrapper_iterative.py
 
 # Lint
-hatch run lint:fix src/fromager/bootstrapper.py src/fromager/bootstrap_requirement_resolver.py src/fromager/commands/bootstrap.py
+hatch run lint:fix src/fromager/bootstrapper.py \
+    src/fromager/bootstrap_requirement_resolver.py \
+    src/fromager/commands/bootstrap.py
 ```
 
 New tests to add to `tests/test_bootstrapper_iterative.py`:
 
-- `TestResolveVersionsWithParentReq` — verifies that the refactored `resolve_versions()` passes `parent_req` to `_resolver.resolve()` rather than reading `self.why`; verifies the git URL branch is unaffected by the signature change
-- `TestGetBackgroundWork` — returns `None` for non-I/O phases; returns callable for RESOLVE and PREPARE_SOURCE; RESOLVE callable captures `parent_req` from `why_snapshot` not `self.why`; source PREPARE_SOURCE callable does not call `_create_unpack_dir()`; background callables do not write to `item`
-- `TestPhasePrepareSourceWithBgFuture` — uses background result to skip download/unpack; source path derives `unpack_dir` from `sdist_root_dir.parent` (no separate field); exception in background propagates correctly; falls back gracefully when `bg_future` is None
-- `TestDrainBackgroundPool` — no-op when `_bg_pool` is None; pool is recreated after drain; all futures complete before return; exceptions in completed futures are not raised during drain
-- `TestExclusiveBuildBarrier` — `_phase_build` calls drain for `exclusive_build=True`; does not call drain for `exclusive_build=False`
+- `TestResolveVersionsWithParentReq` — verifies `resolve_versions()` passes `parent_req` explicitly; git URL branch unaffected
+- `TestPushItems` — initial item gets `bg_future` set; items from phase handlers get `bg_future` set; non-I/O-phase items get `bg_future=None`; submits in LIFO order
+- `TestGetBackgroundWork` — returns `None` for non-I/O phases; returns `functools.partial` wrapping module-level functions for RESOLVE and PREPARE_SOURCE; callable does not reference `self`
+- `TestBgResolve` — unit test `_bg_resolve` directly (no Bootstrapper needed)
+- `TestBgPrepareSource` / `TestBgPreparePrebuilt` — unit test module-level functions directly
+- `TestPhaseResolveWithBgFuture` — future result used when set; exception propagates
+- `TestPhasePrepareSourceWithBgFuture` — background result used; exception propagates; fallback when None; `item.cached_wheel_filename` set correctly
+- `TestDrainBackgroundPool` — all futures complete before return; pool is recreated
+- `TestExclusiveBuildBarrier` — drain called for `exclusive_build=True`, not for `False`
