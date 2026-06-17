@@ -11,6 +11,7 @@ import pydantic
 
 from .. import resolver
 from ..candidate import Cooldown
+from ..versionmap import VersionMap
 from ._typedefs import MODEL_CONFIG
 
 if typing.TYPE_CHECKING:
@@ -233,7 +234,7 @@ class PyPIGitResolver(AbstractPyPIResolver):
     def validate_clone_url(cls, value: pydantic.AnyUrl) -> pydantic.AnyUrl:
         if value.scheme not in {"https", "ssh"}:
             raise ValueError(f"invalid scheme in url {value}")
-        if not value.path:
+        if not value.path or value.path == "/":
             raise ValueError(f"url {value} has an empty path")
         return value
 
@@ -482,6 +483,61 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
         )
 
 
+class VersionMapGitResolver(AbstractResolver):
+    """Resolve version from a version map, build sdist from git clone.
+
+    The ``versionmap-git`` provider maps known version numbers to known git
+    refs (commit SHAs or ref paths such as ``refs/tags/1.1``).  It clones a
+    git repo at the configured ref and builds an sdist with PEP 517.
+
+    .. versionadded:: 0.79.0
+
+    Example::
+
+       provider: versionmap-git
+       clone_url: https://git.test/project/repo.git
+       build_sdist: pep517
+       versionmap:
+         '1.0': abad1dea
+         '1.1': refs/tags/1.1
+    """
+
+    provider: typing.Literal["versionmap-git"]
+
+    clone_url: pydantic.AnyUrl
+    """Git clone URL (``https`` or ``ssh`` scheme)."""
+
+    build_sdist: BuildSDist = BuildSDist.pep517
+    """Source distribution build method."""
+
+    versionmap: dict[str, str]
+    """Mapping of version strings to git refs."""
+
+    @pydantic.field_validator("clone_url", mode="after")
+    @classmethod
+    def validate_clone_url(cls, value: pydantic.AnyUrl) -> pydantic.AnyUrl:
+        if value.scheme not in {"https", "ssh"}:
+            raise ValueError(f"invalid scheme in url {value}")
+        if not value.path or value.path == "/":
+            raise ValueError(f"url {value} has an empty path")
+        return value
+
+    def resolver_provider(
+        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+    ) -> resolver.VersionMapProvider:
+        clone_url = str(self.clone_url)
+        url_map = {
+            ver: f"git+{clone_url}@{ref}" for ver, ref in self.versionmap.items()
+        }
+        version_map = VersionMap(url_map)  # type: ignore[arg-type]
+        return resolver.VersionMapProvider(
+            version_map=version_map,
+            package_name=None,
+            constraints=ctx.constraints,
+            req_type=req_type,
+        )
+
+
 class NotAvailableResolver(AbstractResolver):
     """Prevent resolve and download"""
 
@@ -510,6 +566,7 @@ SourceResolver = typing.Annotated[
     | PyPIPrebuiltResolver
     | PyPIDownloadResolver
     | PyPIGitResolver
+    | VersionMapGitResolver
     | GitHubTagCloneResolver
     | GitHubTagDownloadResolver
     | GitLabTagCloneResolver

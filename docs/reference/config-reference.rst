@@ -41,6 +41,8 @@ Source Resolver
 .. autopydantic_model:: PyPIGitResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
 
+.. autopydantic_model:: VersionMapGitResolver
+
 .. autopydantic_model:: GitHubTagDownloadResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
 
