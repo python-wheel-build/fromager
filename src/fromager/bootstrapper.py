@@ -4,7 +4,6 @@ import concurrent.futures
 import contextlib
 import dataclasses
 import datetime
-import functools
 import json
 import logging
 import operator
@@ -355,13 +354,12 @@ def _bg_resolve(
     return_all_versions: bool,
 ) -> list[tuple[str, Version]]:
     """Background-safe resolution: no Bootstrapper state accessed."""
-    with req_ctxvar_context(req):
-        return bg_resolver.resolve(
-            req=req,
-            req_type=req_type,
-            parent_req=parent_req,
-            return_all_versions=return_all_versions,
-        )
+    return bg_resolver.resolve(
+        req=req,
+        req_type=req_type,
+        parent_req=parent_req,
+        return_all_versions=return_all_versions,
+    )
 
 
 def _bg_prepare_source(
@@ -372,22 +370,21 @@ def _bg_prepare_source(
     source_url: str,
 ) -> PreparedSourceData:
     """Background-safe source download+unpack: no Bootstrapper state accessed."""
-    with req_ctxvar_context(req):
-        cached_wheel, unpacked = _find_cached_wheel(
-            ctx, cache_wheel_server_url, req, resolved_version
+    cached_wheel, unpacked = _find_cached_wheel(
+        ctx, cache_wheel_server_url, req, resolved_version
+    )
+    if unpacked is not None:
+        return PreparedSourceData(
+            sdist_root_dir=unpacked / unpacked.stem,
+            cached_wheel_filename=cached_wheel,
         )
-        if unpacked is not None:
-            return PreparedSourceData(
-                sdist_root_dir=unpacked / unpacked.stem,
-                cached_wheel_filename=cached_wheel,
-            )
-        source_filename = sources.download_source(
-            ctx=ctx, req=req, version=resolved_version, download_url=source_url
-        )
-        sdist_root_dir = sources.prepare_source(
-            ctx=ctx, req=req, source_filename=source_filename, version=resolved_version
-        )
-        return PreparedSourceData(sdist_root_dir=sdist_root_dir)
+    source_filename = sources.download_source(
+        ctx=ctx, req=req, version=resolved_version, download_url=source_url
+    )
+    sdist_root_dir = sources.prepare_source(
+        ctx=ctx, req=req, source_filename=source_filename, version=resolved_version
+    )
+    return PreparedSourceData(sdist_root_dir=sdist_root_dir)
 
 
 def _bg_prepare_prebuilt(
@@ -398,13 +395,12 @@ def _bg_prepare_prebuilt(
     wheel_url: str,
 ) -> PreparedSourceData:
     """Background-safe prebuilt download: no Bootstrapper state accessed."""
-    with req_ctxvar_context(req):
-        logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
-        wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
-        unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
-        unpack_dir.mkdir(parents=True, exist_ok=True)
-        server.update_wheel_mirror(ctx)
-        return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
+    logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
+    wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
+    unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
+    unpack_dir.mkdir(parents=True, exist_ok=True)
+    server.update_wheel_mirror(ctx)
+    return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
 
 
 class Bootstrapper:
@@ -1482,8 +1478,10 @@ class Bootstrapper:
     ) -> typing.Callable[[], typing.Any] | None:
         """Return a zero-argument callable for background submission, or None.
 
-        Uses ``functools.partial`` with module-level functions so the returned
-        callable cannot access ``self`` mutable state.
+        Uses closures that capture local variables rather than ``self``, so
+        the returned callable cannot access mutable ``Bootstrapper`` state.
+        Each closure sets up ``req_ctxvar_context`` so log messages include
+        the package name (and version when known).
         """
         if item.phase == BootstrapPhase.RESOLVE:
             bg_resolver = self._resolver
@@ -1491,9 +1489,14 @@ class Bootstrapper:
             req_type = item.req_type
             parent_req = item.why_snapshot[-1][1] if item.why_snapshot else None
             return_all = self.multiple_versions
-            return functools.partial(
-                _bg_resolve, bg_resolver, req, req_type, parent_req, return_all
-            )
+
+            def do_resolve() -> list[tuple[str, Version]]:
+                with req_ctxvar_context(req):
+                    return _bg_resolve(
+                        bg_resolver, req, req_type, parent_req, return_all
+                    )
+
+            return do_resolve
 
         if item.phase == BootstrapPhase.PREPARE_SOURCE:
             assert item.resolved_version is not None
@@ -1504,23 +1507,24 @@ class Bootstrapper:
             req_type = item.req_type
             resolved_version = item.resolved_version
             source_url = item.source_url
+
             if item.pbi_pre_built:
-                return functools.partial(
-                    _bg_prepare_prebuilt,
-                    ctx,
-                    req,
-                    req_type,
-                    resolved_version,
-                    source_url,
-                )
-            return functools.partial(
-                _bg_prepare_source,
-                ctx,
-                cache_wheel_server_url,
-                req,
-                resolved_version,
-                source_url,
-            )
+
+                def do_prepare_prebuilt() -> PreparedSourceData:
+                    with req_ctxvar_context(req, resolved_version):
+                        return _bg_prepare_prebuilt(
+                            ctx, req, req_type, resolved_version, source_url
+                        )
+
+                return do_prepare_prebuilt
+
+            def do_prepare_source() -> PreparedSourceData:
+                with req_ctxvar_context(req, resolved_version):
+                    return _bg_prepare_source(
+                        ctx, cache_wheel_server_url, req, resolved_version, source_url
+                    )
+
+            return do_prepare_source
 
         return None
 

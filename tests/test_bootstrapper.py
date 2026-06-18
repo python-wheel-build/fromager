@@ -11,7 +11,7 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 from resolvelib.resolvers import ResolverException
 
-from fromager import bootstrapper
+from fromager import bootstrapper, log
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
 
@@ -721,3 +721,91 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
         bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
 
     assert call_count["n"] >= 1
+
+
+def test_bg_prepare_source_log_prefix_includes_version(
+    tmp_context: WorkContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """_bg_prepare_source log messages include name-version prefix when called with context."""
+    old_factory = logging.getLogRecordFactory()
+    logging.setLogRecordFactory(log.FromagerLogRecord)
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+
+    messages: list[str] = []
+    try:
+        with (
+            caplog.at_level(logging.INFO, logger="fromager.bootstrapper"),
+            patch(
+                "fromager.bootstrapper._find_cached_wheel",
+                return_value=(None, None),
+            ),
+            patch(
+                "fromager.sources.download_source",
+                return_value=pathlib.Path("mypkg-1.2.3.tar.gz"),
+            ),
+            patch(
+                "fromager.sources.prepare_source",
+                return_value=pathlib.Path(tmp_context.work_dir / "mypkg-1.2.3"),
+            ),
+            log.req_ctxvar_context(req, version),
+        ):
+            bootstrapper._bg_prepare_source(
+                ctx=tmp_context,
+                cache_wheel_server_url=None,
+                req=req,
+                resolved_version=version,
+                source_url="https://pkg.test/simple/mypkg/mypkg-1.2.3.tar.gz",
+            )
+            # Collect messages while context vars are still set so getMessage()
+            # returns the prefixed form.
+            messages = [r.getMessage() for r in caplog.records]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+    for msg in messages:
+        assert msg.startswith("mypkg-1.2.3: "), (
+            f"Expected 'mypkg-1.2.3: ' prefix, got: {msg!r}"
+        )
+
+
+def test_bg_prepare_prebuilt_log_prefix_includes_version(
+    tmp_context: WorkContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """_bg_prepare_prebuilt log message includes name-version prefix when called with context."""
+    old_factory = logging.getLogRecordFactory()
+    logging.setLogRecordFactory(log.FromagerLogRecord)
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+
+    messages: list[str] = []
+    try:
+        with (
+            caplog.at_level(logging.INFO, logger="fromager.bootstrapper"),
+            patch(
+                "fromager.wheels.download_wheel",
+                return_value=pathlib.Path("mypkg-1.2.3-py3-none-any.whl"),
+            ),
+            patch("fromager.server.update_wheel_mirror"),
+            log.req_ctxvar_context(req, version),
+        ):
+            bootstrapper._bg_prepare_prebuilt(
+                ctx=tmp_context,
+                req=req,
+                req_type=RequirementType.INSTALL,
+                resolved_version=version,
+                wheel_url="https://pkg.test/simple/mypkg/mypkg-1.2.3-py3-none-any.whl",
+            )
+            # Collect messages while context vars are still set so getMessage()
+            # returns the prefixed form.
+            messages = [r.getMessage() for r in caplog.records]
+    finally:
+        logging.setLogRecordFactory(old_factory)
+
+    assert len(messages) >= 1
+    for msg in messages:
+        assert msg.startswith("mypkg-1.2.3: "), (
+            f"Expected 'mypkg-1.2.3: ' prefix, got: {msg!r}"
+        )
