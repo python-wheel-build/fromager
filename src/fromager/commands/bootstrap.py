@@ -525,6 +525,14 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     default=None,
     help="Reject package versions published more than this many days ago.",
 )
+@click.option(
+    "--bg-threads",
+    "num_bg_threads",
+    type=click.IntRange(min=1),
+    default=max(1, (os.cpu_count() or 2) // 2),
+    show_default=True,
+    help="Number of background threads for parallel I/O pre-fetching (min 1).",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 @click.pass_context
@@ -540,6 +548,7 @@ def bootstrap_parallel(
     max_workers: int | None,
     multiple_versions: bool,
     max_release_age: int | None,
+    num_bg_threads: int,
     toplevel: list[str],
 ) -> None:
     """Bootstrap and build-parallel
@@ -568,6 +577,7 @@ def bootstrap_parallel(
         skip_constraints=skip_constraints,
         multiple_versions=multiple_versions,
         max_release_age=max_release_age,
+        num_bg_threads=num_bg_threads,
         toplevel=toplevel,
     )
 

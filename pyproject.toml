@@ -293,6 +293,7 @@ features = ["docs"]
 build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 markers = [
     "network: test that need network access",
 ]
