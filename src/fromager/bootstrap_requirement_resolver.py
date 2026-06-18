@@ -7,9 +7,11 @@ Git URL resolution stays in Bootstrapper (orchestration concern).
 from __future__ import annotations
 
 import logging
+import threading
 import typing
 
 from packaging.requirements import Requirement
+from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import finders, resolver, sources, wheels
@@ -59,14 +61,18 @@ class BootstrapRequirementResolver:
         self.prev_graph = prev_graph
         self.multiple_versions = multiple_versions
         self.cache_wheel_server_url = cache_wheel_server_url
-        # Session-level resolution cache to avoid re-resolving same requirements
-        # Key: (requirement_string, pre_built) to distinguish source vs prebuilt
-        # Value: tuple of (url, version) tuples sorted by version (highest first)
-        # Values are stored as immutable tuples to prevent accidental corruption
-        # when callers modify the returned reference.
-        self._resolved_requirements: dict[
-            tuple[str, bool], tuple[tuple[str, Version], ...]
-        ] = {}
+        # All known versions for a package, accumulated across resolution
+        # contexts.  Versions discovered via different specifiers or req_types
+        # are merged so that later lookups see the widest set.
+        # Key: (normalized_name, pre_built)
+        # Value: {version: url}
+        self._known_versions: dict[tuple[NormalizedName, bool], dict[Version, str]] = {}
+        # Requirement rules already resolved from network/graph.
+        # Key: (str(req), pre_built)
+        # Prevents redundant network calls for the same specifier.
+        self._resolved_rules: set[tuple[str, bool]] = set()
+        # Protects _known_versions and _resolved_rules for thread safety.
+        self._lock = threading.Lock()
 
     def resolve(
         self,
@@ -78,12 +84,16 @@ class BootstrapRequirementResolver:
     ) -> list[tuple[str, Version]]:
         """Resolve package requirement to matching version(s).
 
-        Tries resolution strategies in order:
-        1. Session cache (if previously resolved)
-        2. Previous dependency graph
-        3. PyPI resolution (source or prebuilt based on package build info)
-        4. Remote wheel cache server (multi-version mode only, when age
-           filtering produced no candidates)
+        Uses a two-step strategy:
+        1. If this requirement rule has not been resolved before, fetch
+           versions from the network (or previous graph) and extend the
+           package-level known-versions cache.
+        2. Filter all known versions for the package by the current
+           requirement specifier.
+
+        This ensures that versions discovered in one context (e.g.,
+        top-level with cooldown bypass) are visible to later lookups
+        with different specifiers for the same package.
 
         Args:
             req: Package requirement
@@ -116,12 +126,34 @@ class BootstrapRequirementResolver:
                 f"Git URL requirements must be handled by Bootstrapper: {req}"
             )
 
-        # Check session cache (keyed by requirement + pre_built)
-        cached_result = self.get_cached_resolution(req, pre_built)
-        if cached_result is not None:
-            logger.debug(f"resolved {req} from cache")
-            return list(cached_result) if return_all_versions else [cached_result[0]]
+        rule_key = (str(req), pre_built)
 
+        with self._lock:
+            if rule_key not in self._resolved_rules:
+                # Rule not seen before — resolve from graph or network and
+                # extend the package-level known-versions cache.
+                self._resolve_and_extend(req, req_type, pre_built, parent_req)
+                self._resolved_rules.add(rule_key)
+            else:
+                logger.debug(f"rule already resolved: {req}")
+
+            # Filter all known versions by the current requirement specifier.
+            matching = self._get_matching_versions(req, pre_built)
+
+        if not matching:
+            return []
+        if return_all_versions:
+            return matching
+        return [matching[0]]
+
+    def _resolve_and_extend(
+        self,
+        req: Requirement,
+        req_type: RequirementType,
+        pre_built: bool,
+        parent_req: Requirement | None,
+    ) -> None:
+        """Resolve versions from graph/network and extend known versions cache."""
         # Try previous dependency graph
         cached_resolution = self._resolve_from_graph(
             req=req,
@@ -178,15 +210,8 @@ class BootstrapRequirementResolver:
                     "multiple" if self.multiple_versions else "single",
                 )
 
-        # Only cache non-empty results.
         if results:
-            self.cache_resolution(req, pre_built, results)
-
-        if not results:
-            return []
-        if return_all_versions:
-            return results
-        return [results[0]]
+            self._extend_known_versions(req, pre_built, results)
 
     def _resolve_from_cache_server(self, req: Requirement) -> list[tuple[str, Version]]:
         """Fall back to the remote wheel cache server for a cached version.
@@ -225,46 +250,78 @@ class BootstrapRequirementResolver:
             return [best]
         return []
 
-    def get_cached_resolution(
+    def get_matching_versions(
         self,
         req: Requirement,
         pre_built: bool,
-    ) -> tuple[tuple[str, Version], ...] | None:
-        """Get a cached resolution result if it exists.
+    ) -> list[tuple[str, Version]]:
+        """Filter known versions by requirement specifier (thread-safe).
 
-        Returns an immutable tuple to prevent accidental cache corruption.
+        Returns all known versions of the package that satisfy the
+        requirement's version specifier, sorted highest-first.
 
         Args:
-            req: Package requirement to look up in cache
+            req: Package requirement with version specifier
             pre_built: Whether looking for prebuilt or source resolution
 
         Returns:
-            Tuple of (url, version) tuples if cached, None otherwise
+            List of (url, version) tuples matching the specifier.
         """
-        cache_key = (str(req), pre_built)
-        return self._resolved_requirements.get(cache_key)
+        with self._lock:
+            return self._get_matching_versions(req, pre_built)
 
-    def cache_resolution(
+    def _get_matching_versions(
+        self,
+        req: Requirement,
+        pre_built: bool,
+    ) -> list[tuple[str, Version]]:
+        """Filter known versions (caller must hold ``self._lock``)."""
+        key = (canonicalize_name(req.name), pre_built)
+        versions = self._known_versions.get(key, {})
+        matching = [
+            (url, version)
+            for version, url in versions.items()
+            if version in req.specifier
+        ]
+        matching.sort(key=lambda x: x[1], reverse=True)
+        return matching
+
+    def extend_known_versions(
         self,
         req: Requirement,
         pre_built: bool,
         result: list[tuple[str, Version]],
     ) -> None:
-        """Cache a resolution result.
+        """Extend the known-versions cache and mark the rule as resolved (thread-safe).
 
-        The result is stored as an immutable tuple to prevent accidental
-        corruption when callers modify the original list.
+        Merges new versions into the package-level cache. When a version
+        already exists, a non-empty URL takes precedence over an empty one
+        (graph-resolved placeholders are replaced by real download URLs).
 
         Used by Bootstrapper to cache git URL resolutions that are
         handled externally (outside this resolver).
 
         Args:
-            req: Package requirement to cache
+            req: Package requirement (used for name and rule tracking)
             pre_built: Whether this is a prebuilt or source resolution
-            result: List of (url, version) tuples
+            result: List of (url, version) tuples to add
         """
-        cache_key = (str(req), pre_built)
-        self._resolved_requirements[cache_key] = tuple(result)
+        with self._lock:
+            self._extend_known_versions(req, pre_built, result)
+
+    def _extend_known_versions(
+        self,
+        req: Requirement,
+        pre_built: bool,
+        result: list[tuple[str, Version]],
+    ) -> None:
+        """Extend known versions (caller must hold ``self._lock``)."""
+        key = (canonicalize_name(req.name), pre_built)
+        versions = self._known_versions.setdefault(key, {})
+        for url, version in result:
+            if version not in versions or (url and not versions[version]):
+                versions[version] = url
+        self._resolved_rules.add((str(req), pre_built))
 
     def _resolve_from_graph(
         self,

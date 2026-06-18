@@ -498,8 +498,8 @@ def test_resolve_auto_routes_to_prebuilt(
         # Mock resolution to return expected result (as list)
         mock_resolve.return_value = [
             (
-                "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl",
-                Version("1.0"),
+                "https://files.pythonhosted.org/setuptools-75.0-py3-none-any.whl",
+                Version("75.0"),
             )
         ]
 
@@ -515,8 +515,8 @@ def test_resolve_auto_routes_to_prebuilt(
         mock_resolve.assert_called_once()
         assert len(results) == 1
         url, version = results[0]
-        assert url == "https://files.pythonhosted.org/setuptools-1.0-py3-none-any.whl"
-        assert version == Version("1.0")
+        assert url == "https://files.pythonhosted.org/setuptools-75.0-py3-none-any.whl"
+        assert version == Version("75.0")
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
@@ -562,43 +562,52 @@ def test_resolve_auto_routes_to_source(
         assert version == Version("2.0")
 
 
-def test_cache_resolution_stores_immutable_tuple(tmp_context: WorkContext) -> None:
-    """cache_resolution() stores an immutable tuple, not the original list."""
+def test_extend_known_versions_accumulates(tmp_context: WorkContext) -> None:
+    """extend_known_versions() accumulates versions across calls."""
+    resolver = BootstrapRequirementResolver(tmp_context)
+    req1 = Requirement("mypkg>=1.0")
+    req2 = Requirement("mypkg>=2.0")
+
+    resolver.extend_known_versions(
+        req1,
+        pre_built=False,
+        result=[("https://files.test/mypkg-1.5.tar.gz", Version("1.5"))],
+    )
+    resolver.extend_known_versions(
+        req2,
+        pre_built=False,
+        result=[("https://files.test/mypkg-2.0.tar.gz", Version("2.0"))],
+    )
+
+    # Both versions are now available when filtering by the wider specifier
+    matching = resolver.get_matching_versions(req1, pre_built=False)
+    assert len(matching) == 2
+    assert matching[0][1] == Version("2.0")
+    assert matching[1][1] == Version("1.5")
+
+
+def test_get_matching_versions_returns_independent_lists(
+    tmp_context: WorkContext,
+) -> None:
+    """get_matching_versions() returns a new list each call."""
     resolver = BootstrapRequirementResolver(tmp_context)
     req = Requirement("mypkg>=1.0")
-    original = [("https://example.com/mypkg-1.0.tar.gz", Version("1.0"))]
 
-    resolver.cache_resolution(req, pre_built=False, result=original)
-    cached = resolver.get_cached_resolution(req, pre_built=False)
-
-    # Cached value should be a tuple
-    assert isinstance(cached, tuple)
-
-    # Mutating the original list must not affect the cache
-    original.append(("https://example.com/mypkg-2.0.tar.gz", Version("2.0")))
-    cached_after = resolver.get_cached_resolution(req, pre_built=False)
-    assert cached_after is not None
-    assert len(cached_after) == 1
-
-
-def test_get_cached_resolution_returns_immutable(tmp_context: WorkContext) -> None:
-    """get_cached_resolution() returns a tuple that cannot be mutated."""
-    resolver = BootstrapRequirementResolver(tmp_context)
-    req = Requirement("mypkg>=1.0")
-
-    resolver.cache_resolution(
+    resolver.extend_known_versions(
         req,
         pre_built=False,
-        result=[("https://example.com/mypkg-1.0.tar.gz", Version("1.0"))],
+        result=[("https://files.test/mypkg-1.0.tar.gz", Version("1.0"))],
     )
-    cached = resolver.get_cached_resolution(req, pre_built=False)
-    assert cached is not None
+    list1 = resolver.get_matching_versions(req, pre_built=False)
+    list2 = resolver.get_matching_versions(req, pre_built=False)
 
-    with pytest.raises(AttributeError):
-        cached.append(("https://example.com/bad.tar.gz", Version("2.0")))  # type: ignore[attr-defined, union-attr]
+    assert list1 == list2
+    assert list1 is not list2
 
-    with pytest.raises(TypeError):
-        cached[0] = ("https://example.com/bad.tar.gz", Version("2.0"))  # type: ignore[index]
+    # Mutating one does not affect the other
+    list1.append(("https://files.test/bad.tar.gz", Version("9.9")))
+    list3 = resolver.get_matching_versions(req, pre_built=False)
+    assert len(list3) == 1
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
@@ -640,6 +649,52 @@ def test_resolve_cache_returns_independent_lists(
     assert results1 is not results2
     # Only called once — second call used cache
     mock_resolve.assert_called_once()
+
+
+@patch("fromager.resolver.find_all_matching_from_provider")
+def test_toplevel_version_visible_to_transitive_via_cache(
+    mock_resolve: MagicMock,
+    tmp_context: WorkContext,
+) -> None:
+    """Version found via top-level bypass is visible to later transitive lookups.
+
+    Simulates the architect's scenario:
+    1. Top-level A==2.0.0 resolves with cooldown bypassed → v2.0 cached
+    2. Transitive A>=1.0 resolves with cooldown enforced → only v1.5 from network
+    3. But v2.0 is already in the package-level cache, so the transitive
+       lookup returns v2.0 as the highest matching version.
+    """
+    resolver = BootstrapRequirementResolver(tmp_context)
+
+    # Step 1: top-level resolves A==2.0.0 (cooldown bypassed)
+    mock_resolve.return_value = [
+        ("https://files.test/mypkg-2.0.tar.gz", Version("2.0")),
+    ]
+    results_toplevel = resolver.resolve(
+        req=Requirement("mypkg==2.0"),
+        req_type=RequirementType.TOP_LEVEL,
+        parent_req=None,
+        pre_built=False,
+    )
+    assert results_toplevel[0][1] == Version("2.0")
+    assert mock_resolve.call_count == 1
+
+    # Step 2: transitive resolves A>=1.0 (cooldown enforced, only finds v1.5)
+    mock_resolve.return_value = [
+        ("https://files.test/mypkg-1.5.tar.gz", Version("1.5")),
+    ]
+    results_transitive = resolver.resolve(
+        req=Requirement("mypkg>=1.0"),
+        req_type=RequirementType.INSTALL,
+        parent_req=None,
+        pre_built=False,
+    )
+    assert mock_resolve.call_count == 2
+
+    # The transitive lookup sees v2.0 from the package-level cache (found
+    # during top-level resolution) even though the transitive network call
+    # only returned v1.5.
+    assert results_transitive[0][1] == Version("2.0")
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
