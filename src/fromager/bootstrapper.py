@@ -355,12 +355,13 @@ def _bg_resolve(
     return_all_versions: bool,
 ) -> list[tuple[str, Version]]:
     """Background-safe resolution: no Bootstrapper state accessed."""
-    return bg_resolver.resolve(
-        req=req,
-        req_type=req_type,
-        parent_req=parent_req,
-        return_all_versions=return_all_versions,
-    )
+    with req_ctxvar_context(req):
+        return bg_resolver.resolve(
+            req=req,
+            req_type=req_type,
+            parent_req=parent_req,
+            return_all_versions=return_all_versions,
+        )
 
 
 def _bg_prepare_source(
@@ -371,21 +372,22 @@ def _bg_prepare_source(
     source_url: str,
 ) -> PreparedSourceData:
     """Background-safe source download+unpack: no Bootstrapper state accessed."""
-    cached_wheel, unpacked = _find_cached_wheel(
-        ctx, cache_wheel_server_url, req, resolved_version
-    )
-    if unpacked is not None:
-        return PreparedSourceData(
-            sdist_root_dir=unpacked / unpacked.stem,
-            cached_wheel_filename=cached_wheel,
+    with req_ctxvar_context(req):
+        cached_wheel, unpacked = _find_cached_wheel(
+            ctx, cache_wheel_server_url, req, resolved_version
         )
-    source_filename = sources.download_source(
-        ctx=ctx, req=req, version=resolved_version, download_url=source_url
-    )
-    sdist_root_dir = sources.prepare_source(
-        ctx=ctx, req=req, source_filename=source_filename, version=resolved_version
-    )
-    return PreparedSourceData(sdist_root_dir=sdist_root_dir)
+        if unpacked is not None:
+            return PreparedSourceData(
+                sdist_root_dir=unpacked / unpacked.stem,
+                cached_wheel_filename=cached_wheel,
+            )
+        source_filename = sources.download_source(
+            ctx=ctx, req=req, version=resolved_version, download_url=source_url
+        )
+        sdist_root_dir = sources.prepare_source(
+            ctx=ctx, req=req, source_filename=source_filename, version=resolved_version
+        )
+        return PreparedSourceData(sdist_root_dir=sdist_root_dir)
 
 
 def _bg_prepare_prebuilt(
@@ -396,12 +398,13 @@ def _bg_prepare_prebuilt(
     wheel_url: str,
 ) -> PreparedSourceData:
     """Background-safe prebuilt download: no Bootstrapper state accessed."""
-    logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
-    wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
-    unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
-    unpack_dir.mkdir(parents=True, exist_ok=True)
-    server.update_wheel_mirror(ctx)
-    return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
+    with req_ctxvar_context(req):
+        logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
+        wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
+        unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
+        unpack_dir.mkdir(parents=True, exist_ok=True)
+        server.update_wheel_mirror(ctx)
+        return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
 
 
 class Bootstrapper:
