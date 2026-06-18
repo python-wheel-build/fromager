@@ -197,16 +197,16 @@ def _unpack_metadata_from_wheel(
         dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
     ]
     try:
-        archive = zipfile.ZipFile(wheel_filename)
-        for filename in req_filenames:
-            zipinfo = archive.getinfo(
-                str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
-            )
-            if os.path.isabs(zipinfo.filename) or ".." in zipinfo.filename:
-                raise ValueError(f"Unsafe path in wheel: {zipinfo.filename}")
-            zipinfo.filename = filename
-            output_file = archive.extract(zipinfo, unpack_dir)
-            logger.info(f"extracted {output_file}")
+        with zipfile.ZipFile(wheel_filename) as archive:
+            for filename in req_filenames:
+                zipinfo = archive.getinfo(
+                    str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
+                )
+                if os.path.isabs(zipinfo.filename) or ".." in zipinfo.filename:
+                    raise ValueError(f"Unsafe path in wheel: {zipinfo.filename}")
+                zipinfo.filename = filename
+                output_file = archive.extract(zipinfo, unpack_dir)
+                logger.info(f"extracted {output_file}")
         logger.info(f"extracted build requirements from wheel into {unpack_dir}")
         return unpack_dir
     except Exception as e:
