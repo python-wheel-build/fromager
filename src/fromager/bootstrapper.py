@@ -170,7 +170,7 @@ class WorkItem:
     )
 
 
-def _create_unpack_dir_standalone(
+def _create_unpack_dir(
     work_dir: pathlib.Path,
     req: Requirement,
     resolved_version: Version,
@@ -180,7 +180,7 @@ def _create_unpack_dir_standalone(
     return unpack_dir
 
 
-def _unpack_metadata_from_wheel_standalone(
+def _unpack_metadata_from_wheel(
     work_dir: pathlib.Path,
     req: Requirement,
     resolved_version: Version,
@@ -189,7 +189,7 @@ def _unpack_metadata_from_wheel_standalone(
     dist_name, dist_version, _, _ = wheels.extract_info_from_wheel_file(
         req, wheel_filename
     )
-    unpack_dir = _create_unpack_dir_standalone(work_dir, req, resolved_version)
+    unpack_dir = _create_unpack_dir(work_dir, req, resolved_version)
     dist_filename = f"{dist_name}-{dist_version}"
     metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
     req_filenames: list[str] = [
@@ -217,7 +217,7 @@ def _unpack_metadata_from_wheel_standalone(
         return None
 
 
-def _look_for_existing_wheel_standalone(
+def _look_for_existing_wheel(
     ctx: context.WorkContext,
     req: Requirement,
     resolved_version: Version,
@@ -243,13 +243,13 @@ def _look_for_existing_wheel_standalone(
         )
         return None, None
     logger.info(f"found existing wheel {wheel_filename}")
-    metadata_dir = _unpack_metadata_from_wheel_standalone(
+    metadata_dir = _unpack_metadata_from_wheel(
         ctx.work_dir, req, resolved_version, wheel_filename
     )
     return wheel_filename, metadata_dir
 
 
-def _download_wheel_from_cache_standalone(
+def _download_wheel_from_cache(
     ctx: context.WorkContext,
     cache_wheel_server_url: str | None,
     req: Requirement,
@@ -286,7 +286,7 @@ def _download_wheel_from_cache_standalone(
         if cache_wheel_server_url != ctx.wheel_server_url:
             server.update_wheel_mirror(ctx)
         logger.info("found built wheel on cache server")
-        unpack_dir = _unpack_metadata_from_wheel_standalone(
+        unpack_dir = _unpack_metadata_from_wheel(
             ctx.work_dir, req, resolved_version, cached_wheel
         )
         return cached_wheel, unpack_dir
@@ -309,7 +309,7 @@ def _download_wheel_from_cache_standalone(
         return None, None
 
 
-def _find_cached_wheel_standalone(
+def _find_cached_wheel(
     ctx: context.WorkContext,
     cache_wheel_server_url: str | None,
     req: Requirement,
@@ -326,19 +326,19 @@ def _find_cached_wheel_standalone(
         Tuple of (cached_wheel_filename, unpacked_cached_wheel).
         Both None if no cache hit.
     """
-    cached_wheel, unpacked = _look_for_existing_wheel_standalone(
+    cached_wheel, unpacked = _look_for_existing_wheel(
         ctx, req, resolved_version, ctx.wheels_build
     )
     if cached_wheel:
         return cached_wheel, unpacked
 
-    cached_wheel, unpacked = _look_for_existing_wheel_standalone(
+    cached_wheel, unpacked = _look_for_existing_wheel(
         ctx, req, resolved_version, ctx.wheels_downloads
     )
     if cached_wheel:
         return cached_wheel, unpacked
 
-    cached_wheel, unpacked = _download_wheel_from_cache_standalone(
+    cached_wheel, unpacked = _download_wheel_from_cache(
         ctx, cache_wheel_server_url, req, resolved_version
     )
     if cached_wheel:
@@ -371,7 +371,7 @@ def _bg_prepare_source(
     source_url: str,
 ) -> PreparedSourceData:
     """Background-safe source download+unpack: no Bootstrapper state accessed."""
-    cached_wheel, unpacked = _find_cached_wheel_standalone(
+    cached_wheel, unpacked = _find_cached_wheel(
         ctx, cache_wheel_server_url, req, resolved_version
     )
     if unpacked is not None:
@@ -933,7 +933,7 @@ class Bootstrapper:
             Tuple of (cached_wheel_filename, unpacked_cached_wheel).
             Both None if no cache hit.
         """
-        return _find_cached_wheel_standalone(
+        return _find_cached_wheel(
             self.ctx, self.cache_wheel_server_url, req, resolved_version
         )
 
@@ -1139,21 +1139,19 @@ class Bootstrapper:
         resolved_version: Version,
         search_in: pathlib.Path,
     ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-        return _look_for_existing_wheel_standalone(
-            self.ctx, req, resolved_version, search_in
-        )
+        return _look_for_existing_wheel(self.ctx, req, resolved_version, search_in)
 
     def _download_wheel_from_cache(
         self, req: Requirement, resolved_version: Version
     ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-        return _download_wheel_from_cache_standalone(
+        return _download_wheel_from_cache(
             self.ctx, self.cache_wheel_server_url, req, resolved_version
         )
 
     def _unpack_metadata_from_wheel(
         self, req: Requirement, resolved_version: Version, wheel_filename: pathlib.Path
     ) -> pathlib.Path | None:
-        return _unpack_metadata_from_wheel_standalone(
+        return _unpack_metadata_from_wheel(
             self.ctx.work_dir, req, resolved_version, wheel_filename
         )
 
@@ -1317,7 +1315,7 @@ class Bootstrapper:
     def _create_unpack_dir(
         self, req: Requirement, resolved_version: Version
     ) -> pathlib.Path:
-        return _create_unpack_dir_standalone(self.ctx.work_dir, req, resolved_version)
+        return _create_unpack_dir(self.ctx.work_dir, req, resolved_version)
 
     def _add_to_graph(
         self,
