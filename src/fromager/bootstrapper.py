@@ -354,6 +354,7 @@ def _bg_resolve(
     return_all_versions: bool,
 ) -> list[tuple[str, Version]]:
     """Background-safe resolution: no Bootstrapper state accessed."""
+    logger.info(f"{BootstrapPhase.RESOLVE} for {req_type} requirement")
     return bg_resolver.resolve(
         req=req,
         req_type=req_type,
@@ -370,6 +371,7 @@ def _bg_prepare_source(
     source_url: str,
 ) -> PreparedSourceData:
     """Background-safe source download+unpack: no Bootstrapper state accessed."""
+    logger.info("preparing source")
     cached_wheel, unpacked = _find_cached_wheel(
         ctx, cache_wheel_server_url, req, resolved_version
     )
@@ -395,7 +397,7 @@ def _bg_prepare_prebuilt(
     wheel_url: str,
 ) -> PreparedSourceData:
     """Background-safe prebuilt download: no Bootstrapper state accessed."""
-    logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
+    logger.info(f"using pre-built wheel for {req_type} requirement")
     wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
     unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
     unpack_dir.mkdir(parents=True, exist_ok=True)
@@ -662,7 +664,10 @@ class Bootstrapper:
             item = stack.pop()
             self.why = list(item.why_snapshot)
 
-            with req_ctxvar_context(item.req), self._track_why(item):
+            with (
+                req_ctxvar_context(item.req, item.resolved_version),
+                self._track_why(item),
+            ):
                 try:
                     new_items = self._dispatch_phase(item)
                 except Exception as err:
@@ -907,7 +912,9 @@ class Bootstrapper:
         resolved_version: Version,
         wheel_url: str,
     ) -> tuple[pathlib.Path, pathlib.Path]:
-        logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
+        logger.info(
+            f"{BootstrapPhase.PREPARE_SOURCE} using pre-built wheel for {req_type} requirement"
+        )
 
         wheel_filename = wheels.download_wheel(req, wheel_url, self.ctx.wheels_prebuilt)
         unpack_dir = self._create_unpack_dir(req, resolved_version)
