@@ -1741,3 +1741,445 @@ class TestPhaseProcessInstallDeps:
             prebuilt=True,
             constraint=constraint,
         )
+
+
+class TestFilterDepsSatisfiedByBuildSystem:
+    """Tests for build-backend/sdist dep filtering against build-system deps."""
+
+    def _setup_graph_with_build_system_dep(
+        self,
+        ctx: WorkContext,
+        parent_name: str,
+        parent_version: str,
+        dep_name: str,
+        dep_version: str,
+        download_url: str = "https://pypi.test/simple/",
+    ) -> None:
+        """Add a parent node and a BUILD_SYSTEM edge to the dependency graph."""
+        ctx.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=Requirement(f"{parent_name}=={parent_version}"),
+            req_version=Version(parent_version),
+            download_url=download_url,
+        )
+        ctx.dependency_graph.add_dependency(
+            parent_name=canonicalize_name(parent_name),
+            parent_version=Version(parent_version),
+            req_type=RequirementType.BUILD_SYSTEM,
+            req=Requirement(f"{dep_name}=={dep_version}"),
+            req_version=Version(dep_version),
+            download_url=download_url,
+        )
+
+    def test_satisfied_dep_reuses_build_system_version(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A build-backend dep with no pin reuses the build-system version."""
+        self._setup_graph_with_build_system_dep(
+            tmp_context, "biotite", "1.6.0", "hatch-cython", "0.5.0"
+        )
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("hatch-cython"): (
+                Version("0.5.0"),
+                "https://pypi.test/simple/",
+            )
+        }
+        parent = (Requirement("biotite==1.6.0"), Version("1.6.0"))
+
+        with patch.object(bt, "_add_to_graph") as mock_add:
+            result = bt._filter_deps_satisfied_by_build_system(
+                {Requirement("hatch-cython")},
+                resolved_build_sys,
+                RequirementType.BUILD_BACKEND,
+                parent,
+            )
+
+        assert result == set()
+        mock_add.assert_called_once_with(
+            req=Requirement("hatch-cython"),
+            req_type=RequirementType.BUILD_BACKEND,
+            req_version=Version("0.5.0"),
+            download_url="https://pypi.test/simple/",
+            parent=parent,
+        )
+
+    def test_satisfied_dep_with_compatible_specifier(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A build-backend dep with a compatible specifier reuses build-system version."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("foo"): (Version("1.5.0"), "https://pypi.test/simple/")
+        }
+        parent = (Requirement("testpkg==1.0"), Version("1.0"))
+
+        with patch.object(bt, "_add_to_graph") as mock_add:
+            result = bt._filter_deps_satisfied_by_build_system(
+                {Requirement("foo>=1.0")},
+                resolved_build_sys,
+                RequirementType.BUILD_BACKEND,
+                parent,
+            )
+
+        assert result == set()
+        mock_add.assert_called_once()
+
+    def test_unsatisfied_dep_passes_through(self, tmp_context: WorkContext) -> None:
+        """A dep not in build-system is returned for independent resolution."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("foo"): (Version("1.0"), "https://pypi.test/simple/")
+        }
+        parent = (Requirement("testpkg==1.0"), Version("1.0"))
+        wheel_req = Requirement("wheel")
+
+        with patch.object(bt, "_add_to_graph") as mock_add:
+            result = bt._filter_deps_satisfied_by_build_system(
+                {wheel_req},
+                resolved_build_sys,
+                RequirementType.BUILD_BACKEND,
+                parent,
+            )
+
+        assert result == {wheel_req}
+        mock_add.assert_not_called()
+
+    def test_incompatible_specifier_passes_through(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A dep whose specifier conflicts with build-system version is not filtered."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("foo"): (Version("1.0"), "https://pypi.test/simple/")
+        }
+        parent = (Requirement("testpkg==1.0"), Version("1.0"))
+        foo_req = Requirement("foo>=2.0")
+
+        with patch.object(bt, "_add_to_graph") as mock_add:
+            result = bt._filter_deps_satisfied_by_build_system(
+                {foo_req},
+                resolved_build_sys,
+                RequirementType.BUILD_BACKEND,
+                parent,
+            )
+
+        assert result == {foo_req}
+        mock_add.assert_not_called()
+
+    def test_incompatible_specifier_logs_warning(
+        self, tmp_context: WorkContext, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A conflicting dep logs a warning about the build config conflict."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("foo"): (Version("1.0"), "https://pypi.test/simple/")
+        }
+        parent = (Requirement("testpkg==1.0"), Version("1.0"))
+
+        with patch.object(bt, "_add_to_graph"):
+            bt._filter_deps_satisfied_by_build_system(
+                {Requirement("foo>=2.0")},
+                resolved_build_sys,
+                RequirementType.BUILD_BACKEND,
+                parent,
+            )
+
+        assert "conflicts with" in caplog.text
+        assert "foo>=2.0" in caplog.text
+        assert "foo==1.0" in caplog.text
+
+    def test_mixed_satisfied_and_unsatisfied(self, tmp_context: WorkContext) -> None:
+        """Only unsatisfied deps are returned; satisfied deps get graph edges."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("hatch-cython"): (
+                Version("0.5.0"),
+                "https://pypi.test/simple/",
+            )
+        }
+        parent = (Requirement("biotite==1.6.0"), Version("1.6.0"))
+        cython_req = Requirement("hatch-cython")
+        wheel_req = Requirement("wheel")
+
+        with patch.object(bt, "_add_to_graph") as mock_add:
+            result = bt._filter_deps_satisfied_by_build_system(
+                {cython_req, wheel_req},
+                resolved_build_sys,
+                RequirementType.BUILD_BACKEND,
+                parent,
+            )
+
+        assert result == {wheel_req}
+        mock_add.assert_called_once()
+
+    def test_empty_deps_returns_empty(self, tmp_context: WorkContext) -> None:
+        """Empty deps set returns empty set."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("foo"): (Version("1.0"), "https://pypi.test/simple/")
+        }
+        parent = (Requirement("testpkg==1.0"), Version("1.0"))
+
+        result = bt._filter_deps_satisfied_by_build_system(
+            set(),
+            resolved_build_sys,
+            RequirementType.BUILD_BACKEND,
+            parent,
+        )
+
+        assert result == set()
+
+    def test_empty_build_system_returns_all_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """When no build-system deps exist, all deps pass through."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        wheel_req = Requirement("wheel")
+        parent = (Requirement("testpkg==1.0"), Version("1.0"))
+
+        result = bt._filter_deps_satisfied_by_build_system(
+            {wheel_req},
+            {},
+            RequirementType.BUILD_BACKEND,
+            parent,
+        )
+
+        assert result == {wheel_req}
+
+    def test_dep_with_extras_passes_through(self, tmp_context: WorkContext) -> None:
+        """A dep with extras is not filtered even if the name matches."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        resolved_build_sys = {
+            canonicalize_name("foo"): (Version("1.0"), "https://pypi.test/simple/")
+        }
+        parent = (Requirement("testpkg==1.0"), Version("1.0"))
+        extras_req = Requirement("foo[bar]>=1.0")
+
+        with patch.object(bt, "_add_to_graph") as mock_add:
+            result = bt._filter_deps_satisfied_by_build_system(
+                {extras_req},
+                resolved_build_sys,
+                RequirementType.BUILD_BACKEND,
+                parent,
+            )
+
+        assert result == {extras_req}
+        mock_add.assert_not_called()
+
+
+class TestGetResolvedBuildSystemVersions:
+    """Tests for _get_resolved_build_system_versions."""
+
+    def test_returns_build_system_edges(self, tmp_context: WorkContext) -> None:
+        """Returns resolved versions from BUILD_SYSTEM edges."""
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=Requirement("biotite==1.6.0"),
+            req_version=Version("1.6.0"),
+            download_url="https://pypi.test/simple/",
+        )
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=canonicalize_name("biotite"),
+            parent_version=Version("1.6.0"),
+            req_type=RequirementType.BUILD_SYSTEM,
+            req=Requirement("hatch-cython==0.5"),
+            req_version=Version("0.5.0"),
+            download_url="https://pypi.test/hatch-cython/",
+        )
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=canonicalize_name("biotite"),
+            parent_version=Version("1.6.0"),
+            req_type=RequirementType.INSTALL,
+            req=Requirement("numpy"),
+            req_version=Version("2.0.0"),
+            download_url="https://pypi.test/numpy/",
+        )
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(req="biotite", version="1.6.0")
+
+        result = bt._get_resolved_build_system_versions(item)
+
+        assert canonicalize_name("hatch-cython") in result
+        assert result[canonicalize_name("hatch-cython")] == (
+            Version("0.5.0"),
+            "https://pypi.test/hatch-cython/",
+        )
+        assert canonicalize_name("numpy") not in result
+
+    def test_returns_empty_when_parent_not_in_graph(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Returns empty dict when parent node is not in the graph."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(req="nonexistent", version="1.0")
+
+        result = bt._get_resolved_build_system_versions(item)
+
+        assert result == {}
+
+
+class TestPhasePrepareBuildFiltering:
+    """Tests for _phase_prepare_build with build-system satisfaction filtering."""
+
+    def test_satisfied_backend_dep_skips_resolve(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Backend dep satisfied by build-system is not sent to RESOLVE."""
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=Requirement("biotite==1.6.0"),
+            req_version=Version("1.6.0"),
+            download_url="https://pypi.test/simple/",
+        )
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=canonicalize_name("biotite"),
+            parent_version=Version("1.6.0"),
+            req_type=RequirementType.BUILD_SYSTEM,
+            req=Requirement("hatch-cython==0.5"),
+            req_version=Version("0.5.0"),
+            download_url="https://pypi.test/simple/",
+        )
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "biotite-1.6.0" / "biotite-1.6.0"
+        item = _make_build_item(
+            req="biotite",
+            version="1.6.0",
+            phase=BootstrapPhase.PREPARE_BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("hatch-cython==0.5")},
+        )
+
+        with (
+            patch(
+                "fromager.dependencies.get_build_backend_dependencies",
+                return_value={Requirement("hatch-cython")},
+            ),
+            patch(
+                "fromager.dependencies.get_build_sdist_dependencies",
+                return_value=set(),
+            ),
+            patch.object(
+                bt,
+                "_create_unresolved_work_items",
+                return_value=[],
+            ) as mock_create,
+        ):
+            result = bt._phase_prepare_build(item)
+
+        assert item.phase == BootstrapPhase.BUILD
+        calls = mock_create.call_args_list
+        assert calls[0][0][0] == set()
+        assert calls[1][0][0] == set()
+        assert item.build_backend_deps == set()
+        assert result == [item]
+
+    def test_extras_dep_not_filtered(self, tmp_context: WorkContext) -> None:
+        """Backend dep with extras passes through even if name matches."""
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=Requirement("testpkg==1.0"),
+            req_version=Version("1.0"),
+            download_url="https://pypi.test/simple/",
+        )
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=canonicalize_name("testpkg"),
+            parent_version=Version("1.0"),
+            req_type=RequirementType.BUILD_SYSTEM,
+            req=Requirement("foo==1.0"),
+            req_version=Version("1.0"),
+            download_url="https://pypi.test/simple/",
+        )
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        extras_req = Requirement("foo[bar]>=1.0")
+        item = _make_build_item(
+            phase=BootstrapPhase.PREPARE_BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("foo==1.0")},
+        )
+
+        resolve_item = _make_resolve_item(req="foo")
+
+        with (
+            patch(
+                "fromager.dependencies.get_build_backend_dependencies",
+                return_value={extras_req},
+            ),
+            patch(
+                "fromager.dependencies.get_build_sdist_dependencies",
+                return_value=set(),
+            ),
+            patch.object(
+                bt,
+                "_create_unresolved_work_items",
+                side_effect=[[resolve_item], []],
+            ) as mock_create,
+        ):
+            result = bt._phase_prepare_build(item)
+
+        calls = mock_create.call_args_list
+        assert calls[0][0][0] == {extras_req}
+        assert item.build_backend_deps == {extras_req}
+        assert result == [item, resolve_item]
+
+    def test_unsatisfied_backend_dep_creates_resolve_item(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Backend dep NOT in build-system is sent to RESOLVE normally."""
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=Requirement("testpkg==1.0"),
+            req_version=Version("1.0"),
+            download_url="https://pypi.test/simple/",
+        )
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        item = _make_build_item(
+            phase=BootstrapPhase.PREPARE_BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            build_system_deps={Requirement("setuptools")},
+        )
+
+        resolve_item = _make_resolve_item(req="wheel")
+
+        with (
+            patch(
+                "fromager.dependencies.get_build_backend_dependencies",
+                return_value={Requirement("wheel")},
+            ),
+            patch(
+                "fromager.dependencies.get_build_sdist_dependencies",
+                return_value=set(),
+            ),
+            patch.object(
+                bt,
+                "_create_unresolved_work_items",
+                side_effect=[[resolve_item], []],
+            ) as mock_create,
+        ):
+            result = bt._phase_prepare_build(item)
+
+        calls = mock_create.call_args_list
+        assert calls[0][0][0] == {Requirement("wheel")}
+        assert result == [item, resolve_item]
