@@ -833,7 +833,7 @@ class TestIterativeBootstrapLoop:
                 return_value=[("https://pypi.org/pkg-1.0.tar.gz", Version("1.0"))],
             ),
         ):
-            bt.bootstrap(Requirement("pkg"), RequirementType.TOP_LEVEL)
+            bt._bootstrap_one(Requirement("pkg"), RequirementType.TOP_LEVEL)
 
         assert phases_visited == [
             BootstrapPhase.RESOLVE,
@@ -898,7 +898,7 @@ class TestIterativeBootstrapLoop:
                 return_value=[("https://pypi.org/pkg-1.0.tar.gz", Version("1.0"))],
             ),
         ):
-            bt.bootstrap(Requirement("parent"), RequirementType.TOP_LEVEL)
+            bt._bootstrap_one(Requirement("parent"), RequirementType.TOP_LEVEL)
 
         # child's RESOLVE and START must appear before parent's COMPLETE
         req_phase_pairs = [
@@ -945,7 +945,7 @@ class TestIterativeBootstrapLoop:
             ),
             patch.object(bt, "_has_been_seen", return_value=False),
         ):
-            bt.bootstrap(Requirement("pkg"), RequirementType.INSTALL)
+            bt._bootstrap_one(Requirement("pkg"), RequirementType.INSTALL)
 
         assert len(bt._failed_versions) == 1
         assert (canonicalize_name("pkg"), "1.5") in bt._failed_versions
@@ -981,9 +981,9 @@ class TestIterativeBootstrapLoop:
             ),
             patch.object(bt, "_has_been_seen", return_value=False),
         ):
-            bt.bootstrap(Requirement("good-pkg"), RequirementType.INSTALL)
-            bt.bootstrap(Requirement("bad-dep"), RequirementType.INSTALL)
-            bt.bootstrap(Requirement("another-good"), RequirementType.INSTALL)
+            bt._bootstrap_one(Requirement("good-pkg"), RequirementType.INSTALL)
+            bt._bootstrap_one(Requirement("bad-dep"), RequirementType.INSTALL)
+            bt._bootstrap_one(Requirement("another-good"), RequirementType.INSTALL)
 
         assert "good-pkg" in completed
         assert "another-good" in completed
@@ -1014,9 +1014,9 @@ class TestIterativeBootstrapLoop:
             ),
         ):
             # Bootstrap a package that will fail
-            bt.bootstrap(Requirement("fail-pkg"), RequirementType.TOP_LEVEL)
+            bt._bootstrap_one(Requirement("fail-pkg"), RequirementType.TOP_LEVEL)
             # Bootstrap another that will succeed
-            bt.bootstrap(Requirement("ok-pkg"), RequirementType.TOP_LEVEL)
+            bt._bootstrap_one(Requirement("ok-pkg"), RequirementType.TOP_LEVEL)
 
         assert len(bt.failed_packages) == 1
         assert bt.failed_packages[0]["package"] == "fail-pkg"
