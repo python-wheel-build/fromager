@@ -15,7 +15,7 @@ from packaging.utils import canonicalize_name
 from pydantic import AnyUrl, Field
 from pydantic_core import core_schema
 
-# from ._resolver import SourceResolver
+from ._resolver import SourceResolver
 from ._typedefs import (
     MODEL_CONFIG,
     BuildDirectory,
@@ -324,9 +324,11 @@ class VariantInfo(pydantic.BaseModel):
     pre_built: bool = False
     """Use pre-built wheel from index server?"""
 
-    # TODO
-    # source: SourceResolver | None
-    # """Source resolver and downloader"""
+    source: SourceResolver | None = None
+    """Source resolver and downloader
+
+    .. versionadded:: 0.86
+    """
 
 
 class GitOptions(pydantic.BaseModel):
@@ -336,6 +338,7 @@ class GitOptions(pydantic.BaseModel):
 
         submodules: False
         submodule_paths: []
+        remove_dot_git: False
     """
 
     model_config = MODEL_CONFIG
@@ -356,6 +359,18 @@ class GitOptions(pydantic.BaseModel):
     Examples:
     - ["third-party/openssl"]
     - ["vendor/lib1", "vendor/lib2"]
+    """
+
+    remove_dot_git: bool = False
+    """Remove ``.git`` directory after cloning?
+
+    When True, the ``.git`` directory is removed from the cloned source
+    tree so it does not end up in the built sdist.  Defaults to False
+    to preserve backward compatibility with existing ``req.url`` git
+    clones that rely on ``.git`` for version detection (e.g. via
+    setuptools-scm).
+
+    .. versionadded:: 0.85
     """
 
 
@@ -452,9 +467,11 @@ class PackageSettings(pydantic.BaseModel):
     project_override: ProjectOverride = Field(default_factory=ProjectOverride)
     """Patch project settings"""
 
-    # TODO
-    # source: SourceResolver | None
-    # """Source resolver and downloader"""
+    source: SourceResolver | None = None
+    """Source resolver and downloader
+
+    .. versionadded:: 0.86
+    """
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
     """Variant configuration"""

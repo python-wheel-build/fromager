@@ -119,14 +119,23 @@ def default_resolver_provider(
     include_wheels: bool,
     req_type: RequirementType | None = None,
     ignore_platform: bool = False,
-) -> (
-    PyPIProvider
-    | GenericProvider
-    | GitHubTagProvider
-    | GitLabTagProvider
-    | VersionMapProvider
-):
-    """Lookup resolver provider to resolve package versions"""
+) -> BaseProvider:
+    """Lookup resolver provider to resolve package versions.
+
+    When the package has a ``source`` configuration, the provider is
+    created from the declarative resolver model.  Otherwise the default
+    ``PyPIProvider`` is returned.
+    """
+    pbi = ctx.package_build_info(req)
+    source = pbi.source_resolver
+    if source is not None:
+        logger.info(
+            "%s: using source resolver provider %r",
+            req.name,
+            source.provider,
+        )
+        return source.resolver_provider(ctx, req_type)
+
     return PyPIProvider(
         include_sdists=include_sdists,
         include_wheels=include_wheels,

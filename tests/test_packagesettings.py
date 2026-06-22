@@ -71,6 +71,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
     "git_options": {
         "submodules": False,
         "submodule_paths": [],
+        "remove_dot_git": False,
     },
     "name": "test-pkg",
     "has_config": True,
@@ -88,6 +89,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": True,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": {
@@ -96,6 +98,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
+            "source": None,
         },
         "rocm": {
             "annotations": {
@@ -104,12 +107,14 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"SPAM": ""},
             "wheel_server_url": None,
             "pre_built": True,
+            "source": None,
         },
         "cuda": {
             "annotations": None,
             "env": {},
             "wheel_server_url": None,
             "pre_built": False,
+            "source": None,
         },
     },
 }
@@ -134,6 +139,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
     "git_options": {
         "submodules": False,
         "submodule_paths": [],
+        "remove_dot_git": False,
     },
     "has_config": True,
     "purl": None,
@@ -150,6 +156,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": None,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {},
 }
 
@@ -175,6 +182,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
     "git_options": {
         "submodules": False,
         "submodule_paths": [],
+        "remove_dot_git": False,
     },
     "has_config": True,
     "purl": None,
@@ -191,12 +199,14 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": None,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": None,
             "env": {},
             "pre_built": True,
             "wheel_server_url": None,
+            "source": None,
         },
     },
 }
