@@ -397,6 +397,76 @@ class TestPhaseResolve:
             ):
                 bt._phase_resolve(item)
 
+    def test_filters_failed_versions_in_multiple_versions_mode(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Previously failed versions are excluded before creating START items."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        item = _make_resolve_item()
+
+        bt._failed_versions[(canonicalize_name("testpkg"), "2.0")] = RuntimeError(
+            "boom"
+        )
+
+        with (
+            patch.object(
+                bt,
+                "resolve_versions",
+                return_value=[
+                    ("url-3.0", Version("3.0")),
+                    ("url-2.0", Version("2.0")),
+                    ("url-1.0", Version("1.0")),
+                ],
+            ),
+            patch.object(bt, "_find_cached_wheel", return_value=(None, None)),
+        ):
+            result = bt._phase_resolve(item)
+
+        versions = {str(it.resolved_version) for it in result}
+        assert versions == {"1.0", "3.0"}
+
+    def test_failed_version_filter_does_not_apply_in_single_version_mode(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Failed-version filtering only applies in multiple_versions mode."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=False)
+        item = _make_resolve_item()
+
+        bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = RuntimeError(
+            "boom"
+        )
+
+        with patch.object(
+            bt,
+            "resolve_versions",
+            return_value=[("url-1.0", Version("1.0"))],
+        ):
+            result = bt._phase_resolve(item)
+
+        assert len(result) == 1
+        assert result[0].resolved_version == Version("1.0")
+
+    def test_all_versions_failed_raises_runtime_error(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Raises RuntimeError when all resolved versions already failed."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        item = _make_resolve_item()
+
+        bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = RuntimeError(
+            "boom"
+        )
+
+        with (
+            patch.object(
+                bt,
+                "resolve_versions",
+                return_value=[("url-1.0", Version("1.0"))],
+            ),
+            pytest.raises(RuntimeError, match="failed previously"),
+        ):
+            bt._phase_resolve(item)
+
 
 class TestPhaseStart:
     def test_new_item_advances_to_prepare_source(
@@ -584,9 +654,9 @@ class TestHandlePhaseError:
 
         assert result == []
         assert len(bt._failed_versions) == 1
-        assert bt._failed_versions[0][0] == canonicalize_name("testpkg")
-        assert bt._failed_versions[0][1] == "unresolved"
-        assert bt._failed_versions[0][2] is err
+        key = (canonicalize_name("testpkg"), "unresolved")
+        assert key in bt._failed_versions
+        assert bt._failed_versions[key] is err
 
     # -- Build phase errors in test mode --
 
@@ -679,8 +749,7 @@ class TestHandlePhaseError:
         assert result == []
         # Failure recorded
         assert len(bt._failed_versions) == 1
-        assert bt._failed_versions[0][0] == canonicalize_name("testpkg")
-        assert bt._failed_versions[0][1] == "1.0"
+        assert (canonicalize_name("testpkg"), "1.0") in bt._failed_versions
         # Removed from graph
         key = f"{canonicalize_name('testpkg')}==1.0"
         assert key not in tmp_context.dependency_graph.nodes
@@ -879,7 +948,7 @@ class TestIterativeBootstrapLoop:
             bt.bootstrap(Requirement("pkg"), RequirementType.INSTALL)
 
         assert len(bt._failed_versions) == 1
-        assert bt._failed_versions[0][1] == "1.5"
+        assert (canonicalize_name("pkg"), "1.5") in bt._failed_versions
         # Other versions processed successfully (in graph)
         assert f"{canonicalize_name('pkg')}==2.0" in tmp_context.dependency_graph.nodes
         assert f"{canonicalize_name('pkg')}==1.0" in tmp_context.dependency_graph.nodes
@@ -918,7 +987,7 @@ class TestIterativeBootstrapLoop:
 
         assert "good-pkg" in completed
         assert "another-good" in completed
-        failed_names = [name for name, _, _ in bt._failed_versions]
+        failed_names = [name for name, _ in bt._failed_versions]
         assert canonicalize_name("bad-dep") in failed_names
 
     def test_test_mode_continues_after_failure(self, tmp_context: WorkContext) -> None:

@@ -197,8 +197,7 @@ class Bootstrapper:
         self.failed_packages: list[FailureRecord] = []
 
         # Track failed versions in multiple_versions mode
-        # Maps (package_name, version) -> exception info
-        self._failed_versions: list[tuple[str, str, Exception]] = []
+        self._failed_versions: dict[tuple[str, str], Exception] = {}
 
     def resolve_and_add_top_level(
         self,
@@ -417,16 +416,17 @@ class Bootstrapper:
 
         # In multiple versions mode, report any failures for this requirement
         if self.multiple_versions and self._failed_versions:
-            failed_for_req = [
-                (name, ver, exc)
-                for name, ver, exc in self._failed_versions
-                if name == canonicalize_name(req.name)
-            ]
+            req_name = canonicalize_name(req.name)
+            failed_for_req = {
+                (name, ver): exc
+                for (name, ver), exc in self._failed_versions.items()
+                if name == req_name
+            }
             if failed_for_req:
                 logger.warning(
                     f"{req.name}: {len(failed_for_req)} version(s) failed to bootstrap"
                 )
-                for name, ver, exc in failed_for_req:
+                for (name, ver), exc in failed_for_req.items():
                     logger.warning(f"  - {name}=={ver}: {type(exc).__name__}: {exc}")
 
     @contextlib.contextmanager
@@ -1353,9 +1353,10 @@ class Bootstrapper:
         """RESOLVE phase: resolve versions and expand into START-phase items.
 
         Centralizes version resolution so all dependencies are expanded
-        uniformly. In multiple_versions mode, filters out versions whose
-        wheels are already cached to avoid redundant builds and
-        transitive dependency processing.
+        uniformly. In multiple_versions mode, filters out versions that
+        already failed in this run and versions whose wheels are already
+        cached to avoid redundant builds and transitive dependency
+        processing.
 
         Returns:
             One START-phase item per resolved version that needs building.
@@ -1370,6 +1371,18 @@ class Bootstrapper:
             raise RuntimeError(f"Could not resolve any versions for {item.req}")
 
         if self.multiple_versions:
+            pkg_name = canonicalize_name(item.req.name)
+            resolved_versions = [
+                (url, ver)
+                for url, ver in resolved_versions
+                if (pkg_name, str(ver)) not in self._failed_versions
+            ]
+            if not resolved_versions:
+                raise RuntimeError(
+                    f"Could not resolve any versions for {item.req}"
+                    f" (all candidates failed previously)"
+                )
+
             logger.info(f"resolved {len(resolved_versions)} version(s) for {item.req}")
             filtered: list[tuple[str, Version]] = []
             for source_url, version in resolved_versions:
@@ -1831,7 +1844,7 @@ class Bootstrapper:
     ) -> None:
         """Record a version failure in multiple versions mode."""
         pkg_name = canonicalize_name(req.name)
-        self._failed_versions.append((pkg_name, version, err))
+        self._failed_versions[(pkg_name, version)] = err
         logger.warning(
             "%s==%s: %s: %s: %s",
             req.name,
@@ -1844,7 +1857,7 @@ class Bootstrapper:
     def _log_failed_versions_table(self) -> None:
         """Log a summary table of all failed versions."""
         logger.warning("%d version(s) failed to bootstrap:", len(self._failed_versions))
-        for name, ver, exc in self._failed_versions:
+        for (name, ver), exc in self._failed_versions.items():
             logger.warning("  %s==%s: %s: %s", name, ver, type(exc).__name__, exc)
 
     def finalize(self) -> int:
