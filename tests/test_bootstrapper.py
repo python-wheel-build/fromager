@@ -352,9 +352,9 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
 
                     # Verify that version 1.5 is in failed_versions
                     assert len(bt._failed_versions) == 1
-                    pkg_name, version_str, exc = bt._failed_versions[0]
-                    assert pkg_name == canonicalize_name("testpkg")
-                    assert version_str == "1.5"
+                    key = (canonicalize_name("testpkg"), "1.5")
+                    assert key in bt._failed_versions
+                    exc = bt._failed_versions[key]
                     assert isinstance(exc, ValueError)
                     assert str(exc) == "Simulated failure for version 1.5"
 
