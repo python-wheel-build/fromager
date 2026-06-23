@@ -34,7 +34,7 @@ from . import (
     wheels,
 )
 from .dependency_graph import DependencyGraph
-from .log import req_ctxvar_context
+from .log import req_ctxvar_context, requirement_ctxvar
 from .requirements_file import RequirementType, SourceType
 
 if typing.TYPE_CHECKING:
@@ -199,11 +199,13 @@ class Bootstrapper:
         # Track failed versions in multiple_versions mode
         self._failed_versions: dict[tuple[str, str], Exception] = {}
 
-    def resolve_and_add_top_level(
+    def _resolve_and_add_top_level(
         self,
         req: Requirement,
     ) -> tuple[str, Version] | None:
         """Resolve a top-level requirement and add it to the dependency graph.
+
+        Private method called only by ``bootstrap()``.
 
         This is the pre-resolution phase before recursive bootstrapping begins.
         In test mode, catches resolution errors and records them as failures.
@@ -324,6 +326,76 @@ class Bootstrapper:
             return_all_versions=return_all_versions,
         )
 
+    def bootstrap(self, requirements: list[Requirement]) -> None:
+        """Bootstrap all top-level requirements and their transitive dependencies.
+
+        .. versionadded:: 0.89
+           Replaces the former ``bootstrap(req, req_type)`` signature.
+
+        Resolves each requirement, adds it to the dependency graph, and processes
+        the full dependency tree using an iterative DFS loop. Handles
+        ``requirement_ctxvar`` context internally; callers do not need to manage it.
+
+        In test mode, records failures and continues instead of raising. In
+        ``multiple_versions`` mode, processes all matching versions per requirement.
+
+        Args:
+            requirements: Top-level requirements to resolve and bootstrap.
+        """
+        # Resolve all top-level reqs and build initial stack.
+        # Use the token pattern (no try/finally) so that if resolution raises
+        # in normal mode, the context var stays set for the top-level error
+        # handler in __main__.py to include the package name in its log message.
+        stack: list[WorkItem] = []
+        for req in requirements:
+            token = requirement_ctxvar.set(req)
+            result = self._resolve_and_add_top_level(req)
+            requirement_ctxvar.reset(token)
+            if result is not None:
+                stack.append(
+                    WorkItem(
+                        req=req,
+                        req_type=RequirementType.TOP_LEVEL,
+                        phase=BootstrapPhase.RESOLVE,
+                        why_snapshot=[],
+                        parent=None,
+                    )
+                )
+
+        self._run_bootstrap_loop(stack)
+
+    def _run_bootstrap_loop(self, stack: list[WorkItem]) -> None:
+        """Run the iterative DFS bootstrap loop over a pre-built work stack.
+
+        Pops items one at a time, dispatches each phase, and pushes any
+        follow-on items (continuations and new dependencies) back onto the
+        stack. Updates the progress bar as items complete.
+
+        Args:
+            stack: Initial list of ``WorkItem`` objects to process. Modified
+                in-place; empty on return.
+        """
+        while stack:
+            self._record_stack_state(stack)
+            item = stack.pop()
+            self.why = list(item.why_snapshot)
+
+            with req_ctxvar_context(item.req), self._track_why(item):
+                try:
+                    new_items = self._dispatch_phase(item)
+                except Exception as err:
+                    new_items = self._handle_phase_error(item, err)
+
+            new_dep_count = sum(
+                1 for it in new_items if it.phase == BootstrapPhase.RESOLVE
+            )
+            if new_dep_count > 0:
+                self.progressbar.update_total(new_dep_count)
+            if not new_items:
+                self.progressbar.update()
+
+            stack.extend(new_items)
+
     def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
         """Are we currently processing a build requirement?
 
@@ -350,8 +422,12 @@ class Bootstrapper:
         logger.debug("is not a build requirement")
         return False
 
-    def bootstrap(self, req: Requirement, req_type: RequirementType) -> None:
-        """Bootstrap a package and its dependencies using an iterative loop.
+    def _bootstrap_one(self, req: Requirement, req_type: RequirementType) -> None:
+        """Bootstrap a single requirement using an iterative DFS loop.
+
+        Internal method used only by the git URL resolution path
+        (``_handle_build_requirements``). All other callers should use
+        ``bootstrap(requirements)`` instead.
 
         Uses an explicit LIFO stack instead of recursion to handle arbitrarily
         deep dependency graphs without hitting Python's recursion limit.
@@ -386,48 +462,10 @@ class Bootstrapper:
             )
         ]
 
-        # Main iterative DFS loop
-        while stack:
-            self._record_stack_state(stack)
-            item = stack.pop()
-            self.why = list(item.why_snapshot)
-
-            with req_ctxvar_context(item.req), self._track_why(item):
-                try:
-                    new_items = self._dispatch_phase(item)
-                except Exception as err:
-                    new_items = self._handle_phase_error(item, err)
-
-            # Progress bar: count new RESOLVE-phase items as new dependencies
-            new_dep_count = sum(
-                1 for it in new_items if it.phase == BootstrapPhase.RESOLVE
-            )
-            if new_dep_count > 0:
-                self.progressbar.update_total(new_dep_count)
-            if not new_items:
-                self.progressbar.update()
-
-            # Phase handlers return [continuation, *new_deps] so extend()
-            # naturally puts new deps on top of the stack (processed first).
-            stack.extend(new_items)
+        self._run_bootstrap_loop(stack)
 
         # Restore why stack for the caller
         self.why = saved_why
-
-        # In multiple versions mode, report any failures for this requirement
-        if self.multiple_versions and self._failed_versions:
-            req_name = canonicalize_name(req.name)
-            failed_for_req = {
-                (name, ver): exc
-                for (name, ver), exc in self._failed_versions.items()
-                if name == req_name
-            }
-            if failed_for_req:
-                logger.warning(
-                    f"{req.name}: {len(failed_for_req)} version(s) failed to bootstrap"
-                )
-                for (name, ver), exc in failed_for_req.items():
-                    logger.warning(f"  - {name}=={ver}: {type(exc).__name__}: {exc}")
 
     @contextlib.contextmanager
     def _track_why(
@@ -626,7 +664,7 @@ class Bootstrapper:
                 # Save/restore self.why because the iterative bootstrap()
                 # modifies it internally for each work item.
                 saved_why = list(self.why)
-                self.bootstrap(req=dep, req_type=build_type)
+                self._bootstrap_one(req=dep, req_type=build_type)
                 self.why = saved_why
             self.progressbar.update()
 
@@ -1437,7 +1475,7 @@ class Bootstrapper:
         assert item.resolved_version is not None
         assert item.source_url is not None
 
-        # Add to graph (skip TOP_LEVEL, already added in resolve_and_add_top_level)
+        # Add to graph (skip TOP_LEVEL, already added in _resolve_and_add_top_level)
         if item.req_type != RequirementType.TOP_LEVEL:
             self._add_to_graph(
                 item.req,

@@ -16,7 +16,6 @@ import pytest
 from packaging.requirements import Requirement
 
 from fromager import bootstrapper, context
-from fromager.requirements_file import RequirementType
 
 
 class TestBootstrapperInitialization:
@@ -267,7 +266,7 @@ class TestBootstrapExceptionHandling:
             side_effect=RuntimeError("Version resolution failed"),
         ):
             # Should not raise in test mode
-            bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+            bt.bootstrap([req])
 
         # Verify failure was recorded
         assert len(bt.failed_packages) == 1
@@ -293,4 +292,4 @@ class TestBootstrapExceptionHandling:
             side_effect=RuntimeError("Version resolution failed"),
         ):
             with pytest.raises(RuntimeError, match="Version resolution failed"):
-                bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+                bt.bootstrap([req])

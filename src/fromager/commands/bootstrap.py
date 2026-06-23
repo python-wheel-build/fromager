@@ -20,7 +20,6 @@ from .. import (
     resolver,
     server,
 )
-from ..log import requirement_ctxvar
 from .build import build_parallel
 from .graph import find_why, show_explain_duplicates
 
@@ -200,28 +199,11 @@ def bootstrap(
             multiple_versions=multiple_versions,
         )
 
-        # Pre-resolution phase: Resolve all top-level dependencies before recursive
-        # bootstrapping begins. Test-mode error handling is in Bootstrapper.
-        # Note: We don't use try/finally here because:
-        # - In test-mode: exceptions are caught inside resolve_and_add_top_level()
-        # - In normal mode: exceptions should propagate with context preserved for logging
-        logger.info("resolving top-level dependencies before building")
-        resolved_reqs: list[Requirement] = []
-        for req in to_build:
-            token = requirement_ctxvar.set(req)
-            result = bt.resolve_and_add_top_level(req)
-            if result is not None:
-                resolved_reqs.append(req)
-            # If result is None, test_mode or multiple_versions recorded the failure
-            requirement_ctxvar.reset(token)
-
-        # Bootstrap only packages that were successfully resolved
-        # Note: Same pattern - no try/finally to preserve context for error logging
-        for req in resolved_reqs:
-            token = requirement_ctxvar.set(req)
-            bt.bootstrap(req, requirements_file.RequirementType.TOP_LEVEL)
-            progressbar.update()
-            requirement_ctxvar.reset(token)
+        # Resolve and bootstrap all top-level dependencies and their transitive
+        # dependencies. Context management and error handling are handled internally
+        # by Bootstrapper.bootstrap().
+        logger.info("resolving and bootstrapping top-level dependencies")
+        bt.bootstrap(list(to_build))
 
         # Finalize test mode and check for failures
         exit_code = bt.finalize()

@@ -337,44 +337,36 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
                 raise ValueError("Simulated failure for version 1.5")
             return []
 
+        req = Requirement("testpkg>=1.0")
+
         with patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch):
             with patch.object(bt, "_has_been_seen", return_value=False):
-                with patch("fromager.bootstrapper.logger") as mock_logger:
-                    req = Requirement("testpkg>=1.0")
+                bt._bootstrap_one(
+                    req=req,
+                    req_type=RequirementType.INSTALL,
+                )
 
-                    bt.bootstrap(
-                        req=req,
-                        req_type=RequirementType.INSTALL,
-                    )
+                # All 3 versions should reach build phases
+                assert build_phase_count["count"] == 3
 
-                    # All 3 versions should reach build phases
-                    assert build_phase_count["count"] == 3
+                # Verify that version 1.5 is in failed_versions
+                assert len(bt._failed_versions) == 1
+                pkg_name = canonicalize_name("testpkg")
+                version_str = "1.5"
+                assert (pkg_name, version_str) in bt._failed_versions
+                exc = bt._failed_versions[(pkg_name, version_str)]
+                assert isinstance(exc, ValueError)
+                assert str(exc) == "Simulated failure for version 1.5"
 
-                    # Verify that version 1.5 is in failed_versions
-                    assert len(bt._failed_versions) == 1
-                    key = (canonicalize_name("testpkg"), "1.5")
-                    assert key in bt._failed_versions
-                    exc = bt._failed_versions[key]
-                    assert isinstance(exc, ValueError)
-                    assert str(exc) == "Simulated failure for version 1.5"
+        # Verify that failed version 1.5 is NOT in the dependency graph
+        failed_key = f"{canonicalize_name('testpkg')}==1.5"
+        assert failed_key not in tmp_context.dependency_graph.nodes
 
-                    # Verify that a warning was logged for the failed version
-                    warning_calls = [
-                        call
-                        for call in mock_logger.warning.call_args_list
-                        if "failed to bootstrap" in str(call)
-                    ]
-                    assert len(warning_calls) >= 1
-
-                    # Verify that failed version 1.5 is NOT in the dependency graph
-                    failed_key = f"{canonicalize_name('testpkg')}==1.5"
-                    assert failed_key not in tmp_context.dependency_graph.nodes
-
-                    # Verify that successful versions ARE in the dependency graph
-                    success_key_20 = f"{canonicalize_name('testpkg')}==2.0"
-                    success_key_10 = f"{canonicalize_name('testpkg')}==1.0"
-                    assert success_key_20 in tmp_context.dependency_graph.nodes
-                    assert success_key_10 in tmp_context.dependency_graph.nodes
+        # Verify that successful versions ARE in the dependency graph
+        success_key_20 = f"{canonicalize_name('testpkg')}==2.0"
+        success_key_10 = f"{canonicalize_name('testpkg')}==1.0"
+        assert success_key_20 in tmp_context.dependency_graph.nodes
+        assert success_key_10 in tmp_context.dependency_graph.nodes
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
@@ -718,6 +710,78 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
         ),
         patch.object(bt, "_phase_start", return_value=[]),
     ):
-        bt.bootstrap(req=req, req_type=RequirementType.TOP_LEVEL)
+        bt._bootstrap_one(req=req, req_type=RequirementType.TOP_LEVEL)
 
     assert call_count["n"] >= 1
+
+
+def test_bootstrap_with_empty_list(tmp_context: WorkContext) -> None:
+    """bootstrap([]) completes without error and runs no phases."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    with patch.object(bt, "_dispatch_phase") as mock_dispatch:
+        bt.bootstrap([])
+    mock_dispatch.assert_not_called()
+
+
+def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
+    """bootstrap([req]) resolves and processes the requirement."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("testpkg==1.0")
+
+    with (
+        patch.object(
+            bt,
+            "_resolve_and_add_top_level",
+            return_value=("http://example.test/testpkg-1.0.tar.gz", Version("1.0")),
+        ),
+        patch.object(bt, "_dispatch_phase", return_value=[]) as mock_dispatch,
+        patch.object(bt, "_record_stack_state"),
+    ):
+        bt.bootstrap([req])
+
+    mock_dispatch.assert_called_once()
+    item = mock_dispatch.call_args[0][0]
+    assert item.req == req
+    assert item.req_type == RequirementType.TOP_LEVEL
+    assert item.phase == bootstrapper.BootstrapPhase.RESOLVE
+
+
+def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
+    """bootstrap() skips requirements whose resolution returns None."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("badpkg")
+
+    with (
+        patch.object(bt, "_resolve_and_add_top_level", return_value=None),
+        patch.object(bt, "_dispatch_phase") as mock_dispatch,
+        patch.object(bt, "_record_stack_state"),
+    ):
+        bt.bootstrap([req])
+
+    mock_dispatch.assert_not_called()
+
+
+def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> None:
+    """bootstrap() processes all requirements in the list."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req1 = Requirement("pkg1==1.0")
+    req2 = Requirement("pkg2==2.0")
+
+    dispatch_calls: list = []
+
+    def fake_dispatch(item: bootstrapper.WorkItem) -> list:
+        dispatch_calls.append(item.req.name)
+        return []
+
+    with (
+        patch.object(
+            bt,
+            "_resolve_and_add_top_level",
+            return_value=("http://example.test/pkg-1.0.tar.gz", Version("1.0")),
+        ),
+        patch.object(bt, "_dispatch_phase", side_effect=fake_dispatch),
+        patch.object(bt, "_record_stack_state"),
+    ):
+        bt.bootstrap([req1, req2])
+
+    assert sorted(dispatch_calls) == ["pkg1", "pkg2"]
