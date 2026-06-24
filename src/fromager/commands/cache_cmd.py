@@ -7,6 +7,7 @@ import pathlib
 import click
 import rich
 import rich.box
+from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from rich.table import Table
 
@@ -26,27 +27,40 @@ logger = logging.getLogger(__name__)
 def _build_cache_manager(
     wkctx: context.WorkContext,
     cache_url: str | None = None,
+    toplevel_reqs: list[Requirement] | None = None,
 ) -> CacheManager:
     """Construct a CacheManager from the WorkContext configuration.
 
     If the context already has a cache configured, return it.
     Otherwise, build one from the standard filesystem layout.
 
+    When a non-default variant is active and top-level requirements are provided,
+    two collections are created:
+    - A variant-specific collection for packages listed in the variant's
+      requirements file (the "main" packages for this build)
+    - A shared "default" collection for unlisted transitive dependencies
+
+    Newly built wheels are routed by the StoreRouter: packages listed in the
+    variant requirements go to the variant collection, unlisted deps to default.
+
     Args:
         wkctx: The work context providing local paths and variant info.
         cache_url: Optional URL to a remote PEP 503 cache server.
+        toplevel_reqs: Top-level requirements from the variant's requirements
+            file. These define which packages belong to the variant collection.
     """
     if wkctx.cache is not None:
         return wkctx.cache
 
-    local_backend = LocalDirectoryBackend(
+    # Shared (default) collection: downloads + prebuilt + optional remote
+    shared_backend = LocalDirectoryBackend(
         wkctx.wheels_downloads, backend_name="local:downloads"
     )
     prebuilt_backend = LocalDirectoryBackend(
         wkctx.wheels_prebuilt, backend_name="local:prebuilt"
     )
 
-    backends: list[CacheBackend] = [local_backend, prebuilt_backend]
+    shared_backends: list[CacheBackend] = [shared_backend, prebuilt_backend]
 
     if cache_url:
         remote_backend = RemotePEP503Backend(
@@ -54,23 +68,45 @@ def _build_cache_manager(
             download_dir=wkctx.wheels_downloads,
             backend_name=f"remote:{cache_url}",
         )
-        backends.append(remote_backend)
+        shared_backends.append(remote_backend)
 
-    collection = CacheCollection(
+    default_collection = CacheCollection(
         name="default",
-        backends=backends,
-        store_backend=local_backend,
+        backends=shared_backends,
+        store_backend=shared_backend,
     )
+
+    collections: dict[str, CacheCollection] = {"default": default_collection}
+    search_order: list[str] = ["default"]
+
+    # Variant-specific collection for packages listed in the requirements file
+    variant_packages = {canonicalize_name(r.name) for r in (toplevel_reqs or [])}
+
+    if variant_packages and wkctx.variant != "cpu":
+        variant_dir = wkctx.wheels_repo / "variants" / wkctx.variant
+        variant_dir.mkdir(parents=True, exist_ok=True)
+        variant_backend = LocalDirectoryBackend(
+            variant_dir, backend_name=f"local:{wkctx.variant}"
+        )
+
+        variant_backends: list[CacheBackend] = [variant_backend, prebuilt_backend]
+        variant_collection = CacheCollection(
+            name=wkctx.variant,
+            backends=variant_backends,
+            store_backend=variant_backend,
+        )
+        collections[wkctx.variant] = variant_collection
+        search_order = [wkctx.variant, "default"]
 
     router = StoreRouter(
         overrides={},
-        accelerated_packages=set(),
+        variant_packages=variant_packages,
         active_variant=wkctx.variant,
     )
 
     manager = CacheManager(
-        collections={"default": collection},
-        search_order=["default"],
+        collections=collections,
+        search_order=search_order,
         store_routing=router,
     )
     manager.initialize()

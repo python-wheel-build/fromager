@@ -358,13 +358,14 @@ class LocalDirectoryBackend:
     def store(self, key: WheelCacheKey, artifact: pathlib.Path) -> ArtifactInfo:
         """Register an artifact in this backend's directory.
 
-        If the artifact is not already in the directory, it is moved there.
+        If the artifact is not already in the directory, it is copied there
+        (preserving the original for the internal wheel server index).
         Updates the in-memory index.
         """
         dest = self._directory / artifact.name
         if not dest.exists():
             self._directory.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(artifact), str(dest))
+            shutil.copy2(str(artifact), str(dest))
 
         info = ArtifactInfo(
             filename=dest.name,
@@ -560,19 +561,21 @@ class StoreRouter:
 
     Routing priority:
     1. Explicit per-package override (from overrides.yaml)
-    2. Listed in the variant's accelerated requirements file
-    3. Default collection
+    2. Listed in the variant's requirements file (variant_packages)
+    3. Default collection (shared/common dependencies)
     """
 
     def __init__(
         self,
         overrides: dict[NormalizedName, str],
-        accelerated_packages: set[NormalizedName],
-        active_variant: str,
+        variant_packages: set[NormalizedName] | None = None,
+        active_variant: str = "cpu",
         default_collection: str = "default",
+        # Keep old kwarg name for backward compatibility
+        accelerated_packages: set[NormalizedName] | None = None,
     ) -> None:
         self._overrides = overrides
-        self._accelerated_packages = accelerated_packages
+        self._variant_packages = variant_packages or accelerated_packages or set()
         self._active_variant = active_variant
         self._default_collection = default_collection
 
@@ -583,7 +586,7 @@ class StoreRouter:
         if name in self._overrides:
             return self._overrides[name]
 
-        if name in self._accelerated_packages:
+        if name in self._variant_packages:
             return self._active_variant
 
         return self._default_collection

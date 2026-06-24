@@ -195,7 +195,9 @@ def bootstrap(
         logger.info("treating %s as pre-built wheels", sorted(pre_built))
 
     if use_cache_manager:
-        cache_mgr = _build_cache_manager(wkctx, cache_url=cache_wheel_server_url)
+        cache_mgr = _build_cache_manager(
+            wkctx, cache_url=cache_wheel_server_url, toplevel_reqs=to_build
+        )
         wkctx.cache = cache_mgr
         logger.info(
             "cache manager enabled with %d collection(s): %s",

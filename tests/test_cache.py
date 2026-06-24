@@ -260,7 +260,8 @@ class TestLocalDirectoryBackend:
         result = backend.fetch(key, info, tmp_path / "dest")
         assert result == whl.resolve()
 
-    def test_store_moves_file(self, tmp_path: pathlib.Path) -> None:
+    def test_store_copies_file(self, tmp_path: pathlib.Path) -> None:
+        """Store copies the wheel to the collection directory, preserving the original."""
         wheels_dir = tmp_path / "wheels"
         wheels_dir.mkdir()
         backend = LocalDirectoryBackend(wheels_dir)
@@ -279,7 +280,7 @@ class TestLocalDirectoryBackend:
 
         assert info.filename == "requests-2.31.0-1-py3-none-any.whl"
         assert (wheels_dir / "requests-2.31.0-1-py3-none-any.whl").exists()
-        assert not whl.exists()  # Moved, not copied
+        assert whl.exists()  # Original preserved for internal wheel server
 
     def test_store_updates_index(self, tmp_path: pathlib.Path) -> None:
         wheels_dir = tmp_path / "wheels"
