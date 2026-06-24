@@ -61,5 +61,21 @@ def lint(
             errors += 1
             logger.error(f"ERROR: plugin name {name} should be {expected_name}")
 
+    logger.info("Checking override hook signatures...")
+    hook_names = overrides.OverrideHookProtocol.list_hooks()
+    for ext in exts:
+        mod = ext.plugin
+        for hook_name in hook_names:
+            func = getattr(mod, hook_name, None)
+            if func is None:
+                continue
+            try:
+                overrides.OverrideHookProtocol.check_signature(
+                    func, hook_name=hook_name
+                )
+            except TypeError as e:
+                errors += 1
+                logger.error(f"ERROR: override {ext.name}.{hook_name}: {e}")
+
     if errors:
         raise SystemExit(f"Found {errors} errors")
