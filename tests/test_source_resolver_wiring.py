@@ -113,12 +113,14 @@ class TestSourceResolverProperty:
 
 
 # ---------------------------------------------------------------------------
-# default_resolver_provider with source config
+# Source resolver dispatch (source config takes priority over plugins)
 # ---------------------------------------------------------------------------
 
 
-class TestDefaultResolverProviderWiring:
-    def test_uses_source_resolver_when_configured(self, tmp_path: pathlib.Path) -> None:
+class TestSourceResolverDispatch:
+    def test_source_config_produces_correct_provider(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         ctx = _make_context_with_source(
             tmp_path,
             {
@@ -127,12 +129,10 @@ class TestDefaultResolverProviderWiring:
             },
         )
         req = Requirement("test-pkg")
-        provider = resolver.default_resolver_provider(
+        provider = sources.get_source_provider(
             ctx=ctx,
             req=req,
             sdist_server_url="https://pypi.test/simple/",
-            include_sdists=True,
-            include_wheels=False,
             req_type=RequirementType.INSTALL,
         )
         assert isinstance(provider, resolver.PyPIProvider)
@@ -142,12 +142,10 @@ class TestDefaultResolverProviderWiring:
         self, tmp_context: context.WorkContext
     ) -> None:
         req = Requirement("unknown-pkg")
-        provider = resolver.default_resolver_provider(
+        provider = sources.get_source_provider(
             ctx=tmp_context,
             req=req,
             sdist_server_url="https://pypi.test/simple/",
-            include_sdists=True,
-            include_wheels=False,
             req_type=RequirementType.INSTALL,
         )
         assert isinstance(provider, resolver.PyPIProvider)
@@ -164,12 +162,10 @@ class TestDefaultResolverProviderWiring:
             },
         )
         req = Requirement("test-pkg")
-        provider = resolver.default_resolver_provider(
+        provider = sources.get_source_provider(
             ctx=ctx,
             req=req,
             sdist_server_url="https://pypi.test/simple/",
-            include_sdists=True,
-            include_wheels=False,
             req_type=RequirementType.INSTALL,
         )
         assert isinstance(provider, resolver.GitHubTagProvider)

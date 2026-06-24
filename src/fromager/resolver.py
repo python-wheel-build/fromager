@@ -90,19 +90,28 @@ def resolve(
 
     Returns (url, version) tuple for the highest matching version.
     """
-    # Create the (reusable) resolver.
-    provider = overrides.find_and_invoke(
-        req.name,
-        "get_resolver_provider",
-        default_resolver_provider,
-        ctx=ctx,
-        req=req,
-        include_sdists=include_sdists,
-        include_wheels=include_wheels,
-        sdist_server_url=sdist_server_url,
-        req_type=req_type,
-        ignore_platform=ignore_platform,
-    )
+    pbi = ctx.package_build_info(req)
+    source = pbi.source_resolver
+    if source is not None and source.provider != "hook":
+        logger.info(
+            "%s: using source resolver provider %r",
+            req.name,
+            source.provider,
+        )
+        provider = source.resolver_provider(ctx, req_type)
+    else:
+        provider = overrides.find_and_invoke(
+            req.name,
+            "get_resolver_provider",
+            default_resolver_provider,
+            ctx=ctx,
+            req=req,
+            include_sdists=include_sdists,
+            include_wheels=include_wheels,
+            sdist_server_url=sdist_server_url,
+            req_type=req_type,
+            ignore_platform=ignore_platform,
+        )
     provider.cooldown = resolve_package_cooldown(ctx, req, req_type=req_type)
     max_age_cutoff = _compute_max_age_cutoff(ctx)
     results = find_all_matching_from_provider(
@@ -120,22 +129,7 @@ def default_resolver_provider(
     req_type: RequirementType | None = None,
     ignore_platform: bool = False,
 ) -> BaseProvider:
-    """Lookup resolver provider to resolve package versions.
-
-    When the package has a ``source`` configuration, the provider is
-    created from the declarative resolver model.  Otherwise the default
-    ``PyPIProvider`` is returned.
-    """
-    pbi = ctx.package_build_info(req)
-    source = pbi.source_resolver
-    if source is not None:
-        logger.info(
-            "%s: using source resolver provider %r",
-            req.name,
-            source.provider,
-        )
-        return source.resolver_provider(ctx, req_type)
-
+    """Lookup resolver provider to resolve package versions."""
     return PyPIProvider(
         include_sdists=include_sdists,
         include_wheels=include_wheels,

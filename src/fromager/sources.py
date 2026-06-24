@@ -86,16 +86,28 @@ def download_source(
         )
         return download_path
 
-    source_path = overrides.find_and_invoke(
-        req.name,
-        "download_source",
-        default_download_source,
-        ctx=ctx,
-        req=req,
-        version=version,
-        download_url=download_url,
-        sdists_downloads_dir=ctx.sdists_downloads,
-    )
+    pbi = ctx.package_build_info(req)
+    source = pbi.source_resolver
+
+    if source is not None and source.provider != "hook":
+        source_path = default_download_source(
+            ctx=ctx,
+            req=req,
+            version=version,
+            download_url=download_url,
+            sdists_downloads_dir=ctx.sdists_downloads,
+        )
+    else:
+        source_path = overrides.find_and_invoke(
+            req.name,
+            "download_source",
+            default_download_source,
+            ctx=ctx,
+            req=req,
+            version=version,
+            download_url=download_url,
+            sdists_downloads_dir=ctx.sdists_downloads,
+        )
 
     if not isinstance(source_path, pathlib.Path):
         raise ValueError(
@@ -117,23 +129,27 @@ def get_source_provider(
     (sdist/wheel inclusion, platform matching, server URL override).
     """
     pbi = ctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+    source = pbi.source_resolver
 
-    provider = typing.cast(
-        resolver.BaseProvider,
-        overrides.find_and_invoke(
-            req.name,
-            "get_resolver_provider",
-            resolver.default_resolver_provider,
-            ctx=ctx,
-            req=req,
-            include_sdists=pbi.resolver_include_sdists,
-            include_wheels=pbi.resolver_include_wheels,
-            sdist_server_url=override_sdist_server_url,
-            req_type=req_type,
-            ignore_platform=pbi.resolver_ignore_platform,
-        ),
-    )
+    if source is not None and source.provider != "hook":
+        provider = source.resolver_provider(ctx, req_type)
+    else:
+        override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+        provider = typing.cast(
+            resolver.BaseProvider,
+            overrides.find_and_invoke(
+                req.name,
+                "get_resolver_provider",
+                resolver.default_resolver_provider,
+                ctx=ctx,
+                req=req,
+                include_sdists=pbi.resolver_include_sdists,
+                include_wheels=pbi.resolver_include_wheels,
+                sdist_server_url=override_sdist_server_url,
+                req_type=req_type,
+                ignore_platform=pbi.resolver_ignore_platform,
+            ),
+        )
     provider.cooldown = resolver.resolve_package_cooldown(ctx, req, req_type=req_type)
     return provider
 

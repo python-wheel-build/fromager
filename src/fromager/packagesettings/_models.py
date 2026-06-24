@@ -327,7 +327,7 @@ class VariantInfo(pydantic.BaseModel):
     source: SourceResolver | None = None
     """Source resolver and downloader
 
-    .. versionadded:: 0.86
+    .. versionadded:: 0.89
     """
 
 
@@ -370,7 +370,7 @@ class GitOptions(pydantic.BaseModel):
     clones that rely on ``.git`` for version detection (e.g. via
     setuptools-scm).
 
-    .. versionadded:: 0.85
+    .. versionadded:: 0.89
     """
 
 
@@ -470,7 +470,7 @@ class PackageSettings(pydantic.BaseModel):
     source: SourceResolver | None = None
     """Source resolver and downloader
 
-    .. versionadded:: 0.86
+    .. versionadded:: 0.89
     """
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
