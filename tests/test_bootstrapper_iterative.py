@@ -663,30 +663,43 @@ class TestHandlePhaseError:
     def test_build_phase_test_mode_fallback_success(
         self, tmp_context: WorkContext
     ) -> None:
+        """Fallback re-enters PREPARE_SOURCE as prebuilt."""
         bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
         item.pbi_pre_built = False
         err = RuntimeError("build failed")
 
-        mock_fallback = Mock(spec=SourceBuildResult)
-        with patch.object(bt, "_handle_test_mode_failure", return_value=mock_fallback):
+        fallback_url = "https://pypi.org/testpkg-1.0-py3-none-any.whl"
+        with patch.object(
+            bt._resolver,
+            "resolve",
+            return_value=[(fallback_url, Version("1.0"))],
+        ):
             result = bt._handle_phase_error(item, err)
 
         assert len(result) == 1
         assert result[0] is item
-        assert item.build_result is mock_fallback
-        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        assert item.phase == BootstrapPhase.PREPARE_SOURCE
+        assert item.pbi_pre_built is True
+        assert item.is_test_mode_fallback is True
+        assert item.source_url == fallback_url
+        assert item.build_result is None
         assert len(bt.failed_packages) == 0
 
     def test_build_phase_test_mode_fallback_failure(
         self, tmp_context: WorkContext
     ) -> None:
+        """When prebuilt resolution fails, build failure is recorded and item is skipped."""
         bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
         item = _make_build_item(phase=BootstrapPhase.BUILD)
         item.pbi_pre_built = False
         err = RuntimeError("build failed")
 
-        with patch.object(bt, "_handle_test_mode_failure", return_value=None):
+        with patch.object(
+            bt._resolver,
+            "resolve",
+            side_effect=RuntimeError("no prebuilt available"),
+        ):
             result = bt._handle_phase_error(item, err)
 
         assert result == []
@@ -700,6 +713,22 @@ class TestHandlePhaseError:
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
         item.pbi_pre_built = True
         err = RuntimeError("download failed")
+
+        result = bt._handle_phase_error(item, err)
+
+        assert result == []
+        assert len(bt.failed_packages) == 1
+        assert bt.failed_packages[0]["failure_type"] == "bootstrap"
+
+    def test_build_phase_test_mode_fallback_item_skips_second_fallback(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A fallback item that fails does not attempt another fallback."""
+        bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+        item.pbi_pre_built = False
+        item.is_test_mode_fallback = True
+        err = RuntimeError("fallback download failed")
 
         result = bt._handle_phase_error(item, err)
 

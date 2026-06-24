@@ -139,6 +139,7 @@ class WorkItem:
     cached_wheel_filename: pathlib.Path | None = None
     build_result: SourceBuildResult | None = None
     pbi_pre_built: bool = False
+    is_test_mode_fallback: bool = False
     build_system_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_backend_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_sdist_deps: set[Requirement] = dataclasses.field(default_factory=set)
@@ -843,82 +844,6 @@ class Bootstrapper:
             )
             return self._build_wheel(req, resolved_version, sdist_root_dir, build_env)
 
-    def _handle_test_mode_failure(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-        req_type: RequirementType,
-        build_error: Exception,
-    ) -> SourceBuildResult | None:
-        """Handle build failure in test mode by attempting pre-built fallback.
-
-        Args:
-            req: The requirement that failed to build.
-            resolved_version: The version that was attempted.
-            req_type: The type of requirement (for fallback resolution).
-            build_error: The original exception from the build attempt.
-
-        Returns:
-            SourceBuildResult if fallback succeeded, None if fallback also failed.
-        """
-        logger.warning(
-            "test mode: build failed for %s==%s, attempting pre-built fallback: %s",
-            req.name,
-            resolved_version,
-            build_error,
-        )
-
-        try:
-            parent_req = self.why[-1][1] if self.why else None
-            results = self._resolver.resolve(
-                req=req,
-                req_type=req_type,
-                parent_req=parent_req,
-                pre_built=True,  # Force prebuilt for test mode fallback
-            )
-            wheel_url, fallback_version = results[0]
-
-            if fallback_version != resolved_version:
-                logger.warning(
-                    "test mode: version mismatch for %s - requested %s, fallback %s",
-                    req.name,
-                    resolved_version,
-                    fallback_version,
-                )
-
-            wheel_filename, unpack_dir = self._download_prebuilt(
-                req=req,
-                req_type=req_type,
-                resolved_version=fallback_version,
-                wheel_url=wheel_url,
-            )
-
-            logger.info(
-                "test mode: successfully used pre-built wheel for %s==%s",
-                req.name,
-                fallback_version,
-            )
-            # Package succeeded via fallback - no failure to record
-
-            return SourceBuildResult(
-                wheel_filename=wheel_filename,
-                sdist_filename=None,
-                unpack_dir=unpack_dir,
-                sdist_root_dir=None,
-                build_env=None,
-                source_type=SourceType.PREBUILT,
-            )
-
-        except Exception as fallback_error:
-            logger.error(
-                "test mode: pre-built fallback also failed for %s: %s",
-                req.name,
-                fallback_error,
-                exc_info=True,
-            )
-            # Return None to signal failure; bootstrap() will record via re-raised exception
-            return None
-
     def _look_for_existing_wheel(
         self,
         req: Requirement,
@@ -1531,6 +1456,12 @@ class Bootstrapper:
                 resolved_version=item.resolved_version,
                 wheel_url=item.source_url,
             )
+            if item.is_test_mode_fallback:
+                logger.info(
+                    "test mode: successfully used pre-built wheel for %s==%s",
+                    item.req.name,
+                    item.resolved_version,
+                )
             item.build_result = SourceBuildResult(
                 wheel_filename=wheel_filename,
                 sdist_filename=None,
@@ -1833,18 +1764,56 @@ class Bootstrapper:
                     BootstrapPhase.BUILD,
                 )
                 and not item.pbi_pre_built
+                and not item.is_test_mode_fallback
             ):
                 assert item.resolved_version is not None
-                fallback = self._handle_test_mode_failure(
-                    req=item.req,
-                    resolved_version=item.resolved_version,
-                    req_type=item.req_type,
-                    build_error=err,
+                logger.warning(
+                    "test mode: build failed for %s==%s, attempting pre-built fallback: %s",
+                    item.req.name,
+                    item.resolved_version,
+                    err,
                 )
-                if fallback is not None:
-                    item.build_result = fallback
-                    item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
+                try:
+                    # why[-1] is the current item (pushed by _track_why),
+                    # so the real parent is why[-2].
+                    parent_req = self.why[-2][1] if len(self.why) > 1 else None
+                    results = self._resolver.resolve(
+                        req=item.req,
+                        req_type=item.req_type,
+                        parent_req=parent_req,
+                        pre_built=True,
+                    )
+                    wheel_url, fallback_version = results[0]
+                    if fallback_version != item.resolved_version:
+                        logger.warning(
+                            "test mode: version mismatch for %s"
+                            " - requested %s, fallback %s",
+                            item.req.name,
+                            item.resolved_version,
+                            fallback_version,
+                        )
+                    item.source_url = wheel_url
+                    item.resolved_version = fallback_version
+                    item.pbi_pre_built = True
+                    item.is_test_mode_fallback = True
+                    item.phase = BootstrapPhase.PREPARE_SOURCE
+                    item.build_env = None
+                    item.sdist_root_dir = None
+                    item.unpack_dir = None
+                    item.cached_wheel_filename = None
+                    item.build_result = None
                     return [item]
+                except Exception as fallback_error:
+                    logger.error(
+                        "test mode: pre-built fallback also failed for %s: %s",
+                        item.req.name,
+                        fallback_error,
+                        exc_info=True,
+                    )
+                    self._record_test_mode_failure(
+                        item.req, str(item.resolved_version), err, "bootstrap"
+                    )
+                    return []
             self._record_test_mode_failure(
                 item.req, str(item.resolved_version), err, "bootstrap"
             )
