@@ -34,6 +34,7 @@ class SourceType(StrEnum):
     SDIST = "sdist"
     OVERRIDE = "override"
     GIT = "git"
+    CACHED = "cached"
 
 
 def parse_requirements_file(

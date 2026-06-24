@@ -21,6 +21,7 @@ from .. import (
     server,
 )
 from .build import build_parallel
+from .cache_cmd import _build_cache_manager
 from .graph import find_why, show_explain_duplicates
 
 # Map child_name==child_version to list of (parent_name==parent_version, Requirement)
@@ -116,6 +117,12 @@ def _get_requirements_from_args(
     default=None,
     help="Reject package versions published more than this many days ago.",
 )
+@click.option(
+    "--use-cache-manager/--no-cache-manager",
+    "use_cache_manager",
+    default=False,
+    help="Enable the new unified CacheManager for hierarchical cache lookups.",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -128,6 +135,7 @@ def bootstrap(
     test_mode: bool,
     multiple_versions: bool,
     max_release_age: int | None,
+    use_cache_manager: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -185,6 +193,15 @@ def bootstrap(
     pre_built = wkctx.settings.list_pre_built()
     if pre_built:
         logger.info("treating %s as pre-built wheels", sorted(pre_built))
+
+    if use_cache_manager:
+        cache_mgr = _build_cache_manager(wkctx, cache_url=cache_wheel_server_url)
+        wkctx.cache = cache_mgr
+        logger.info(
+            "cache manager enabled with %d collection(s): %s",
+            len(cache_mgr.collections),
+            list(cache_mgr.collections.keys()),
+        )
 
     server.start_wheel_server(wkctx)
 
