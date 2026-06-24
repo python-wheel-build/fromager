@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import bootstrapper, context, dependency_graph, packagesettings
+from fromager import bootstrapper, context, dependency_graph, gitutils, packagesettings
 from fromager.commands import bootstrap
 
 
@@ -775,7 +775,7 @@ def test_resolve_version_from_git_url_with_submodules_enabled(
     call_args = mock_git_clone.call_args
     assert call_args.kwargs["submodules"] is True
     assert call_args.kwargs["repo_url"] == "https://github.com/example/repo.git"
-    assert call_args.kwargs["ref"] is None
+    assert call_args.kwargs["ref"] == gitutils.GIT_HEAD
 
 
 @patch("fromager.gitutils.git_clone")
@@ -884,5 +884,5 @@ def test_resolve_version_from_git_url_invalid_scheme(
     req = Requirement("test-pkg @ https://github.com/example/repo.git")
 
     bs = bootstrapper.Bootstrapper(tmp_context)
-    with pytest.raises(ValueError, match="unable to handle URL scheme"):
+    with pytest.raises(ValueError, match="unsupported VCS URL scheme"):
         bs._resolve_version_from_git_url(req)

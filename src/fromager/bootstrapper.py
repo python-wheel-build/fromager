@@ -26,6 +26,7 @@ from . import (
     build_environment,
     dependencies,
     finders,
+    gitutils,
     hooks,
     progress,
     resolver,
@@ -1067,40 +1068,24 @@ class Bootstrapper:
         if not req.url:
             raise ValueError(f"unable to resolve from URL with no URL in {req}")
 
-        if not req.url.startswith("git+"):
-            raise ValueError(f"unable to handle URL scheme in {req.url} from {req}")
-
         # We start by not knowing where we would put the source because we don't
         # know the version.
         working_src_dir: pathlib.Path | None = None
         version: Version | None = None
 
-        # Clean up the URL so we can parse it
-        reduced_url = req.url[len("git+") :]
-        parsed_url = urlparse(reduced_url)
-
-        # Save the URL that we think we will use for cloning. This might change
-        # later if the path has a tag or branch in it.
-        url_to_clone = reduced_url
+        url_to_clone, git_ref = gitutils.parse_vcs_url(req.url, require_ref=False)
         need_to_clone = False
 
-        # If the URL includes an @ with text after it, we use that as the reference
-        # to clone, but by default we take the default branch.
-        git_ref: str | None = None
-
-        if "@" not in parsed_url.path:
-            # If we have no reference, we know we are going to have to clone the
-            # repository to figure out the version to use.
+        if git_ref == gitutils.GIT_HEAD:
+            # No ref in URL, clone to discover the version.
             logger.debug("no reference in URL, will clone")
             need_to_clone = True
         else:
-            # If we have a reference, it might be a valid python version string, or
-            # not. It _must_ be a valid git reference. If it can be parsed as a
-            # valid python version, we assume the tag points to source that will
-            # think that is its version, so we allow reusing an existing cloned repo
-            # if there is one.
-            new_path, _, git_ref = parsed_url.path.rpartition("@")
-            url_to_clone = parsed_url._replace(path=new_path).geturl()
+            # If we have a reference, it might be a valid python version
+            # string, or not. It _must_ be a valid git reference. If it can
+            # be parsed as a valid python version, we assume the tag points
+            # to source that will think that is its version, so we allow
+            # reusing an existing cloned repo if there is one.
             try:
                 version = Version(git_ref)
             except ValueError:
