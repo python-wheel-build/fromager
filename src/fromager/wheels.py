@@ -4,6 +4,7 @@ import collections
 import logging
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -39,10 +40,58 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_BUILD_TAG_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9.]+$")
+
 FROMAGER_BUILD_SETTINGS = "fromager-build-settings"
 FROMAGER_ELF_PROVIDES = "fromager-elf-provides.txt"
 FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
 FROMAGER_BUILD_REQ_PREFIX = "fromager"
+
+
+def get_build_tag(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    wheel_tags: frozenset[Tag] | None = None,
+) -> BuildTag:
+    """Compute the full build tag, including any hook-provided suffix.
+
+    When *wheel_tags* is provided and a ``build_tag_hook`` is configured
+    in global settings, the hook is called to obtain suffix segments
+    that are joined with ``_`` and appended to the base build tag.
+
+    When *wheel_tags* is ``None`` or no hook is configured, returns the
+    base build tag from changelog settings (identical to
+    ``pbi.build_tag(version)``).
+    """
+    pbi = ctx.package_build_info(req)
+    base_tag = pbi.build_tag(version)
+    if not base_tag:
+        return base_tag
+
+    hook = ctx.settings.build_tag_hook
+    if hook is None or wheel_tags is None:
+        return base_tag
+
+    segments = hook(ctx=ctx, req=req, version=version, wheel_tags=wheel_tags)
+    _validate_build_tag_segments(segments)
+
+    if not segments:
+        return base_tag
+
+    suffix = base_tag[1] + "_" + "_".join(segments)
+    return (base_tag[0], suffix)
+
+
+def _validate_build_tag_segments(segments: typing.Sequence[str]) -> None:
+    """Validate that each segment matches ``[a-zA-Z0-9.]``."""
+    for seg in segments:
+        if not _BUILD_TAG_SEGMENT_RE.match(seg):
+            raise ValueError(
+                f"build tag hook returned invalid segment {seg!r}: "
+                "each segment must match [a-zA-Z0-9.]"
+            )
 
 
 def _log_existing_sboms(
@@ -274,7 +323,12 @@ def add_extra_metadata_to_wheels(
             )
             sbom.write_sbom(sbom=sbom_doc, dist_info_dir=dist_info_dir)
 
-        build_tag_from_settings = pbi.build_tag(version)
+        build_tag_from_settings = get_build_tag(
+            ctx=ctx,
+            req=req,
+            version=version,
+            wheel_tags=wheel_tags,
+        )
         build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
 
         cmd = [

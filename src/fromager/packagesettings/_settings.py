@@ -13,7 +13,7 @@ from packaging.utils import canonicalize_name
 from pydantic import Field
 
 from .. import overrides
-from ._models import PackageSettings, SbomSettings
+from ._models import PackageSettings, SbomSettings, WheelSettings
 from ._pbi import PackageBuildInfo
 from ._typedefs import MODEL_CONFIG, GlobalChangelog, Package, Variant
 
@@ -43,6 +43,12 @@ class SettingsFile(pydantic.BaseModel):
     When set, Fromager generates SPDX 2.3 SBOM documents and embeds
     them in built wheels per PEP 770. When absent (default), no SBOMs
     are generated.
+    """
+
+    wheels: WheelSettings | None = None
+    """Wheel build settings
+
+    .. versionadded:: 0.82.0
     """
 
     @classmethod
@@ -174,6 +180,13 @@ class Settings:
     def sbom_settings(self) -> SbomSettings | None:
         """Get global SBOM settings, or None if SBOM generation is disabled."""
         return self._settings.sbom
+
+    @property
+    def build_tag_hook(self) -> typing.Callable[..., typing.Any] | None:
+        """Get the configured build tag hook callable, or None."""
+        if self._settings.wheels is not None:
+            return self._settings.wheels.build_tag_hook
+        return None
 
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""

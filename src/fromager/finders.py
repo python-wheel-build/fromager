@@ -159,33 +159,36 @@ def find_wheel(
     and dotted), each suffixed with the build tag when present. Uses
     case-insensitive ``startswith`` matching rather than exact base comparison
     because wheel filenames include platform/Python tags after the version.
+
+    When the build tag has an empty suffix, also matches wheels whose
+    build tag contains a hook-provided suffix (e.g. ``2_el9.6``).
+    Callers should validate the full build tag after finding a match.
     """
     filename_prefix = _dist_name_to_filename(req.name)
     canonical_name = canonicalize_name(req.name)
-    # if build tag is 0 then we can ignore to handle non tagged wheels for backward compatibility
-    candidate_bases_build_tag = f"{build_tag[0]}{build_tag[1]}-" if build_tag else ""
 
-    candidate_bases = set(
-        [
-            # First check if the file is there using the canonically
-            # transformed name.
-            f"{filename_prefix}-{dist_version}-{candidate_bases_build_tag}",
-            # If that didn't work, try the canonical dist name. That's not
-            # "correct" but we do see it. (charset-normalizer-3.3.2-
-            # and setuptools-scm-8.0.4-) for example
-            f"{canonical_name}-{dist_version}-{candidate_bases_build_tag}",
-            # If *that* didn't work, try the dist name we've been
-            # given as a dependency. That's not "correct", either but we do
-            # see it. (oslo.messaging-14.7.0-) for example
-            f"{req.name}-{dist_version}-{candidate_bases_build_tag}",
-            # Sometimes the sdist uses '.' instead of '-' in the
-            # package name portion.
-            f"{req.name.replace('-', '.')}-{dist_version}-{candidate_bases_build_tag}",
-        ]
-    )
-    # Case-insensitive globbing was added to Python 3.12, but we
-    # have to run with older versions, too, so do our own name
-    # comparison.
+    if build_tag:
+        suffix = build_tag[1]
+        if suffix:
+            # Exact match including suffix: "2_el9.6-"
+            build_tag_prefixes = [f"{build_tag[0]}{suffix}-"]
+        else:
+            # No suffix: match "2-" (plain) or "2_" (hook-suffixed)
+            build_tag_prefixes = [f"{build_tag[0]}-", f"{build_tag[0]}_"]
+    else:
+        build_tag_prefixes = [""]
+
+    candidate_bases = set()
+    for bt_prefix in build_tag_prefixes:
+        candidate_bases.update(
+            [
+                f"{filename_prefix}-{dist_version}-{bt_prefix}",
+                f"{canonical_name}-{dist_version}-{bt_prefix}",
+                f"{req.name}-{dist_version}-{bt_prefix}",
+                f"{req.name.replace('-', '.')}-{dist_version}-{bt_prefix}",
+            ]
+        )
+
     for base in candidate_bases:
         logger.debug('looking for wheel as "%s"', base)
         for filename in downloads_dir.glob("*.whl"):
