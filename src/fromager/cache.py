@@ -364,8 +364,8 @@ class LocalDirectoryBackend:
         Updates the in-memory index.
         """
         dest = self._directory / artifact.name
-        if not dest.exists():
-            self._directory.mkdir(parents=True, exist_ok=True)
+        self._directory.mkdir(parents=True, exist_ok=True)
+        if not dest.exists() or not artifact.samefile(dest):
             shutil.copy2(str(artifact), str(dest))
 
         info = ArtifactInfo(
@@ -449,8 +449,21 @@ class RemotePEP503Backend:
         """Download the wheel from the remote server."""
         dest.mkdir(parents=True, exist_ok=True)
         target = dest / info.filename
+
         if target.exists():
-            return target
+            if info.sha256:
+                verify_hash = hashlib.sha256()
+                with open(target, "rb") as f:
+                    for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                        verify_hash.update(chunk)
+                if verify_hash.hexdigest() == info.sha256:
+                    return target
+                logger.warning(
+                    "existing %s has wrong sha256, re-downloading", info.filename
+                )
+                target.unlink()
+            else:
+                return target
 
         url = info.url_or_path
         logger.info(
@@ -459,19 +472,24 @@ class RemotePEP503Backend:
         resp = session.get(url, stream=True)
         resp.raise_for_status()
         hasher = hashlib.sha256() if info.sha256 else None
-        with open(target, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                if not chunk:
-                    continue
-                if hasher is not None:
-                    hasher.update(chunk)
-                f.write(chunk)
-        if hasher is not None and hasher.hexdigest() != info.sha256:
-            target.unlink(missing_ok=True)
-            raise ValueError(
-                f"sha256 mismatch for {info.filename}: "
-                f"expected {info.sha256}, got {hasher.hexdigest()}"
-            )
+        tmp_target = target.with_suffix(target.suffix + ".tmp")
+        try:
+            with open(tmp_target, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    if hasher is not None:
+                        hasher.update(chunk)
+                    f.write(chunk)
+            if hasher is not None and hasher.hexdigest() != info.sha256:
+                raise ValueError(
+                    f"sha256 mismatch for {info.filename}: "
+                    f"expected {info.sha256}, got {hasher.hexdigest()}"
+                )
+            tmp_target.replace(target)
+        except BaseException:
+            tmp_target.unlink(missing_ok=True)
+            raise
         return target
 
     def store(self, key: WheelCacheKey, artifact: pathlib.Path) -> ArtifactInfo:
@@ -596,7 +614,12 @@ class StoreRouter:
         accelerated_packages: set[NormalizedName] | None = None,
     ) -> None:
         self._overrides = overrides
-        self._variant_packages = variant_packages or accelerated_packages or set()
+        if variant_packages is not None:
+            self._variant_packages = variant_packages
+        elif accelerated_packages is not None:
+            self._variant_packages = accelerated_packages
+        else:
+            self._variant_packages = set()
         self._active_variant = active_variant
         self._default_collection = default_collection
 
@@ -683,13 +706,24 @@ class CacheManager:
                     continue
 
                 # Hit -- fetch the artifact to a local path
-                local_path = backend.fetch(
-                    key, info, collection.store_backend.directory
-                )
-                # Register in the local store index so subsequent lookups
-                # find it locally without hitting the remote again
-                if backend is not collection.store_backend:
-                    collection.store_backend.store(key, local_path)
+                try:
+                    local_path = backend.fetch(
+                        key, info, collection.store_backend.directory
+                    )
+                    # Register in the local store index so subsequent lookups
+                    # find it locally without hitting the remote again
+                    if backend is not collection.store_backend:
+                        collection.store_backend.store(key, local_path)
+                except Exception as err:
+                    logger.warning(
+                        "cache hit for %s==%s in %s/%s could not be fetched: %s",
+                        req.name,
+                        version,
+                        collection_name,
+                        backend.name,
+                        err,
+                    )
+                    continue
                 duration_ms = (time.monotonic() - t0) * 1000
                 was_downloaded = not backend.writable
 
