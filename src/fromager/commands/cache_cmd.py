@@ -89,10 +89,9 @@ def _build_cache_manager(
             variant_dir, backend_name=f"local:{wkctx.variant}"
         )
 
-        variant_backends: list[CacheBackend] = [variant_backend, prebuilt_backend]
         variant_collection = CacheCollection(
             name=wkctx.variant,
-            backends=variant_backends,
+            backends=[variant_backend],
             store_backend=variant_backend,
         )
         collections[wkctx.variant] = variant_collection

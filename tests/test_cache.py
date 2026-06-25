@@ -597,11 +597,14 @@ class TestRemotePEP503Backend:
         requests_mock: requests_mock.Mocker,
     ) -> None:
         """End-to-end: scan -> lookup -> fetch for a remote backend."""
-        index_html = '<a href="numpy/">numpy</a>'
-        project_html = """
-        <a href="https://cache.test/files/numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl#sha256=deadbeef">numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl</a>
-        """
         wheel_content = b"wheel bytes"
+        wheel_sha256 = (
+            "67c0d8f7de19e30c2d5891030a0b37cbfcdd240852b53055c0b28290ad52290b"
+        )
+        index_html = '<a href="numpy/">numpy</a>'
+        project_html = f"""
+        <a href="https://cache.test/files/numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl#sha256={wheel_sha256}">numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl</a>
+        """
 
         requests_mock.get("https://cache.test/simple/", text=index_html)
         requests_mock.get("https://cache.test/simple/numpy/", text=project_html)
@@ -628,13 +631,62 @@ class TestRemotePEP503Backend:
         )
         info = backend.lookup(key)
         assert info is not None
-        assert info.sha256 == "deadbeef"
+        assert info.sha256 == wheel_sha256
 
         # Step 3: fetch
         dest = tmp_path / "local-cache"
         result_path = backend.fetch(key, info, dest)
         assert result_path.exists()
         assert result_path.read_bytes() == wheel_content
+
+    def test_fetch_rejects_sha256_mismatch(
+        self,
+        tmp_path: pathlib.Path,
+        requests_mock: requests_mock.Mocker,
+    ) -> None:
+        """Fetch raises ValueError and removes file on sha256 mismatch."""
+        project_html = """
+        <a href="https://cache.test/files/bad-1.0-1-py3-none-any.whl#sha256=badhash">bad-1.0-1-py3-none-any.whl</a>
+        """
+        requests_mock.get("https://cache.test/simple/", text='<a href="bad/">bad</a>')
+        requests_mock.get("https://cache.test/simple/bad/", text=project_html)
+        requests_mock.get(
+            "https://cache.test/files/bad-1.0-1-py3-none-any.whl",
+            content=b"tampered content",
+        )
+
+        backend = RemotePEP503Backend(
+            server_url="https://cache.test/simple",
+            download_dir=tmp_path / "downloads",
+        )
+        backend.scan()
+
+        key = WheelCacheKey(
+            package=canonicalize_name("bad"),
+            version=Version("1.0"),
+            build_tag=(1, ""),
+        )
+        info = backend.lookup(key)
+        assert info is not None
+
+        import pytest
+
+        dest = tmp_path / "local-cache"
+        with pytest.raises(ValueError, match="sha256 mismatch"):
+            backend.fetch(key, info, dest)
+        assert not (dest / "bad-1.0-1-py3-none-any.whl").exists()
+
+    def test_parse_project_page_rejects_path_traversal(self) -> None:
+        """Filenames with path components are rejected."""
+        html = """
+        <a href="../../etc/evil.whl">../../etc/evil.whl</a>
+        <a href="good-1.0-1-py3-none-any.whl">good-1.0-1-py3-none-any.whl</a>
+        """
+        artifacts = RemotePEP503Backend._parse_project_page(
+            html, "https://cache.test/simple/pkg/"
+        )
+        assert len(artifacts) == 1
+        assert artifacts[0].filename == "good-1.0-1-py3-none-any.whl"
 
 
 # ---------------------------------------------------------------------------
@@ -1050,10 +1102,11 @@ class TestCacheManagerRemoteIntegration:
         """CacheManager lookup via remote backend downloads wheel locally."""
 
         # Set up remote backend with a wheel available
-        project_html = """
-        <a href="https://cache.test/files/numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl#sha256=abc123">numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl</a>
-        """
         wheel_content = b"remote wheel content"
+        wheel_sha = "afb823df34d54af96bcc9a759d34c85fc14f30840bf45377ef911e68be9569df"
+        project_html = f"""
+        <a href="https://cache.test/files/numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl#sha256={wheel_sha}">numpy-1.26.4-2-cp312-cp312-linux_x86_64.whl</a>
+        """
         requests_mock.get(
             "https://cache.test/simple/", text='<a href="numpy/">numpy</a>'
         )

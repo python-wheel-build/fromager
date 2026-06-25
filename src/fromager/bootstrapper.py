@@ -1582,13 +1582,13 @@ class Bootstrapper:
         # PROCESS_INSTALL_DEPS -- no source download, no build env, no build
         # deps resolution needed. Install deps are extracted from the wheel.
         if cached_wheel and self.ctx.cache is not None:
-            server.update_wheel_mirror(self.ctx)
             # Route to the correct collection (e.g., variant dir for listed packages)
             pbi = self.ctx.package_build_info(item.req)
             build_tag = pbi.build_tag(item.resolved_version)
             self.ctx.cache.store_wheel(
                 item.req, item.resolved_version, build_tag, cached_wheel
             )
+            server.update_wheel_mirror(self.ctx)
             unpack_dir = self._create_unpack_dir(item.req, item.resolved_version)
             item.build_result = SourceBuildResult(
                 wheel_filename=cached_wheel,

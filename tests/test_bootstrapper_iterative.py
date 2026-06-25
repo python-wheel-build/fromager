@@ -1388,6 +1388,8 @@ class TestPhasePrepareSourceCacheManager:
     def test_cache_hit_records_stats(self, tmp_context: WorkContext) -> None:
         """Cache hit via CacheManager records a hit event in stats."""
 
+        from unittest.mock import MagicMock
+
         from fromager.cache import (
             CacheCollection,
             CacheManager,
@@ -1417,12 +1419,16 @@ class TestPhasePrepareSourceCacheManager:
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
 
+        mock_pbi = MagicMock()
+        mock_pbi.build_tag.return_value = (1, "")
+
         with (
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(tmp_context, "package_build_info", return_value=mock_pbi),
             patch.object(
                 bt,
-                "_find_cached_wheel_via_manager",
-                return_value=(wheel_file, tmp_context.work_dir / "testpkg-1.0"),
+                "_unpack_metadata_from_wheel",
+                return_value=tmp_context.work_dir / "testpkg-1.0",
             ),
             patch.object(
                 bt,
@@ -1433,8 +1439,11 @@ class TestPhasePrepareSourceCacheManager:
         ):
             bt._phase_prepare_source(item)
 
-        # Stats should show the cache was consulted
         assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        # Stats recorded the hit through the real lookup_wheel path
+        summary = cache_mgr.stats.summary()
+        assert summary["hits"]["total"] == 1
+        assert summary["hits"]["by_collection"]["default"] == 1
 
     def test_no_cache_manager_uses_legacy_path(self, tmp_context: WorkContext) -> None:
         """Without CacheManager, legacy path is used (no short-circuit)."""

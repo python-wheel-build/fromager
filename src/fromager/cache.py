@@ -12,6 +12,7 @@ determines which collection receives newly built artifacts.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import logging
 import pathlib
 import re
@@ -457,9 +458,20 @@ class RemotePEP503Backend:
         )
         resp = session.get(url, stream=True)
         resp.raise_for_status()
+        hasher = hashlib.sha256() if info.sha256 else None
         with open(target, "wb") as f:
             for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                if hasher is not None:
+                    hasher.update(chunk)
                 f.write(chunk)
+        if hasher is not None and hasher.hexdigest() != info.sha256:
+            target.unlink(missing_ok=True)
+            raise ValueError(
+                f"sha256 mismatch for {info.filename}: "
+                f"expected {info.sha256}, got {hasher.hexdigest()}"
+            )
         return target
 
     def store(self, key: WheelCacheKey, artifact: pathlib.Path) -> ArtifactInfo:
@@ -509,6 +521,15 @@ class RemotePEP503Backend:
             filename = match.group(2).strip()
             if not filename.endswith(".whl"):
                 continue
+
+            # Reject filenames with path components to prevent directory traversal
+            safe_filename = pathlib.PurePosixPath(filename).name
+            if safe_filename != filename:
+                logger.warning(
+                    "skipping remote artifact with unsafe filename %r", filename
+                )
+                continue
+            filename = safe_filename
 
             # Resolve relative URLs
             if href.startswith("http://") or href.startswith("https://"):
@@ -665,6 +686,10 @@ class CacheManager:
                 local_path = backend.fetch(
                     key, info, collection.store_backend.directory
                 )
+                # Register in the local store index so subsequent lookups
+                # find it locally without hitting the remote again
+                if backend is not collection.store_backend:
+                    collection.store_backend.store(key, local_path)
                 duration_ms = (time.monotonic() - t0) * 1000
                 was_downloaded = not backend.writable
 
