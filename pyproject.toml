@@ -71,6 +71,7 @@ mypy = [
 test = [
     "coverage[toml]!=4.4,>=4.0",
     "pytest",
+    "pytest-cov",
     "pytest-xdist",
     "requests-mock",
     "spdx-tools",
@@ -231,7 +232,7 @@ features = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run
 
 [tool.hatch.envs.test.scripts]
-test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
+test = "python -m pytest --cov --log-level DEBUG -vv {args:tests}"
 coverage-erase = "coverage erase"
 coverage-combine = "coverage combine"
 coverage-report = ["coverage combine", "coverage report --format=markdown | tee coverage-report-$(date +%Y%m%d-%H%M%S).md"]
