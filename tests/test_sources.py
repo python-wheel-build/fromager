@@ -654,7 +654,7 @@ def test_download_source_git_with_ref(
     mock_git.assert_called_once()
     call_kwargs = mock_git.call_args[1]
     assert call_kwargs["ref"] == "v2.0"
-    assert call_kwargs["url_to_clone"] == "git+https://github.com/org/pkg.git"
+    assert call_kwargs["url_to_clone"] == "https://github.com/org/pkg.git"
     assert result == tmp_context.work_dir / "pkg-2.0" / "pkg-2.0"
 
 
