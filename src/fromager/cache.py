@@ -17,6 +17,7 @@ import logging
 import pathlib
 import re
 import shutil
+import tempfile
 import time
 import typing
 from urllib.parse import urlparse
@@ -366,7 +367,20 @@ class LocalDirectoryBackend:
         dest = self._directory / artifact.name
         self._directory.mkdir(parents=True, exist_ok=True)
         if not dest.exists() or not artifact.samefile(dest):
-            shutil.copy2(str(artifact), str(dest))
+            fd = tempfile.NamedTemporaryFile(
+                dir=self._directory,
+                prefix=f".{dest.name}.",
+                suffix=".tmp",
+                delete=False,
+            )
+            tmp_dest = pathlib.Path(fd.name)
+            fd.close()
+            try:
+                shutil.copy2(str(artifact), str(tmp_dest))
+                tmp_dest.replace(dest)
+            except BaseException:
+                tmp_dest.unlink(missing_ok=True)
+                raise
 
         info = ArtifactInfo(
             filename=dest.name,
@@ -472,7 +486,14 @@ class RemotePEP503Backend:
         resp = session.get(url, stream=True)
         resp.raise_for_status()
         hasher = hashlib.sha256() if info.sha256 else None
-        tmp_target = target.with_suffix(target.suffix + ".tmp")
+        fd = tempfile.NamedTemporaryFile(
+            dir=dest,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            delete=False,
+        )
+        tmp_target = pathlib.Path(fd.name)
+        fd.close()
         try:
             with open(tmp_target, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=1024 * 1024):
