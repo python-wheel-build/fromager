@@ -616,11 +616,6 @@ class Bootstrapper:
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
         )
-        self._handle_build_requirements(
-            req,
-            RequirementType.BUILD_BACKEND,
-            build_backend_dependencies,
-        )
 
         # build sdist
         build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
@@ -629,6 +624,27 @@ class Bootstrapper:
             version=resolved_version,
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
+        )
+
+        # Filter out deps already satisfied by build-system dependencies
+        resolved_build_sys = self._resolve_build_system_versions_by_name(
+            build_system_dependencies,
+        )
+        build_backend_dependencies = self._filter_deps_satisfied_by_build_system(
+            build_backend_dependencies,
+            resolved_build_sys,
+            RequirementType.BUILD_BACKEND,
+        )
+        build_sdist_dependencies = self._filter_deps_satisfied_by_build_system(
+            build_sdist_dependencies,
+            resolved_build_sys,
+            RequirementType.BUILD_SDIST,
+        )
+
+        self._handle_build_requirements(
+            req,
+            RequirementType.BUILD_BACKEND,
+            build_backend_dependencies,
         )
         self._handle_build_requirements(
             req,
@@ -1580,8 +1596,115 @@ class Bootstrapper:
         item.phase = BootstrapPhase.PREPARE_BUILD
         return [item] + dep_items
 
+    def _resolve_build_system_versions_by_name(
+        self,
+        build_system_deps: set[Requirement],
+    ) -> dict[NormalizedName, tuple[Version, str]]:
+        """Build a mapping of resolved build-system versions by looking up graph nodes.
+
+        Used by the git URL path where the parent node may not yet exist
+        in the dependency graph.
+        """
+        resolved: dict[NormalizedName, tuple[Version, str]] = {}
+        for dep in build_system_deps:
+            dep_name = canonicalize_name(dep.name)
+            nodes = self.ctx.dependency_graph.get_nodes_by_name(str(dep_name))
+            for node in nodes:
+                if node.version in dep.specifier:
+                    resolved[dep_name] = (node.version, node.download_url)
+                    break
+        return resolved
+
+    def _get_resolved_build_system_versions(
+        self,
+        item: WorkItem,
+    ) -> dict[NormalizedName, tuple[Version, str]]:
+        """Build a mapping of resolved build-system dependency versions.
+
+        Looks up the parent node's ``BUILD_SYSTEM`` edges in the dependency
+        graph to find what versions were resolved for each build-system
+        dependency.
+
+        Returns:
+            Mapping of canonicalized package name to ``(version, download_url)``.
+        """
+        assert item.resolved_version is not None
+        parent_key = f"{canonicalize_name(item.req.name)}=={item.resolved_version}"
+        parent_node = self.ctx.dependency_graph.nodes.get(parent_key)
+        if parent_node is None:
+            return {}
+        resolved: dict[NormalizedName, tuple[Version, str]] = {}
+        for edge in parent_node.children:
+            if edge.req_type == RequirementType.BUILD_SYSTEM:
+                child = edge.destination_node
+                resolved[child.canonicalized_name] = (
+                    child.version,
+                    child.download_url,
+                )
+        return resolved
+
+    def _filter_deps_satisfied_by_build_system(
+        self,
+        deps: set[Requirement],
+        resolved_build_sys: dict[NormalizedName, tuple[Version, str]],
+        dep_req_type: RequirementType,
+        parent: tuple[Requirement, Version] | None = None,
+    ) -> set[Requirement]:
+        """Filter out deps already satisfied by build-system dependencies.
+
+        For each dep whose resolved build-system version satisfies the
+        requirement specifier, excludes the dep from the returned set.
+        When *parent* is provided, also adds a graph edge reusing that
+        version.  Remaining deps need independent resolution.
+
+        Logs a warning when the same package appears in both build-system
+        and build-backend/sdist with incompatible version specifiers.
+        """
+        unsatisfied: set[Requirement] = set()
+        for dep in deps:
+            if dep.extras:
+                unsatisfied.add(dep)
+                continue
+            dep_name = canonicalize_name(dep.name)
+            if dep_name in resolved_build_sys:
+                version, download_url = resolved_build_sys[dep_name]
+                if version in dep.specifier:
+                    logger.info(
+                        "%s dependency %s is already satisfied by "
+                        "build-system dependency %s==%s",
+                        dep_req_type,
+                        dep,
+                        dep_name,
+                        version,
+                    )
+                    if parent is not None:
+                        self._add_to_graph(
+                            req=dep,
+                            req_type=dep_req_type,
+                            req_version=version,
+                            download_url=download_url,
+                            parent=parent,
+                        )
+                    continue
+                else:
+                    logger.warning(
+                        "%s dependency %s conflicts with "
+                        "build-system dependency %s==%s; "
+                        "resolving independently",
+                        dep_req_type,
+                        dep,
+                        dep_name,
+                        version,
+                    )
+            unsatisfied.add(dep)
+        return unsatisfied
+
     def _phase_prepare_build(self, item: WorkItem) -> list[WorkItem]:
         """PREPARE_BUILD phase: install system deps, get backend/sdist deps.
+
+        Build-backend and build-sdist dependencies that are already satisfied
+        by a resolved build-system dependency reuse that version instead of
+        resolving independently (see :issue:`1194`).
 
         Returns:
             [item advanced to BUILD, *backend_dep_items, *sdist_dep_items].
@@ -1609,6 +1732,23 @@ class Bootstrapper:
             version=item.resolved_version,
             sdist_root_dir=item.sdist_root_dir,
             build_env=item.build_env,
+        )
+
+        # Filter out deps already satisfied by build-system dependencies
+        # to avoid resolving to a different (typically newer) version.
+        resolved_build_sys = self._get_resolved_build_system_versions(item)
+        parent = (item.req, item.resolved_version)
+        item.build_backend_deps = self._filter_deps_satisfied_by_build_system(
+            item.build_backend_deps,
+            resolved_build_sys,
+            RequirementType.BUILD_BACKEND,
+            parent,
+        )
+        item.build_sdist_deps = self._filter_deps_satisfied_by_build_system(
+            item.build_sdist_deps,
+            resolved_build_sys,
+            RequirementType.BUILD_SDIST,
+            parent,
         )
 
         backend_items = self._create_unresolved_work_items(
