@@ -1,13 +1,15 @@
 import dataclasses
 import datetime
 import logging
+import posixpath
 import typing
 from io import BytesIO
+from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
-from packaging.utils import BuildTag, canonicalize_name
+from packaging.utils import BuildTag, canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 
 from .request_session import session
@@ -141,12 +143,28 @@ def get_metadata_for_wheel(
     logger.debug(f"Downloading full wheel to extract metadata: {url}")
     data = session.get(url).content
     with ZipFile(BytesIO(data)) as z:
-        for n in z.namelist():
-            if n.endswith(".dist-info/METADATA"):
-                metadata_content = z.read(n)
-                # Parse metadata directly using packaging.metadata.Metadata
-                # (avoiding circular import with dependencies module)
-                return Metadata.from_email(metadata_content, validate=validate)
+        metadata_path = _wheel_metadata_path(url)
+        try:
+            metadata_content = z.read(metadata_path)
+        except KeyError as err:
+            raise ValueError(f"Could not find {metadata_path} in wheel: {url}") from err
+        return Metadata.from_email(metadata_content, validate=validate)
 
-    # If we didn't find the metadata, raise an error
-    raise ValueError(f"Could not find METADATA file in wheel: {url}")
+
+def dist_info_name(wheel_filename: str) -> str:
+    """Return the dist-info directory name for a wheel filename.
+
+    Preserves the verbatim distribution name (e.g. ``MarkupSafe``, not
+    ``markupsafe``) because the dist-info directory inside a wheel uses
+    the original casing.  Delegates to ``parse_wheel_filename`` for
+    validation.
+    """
+    parse_wheel_filename(wheel_filename)
+    name, version = wheel_filename.split("-", 2)[:2]
+    return f"{name}-{version}.dist-info"
+
+
+def _wheel_metadata_path(url: str) -> str:
+    """Derive the METADATA path inside a wheel from its URL."""
+    filename = posixpath.basename(urlparse(url).path)
+    return f"{dist_info_name(filename)}/METADATA"

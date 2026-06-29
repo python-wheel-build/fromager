@@ -12,7 +12,7 @@ import pyproject_hooks
 import tomlkit
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
-from packaging.utils import NormalizedName, canonicalize_name, parse_wheel_filename
+from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
 from . import (
@@ -22,6 +22,7 @@ from . import (
     packagesettings,
     requirements_file,
 )
+from .candidate import dist_info_name
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -475,19 +476,15 @@ def _get_metadata_from_wheel(
     Raises:
         ValueError: If no METADATA file is found in the wheel
     """
-    # Get dist-info path from wheel filename.
-    # Uses same pattern as wheels.extract_info_from_wheel_file:
-    _, dist_version, _, _ = parse_wheel_filename(wheel_filename.name)
-    dist_name = wheel_filename.name.split("-", 1)[0]
-    metadata_path = f"{dist_name}-{dist_version}.dist-info/METADATA"
+    metadata_path = f"{dist_info_name(wheel_filename.name)}/METADATA"
 
     with zipfile.ZipFile(wheel_filename) as whl:
         try:
             metadata_content = whl.read(metadata_path)
-        except KeyError:
+        except KeyError as err:
             raise ValueError(
                 f"Could not find METADATA file in wheel: {wheel_filename}"
-            ) from None
+            ) from err
         return parse_metadata(metadata_content, validate=validate)
 
 

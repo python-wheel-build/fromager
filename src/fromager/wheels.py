@@ -17,7 +17,6 @@ from packaging.requirements import Requirement
 from packaging.tags import Tag
 from packaging.utils import (
     BuildTag,
-    canonicalize_name,
     parse_wheel_filename,
 )
 from packaging.version import Version
@@ -33,6 +32,7 @@ from . import (
     sbom,
     sources,
 )
+from .candidate import dist_info_name
 
 if typing.TYPE_CHECKING:
     from . import build_environment, context
@@ -143,20 +143,14 @@ def extract_info_from_wheel_file(
 
     Returns the **verbatim** dist name (not normalized) because the
     dist-info directory inside the wheel uses the original casing
-    (e.g. ``MarkupSafe``, not ``markupsafe``). Uses ``parse_wheel_filename``
-    for validation and to extract version, build tag, and platform tags.
+    (e.g. ``MarkupSafe``, not ``markupsafe``).  Uses ``dist_info_name``
+    for name/version extraction and ``parse_wheel_filename`` for build
+    tag and platform tags.
     """
-    # parse_wheel_filename normalizes the dist name, however the dist-info
-    # directory uses the verbatim distribution name from the wheel file.
-    # Packages with upper case names like "MarkupSafe" are affected.
-    dist_name_normalized, dist_version, build_tag, wheel_tags = parse_wheel_filename(
-        wheel_file.name
-    )
-    dist_name = wheel_file.name.split("-", 1)[0]
-    if dist_name_normalized != canonicalize_name(dist_name):
-        # sanity check, should never fail
-        raise ValueError(f"{dist_name_normalized} does not match {dist_name}")
-    return (dist_name, dist_version, build_tag, wheel_tags)
+    di_name = dist_info_name(wheel_file.name)
+    dist_name, dist_version_str = di_name.removesuffix(".dist-info").split("-", 1)
+    _, _, build_tag, wheel_tags = parse_wheel_filename(wheel_file.name)
+    return (dist_name, Version(dist_version_str), build_tag, wheel_tags)
 
 
 def default_add_extra_metadata_to_wheels(
