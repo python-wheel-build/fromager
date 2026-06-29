@@ -356,7 +356,7 @@ def invalidate(
 )
 @click.option(
     "--keep-latest",
-    type=int,
+    type=click.IntRange(min=0),
     default=1,
     help="Keep this many build tags per package+version (default: 1).",
 )

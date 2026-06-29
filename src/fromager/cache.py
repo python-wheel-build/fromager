@@ -322,6 +322,8 @@ class LocalDirectoryBackend:
             return self._index
 
         for wheel_file in self._directory.glob("*.whl"):
+            if wheel_file.is_symlink():
+                continue
             try:
                 name, version, build_tag, _ = parse_wheel_filename(wheel_file.name)
                 key = WheelCacheKey(
@@ -586,6 +588,13 @@ class RemotePEP503Backend:
                 if fragment.startswith("sha256="):
                     sha256 = fragment[7:]
                 url = url_part
+
+            # Reject plaintext HTTP URLs that lack integrity metadata
+            if url.startswith("http://") and not sha256:
+                logger.warning(
+                    "skipping insecure artifact %r (http without sha256)", filename
+                )
+                continue
 
             artifacts.append(
                 ArtifactInfo(

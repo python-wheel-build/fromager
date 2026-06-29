@@ -328,21 +328,21 @@ class TestLocalDirectoryBackend:
 class TestRemotePEP503Backend:
     def test_name_default(self) -> None:
         backend = RemotePEP503Backend(
-            server_url="https://cache.example.com/simple",
+            server_url="https://cache.test/simple",
             download_dir=pathlib.Path("/tmp/downloads"),
         )
-        assert backend.name == "remote:https://cache.example.com/simple"
+        assert backend.name == "remote:https://cache.test/simple"
 
     def test_not_writable(self) -> None:
         backend = RemotePEP503Backend(
-            server_url="https://cache.example.com/simple",
+            server_url="https://cache.test/simple",
             download_dir=pathlib.Path("/tmp/downloads"),
         )
         assert backend.writable is False
 
     def test_store_raises(self) -> None:
         backend = RemotePEP503Backend(
-            server_url="https://cache.example.com/simple",
+            server_url="https://cache.test/simple",
             download_dir=pathlib.Path("/tmp/downloads"),
         )
         key = WheelCacheKey(
