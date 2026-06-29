@@ -1,11 +1,19 @@
 """Tests for PEP 658 metadata support."""
 
 import typing
+from io import BytesIO
 from unittest.mock import Mock, patch
+from zipfile import ZipFile
 
+import pytest
 from packaging.version import Version
 
-from fromager.candidate import Candidate, get_metadata_for_wheel
+from fromager.candidate import (
+    Candidate,
+    _wheel_metadata_path,
+    get_metadata_for_wheel,
+)
+from fromager.pkgmetadata.pep376 import dist_info_name
 
 
 class TestPEP658Support:
@@ -191,3 +199,93 @@ Requires-Dist: requests >= 2.0.0
         assert candidate_with_metadata.name == candidate_without_metadata.name
         assert candidate_with_metadata.version == candidate_without_metadata.version
         assert candidate_with_metadata.url == candidate_without_metadata.url
+
+
+class TestDistInfoName:
+    """Test dist_info_name — single source of truth for dist-info directory names."""
+
+    def test_standard_wheel(self) -> None:
+        assert (
+            dist_info_name("test_package-1.0.0-py3-none-any.whl")
+            == "test_package-1.0.0.dist-info"
+        )
+
+    def test_preserves_verbatim_casing(self) -> None:
+        assert (
+            dist_info_name("MarkupSafe-2.1.0-cp311-cp311-linux_x86_64.whl")
+            == "MarkupSafe-2.1.0.dist-info"
+        )
+
+    def test_non_wheel_extension_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid wheel filename"):
+            dist_info_name("pkg-1.0.tar.gz")
+
+    def test_malformed_wheel_filename_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid wheel filename"):
+            dist_info_name("pkg-1.0-bad.whl")
+
+
+class TestWheelMetadataPath:
+    """Test _wheel_metadata_path — URL to METADATA zip path."""
+
+    def test_simple_wheel_url(self) -> None:
+        url = "https://pkg.test/simple/test_package-1.0.0-py3-none-any.whl"
+        assert _wheel_metadata_path(url) == "test_package-1.0.0.dist-info/METADATA"
+
+    def test_preserves_original_casing(self) -> None:
+        url = "https://pkg.test/simple/MarkupSafe-2.1.0-cp311-cp311-linux_x86_64.whl"
+        assert _wheel_metadata_path(url) == "MarkupSafe-2.1.0.dist-info/METADATA"
+
+    def test_url_with_path_segments(self) -> None:
+        url = "https://pkg.test/packages/ab/cd/my_pkg-0.9-py3-none-any.whl"
+        assert _wheel_metadata_path(url) == "my_pkg-0.9.dist-info/METADATA"
+
+    def test_url_with_fragment(self) -> None:
+        url = "https://pkg.test/simple/pkg-1.0-py3-none-any.whl#sha256=abc123"
+        assert _wheel_metadata_path(url) == "pkg-1.0.dist-info/METADATA"
+
+    @patch("fromager.candidate.session")
+    def test_fallback_selects_correct_distinfo(self, mock_session: typing.Any) -> None:
+        """Wheels with vendored dist-info directories must not confuse extraction."""
+        # Build a wheel zip with a vendored dist-info AND the real one
+        buf = BytesIO()
+        with ZipFile(buf, "w") as zf:
+            zf.writestr(
+                "vendored/six-1.16.0.dist-info/METADATA",
+                "Metadata-Version: 2.1\nName: six\nVersion: 1.16.0\n",
+            )
+            zf.writestr(
+                "my_pkg-1.0.0.dist-info/METADATA",
+                (
+                    "Metadata-Version: 2.1\n"
+                    "Name: my-pkg\n"
+                    "Version: 1.0.0\n"
+                    "Summary: The real package\n"
+                ),
+            )
+
+        mock_response = Mock()
+        mock_response.content = buf.getvalue()
+        mock_session.get.return_value = mock_response
+
+        wheel_url = "https://pkg.test/simple/my_pkg-1.0.0-py3-none-any.whl"
+        metadata = get_metadata_for_wheel(wheel_url, metadata_url=None)
+
+        assert metadata.name == "my-pkg"
+        assert str(metadata.version) == "1.0.0"
+        assert metadata.summary == "The real package"
+
+    @patch("fromager.candidate.session")
+    def test_fallback_missing_metadata_raises(self, mock_session: typing.Any) -> None:
+        """A wheel without the expected dist-info/METADATA raises ValueError."""
+        buf = BytesIO()
+        with ZipFile(buf, "w") as zf:
+            zf.writestr("some_other_file.txt", "hello")
+
+        mock_response = Mock()
+        mock_response.content = buf.getvalue()
+        mock_session.get.return_value = mock_response
+
+        wheel_url = "https://pkg.test/simple/my_pkg-1.0.0-py3-none-any.whl"
+        with pytest.raises(ValueError, match="Could not find"):
+            get_metadata_for_wheel(wheel_url, metadata_url=None)
