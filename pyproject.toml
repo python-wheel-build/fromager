@@ -133,11 +133,10 @@ lint-requirements = "fromager.commands.lint_requirements:lint_requirements"
 branch = true
 parallel = true
 relative_files = true
-source = ["fromager", "tests/"]
+source = ["fromager"]
 
 [tool.coverage.paths]
 source = ["src/fromager", ".hatch/**/site-packages/fromager"]
-tests = ["tests/"]
 
 [tool.coverage.report]
 show_missing = true
