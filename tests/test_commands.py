@@ -18,5 +18,6 @@ def test_bootstrap_parallel_options() -> None:
     expected.discard("sdist_only")
     expected.discard("graph_file")
     expected.discard("test_mode")
+    expected.discard("use_cache_manager")
 
     assert set(get_option_names(bootstrap.bootstrap_parallel)) == expected

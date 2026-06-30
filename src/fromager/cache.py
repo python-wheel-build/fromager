@@ -590,7 +590,7 @@ class RemotePEP503Backend:
                 url = url_part
 
             # Reject plaintext HTTP URLs that lack integrity metadata
-            if url.startswith("http://") and not sha256:
+            if urlparse(url).scheme.lower() == "http" and not sha256:
                 logger.warning(
                     "skipping insecure artifact %r (http without sha256)", filename
                 )
