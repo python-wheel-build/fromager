@@ -410,10 +410,12 @@ class RemotePEP503Backend:
         server_url: str,
         download_dir: pathlib.Path,
         backend_name: str | None = None,
+        allow_insecure: bool = False,
     ) -> None:
         self._server_url = server_url.rstrip("/")
         self._download_dir = download_dir
         self._backend_name = backend_name or f"remote:{self._server_url}"
+        self._allow_insecure = allow_insecure
         self._available_packages: set[NormalizedName] | None = None
         self._project_cache: dict[NormalizedName, list[ArtifactInfo]] = {}
 
@@ -541,7 +543,7 @@ class RemotePEP503Backend:
             logger.debug("failed to fetch project page %s: %s", url, err)
             return []
 
-        return self._parse_project_page(resp.text, url)
+        return self._parse_project_page(resp.text, url, self._allow_insecure)
 
     @staticmethod
     def _parse_index_page(html: str) -> set[NormalizedName]:
@@ -554,7 +556,9 @@ class RemotePEP503Backend:
         return names
 
     @staticmethod
-    def _parse_project_page(html: str, base_url: str) -> list[ArtifactInfo]:
+    def _parse_project_page(
+        html: str, base_url: str, allow_insecure: bool = False
+    ) -> list[ArtifactInfo]:
         """Extract wheel artifact info from a PEP 503 project page."""
         artifacts: list[ArtifactInfo] = []
         for match in re.finditer(r'<a\s+href="([^"]+)"[^>]*>([^<]+)</a>', html):
@@ -590,7 +594,11 @@ class RemotePEP503Backend:
                 url = url_part
 
             # Reject plaintext HTTP URLs that lack integrity metadata
-            if urlparse(url).scheme.lower() == "http" and not sha256:
+            if (
+                urlparse(url).scheme.lower() == "http"
+                and not sha256
+                and not allow_insecure
+            ):
                 logger.warning(
                     "skipping insecure artifact %r (http without sha256)", filename
                 )

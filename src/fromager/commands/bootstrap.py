@@ -123,6 +123,13 @@ def _get_requirements_from_args(
     default=False,
     help="Enable the new unified CacheManager for hierarchical cache lookups.",
 )
+@click.option(
+    "--cache-allow-insecure",
+    "cache_allow_insecure",
+    is_flag=True,
+    default=False,
+    help="Allow HTTP cache servers without sha256 integrity hashes (insecure).",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -136,6 +143,7 @@ def bootstrap(
     multiple_versions: bool,
     max_release_age: int | None,
     use_cache_manager: bool,
+    cache_allow_insecure: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -196,7 +204,10 @@ def bootstrap(
 
     if use_cache_manager:
         cache_mgr = _build_cache_manager(
-            wkctx, cache_url=cache_wheel_server_url, toplevel_reqs=to_build
+            wkctx,
+            cache_url=cache_wheel_server_url,
+            toplevel_reqs=to_build,
+            allow_insecure=cache_allow_insecure,
         )
         wkctx.cache = cache_mgr
         logger.info(

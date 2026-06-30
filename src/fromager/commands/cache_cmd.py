@@ -28,6 +28,7 @@ def _build_cache_manager(
     wkctx: context.WorkContext,
     cache_url: str | None = None,
     toplevel_reqs: list[Requirement] | None = None,
+    allow_insecure: bool = False,
 ) -> CacheManager:
     """Construct a CacheManager from the WorkContext configuration.
 
@@ -67,6 +68,7 @@ def _build_cache_manager(
             server_url=cache_url,
             download_dir=wkctx.wheels_downloads,
             backend_name=f"remote:{cache_url}",
+            allow_insecure=allow_insecure,
         )
         shared_backends.append(remote_backend)
 
