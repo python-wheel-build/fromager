@@ -265,19 +265,18 @@ def test_get_install_dependencies_returns_list(
 
 
 def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> None:
-    """Verify _phase_build produces a SourceBuildResult with correct values."""
+    """Verify BuildItem.run() produces a SourceBuildResult with correct values."""
     bt = bootstrapper.Bootstrapper(tmp_context)
 
     mock_sdist_root = tmp_context.work_dir / "package-1.0.0" / "package-1.0.0"
     mock_sdist_root.parent.mkdir(parents=True, exist_ok=True)
     mock_wheel = tmp_context.work_dir / "package-1.0.0-py3-none-any.whl"
 
-    item = bootstrapper.WorkItem(
+    wi = bootstrapper.WorkItem(
         req=Requirement("test-package"),
         req_type=RequirementType.TOP_LEVEL,
         source_url="https://pypi.org/simple/test-package",
         resolved_version=Version("1.0.0"),
-        phase=bootstrapper.BootstrapPhase.BUILD,
         why_snapshot=[],
         sdist_root_dir=mock_sdist_root,
         unpack_dir=mock_sdist_root.parent,
@@ -286,6 +285,7 @@ def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> N
         build_backend_deps=set(),
         build_sdist_deps=set(),
     )
+    item = bootstrapper.BuildItem(wi)
 
     # Set up why stack so _track_why works
     bt.why = []
@@ -295,12 +295,12 @@ def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> N
         patch.object(bt, "_build_wheel", return_value=(mock_wheel, None)),
     ):
         with bt._track_why(item):
-            result_items = bt._phase_build(item)
+            result_items = item.run(bt)
 
     assert len(result_items) == 1
-    assert result_items[0].phase == bootstrapper.BootstrapPhase.PROCESS_INSTALL_DEPS
+    assert isinstance(result_items[0], bootstrapper.ProcessInstallDepsItem)
 
-    result = result_items[0].build_result
+    result = result_items[0].work_item.build_result
     assert isinstance(result, bootstrapper.SourceBuildResult)
     assert result.wheel_filename == mock_wheel
     assert result.sdist_filename is None
@@ -323,25 +323,22 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
             ("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0")),
         ],
     ):
-        # Mock _dispatch_phase to let RESOLVE and START run normally
-        # but fail for version 1.5 in build phases.
-        original_dispatch = bt._dispatch_phase
+        # Let RESOLVE and START run normally, but intercept PrepareSource onwards.
+        # Fail for version 1.5; count all interceptions.
         build_phase_count = {"count": 0}
 
-        def mock_dispatch(item: bootstrapper.WorkItem) -> list[bootstrapper.WorkItem]:
-            if item.phase in (
-                bootstrapper.BootstrapPhase.RESOLVE,
-                bootstrapper.BootstrapPhase.START,
-            ):
-                return original_dispatch(item)
+        def prepare_source_run(
+            self: bootstrapper.PrepareSourceItem,
+            bt_arg: bootstrapper.Bootstrapper,
+        ) -> list[bootstrapper.PhaseItem]:
             build_phase_count["count"] += 1
-            if str(item.resolved_version) == "1.5":
+            if str(self.work_item.resolved_version) == "1.5":
                 raise ValueError("Simulated failure for version 1.5")
             return []
 
         req = Requirement("testpkg>=1.0")
 
-        with patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch):
+        with patch.object(bootstrapper.PrepareSourceItem, "run", prepare_source_run):
             with patch.object(bt, "_has_been_seen", return_value=False):
                 bt._bootstrap_one(
                     req=req,
@@ -567,18 +564,19 @@ def _make_resolve_item(
     req_type: RequirementType = RequirementType.TOP_LEVEL,
     why_snapshot: list[tuple[RequirementType, Requirement, Version]] | None = None,
     parent: tuple[Requirement, Version] | None = None,
-) -> bootstrapper.WorkItem:
-    return bootstrapper.WorkItem(
-        req=Requirement(req),
-        req_type=req_type,
-        phase=bootstrapper.BootstrapPhase.RESOLVE,
-        why_snapshot=why_snapshot or [],
-        parent=parent,
+) -> bootstrapper.ResolveItem:
+    return bootstrapper.ResolveItem(
+        bootstrapper.WorkItem(
+            req=Requirement(req),
+            req_type=req_type,
+            why_snapshot=why_snapshot or [],
+            parent=parent,
+        )
     )
 
 
 def _record_and_load(
-    bt: bootstrapper.Bootstrapper, stack: list[bootstrapper.WorkItem]
+    bt: bootstrapper.Bootstrapper, stack: list[bootstrapper.PhaseItem]
 ) -> list[typing.Any]:
     bt._record_stack_state(stack)
     return typing.cast(list[typing.Any], json.loads(bt._stack_filename.read_text()))
@@ -610,18 +608,19 @@ def test_record_stack_state_full_item(tmp_context: WorkContext) -> None:
     parent_version = Version("2.0")
     why_snapshot = [(RequirementType.INSTALL, parent_req, parent_version)]
 
-    item = bootstrapper.WorkItem(
-        req=Requirement("child-pkg>=1.0"),
-        req_type=RequirementType.INSTALL,
-        phase=bootstrapper.BootstrapPhase.BUILD,
-        why_snapshot=why_snapshot,
-        parent=(parent_req, parent_version),
-        resolved_version=Version("1.5"),
-        source_url="https://pypi.test/child-pkg-1.5.tar.gz",
-        build_sdist_only=True,
-        build_system_deps={Requirement("setuptools")},
-        build_backend_deps={Requirement("wheel")},
-        build_sdist_deps={Requirement("flit-core")},
+    item = bootstrapper.BuildItem(
+        bootstrapper.WorkItem(
+            req=Requirement("child-pkg>=1.0"),
+            req_type=RequirementType.INSTALL,
+            why_snapshot=why_snapshot,
+            parent=(parent_req, parent_version),
+            resolved_version=Version("1.5"),
+            source_url="https://pypi.test/child-pkg-1.5.tar.gz",
+            build_sdist_only=True,
+            build_system_deps={Requirement("setuptools")},
+            build_backend_deps={Requirement("wheel")},
+            build_sdist_deps={Requirement("flit-core")},
+        )
     )
 
     contents = _record_and_load(bt, [item])
@@ -646,12 +645,17 @@ def test_record_stack_state_full_item(tmp_context: WorkContext) -> None:
 def test_record_stack_state_dep_sets_are_sorted(tmp_context: WorkContext) -> None:
     """Mixed-order dep sets come out alphabetically sorted."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    item = bootstrapper.WorkItem(
-        req=Requirement("mypkg"),
-        req_type=RequirementType.TOP_LEVEL,
-        phase=bootstrapper.BootstrapPhase.BUILD,
-        why_snapshot=[],
-        build_system_deps={Requirement("zzz"), Requirement("aaa"), Requirement("mmm")},
+    item = bootstrapper.BuildItem(
+        bootstrapper.WorkItem(
+            req=Requirement("mypkg"),
+            req_type=RequirementType.TOP_LEVEL,
+            why_snapshot=[],
+            build_system_deps={
+                Requirement("zzz"),
+                Requirement("aaa"),
+                Requirement("mmm"),
+            },
+        )
     )
 
     contents = _record_and_load(bt, [item])
@@ -661,7 +665,10 @@ def test_record_stack_state_dep_sets_are_sorted(tmp_context: WorkContext) -> Non
 def test_record_stack_state_writes_file(tmp_context: WorkContext) -> None:
     """File is created; list length matches stack size."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    stack = [_make_resolve_item("pkga"), _make_resolve_item("pkgb")]
+    stack: list[bootstrapper.PhaseItem] = [
+        _make_resolve_item("pkga"),
+        _make_resolve_item("pkgb"),
+    ]
 
     bt._record_stack_state(stack)
 
@@ -674,7 +681,7 @@ def test_record_stack_state_writes_file(tmp_context: WorkContext) -> None:
 def test_record_stack_state_ordering(tmp_context: WorkContext) -> None:
     """Index 0 = stack[-1] (next to pop); last index = stack[0]."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    stack = [
+    stack: list[bootstrapper.PhaseItem] = [
         _make_resolve_item("pkga"),
         _make_resolve_item("pkgb"),
         _make_resolve_item("pkgc"),
@@ -709,7 +716,7 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
 
     original = bt._record_stack_state
 
-    def counting_record(stack: list[bootstrapper.WorkItem]) -> None:
+    def counting_record(stack: list[bootstrapper.PhaseItem]) -> None:
         call_count["n"] += 1
         original(stack)
 
@@ -722,7 +729,7 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
             "resolve",
             return_value=[("https://pypi.test/testpkg-1.0.tar.gz", Version("1.0"))],
         ),
-        patch.object(bt, "_phase_start", return_value=[]),
+        patch.object(bootstrapper.StartItem, "run", return_value=[]),
     ):
         bt._bootstrap_one(req=req, req_type=RequirementType.TOP_LEVEL)
 
@@ -732,15 +739,22 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
 def test_bootstrap_with_empty_list(tmp_context: WorkContext) -> None:
     """bootstrap([]) completes without error and runs no phases."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    with patch.object(bt, "_dispatch_phase") as mock_dispatch:
+    with patch.object(bootstrapper.ResolveItem, "run") as mock_run:
         bt.bootstrap([])
-    mock_dispatch.assert_not_called()
+    mock_run.assert_not_called()
 
 
 def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
     """bootstrap([req]) resolves and processes the requirement."""
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testpkg==1.0")
+    captured: list[bootstrapper.ResolveItem] = []
+
+    def capture_run(
+        self: bootstrapper.ResolveItem, bt_arg: bootstrapper.Bootstrapper
+    ) -> list[bootstrapper.PhaseItem]:
+        captured.append(self)
+        return []
 
     with (
         patch.object(
@@ -748,16 +762,15 @@ def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
             "_resolve_and_add_top_level",
             return_value=("http://example.test/testpkg-1.0.tar.gz", Version("1.0")),
         ),
-        patch.object(bt, "_dispatch_phase", return_value=[]) as mock_dispatch,
+        patch.object(bootstrapper.ResolveItem, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
         bt.bootstrap([req])
 
-    mock_dispatch.assert_called_once()
-    item = mock_dispatch.call_args[0][0]
-    assert item.req == req
-    assert item.req_type == RequirementType.TOP_LEVEL
-    assert item.phase == bootstrapper.BootstrapPhase.RESOLVE
+    assert len(captured) == 1
+    assert isinstance(captured[0], bootstrapper.ResolveItem)
+    assert captured[0].work_item.req == req
+    assert captured[0].work_item.req_type == RequirementType.TOP_LEVEL
 
 
 def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
@@ -767,12 +780,12 @@ def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
 
     with (
         patch.object(bt, "_resolve_and_add_top_level", return_value=None),
-        patch.object(bt, "_dispatch_phase") as mock_dispatch,
+        patch.object(bootstrapper.ResolveItem, "run") as mock_run,
         patch.object(bt, "_record_stack_state"),
     ):
         bt.bootstrap([req])
 
-    mock_dispatch.assert_not_called()
+    mock_run.assert_not_called()
 
 
 def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> None:
@@ -783,8 +796,10 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
 
     dispatch_calls: list = []
 
-    def fake_dispatch(item: bootstrapper.WorkItem) -> list:
-        dispatch_calls.append(item.req.name)
+    def capture_run(
+        self: bootstrapper.ResolveItem, bt_arg: bootstrapper.Bootstrapper
+    ) -> list[bootstrapper.PhaseItem]:
+        dispatch_calls.append(self.work_item.req.name)
         return []
 
     with (
@@ -793,7 +808,7 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
             "_resolve_and_add_top_level",
             return_value=("http://example.test/pkg-1.0.tar.gz", Version("1.0")),
         ),
-        patch.object(bt, "_dispatch_phase", side_effect=fake_dispatch),
+        patch.object(bootstrapper.ResolveItem, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
         bt.bootstrap([req1, req2])
