@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import concurrent.futures
 import contextlib
 import dataclasses
@@ -127,18 +128,14 @@ class BootstrapPhase(StrEnum):
     PROCESS_INSTALL_DEPS = "process-install-deps"
     COMPLETE = "complete"
 
-    @property
-    def tracks_why(self) -> bool:
-        """Whether this phase pushes onto the dependency-chain (why) stack."""
-        return self not in (BootstrapPhase.RESOLVE, BootstrapPhase.START)
-
 
 @dataclasses.dataclass
 class WorkItem:
     """A unit of work in the iterative bootstrap loop.
 
     Carries identity fields set at creation time and accumulated state
-    populated across phases as processing advances.
+    populated across phases as processing advances. The current phase is
+    encoded by the ``PhaseItem`` subclass wrapping this object.
 
     Items enter at the RESOLVE phase with only req and req_type set.
     The RESOLVE phase populates source_url and resolved_version, then
@@ -148,7 +145,6 @@ class WorkItem:
     # Identity (set at creation)
     req: Requirement
     req_type: RequirementType
-    phase: BootstrapPhase
     why_snapshot: list[tuple[RequirementType, Requirement, Version]]
     parent: tuple[Requirement, Version] | None = None
 
@@ -168,12 +164,6 @@ class WorkItem:
     build_system_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_backend_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_sdist_deps: set[Requirement] = dataclasses.field(default_factory=set)
-
-    # Background future: set by _push_items for RESOLVE and PREPARE_SOURCE items.
-    # None for all other phases or before _push_items has been called.
-    bg_future: concurrent.futures.Future[typing.Any] | None = dataclasses.field(
-        default=None, compare=False, repr=False
-    )
 
 
 def _create_unpack_dir(
@@ -428,6 +418,576 @@ def _bg_prepare_prebuilt(
     return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
 
 
+class PhaseItem(abc.ABC):
+    """Abstract base for items pushed onto the bootstrap stack.
+
+    Each subclass encodes one phase of the bootstrap pipeline.
+    Wraps a ``WorkItem`` (accumulated per-package state) and implements
+    the processing logic for that phase in ``run()``.
+    """
+
+    phase: typing.ClassVar[BootstrapPhase]
+    tracks_why: typing.ClassVar[bool] = True
+
+    def __init__(self, work_item: WorkItem) -> None:
+        self.work_item = work_item
+        self.bg_future: concurrent.futures.Future[typing.Any] | None = None
+
+    @abc.abstractmethod
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]: ...
+
+    def background_work(
+        self, bt: Bootstrapper
+    ) -> typing.Callable[[], typing.Any] | None:
+        """Return a zero-argument callable for background I/O, or None.
+
+        Override in subclasses that need background prefetching.
+        ``bt`` is provided so subclasses can capture Bootstrapper state
+        (e.g. resolver, ctx) into the returned closure without storing
+        a circular reference on the item itself.
+        """
+        return None
+
+    def __str__(self) -> str:
+        """Human-readable representation: ``"<ClassName>(<req>)"``."""
+        wi = self.work_item
+        return f"{type(self).__name__}({wi.req})"
+
+    def as_json(self) -> dict[str, typing.Any]:
+        """Return a JSON-serialisable dict for stack-state recording."""
+        wi = self.work_item
+        return {
+            "req": str(wi.req),
+            "req_type": str(wi.req_type),
+            "phase": str(self.phase),
+            "resolved_version": str(wi.resolved_version)
+            if wi.resolved_version is not None
+            else None,
+            "source_url": wi.source_url,
+            "build_sdist_only": wi.build_sdist_only,
+            "why": [
+                {"req_type": str(rt), "req": str(r), "version": str(v)}
+                for rt, r, v in wi.why_snapshot
+            ],
+            "parent": (
+                {"req": str(wi.parent[0]), "version": str(wi.parent[1])}
+                if wi.parent
+                else None
+            ),
+            "build_system_deps": sorted(str(r) for r in wi.build_system_deps),
+            "build_backend_deps": sorted(str(r) for r in wi.build_backend_deps),
+            "build_sdist_deps": sorted(str(r) for r in wi.build_sdist_deps),
+        }
+
+
+class ResolveItem(PhaseItem):
+    """RESOLVE phase: resolve versions and expand into StartItems."""
+
+    phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.RESOLVE
+    tracks_why: typing.ClassVar[bool] = False
+
+    def background_work(
+        self, bt: Bootstrapper
+    ) -> typing.Callable[[], typing.Any] | None:
+        """Return closure that calls ``_bg_resolve`` in a thread."""
+        bg_resolver = bt._resolver
+        req = self.work_item.req
+        req_type = self.work_item.req_type
+        parent_req = (
+            self.work_item.why_snapshot[-1][1] if self.work_item.why_snapshot else None
+        )
+        return_all = bt.multiple_versions
+
+        def do_resolve() -> list[tuple[str, Version]]:
+            with req_ctxvar_context(req):
+                return _bg_resolve(bg_resolver, req, req_type, parent_req, return_all)
+
+        return do_resolve
+
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+        """RESOLVE phase: resolve versions and expand into StartItems.
+
+        Centralizes version resolution so all dependencies are expanded
+        uniformly. In multiple_versions mode, filters out versions that
+        already failed in this run and versions whose wheels are already
+        cached to avoid redundant builds and transitive dependency
+        processing.
+
+        Returns:
+            One StartItem per resolved version that needs building.
+            Empty list if all versions are already cached.
+        """
+        assert self.bg_future is not None
+        # bg_future.result() blocks until the background resolution completes,
+        # then returns the result or re-raises any exception from the background.
+        resolved_versions = self.bg_future.result()
+        if not resolved_versions:
+            raise RuntimeError(
+                f"Could not resolve any versions for {self.work_item.req}"
+            )
+
+        if bt.multiple_versions:
+            pkg_name = canonicalize_name(self.work_item.req.name)
+            resolved_versions = [
+                (url, ver)
+                for url, ver in resolved_versions
+                if (pkg_name, str(ver)) not in bt._failed_versions
+            ]
+            if not resolved_versions:
+                raise RuntimeError(
+                    f"Could not resolve any versions for {self.work_item.req}"
+                    f" (all candidates failed previously)"
+                )
+
+            logger.info(
+                f"resolved {len(resolved_versions)} version(s) for {self.work_item.req}"
+            )
+            filtered: list[tuple[str, Version]] = []
+            for source_url, version in resolved_versions:
+                cached_wheel, _ = _find_cached_wheel(
+                    bt.ctx, bt.cache_wheel_server_url, self.work_item.req, version
+                )
+                if cached_wheel:
+                    logger.info(
+                        f"{self.work_item.req.name}=={version}: wheel already cached "
+                        f"at {cached_wheel.name}, skipping"
+                    )
+                else:
+                    filtered.append((source_url, version))
+            if not filtered:
+                # Always process the highest version (first in
+                # resolved_versions) so new transitive dependencies
+                # are discovered even when every wheel is cached.
+                logger.info(
+                    f"all versions of {self.work_item.req.name} already cached, "
+                    f"keeping highest version {resolved_versions[0][1]} "
+                    f"for dependency discovery"
+                )
+                filtered.append(resolved_versions[0])
+            resolved_versions = filtered
+
+        # Build list so highest version ends up on top of the stack
+        # (last element after extend) and is processed first.
+        items: list[PhaseItem] = []
+        for source_url, version in reversed(resolved_versions):
+            items.append(
+                StartItem(
+                    WorkItem(
+                        req=self.work_item.req,
+                        req_type=self.work_item.req_type,
+                        why_snapshot=list(self.work_item.why_snapshot),
+                        parent=self.work_item.parent,
+                        source_url=source_url,
+                        resolved_version=version,
+                    )
+                )
+            )
+        return items
+
+
+class StartItem(PhaseItem):
+    """START phase: add to graph, check if already seen."""
+
+    phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.START
+    tracks_why: typing.ClassVar[bool] = False
+
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+        """START phase: add to graph, check if already seen.
+
+        _track_why is a no-op for this phase (tracks_why is False),
+        matching the original behavior where graph addition and
+        seen-check happen before pushing onto the why stack.
+
+        Returns:
+            Empty list if already seen (nothing to do).
+            [PrepareSourceItem] if this is new work.
+        """
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.source_url is not None
+
+        # Add to graph (skip TOP_LEVEL, already added in _resolve_and_add_top_level)
+        if wi.req_type != RequirementType.TOP_LEVEL:
+            bt._add_to_graph(
+                wi.req,
+                wi.req_type,
+                wi.resolved_version,
+                wi.source_url,
+                wi.parent,
+            )
+
+        wi.build_sdist_only = bt.sdist_only and not bt._processing_build_requirement(
+            wi.req_type
+        )
+
+        if bt._has_been_seen(wi.req, wi.resolved_version, wi.build_sdist_only):
+            logger.debug(
+                f"redundant {wi.req_type} dependency {wi.req} "
+                f"({wi.resolved_version}, sdist_only={wi.build_sdist_only}) "
+                f"for {bt._explain}"
+            )
+            return []
+        bt._mark_as_seen(wi.req, wi.resolved_version, wi.build_sdist_only)
+
+        logger.info(
+            f"new {wi.req_type} dependency {wi.req} resolves to {wi.resolved_version}"
+        )
+
+        # Must set pbi_pre_built before constructing PrepareSourceItem so that
+        # PrepareSourceItem.background_work() immediately sees the correct value.
+        wi.pbi_pre_built = bt.ctx.package_build_info(wi.req).pre_built
+        return [PrepareSourceItem(wi)]
+
+
+class PrepareSourceItem(PhaseItem):
+    """PREPARE_SOURCE phase: download source or prebuilt, get build system deps."""
+
+    phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PREPARE_SOURCE
+    tracks_why: typing.ClassVar[bool] = True
+
+    def background_work(
+        self, bt: Bootstrapper
+    ) -> typing.Callable[[], typing.Any] | None:
+        """Return closure for background source download or prebuilt fetch."""
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.source_url is not None
+        ctx = bt.ctx
+        cache_wheel_server_url = bt.cache_wheel_server_url
+        req = wi.req
+        req_type = wi.req_type
+        resolved_version = wi.resolved_version
+        source_url = wi.source_url
+
+        if wi.pbi_pre_built:
+
+            def do_prepare_prebuilt() -> PreparedSourceData:
+                with req_ctxvar_context(req, resolved_version):
+                    return _bg_prepare_prebuilt(
+                        ctx, req, req_type, resolved_version, source_url
+                    )
+
+            return do_prepare_prebuilt
+
+        def do_prepare_source() -> PreparedSourceData:
+            with req_ctxvar_context(req, resolved_version):
+                return _bg_prepare_source(
+                    ctx, cache_wheel_server_url, req, resolved_version, source_url
+                )
+
+        return do_prepare_source
+
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+        """PREPARE_SOURCE phase: download source or prebuilt, get build system deps.
+
+        Uses background I/O result from ``self.bg_future`` when available,
+        falling back to inline I/O otherwise.
+
+        Returns:
+            Prebuilt: [ProcessInstallDepsItem] (skip build phases).
+            Source: [PrepareBuildItem, *build_system_dep_items].
+        """
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.source_url is not None
+
+        # bg_future is always set for PREPARE_SOURCE items (see _push_items).
+        # bg_future.result() blocks until done and re-raises any background exception.
+        assert self.bg_future is not None
+        prepared: PreparedSourceData = self.bg_future.result()
+
+        constraint = bt.ctx.constraints.get_constraint(wi.req.name)
+        if constraint:
+            logger.info(
+                f"incoming requirement {wi.req} matches constraint "
+                f"{constraint}. Will apply both."
+            )
+
+        if wi.pbi_pre_built:
+            # Background task already downloaded the prebuilt wheel
+            assert prepared.wheel_filename is not None
+            assert prepared.unpack_dir is not None
+            wi.build_result = SourceBuildResult(
+                wheel_filename=prepared.wheel_filename,
+                sdist_filename=None,
+                unpack_dir=prepared.unpack_dir,
+                sdist_root_dir=None,
+                build_env=None,
+                source_type=SourceType.PREBUILT,
+            )
+            return [ProcessInstallDepsItem(wi)]
+
+        # Source build path: background task already downloaded and prepared the source
+        assert prepared.sdist_root_dir is not None
+        sdist_root_dir = prepared.sdist_root_dir
+        wi.cached_wheel_filename = prepared.cached_wheel_filename
+
+        assert sdist_root_dir is not None
+
+        if sdist_root_dir.parent.parent != bt.ctx.work_dir:
+            raise ValueError(f"'{sdist_root_dir}/../..' should be {bt.ctx.work_dir}")
+        wi.sdist_root_dir = sdist_root_dir
+        wi.unpack_dir = sdist_root_dir.parent
+
+        wi.build_env = bt._create_build_env(
+            req=wi.req,
+            resolved_version=wi.resolved_version,
+            parent_dir=sdist_root_dir.parent,
+        )
+
+        # Get build system dependencies
+        wi.build_system_deps = dependencies.get_build_system_dependencies(
+            ctx=bt.ctx,
+            req=wi.req,
+            version=wi.resolved_version,
+            sdist_root_dir=sdist_root_dir,
+        )
+
+        dep_items = bt._create_unresolved_work_items(
+            wi.build_system_deps,
+            RequirementType.BUILD_SYSTEM,
+            wi.req,
+            wi.resolved_version,
+        )
+
+        return [PrepareBuildItem(wi)] + dep_items
+
+
+class PrepareBuildItem(PhaseItem):
+    """PREPARE_BUILD phase: install system deps, get backend/sdist deps."""
+
+    phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PREPARE_BUILD
+    tracks_why: typing.ClassVar[bool] = True
+
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+        """PREPARE_BUILD phase: install system deps, get backend/sdist deps.
+
+        Build-backend and build-sdist dependencies that are already satisfied
+        by a resolved build-system dependency reuse that version instead of
+        resolving independently (see :issue:`1194`).
+
+        Returns:
+            [BuildItem, *backend_dep_items, *sdist_dep_items].
+        """
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.build_env is not None
+        assert wi.sdist_root_dir is not None
+
+        # Install build system deps (their wheels exist from DFS processing)
+        wi.build_env.install(wi.build_system_deps)
+
+        # Get build backend dependencies
+        wi.build_backend_deps = dependencies.get_build_backend_dependencies(
+            ctx=bt.ctx,
+            req=wi.req,
+            version=wi.resolved_version,
+            sdist_root_dir=wi.sdist_root_dir,
+            build_env=wi.build_env,
+        )
+
+        # Get build sdist dependencies
+        wi.build_sdist_deps = dependencies.get_build_sdist_dependencies(
+            ctx=bt.ctx,
+            req=wi.req,
+            version=wi.resolved_version,
+            sdist_root_dir=wi.sdist_root_dir,
+            build_env=wi.build_env,
+        )
+
+        # Filter out deps already satisfied by build-system dependencies
+        # to avoid resolving to a different (typically newer) version.
+        resolved_build_sys = bt._get_resolved_build_system_versions(wi)
+        parent = (wi.req, wi.resolved_version)
+        wi.build_backend_deps = bt._filter_deps_satisfied_by_build_system(
+            wi.build_backend_deps,
+            resolved_build_sys,
+            RequirementType.BUILD_BACKEND,
+            parent,
+        )
+        wi.build_sdist_deps = bt._filter_deps_satisfied_by_build_system(
+            wi.build_sdist_deps,
+            resolved_build_sys,
+            RequirementType.BUILD_SDIST,
+            parent,
+        )
+
+        backend_items = bt._create_unresolved_work_items(
+            wi.build_backend_deps,
+            RequirementType.BUILD_BACKEND,
+            wi.req,
+            wi.resolved_version,
+        )
+        sdist_items = bt._create_unresolved_work_items(
+            wi.build_sdist_deps,
+            RequirementType.BUILD_SDIST,
+            wi.req,
+            wi.resolved_version,
+        )
+        dep_items = backend_items + sdist_items
+
+        return [BuildItem(wi)] + dep_items
+
+
+class BuildItem(PhaseItem):
+    """BUILD phase: install remaining deps, build wheel/sdist."""
+
+    phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.BUILD
+    tracks_why: typing.ClassVar[bool] = True
+
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+        """BUILD phase: install remaining deps, build wheel/sdist.
+
+        Returns:
+            [ProcessInstallDepsItem].
+        """
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.build_env is not None
+        assert wi.sdist_root_dir is not None
+
+        # Drain all in-flight background I/O before an exclusive build starts.
+        pbi = bt.ctx.package_build_info(wi.req)
+        if pbi.exclusive_build:
+            logger.info("%s requires exclusive build, draining background pool", wi.req)
+            bt._drain_background_pool()
+
+        # Install backend+sdist deps if disjoint from system deps
+        remaining_deps = wi.build_backend_deps | wi.build_sdist_deps
+        if remaining_deps.isdisjoint(wi.build_system_deps):
+            wi.build_env.install(remaining_deps)
+
+        wheel_filename, sdist_filename = bt._do_build(
+            req=wi.req,
+            resolved_version=wi.resolved_version,
+            sdist_root_dir=wi.sdist_root_dir,
+            build_env=wi.build_env,
+            build_sdist_only=wi.build_sdist_only,
+            cached_wheel_filename=wi.cached_wheel_filename,
+        )
+
+        source_type = sources.get_source_type(bt.ctx, wi.req)
+
+        wi.build_result = SourceBuildResult(
+            wheel_filename=wheel_filename,
+            sdist_filename=sdist_filename,
+            unpack_dir=wi.sdist_root_dir.parent,
+            sdist_root_dir=wi.sdist_root_dir,
+            build_env=wi.build_env,
+            source_type=source_type,
+        )
+
+        return [ProcessInstallDepsItem(wi)]
+
+
+class ProcessInstallDepsItem(PhaseItem):
+    """PROCESS_INSTALL_DEPS phase: hooks, extract deps, build order."""
+
+    phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PROCESS_INSTALL_DEPS
+    tracks_why: typing.ClassVar[bool] = True
+
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+        """PROCESS_INSTALL_DEPS phase: hooks, extract deps, build order.
+
+        Returns:
+            [CompleteItem, *install_dep_items].
+        """
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.source_url is not None
+        assert wi.build_result is not None
+
+        # Run post-bootstrap hooks (non-fatal in test mode)
+        try:
+            hooks.run_post_bootstrap_hooks(
+                ctx=bt.ctx,
+                req=wi.req,
+                dist_name=canonicalize_name(wi.req.name),
+                dist_version=str(wi.resolved_version),
+                sdist_filename=wi.build_result.sdist_filename,
+                wheel_filename=wi.build_result.wheel_filename,
+            )
+        except Exception as hook_error:
+            if not bt.test_mode:
+                raise
+            bt._record_test_mode_failure(
+                wi.req,
+                str(wi.resolved_version),
+                hook_error,
+                "hook",
+                "warning",
+            )
+
+        # Extract install dependencies (non-fatal in test mode)
+        try:
+            install_dependencies = bt._get_install_dependencies(
+                req=wi.req,
+                resolved_version=wi.resolved_version,
+                wheel_filename=wi.build_result.wheel_filename,
+                sdist_filename=wi.build_result.sdist_filename,
+                sdist_root_dir=wi.build_result.sdist_root_dir,
+                build_env=wi.build_result.build_env,
+                unpack_dir=wi.build_result.unpack_dir,
+            )
+        except Exception as dep_error:
+            if not bt.test_mode:
+                raise
+            bt._record_test_mode_failure(
+                wi.req,
+                str(wi.resolved_version),
+                dep_error,
+                "dependency_extraction",
+                "warning",
+            )
+            install_dependencies = []
+
+        logger.debug(
+            "install dependencies: %s",
+            ", ".join(sorted(str(r) for r in install_dependencies)),
+        )
+
+        pbi = bt.ctx.package_build_info(wi.req)
+        constraint = bt.ctx.constraints.get_constraint(wi.req.name)
+        bt._add_to_build_order(
+            req=wi.req,
+            version=wi.resolved_version,
+            source_url=wi.source_url,
+            source_type=wi.build_result.source_type,
+            prebuilt=pbi.pre_built,
+            constraint=constraint,
+        )
+
+        dep_items = bt._create_unresolved_work_items(
+            install_dependencies,
+            RequirementType.INSTALL,
+            wi.req,
+            wi.resolved_version,
+        )
+
+        return [CompleteItem(wi)] + dep_items
+
+
+class CompleteItem(PhaseItem):
+    """COMPLETE phase: clean up build directories."""
+
+    phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.COMPLETE
+    tracks_why: typing.ClassVar[bool] = True
+
+    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+        """COMPLETE phase: clean up build directories.
+
+        Returns:
+            Empty list (processing finished for this item).
+        """
+        wi = self.work_item
+        if wi.build_result is not None:
+            bt.ctx.clean_build_dirs(
+                wi.build_result.sdist_root_dir,
+                wi.build_result.build_env,
+            )
+        return []
+
+
 class Bootstrapper:
     def __init__(
         self,
@@ -640,27 +1200,28 @@ class Bootstrapper:
         # Use the token pattern (no try/finally) so that if resolution raises
         # in normal mode, the context var stays set for the top-level error
         # handler in __main__.py to include the package name in its log message.
-        stack: list[WorkItem] = []
-        initial_items: list[WorkItem] = []
+        stack: list[PhaseItem] = []
+        initial_items: list[PhaseItem] = []
         for req in requirements:
             token = requirement_ctxvar.set(req)
             result = self._resolve_and_add_top_level(req)
             requirement_ctxvar.reset(token)
             if result is not None:
                 initial_items.append(
-                    WorkItem(
-                        req=req,
-                        req_type=RequirementType.TOP_LEVEL,
-                        phase=BootstrapPhase.RESOLVE,
-                        why_snapshot=[],
-                        parent=None,
+                    ResolveItem(
+                        WorkItem(
+                            req=req,
+                            req_type=RequirementType.TOP_LEVEL,
+                            why_snapshot=[],
+                            parent=None,
+                        )
                     )
                 )
         self._push_items(stack, initial_items)
 
         self._run_bootstrap_loop(stack)
 
-    def _run_bootstrap_loop(self, stack: list[WorkItem]) -> None:
+    def _run_bootstrap_loop(self, stack: list[PhaseItem]) -> None:
         """Run the iterative DFS bootstrap loop over a pre-built work stack.
 
         Pops items one at a time, dispatches each phase, and pushes any
@@ -668,26 +1229,24 @@ class Bootstrapper:
         stack. Updates the progress bar as items complete.
 
         Args:
-            stack: Initial list of ``WorkItem`` objects to process. Modified
+            stack: Initial list of ``PhaseItem`` objects to process. Modified
                 in-place; empty on return.
         """
         while stack:
             self._record_stack_state(stack)
             item = stack.pop()
-            self.why = list(item.why_snapshot)
+            self.why = list(item.work_item.why_snapshot)
 
             with (
-                req_ctxvar_context(item.req, item.resolved_version),
+                req_ctxvar_context(item.work_item.req, item.work_item.resolved_version),
                 self._track_why(item),
             ):
                 try:
-                    new_items = self._dispatch_phase(item)
+                    new_items = item.run(self)
                 except Exception as err:
                     new_items = self._handle_phase_error(item, err)
 
-            new_dep_count = sum(
-                1 for it in new_items if it.phase == BootstrapPhase.RESOLVE
-            )
+            new_dep_count = sum(1 for it in new_items if isinstance(it, ResolveItem))
             if new_dep_count > 0:
                 self.progressbar.update_total(new_dep_count)
             if not new_items:
@@ -750,15 +1309,16 @@ class Bootstrapper:
         saved_why = list(self.why)
 
         # Single RESOLVE item — resolution, version expansion, and error
-        # handling all happen inside the loop via _phase_resolve.
-        initial_item = WorkItem(
-            req=req,
-            req_type=req_type,
-            phase=BootstrapPhase.RESOLVE,
-            why_snapshot=list(self.why),
-            parent=parent,
+        # handling all happen inside the loop via ResolveItem.run().
+        initial_item = ResolveItem(
+            WorkItem(
+                req=req,
+                req_type=req_type,
+                why_snapshot=list(self.why),
+                parent=parent,
+            )
         )
-        stack: list[WorkItem] = []
+        stack: list[PhaseItem] = []
         self._push_items(stack, [initial_item])
 
         self._run_bootstrap_loop(stack)
@@ -773,7 +1333,7 @@ class Bootstrapper:
     @contextlib.contextmanager
     def _track_why(
         self,
-        item: WorkItem,
+        item: PhaseItem,
     ) -> typing.Generator[None, None, None]:
         """Context manager to track dependency chain in self.why stack.
 
@@ -781,11 +1341,12 @@ class Bootstrapper:
         For all other phases, pushes the item onto the why stack and
         ensures it is popped even if an exception occurs.
         """
-        if not item.phase.tracks_why:
+        if not item.tracks_why:
             yield
             return
-        assert item.resolved_version is not None
-        self.why.append((item.req_type, item.req, item.resolved_version))
+        wi = item.work_item
+        assert wi.resolved_version is not None
+        self.why.append((wi.req_type, wi.req, wi.resolved_version))
         try:
             yield
         finally:
@@ -1444,44 +2005,19 @@ class Bootstrapper:
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
 
-    def _record_stack_state(self, stack: list[WorkItem]) -> None:
+    def _record_stack_state(self, stack: list[PhaseItem]) -> None:
         """Write the current bootstrap stack to `self._stack_filename`.
 
         Index 0 in the output corresponds to `stack[-1]`, the next item to be
         processed. Overwrites the file on each call.
         """
-
-        def serialize(item: WorkItem) -> dict[str, typing.Any]:
-            return {
-                "req": str(item.req),
-                "req_type": str(item.req_type),
-                "phase": str(item.phase),
-                "resolved_version": str(item.resolved_version)
-                if item.resolved_version is not None
-                else None,
-                "source_url": item.source_url,
-                "build_sdist_only": item.build_sdist_only,
-                "why": [
-                    {"req_type": str(rt), "req": str(r), "version": str(v)}
-                    for rt, r, v in item.why_snapshot
-                ],
-                "parent": (
-                    {"req": str(item.parent[0]), "version": str(item.parent[1])}
-                    if item.parent
-                    else None
-                ),
-                "build_system_deps": sorted(str(r) for r in item.build_system_deps),
-                "build_backend_deps": sorted(str(r) for r in item.build_backend_deps),
-                "build_sdist_deps": sorted(str(r) for r in item.build_sdist_deps),
-            }
-
-        records = [serialize(item) for item in reversed(stack)]
+        records = [item.as_json() for item in reversed(stack)]
         with open(self._stack_filename, "w") as f:
             json.dump(records, f, indent=2, default=str)
 
     # ---- Iterative bootstrap: phase handlers and helpers ----
 
-    def _push_items(self, stack: list[WorkItem], items: list[WorkItem]) -> None:
+    def _push_items(self, stack: list[PhaseItem], items: list[PhaseItem]) -> None:
         """Push items onto the stack and submit background tasks in LIFO order.
 
         Submits the item that will be processed first (top of stack) to the
@@ -1491,64 +2027,9 @@ class Bootstrapper:
         stack.extend(items)
         if self._bg_pool is not None:
             for item in reversed(items):
-                bg_work = self._get_background_work(item)
+                bg_work = item.background_work(self)
                 if bg_work is not None:
                     item.bg_future = self._bg_pool.submit(bg_work)
-
-    def _get_background_work(
-        self, item: WorkItem
-    ) -> typing.Callable[[], typing.Any] | None:
-        """Return a zero-argument callable for background submission, or None.
-
-        Uses closures that capture local variables rather than ``self``, so
-        the returned callable cannot access mutable ``Bootstrapper`` state.
-        Each closure sets up ``req_ctxvar_context`` so log messages include
-        the package name (and version when known).
-        """
-        if item.phase == BootstrapPhase.RESOLVE:
-            bg_resolver = self._resolver
-            req = item.req
-            req_type = item.req_type
-            parent_req = item.why_snapshot[-1][1] if item.why_snapshot else None
-            return_all = self.multiple_versions
-
-            def do_resolve() -> list[tuple[str, Version]]:
-                with req_ctxvar_context(req):
-                    return _bg_resolve(
-                        bg_resolver, req, req_type, parent_req, return_all
-                    )
-
-            return do_resolve
-
-        if item.phase == BootstrapPhase.PREPARE_SOURCE:
-            assert item.resolved_version is not None
-            assert item.source_url is not None
-            ctx = self.ctx
-            cache_wheel_server_url = self.cache_wheel_server_url
-            req = item.req
-            req_type = item.req_type
-            resolved_version = item.resolved_version
-            source_url = item.source_url
-
-            if item.pbi_pre_built:
-
-                def do_prepare_prebuilt() -> PreparedSourceData:
-                    with req_ctxvar_context(req, resolved_version):
-                        return _bg_prepare_prebuilt(
-                            ctx, req, req_type, resolved_version, source_url
-                        )
-
-                return do_prepare_prebuilt
-
-            def do_prepare_source() -> PreparedSourceData:
-                with req_ctxvar_context(req, resolved_version):
-                    return _bg_prepare_source(
-                        ctx, cache_wheel_server_url, req, resolved_version, source_url
-                    )
-
-            return do_prepare_source
-
-        return None
 
     def _drain_background_pool(self) -> None:
         """Drain all in-flight background tasks and recreate the pool.
@@ -1569,7 +2050,7 @@ class Bootstrapper:
         dep_req_type: RequirementType,
         parent_req: Requirement,
         parent_version: Version,
-    ) -> list[WorkItem]:
+    ) -> list[PhaseItem]:
         """Create RESOLVE-phase work items for dependencies.
 
         Called inside a parent's _track_why context so that why_snapshot
@@ -1577,212 +2058,16 @@ class Bootstrapper:
         handling happen later when each item's RESOLVE phase runs.
         """
         return [
-            WorkItem(
-                req=dep,
-                req_type=dep_req_type,
-                phase=BootstrapPhase.RESOLVE,
-                why_snapshot=list(self.why),
-                parent=(parent_req, parent_version),
+            ResolveItem(
+                WorkItem(
+                    req=dep,
+                    req_type=dep_req_type,
+                    why_snapshot=list(self.why),
+                    parent=(parent_req, parent_version),
+                )
             )
             for dep in self._sort_requirements(deps)
         ]
-
-    def _phase_resolve(self, item: WorkItem) -> list[WorkItem]:
-        """RESOLVE phase: resolve versions and expand into START-phase items.
-
-        Centralizes version resolution so all dependencies are expanded
-        uniformly. In multiple_versions mode, filters out versions that
-        already failed in this run and versions whose wheels are already
-        cached to avoid redundant builds and transitive dependency
-        processing.
-
-        Returns:
-            One START-phase item per resolved version that needs building.
-            Empty list if all versions are already cached.
-        """
-        assert item.bg_future is not None
-        # bg_future.result() blocks until the background resolution completes,
-        # then returns the result or re-raises any exception from the background.
-        resolved_versions = item.bg_future.result()
-        if not resolved_versions:
-            raise RuntimeError(f"Could not resolve any versions for {item.req}")
-
-        if self.multiple_versions:
-            pkg_name = canonicalize_name(item.req.name)
-            resolved_versions = [
-                (url, ver)
-                for url, ver in resolved_versions
-                if (pkg_name, str(ver)) not in self._failed_versions
-            ]
-            if not resolved_versions:
-                raise RuntimeError(
-                    f"Could not resolve any versions for {item.req}"
-                    f" (all candidates failed previously)"
-                )
-
-            logger.info(f"resolved {len(resolved_versions)} version(s) for {item.req}")
-            filtered: list[tuple[str, Version]] = []
-            for source_url, version in resolved_versions:
-                cached_wheel, _ = _find_cached_wheel(
-                    self.ctx, self.cache_wheel_server_url, item.req, version
-                )
-                if cached_wheel:
-                    logger.info(
-                        f"{item.req.name}=={version}: wheel already cached "
-                        f"at {cached_wheel.name}, skipping"
-                    )
-                else:
-                    filtered.append((source_url, version))
-            if not filtered:
-                # Always process the highest version (first in
-                # resolved_versions) so new transitive dependencies
-                # are discovered even when every wheel is cached.
-                logger.info(
-                    f"all versions of {item.req.name} already cached, "
-                    f"keeping highest version {resolved_versions[0][1]} "
-                    f"for dependency discovery"
-                )
-                filtered.append(resolved_versions[0])
-            resolved_versions = filtered
-
-        # Build list so highest version ends up on top of the stack
-        # (last element after extend) and is processed first.
-        items: list[WorkItem] = []
-        for source_url, version in reversed(resolved_versions):
-            items.append(
-                WorkItem(
-                    req=item.req,
-                    req_type=item.req_type,
-                    phase=BootstrapPhase.START,
-                    why_snapshot=list(item.why_snapshot),
-                    parent=item.parent,
-                    source_url=source_url,
-                    resolved_version=version,
-                )
-            )
-        return items
-
-    def _phase_start(self, item: WorkItem) -> list[WorkItem]:
-        """START phase: add to graph, check if already seen.
-
-        _track_why is a no-op for this phase (tracks_why is False),
-        matching the original behavior where graph addition and
-        seen-check happen before pushing onto the why stack.
-
-        Returns:
-            Empty list if already seen (nothing to do).
-            [item] advanced to PREPARE_SOURCE if this is new work.
-        """
-        assert item.resolved_version is not None
-        assert item.source_url is not None
-
-        # Add to graph (skip TOP_LEVEL, already added in _resolve_and_add_top_level)
-        if item.req_type != RequirementType.TOP_LEVEL:
-            self._add_to_graph(
-                item.req,
-                item.req_type,
-                item.resolved_version,
-                item.source_url,
-                item.parent,
-            )
-
-        item.build_sdist_only = (
-            self.sdist_only and not self._processing_build_requirement(item.req_type)
-        )
-
-        if self._has_been_seen(item.req, item.resolved_version, item.build_sdist_only):
-            logger.debug(
-                f"redundant {item.req_type} dependency {item.req} "
-                f"({item.resolved_version}, sdist_only={item.build_sdist_only}) "
-                f"for {self._explain}"
-            )
-            return []
-        self._mark_as_seen(item.req, item.resolved_version, item.build_sdist_only)
-
-        logger.info(
-            f"new {item.req_type} dependency {item.req} "
-            f"resolves to {item.resolved_version}"
-        )
-
-        item.pbi_pre_built = self.ctx.package_build_info(item.req).pre_built
-        item.phase = BootstrapPhase.PREPARE_SOURCE
-        return [item]
-
-    def _phase_prepare_source(self, item: WorkItem) -> list[WorkItem]:
-        """PREPARE_SOURCE phase: download source or prebuilt, get build system deps.
-
-        Uses background I/O result from ``item.bg_future`` when available,
-        falling back to inline I/O otherwise.
-
-        Returns:
-            Prebuilt: [item] advanced to PROCESS_INSTALL_DEPS (skip build phases).
-            Source: [item advanced to PREPARE_BUILD, *build_system_dep_items].
-        """
-        assert item.resolved_version is not None
-        assert item.source_url is not None
-
-        # bg_future is always set for PREPARE_SOURCE items (see _push_items / _get_background_work).
-        # bg_future.result() blocks until done and re-raises any background exception.
-        assert item.bg_future is not None
-        prepared: PreparedSourceData = item.bg_future.result()
-
-        constraint = self.ctx.constraints.get_constraint(item.req.name)
-        if constraint:
-            logger.info(
-                f"incoming requirement {item.req} matches constraint "
-                f"{constraint}. Will apply both."
-            )
-
-        if item.pbi_pre_built:
-            # Background task already downloaded the prebuilt wheel
-            assert prepared.wheel_filename is not None
-            assert prepared.unpack_dir is not None
-            item.build_result = SourceBuildResult(
-                wheel_filename=prepared.wheel_filename,
-                sdist_filename=None,
-                unpack_dir=prepared.unpack_dir,
-                sdist_root_dir=None,
-                build_env=None,
-                source_type=SourceType.PREBUILT,
-            )
-            item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
-            return [item]
-
-        # Source build path: background task already downloaded and prepared the source
-        assert prepared.sdist_root_dir is not None
-        sdist_root_dir = prepared.sdist_root_dir
-        item.cached_wheel_filename = prepared.cached_wheel_filename
-
-        assert sdist_root_dir is not None
-
-        if sdist_root_dir.parent.parent != self.ctx.work_dir:
-            raise ValueError(f"'{sdist_root_dir}/../..' should be {self.ctx.work_dir}")
-        item.sdist_root_dir = sdist_root_dir
-        item.unpack_dir = sdist_root_dir.parent
-
-        item.build_env = self._create_build_env(
-            req=item.req,
-            resolved_version=item.resolved_version,
-            parent_dir=sdist_root_dir.parent,
-        )
-
-        # Get build system dependencies
-        item.build_system_deps = dependencies.get_build_system_dependencies(
-            ctx=self.ctx,
-            req=item.req,
-            version=item.resolved_version,
-            sdist_root_dir=sdist_root_dir,
-        )
-
-        dep_items = self._create_unresolved_work_items(
-            item.build_system_deps,
-            RequirementType.BUILD_SYSTEM,
-            item.req,
-            item.resolved_version,
-        )
-
-        item.phase = BootstrapPhase.PREPARE_BUILD
-        return [item] + dep_items
 
     def _resolve_build_system_versions_by_name(
         self,
@@ -1887,261 +2172,35 @@ class Bootstrapper:
             unsatisfied.add(dep)
         return unsatisfied
 
-    def _phase_prepare_build(self, item: WorkItem) -> list[WorkItem]:
-        """PREPARE_BUILD phase: install system deps, get backend/sdist deps.
-
-        Build-backend and build-sdist dependencies that are already satisfied
-        by a resolved build-system dependency reuse that version instead of
-        resolving independently (see :issue:`1194`).
-
-        Returns:
-            [item advanced to BUILD, *backend_dep_items, *sdist_dep_items].
-        """
-        assert item.resolved_version is not None
-        assert item.build_env is not None
-        assert item.sdist_root_dir is not None
-
-        # Install build system deps (their wheels exist from DFS processing)
-        item.build_env.install(item.build_system_deps)
-
-        # Get build backend dependencies
-        item.build_backend_deps = dependencies.get_build_backend_dependencies(
-            ctx=self.ctx,
-            req=item.req,
-            version=item.resolved_version,
-            sdist_root_dir=item.sdist_root_dir,
-            build_env=item.build_env,
-        )
-
-        # Get build sdist dependencies
-        item.build_sdist_deps = dependencies.get_build_sdist_dependencies(
-            ctx=self.ctx,
-            req=item.req,
-            version=item.resolved_version,
-            sdist_root_dir=item.sdist_root_dir,
-            build_env=item.build_env,
-        )
-
-        # Filter out deps already satisfied by build-system dependencies
-        # to avoid resolving to a different (typically newer) version.
-        resolved_build_sys = self._get_resolved_build_system_versions(item)
-        parent = (item.req, item.resolved_version)
-        item.build_backend_deps = self._filter_deps_satisfied_by_build_system(
-            item.build_backend_deps,
-            resolved_build_sys,
-            RequirementType.BUILD_BACKEND,
-            parent,
-        )
-        item.build_sdist_deps = self._filter_deps_satisfied_by_build_system(
-            item.build_sdist_deps,
-            resolved_build_sys,
-            RequirementType.BUILD_SDIST,
-            parent,
-        )
-
-        backend_items = self._create_unresolved_work_items(
-            item.build_backend_deps,
-            RequirementType.BUILD_BACKEND,
-            item.req,
-            item.resolved_version,
-        )
-        sdist_items = self._create_unresolved_work_items(
-            item.build_sdist_deps,
-            RequirementType.BUILD_SDIST,
-            item.req,
-            item.resolved_version,
-        )
-        dep_items = backend_items + sdist_items
-
-        item.phase = BootstrapPhase.BUILD
-        return [item] + dep_items
-
-    def _phase_build(self, item: WorkItem) -> list[WorkItem]:
-        """BUILD phase: install remaining deps, build wheel/sdist.
-
-        Returns:
-            [item] advanced to PROCESS_INSTALL_DEPS.
-        """
-        assert item.resolved_version is not None
-        assert item.build_env is not None
-        assert item.sdist_root_dir is not None
-
-        # Drain all in-flight background I/O before an exclusive build starts.
-        # This ensures no parallel background tasks interfere with a build that
-        # must run without resource contention.
-        pbi = self.ctx.package_build_info(item.req)
-        if pbi.exclusive_build:
-            logger.info(
-                "%s requires exclusive build, draining background pool", item.req
-            )
-            self._drain_background_pool()
-
-        # Install backend+sdist deps if disjoint from system deps
-        remaining_deps = item.build_backend_deps | item.build_sdist_deps
-        if remaining_deps.isdisjoint(item.build_system_deps):
-            item.build_env.install(remaining_deps)
-
-        wheel_filename, sdist_filename = self._do_build(
-            req=item.req,
-            resolved_version=item.resolved_version,
-            sdist_root_dir=item.sdist_root_dir,
-            build_env=item.build_env,
-            build_sdist_only=item.build_sdist_only,
-            cached_wheel_filename=item.cached_wheel_filename,
-        )
-
-        source_type = sources.get_source_type(self.ctx, item.req)
-
-        item.build_result = SourceBuildResult(
-            wheel_filename=wheel_filename,
-            sdist_filename=sdist_filename,
-            unpack_dir=item.sdist_root_dir.parent,
-            sdist_root_dir=item.sdist_root_dir,
-            build_env=item.build_env,
-            source_type=source_type,
-        )
-
-        item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
-        return [item]
-
-    def _phase_process_install_deps(self, item: WorkItem) -> list[WorkItem]:
-        """PROCESS_INSTALL_DEPS phase: hooks, extract deps, build order.
-
-        Returns:
-            [item advanced to COMPLETE, *install_dep_items].
-        """
-        assert item.resolved_version is not None
-        assert item.source_url is not None
-        assert item.build_result is not None
-
-        # Run post-bootstrap hooks (non-fatal in test mode)
-        try:
-            hooks.run_post_bootstrap_hooks(
-                ctx=self.ctx,
-                req=item.req,
-                dist_name=canonicalize_name(item.req.name),
-                dist_version=str(item.resolved_version),
-                sdist_filename=item.build_result.sdist_filename,
-                wheel_filename=item.build_result.wheel_filename,
-            )
-        except Exception as hook_error:
-            if not self.test_mode:
-                raise
-            self._record_test_mode_failure(
-                item.req,
-                str(item.resolved_version),
-                hook_error,
-                "hook",
-                "warning",
-            )
-
-        # Extract install dependencies (non-fatal in test mode)
-        try:
-            install_dependencies = self._get_install_dependencies(
-                req=item.req,
-                resolved_version=item.resolved_version,
-                wheel_filename=item.build_result.wheel_filename,
-                sdist_filename=item.build_result.sdist_filename,
-                sdist_root_dir=item.build_result.sdist_root_dir,
-                build_env=item.build_result.build_env,
-                unpack_dir=item.build_result.unpack_dir,
-            )
-        except Exception as dep_error:
-            if not self.test_mode:
-                raise
-            self._record_test_mode_failure(
-                item.req,
-                str(item.resolved_version),
-                dep_error,
-                "dependency_extraction",
-                "warning",
-            )
-            install_dependencies = []
-
-        logger.debug(
-            "install dependencies: %s",
-            ", ".join(sorted(str(r) for r in install_dependencies)),
-        )
-
-        pbi = self.ctx.package_build_info(item.req)
-        constraint = self.ctx.constraints.get_constraint(item.req.name)
-        self._add_to_build_order(
-            req=item.req,
-            version=item.resolved_version,
-            source_url=item.source_url,
-            source_type=item.build_result.source_type,
-            prebuilt=pbi.pre_built,
-            constraint=constraint,
-        )
-
-        dep_items = self._create_unresolved_work_items(
-            install_dependencies,
-            RequirementType.INSTALL,
-            item.req,
-            item.resolved_version,
-        )
-
-        item.phase = BootstrapPhase.COMPLETE
-        return [item] + dep_items
-
-    def _phase_complete(self, item: WorkItem) -> list[WorkItem]:
-        """COMPLETE phase: clean up build directories.
-
-        Returns:
-            Empty list (processing finished for this item).
-        """
-        if item.build_result is not None:
-            self.ctx.clean_build_dirs(
-                item.build_result.sdist_root_dir,
-                item.build_result.build_env,
-            )
-        return []
-
-    def _dispatch_phase(self, item: WorkItem) -> list[WorkItem]:
-        """Route a work item to the appropriate phase handler."""
-        match item.phase:
-            case BootstrapPhase.RESOLVE:
-                return self._phase_resolve(item)
-            case BootstrapPhase.START:
-                return self._phase_start(item)
-            case BootstrapPhase.PREPARE_SOURCE:
-                return self._phase_prepare_source(item)
-            case BootstrapPhase.PREPARE_BUILD:
-                return self._phase_prepare_build(item)
-            case BootstrapPhase.BUILD:
-                return self._phase_build(item)
-            case BootstrapPhase.PROCESS_INSTALL_DEPS:
-                return self._phase_process_install_deps(item)
-            case BootstrapPhase.COMPLETE:
-                return self._phase_complete(item)
-            case _:
-                raise ValueError(f"unexpected phase: {item.phase}")
-
     def _handle_phase_error(
         self,
-        item: WorkItem,
+        item: PhaseItem,
         err: Exception,
-    ) -> list[WorkItem]:
+    ) -> list[PhaseItem]:
         """Handle errors from phase processing.
 
         Returns work items to continue processing (e.g. prebuilt fallback),
         or empty list to skip this item. Raises in normal mode (fail-fast).
         """
+        wi = item.work_item
         # Resolution failures: recoverable in test mode and multiple versions mode
-        if item.phase == BootstrapPhase.RESOLVE:
+        if isinstance(item, ResolveItem):
             if self.test_mode:
-                self._record_test_mode_failure(item.req, None, err, "resolution")
+                self._record_test_mode_failure(wi.req, None, err, "resolution")
                 if self.multiple_versions:
                     self._record_failed_version(
-                        item.req,
+                        wi.req,
                         "unresolved",
                         err,
-                        f"failed during {item.phase} phase",
+                        f"failed during {type(item).phase} phase",
                     )
                 return []
             if self.multiple_versions:
                 self._record_failed_version(
-                    item.req, "unresolved", err, f"failed during {item.phase} phase"
+                    wi.req,
+                    "unresolved",
+                    err,
+                    f"failed during {type(item).phase} phase",
                 )
                 return []
             raise
@@ -2149,46 +2208,40 @@ class Bootstrapper:
         # Test mode: try prebuilt fallback for build-related phases
         if self.test_mode:
             if (
-                item.phase
-                in (
-                    BootstrapPhase.PREPARE_SOURCE,
-                    BootstrapPhase.PREPARE_BUILD,
-                    BootstrapPhase.BUILD,
-                )
-                and not item.pbi_pre_built
+                isinstance(item, PrepareSourceItem | PrepareBuildItem | BuildItem)
+                and not wi.pbi_pre_built
             ):
-                assert item.resolved_version is not None
+                assert wi.resolved_version is not None
                 fallback = self._handle_test_mode_failure(
-                    req=item.req,
-                    resolved_version=item.resolved_version,
-                    req_type=item.req_type,
+                    req=wi.req,
+                    resolved_version=wi.resolved_version,
+                    req_type=wi.req_type,
                     build_error=err,
                 )
                 if fallback is not None:
-                    item.build_result = fallback
-                    item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
-                    return [item]
+                    wi.build_result = fallback
+                    return [ProcessInstallDepsItem(wi)]
             self._record_test_mode_failure(
-                item.req, str(item.resolved_version), err, "bootstrap"
+                wi.req, str(wi.resolved_version), err, "bootstrap"
             )
             return []
 
         # Multiple versions mode: record failure, remove from graph, continue
         if self.multiple_versions:
-            assert item.resolved_version is not None
-            pkg_name = canonicalize_name(item.req.name)
+            assert wi.resolved_version is not None
+            pkg_name = canonicalize_name(wi.req.name)
             self._record_failed_version(
-                item.req,
-                str(item.resolved_version),
+                wi.req,
+                str(wi.resolved_version),
                 err,
-                f"failed during {item.phase} phase",
+                f"failed during {type(item).phase} phase",
             )
-            self.ctx.dependency_graph.remove_dependency(pkg_name, item.resolved_version)
+            self.ctx.dependency_graph.remove_dependency(pkg_name, wi.resolved_version)
             self._seen_requirements.discard(
-                self._resolved_key(item.req, item.resolved_version, "sdist")
+                self._resolved_key(wi.req, wi.resolved_version, "sdist")
             )
             self._seen_requirements.discard(
-                self._resolved_key(item.req, item.resolved_version, "wheel")
+                self._resolved_key(wi.req, wi.resolved_version, "wheel")
             )
             self.ctx.write_to_graph_to_file()
             return []
