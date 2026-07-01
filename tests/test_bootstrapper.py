@@ -20,9 +20,9 @@ def test_seen(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testdist")
     version = Version("1.2")
-    assert not bt._has_been_seen(req, version)
-    bt._mark_as_seen(req, version)
-    assert bt._has_been_seen(req, version)
+    assert not bt.has_been_seen(req, version)
+    bt.mark_as_seen(req, version)
+    assert bt.has_been_seen(req, version)
 
 
 def test_seen_extras(tmp_context: WorkContext) -> None:
@@ -30,46 +30,46 @@ def test_seen_extras(tmp_context: WorkContext) -> None:
     req2 = Requirement("testdist[extra]")
     version = Version("1.2")
     bt = bootstrapper.Bootstrapper(tmp_context)
-    assert not bt._has_been_seen(req1, version)
-    bt._mark_as_seen(req1, version)
-    assert bt._has_been_seen(req1, version)
-    assert not bt._has_been_seen(req2, version)
-    bt._mark_as_seen(req2, version)
-    assert bt._has_been_seen(req1, version)
-    assert bt._has_been_seen(req2, version)
+    assert not bt.has_been_seen(req1, version)
+    bt.mark_as_seen(req1, version)
+    assert bt.has_been_seen(req1, version)
+    assert not bt.has_been_seen(req2, version)
+    bt.mark_as_seen(req2, version)
+    assert bt.has_been_seen(req1, version)
+    assert bt.has_been_seen(req2, version)
 
 
 def test_seen_name_canonicalization(tmp_context: WorkContext) -> None:
     req = Requirement("flit_core")
     version = Version("1.2")
     bt = bootstrapper.Bootstrapper(tmp_context)
-    assert not bt._has_been_seen(req, version)
-    bt._mark_as_seen(req, version)
-    assert bt._has_been_seen(req, version)
+    assert not bt.has_been_seen(req, version)
+    bt.mark_as_seen(req, version)
+    assert bt.has_been_seen(req, version)
 
 
 def test_seen_requirements_sdist(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testdist")
     version = Version("1.2")
-    assert not bt._has_been_seen(req, version, sdist_only=False)
-    assert not bt._has_been_seen(req, version, sdist_only=True)
+    assert not bt.has_been_seen(req, version, sdist_only=False)
+    assert not bt.has_been_seen(req, version, sdist_only=True)
     # sdist only does not affect wheel status
-    bt._mark_as_seen(req, version, sdist_only=True)
-    assert bt._has_been_seen(req, version, sdist_only=True)
-    assert not bt._has_been_seen(req, version, sdist_only=False)
+    bt.mark_as_seen(req, version, sdist_only=True)
+    assert bt.has_been_seen(req, version, sdist_only=True)
+    assert not bt.has_been_seen(req, version, sdist_only=False)
 
-    bt._mark_as_seen(req, version, sdist_only=False)
-    assert bt._has_been_seen(req, version, sdist_only=True)
-    assert bt._has_been_seen(req, version, sdist_only=False)
+    bt.mark_as_seen(req, version, sdist_only=False)
+    assert bt.has_been_seen(req, version, sdist_only=True)
+    assert bt.has_been_seen(req, version, sdist_only=False)
 
     req2 = Requirement("testwheel")
-    assert not bt._has_been_seen(req2, version, sdist_only=False)
-    assert not bt._has_been_seen(req2, version, sdist_only=True)
+    assert not bt.has_been_seen(req2, version, sdist_only=False)
+    assert not bt.has_been_seen(req2, version, sdist_only=True)
     # full seen affects both sdist and wheel status
-    bt._mark_as_seen(req2, version, sdist_only=False)
-    assert bt._has_been_seen(req2, version, sdist_only=True)
-    assert bt._has_been_seen(req2, version, sdist_only=False)
+    bt.mark_as_seen(req2, version, sdist_only=False)
+    assert bt.has_been_seen(req2, version, sdist_only=True)
+    assert bt.has_been_seen(req2, version, sdist_only=False)
 
 
 def test_build_order(tmp_context: WorkContext) -> None:
@@ -180,17 +180,17 @@ def test_build_order_name_canonicalization(tmp_context: WorkContext) -> None:
 def test_explain(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
-    assert bt._explain == f"{RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
+    assert bt.explain == f"{RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
 
     bt.why = []
-    assert bt._explain == ""
+    assert bt.explain == ""
 
     bt.why = [
         (RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0")),
         (RequirementType.BUILD_SYSTEM, Requirement("bar==4.0.0"), Version("4.0.0")),
     ]
     assert (
-        bt._explain
+        bt.explain
         == f"{RequirementType.BUILD_SYSTEM} dependency bar==4.0.0 (4.0.0) for {RequirementType.TOP_LEVEL} dependency foo (1.0.0)"
     )
 
@@ -198,26 +198,26 @@ def test_explain(tmp_context: WorkContext) -> None:
 def test_is_build_requirement(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt.why = []
-    assert not bt._processing_build_requirement(RequirementType.TOP_LEVEL)
-    assert bt._processing_build_requirement(RequirementType.BUILD_SYSTEM)
-    assert bt._processing_build_requirement(RequirementType.BUILD_BACKEND)
-    assert bt._processing_build_requirement(RequirementType.BUILD_SDIST)
-    assert not bt._processing_build_requirement(RequirementType.INSTALL)
+    assert not bt.processing_build_requirement(RequirementType.TOP_LEVEL)
+    assert bt.processing_build_requirement(RequirementType.BUILD_SYSTEM)
+    assert bt.processing_build_requirement(RequirementType.BUILD_BACKEND)
+    assert bt.processing_build_requirement(RequirementType.BUILD_SDIST)
+    assert not bt.processing_build_requirement(RequirementType.INSTALL)
 
     bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
-    assert not bt._processing_build_requirement(RequirementType.INSTALL)
-    assert bt._processing_build_requirement(RequirementType.BUILD_SYSTEM)
-    assert bt._processing_build_requirement(RequirementType.BUILD_BACKEND)
-    assert bt._processing_build_requirement(RequirementType.BUILD_SDIST)
+    assert not bt.processing_build_requirement(RequirementType.INSTALL)
+    assert bt.processing_build_requirement(RequirementType.BUILD_SYSTEM)
+    assert bt.processing_build_requirement(RequirementType.BUILD_BACKEND)
+    assert bt.processing_build_requirement(RequirementType.BUILD_SDIST)
 
     bt.why = [
         (RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0")),
         (RequirementType.BUILD_SYSTEM, Requirement("bar==4.0.0"), Version("4.0.0")),
     ]
-    assert bt._processing_build_requirement(RequirementType.INSTALL)
-    assert bt._processing_build_requirement(RequirementType.BUILD_SYSTEM)
-    assert bt._processing_build_requirement(RequirementType.BUILD_BACKEND)
-    assert bt._processing_build_requirement(RequirementType.BUILD_SDIST)
+    assert bt.processing_build_requirement(RequirementType.INSTALL)
+    assert bt.processing_build_requirement(RequirementType.BUILD_SYSTEM)
+    assert bt.processing_build_requirement(RequirementType.BUILD_BACKEND)
+    assert bt.processing_build_requirement(RequirementType.BUILD_SDIST)
 
 
 def test_find_cached_wheel_returns_tuple(tmp_context: WorkContext) -> None:
@@ -339,7 +339,7 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
         req = Requirement("testpkg>=1.0")
 
         with patch.object(bootstrapper.PrepareSourceItem, "run", prepare_source_run):
-            with patch.object(bt, "_has_been_seen", return_value=False):
+            with patch.object(bt, "has_been_seen", return_value=False):
                 bt._bootstrap_one(
                     req=req,
                     req_type=RequirementType.INSTALL,
