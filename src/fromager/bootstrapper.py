@@ -531,7 +531,7 @@ class ResolveItem(PhaseItem):
             resolved_versions = [
                 (url, ver)
                 for url, ver in resolved_versions
-                if (pkg_name, str(ver)) not in bt._failed_versions
+                if not bt.has_failed_version(pkg_name, ver)
             ]
             if not resolved_versions:
                 raise RuntimeError(
@@ -1054,6 +1054,10 @@ class Bootstrapper:
     def resolver(self) -> bootstrap_requirement_resolver.BootstrapRequirementResolver:
         """Public accessor for the version resolver."""
         return self._resolver
+
+    def has_failed_version(self, pkg_name: NormalizedName, version: Version) -> bool:
+        """Return True if this (pkg_name, version) has previously failed resolution."""
+        return (pkg_name, str(version)) in self._failed_versions
 
     def _resolve_and_add_top_level(
         self,
