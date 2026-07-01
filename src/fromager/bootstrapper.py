@@ -608,7 +608,7 @@ class StartItem(PhaseItem):
 
         # Add to graph (skip TOP_LEVEL, already added in _resolve_and_add_top_level)
         if wi.req_type != RequirementType.TOP_LEVEL:
-            bt._add_to_graph(
+            bt.add_to_graph(
                 wi.req,
                 wi.req_type,
                 wi.resolved_version,
@@ -616,18 +616,18 @@ class StartItem(PhaseItem):
                 wi.parent,
             )
 
-        wi.build_sdist_only = bt.sdist_only and not bt._processing_build_requirement(
+        wi.build_sdist_only = bt.sdist_only and not bt.processing_build_requirement(
             wi.req_type
         )
 
-        if bt._has_been_seen(wi.req, wi.resolved_version, wi.build_sdist_only):
+        if bt.has_been_seen(wi.req, wi.resolved_version, wi.build_sdist_only):
             logger.debug(
                 f"redundant {wi.req_type} dependency {wi.req} "
                 f"({wi.resolved_version}, sdist_only={wi.build_sdist_only}) "
-                f"for {bt._explain}"
+                f"for {bt.explain}"
             )
             return []
-        bt._mark_as_seen(wi.req, wi.resolved_version, wi.build_sdist_only)
+        bt.mark_as_seen(wi.req, wi.resolved_version, wi.build_sdist_only)
 
         logger.info(
             f"new {wi.req_type} dependency {wi.req} resolves to {wi.resolved_version}"
@@ -1263,7 +1263,7 @@ class Bootstrapper:
 
             self._push_items(stack, new_items)
 
-    def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
+    def processing_build_requirement(self, current_req_type: RequirementType) -> bool:
         """Are we currently processing a build requirement?
 
         We determine that a package is a build dependency if its requirement
@@ -1396,7 +1396,7 @@ class Bootstrapper:
         )
 
     @property
-    def _explain(self) -> str:
+    def explain(self) -> str:
         """Return message formatting current version of why stack."""
         return " for ".join(
             f"{req_type} dependency {req} ({resolved_version})"
@@ -1437,7 +1437,7 @@ class Bootstrapper:
             req, resolved_version, sdist_root_dir, build_env
         )
 
-        logger.info(f"starting build of {self._explain} for {self.ctx.variant}")
+        logger.info(f"starting build of {self.explain} for {self.ctx.variant}")
         built_filename = wheels.build_wheel(
             ctx=self.ctx,
             req=req,
@@ -1908,7 +1908,7 @@ class Bootstrapper:
         metadata = dependencies.parse_metadata(metadata_filename, validate=False)
         return metadata.version
 
-    def _add_to_graph(
+    def add_to_graph(
         self,
         req: Requirement,
         req_type: RequirementType,
@@ -1949,7 +1949,7 @@ class Bootstrapper:
             typ,
         )
 
-    def _mark_as_seen(
+    def mark_as_seen(
         self,
         req: Requirement,
         version: Version,
@@ -1968,7 +1968,7 @@ class Bootstrapper:
             # Mark wheel seen only for wheel build
             self._seen_requirements.add(self._resolved_key(req, version, "wheel"))
 
-    def _has_been_seen(
+    def has_been_seen(
         self,
         req: Requirement,
         version: Version,
@@ -2160,7 +2160,7 @@ class Bootstrapper:
                         version,
                     )
                     if parent is not None:
-                        self._add_to_graph(
+                        self.add_to_graph(
                             req=dep,
                             req_type=dep_req_type,
                             req_version=version,

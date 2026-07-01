@@ -571,7 +571,7 @@ class TestPhaseStart:
 
         # Mark as seen first
         assert wi.resolved_version is not None
-        bt._mark_as_seen(wi.req, wi.resolved_version)
+        bt.mark_as_seen(wi.req, wi.resolved_version)
 
         result = item.run(bt)
 
@@ -626,9 +626,9 @@ class TestPhaseStart:
         wi = item.work_item
         assert wi.resolved_version is not None
 
-        assert not bt._has_been_seen(wi.req, wi.resolved_version)
+        assert not bt.has_been_seen(wi.req, wi.resolved_version)
         item.run(bt)
-        assert bt._has_been_seen(wi.req, wi.resolved_version)
+        assert bt.has_been_seen(wi.req, wi.resolved_version)
 
     def test_sets_pbi_pre_built_before_prepare_source(
         self, tmp_context: WorkContext
@@ -823,7 +823,7 @@ class TestHandlePhaseError:
             pre_built=False,
         )
         # Mark as seen
-        bt._mark_as_seen(wi.req, wi.resolved_version)
+        bt.mark_as_seen(wi.req, wi.resolved_version)
 
         result = bt._handle_phase_error(item, err)
 
@@ -835,8 +835,8 @@ class TestHandlePhaseError:
         key = f"{canonicalize_name('testpkg')}==1.0"
         assert key not in tmp_context.dependency_graph.nodes
         # Seen markers cleared
-        assert not bt._has_been_seen(wi.req, wi.resolved_version)
-        assert not bt._has_been_seen(wi.req, wi.resolved_version, sdist_only=True)
+        assert not bt.has_been_seen(wi.req, wi.resolved_version)
+        assert not bt.has_been_seen(wi.req, wi.resolved_version, sdist_only=True)
 
     def test_multiple_versions_logs_phase(
         self, tmp_context: WorkContext, caplog: pytest.LogCaptureFixture
@@ -1071,7 +1071,7 @@ class TestIterativeBootstrapLoop:
                     ("url-1.0", Version("1.0")),
                 ],
             ),
-            patch.object(bt, "_has_been_seen", return_value=False),
+            patch.object(bt, "has_been_seen", return_value=False),
         ):
             bt._bootstrap_one(Requirement("pkg"), RequirementType.INSTALL)
 
@@ -1111,7 +1111,7 @@ class TestIterativeBootstrapLoop:
                 "resolve",
                 return_value=[("url-1.0", Version("1.0"))],
             ),
-            patch.object(bt, "_has_been_seen", return_value=False),
+            patch.object(bt, "has_been_seen", return_value=False),
         ):
             bt._bootstrap_one(Requirement("good-pkg"), RequirementType.INSTALL)
             bt._bootstrap_one(Requirement("bad-dep"), RequirementType.INSTALL)
@@ -1933,7 +1933,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("biotite==1.6.0"), Version("1.6.0"))
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
+        with patch.object(bt, "add_to_graph") as mock_add:
             result = bt._filter_deps_satisfied_by_build_system(
                 {Requirement("hatch-cython")},
                 resolved_build_sys,
@@ -1960,7 +1960,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
+        with patch.object(bt, "add_to_graph") as mock_add:
             result = bt._filter_deps_satisfied_by_build_system(
                 {Requirement("foo>=1.0")},
                 resolved_build_sys,
@@ -1980,7 +1980,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
         wheel_req = Requirement("wheel")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
+        with patch.object(bt, "add_to_graph") as mock_add:
             result = bt._filter_deps_satisfied_by_build_system(
                 {wheel_req},
                 resolved_build_sys,
@@ -2002,7 +2002,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
         foo_req = Requirement("foo>=2.0")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
+        with patch.object(bt, "add_to_graph") as mock_add:
             result = bt._filter_deps_satisfied_by_build_system(
                 {foo_req},
                 resolved_build_sys,
@@ -2023,7 +2023,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        with patch.object(bt, "_add_to_graph"):
+        with patch.object(bt, "add_to_graph"):
             bt._filter_deps_satisfied_by_build_system(
                 {Requirement("foo>=2.0")},
                 resolved_build_sys,
@@ -2048,7 +2048,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         cython_req = Requirement("hatch-cython")
         wheel_req = Requirement("wheel")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
+        with patch.object(bt, "add_to_graph") as mock_add:
             result = bt._filter_deps_satisfied_by_build_system(
                 {cython_req, wheel_req},
                 resolved_build_sys,
@@ -2102,7 +2102,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
         extras_req = Requirement("foo[bar]>=1.0")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
+        with patch.object(bt, "add_to_graph") as mock_add:
             result = bt._filter_deps_satisfied_by_build_system(
                 {extras_req},
                 resolved_build_sys,
