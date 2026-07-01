@@ -490,7 +490,7 @@ class ResolveItem(PhaseItem):
         self, bt: Bootstrapper
     ) -> typing.Callable[[], typing.Any] | None:
         """Return closure that calls ``_bg_resolve`` in a thread."""
-        bg_resolver = bt._resolver
+        bg_resolver = bt.resolver
         req = self.work_item.req
         req_type = self.work_item.req_type
         parent_req = (
@@ -1049,6 +1049,11 @@ class Bootstrapper:
 
         # Track failed versions in multiple_versions mode
         self._failed_versions: dict[tuple[str, str], Exception] = {}
+
+    @property
+    def resolver(self) -> bootstrap_requirement_resolver.BootstrapRequirementResolver:
+        """Public accessor for the version resolver."""
+        return self._resolver
 
     def _resolve_and_add_top_level(
         self,
