@@ -909,7 +909,7 @@ class ProcessInstallDepsItem(PhaseItem):
         except Exception as hook_error:
             if not bt.test_mode:
                 raise
-            bt._record_test_mode_failure(
+            bt.record_test_mode_failure(
                 wi.req,
                 str(wi.resolved_version),
                 hook_error,
@@ -919,7 +919,7 @@ class ProcessInstallDepsItem(PhaseItem):
 
         # Extract install dependencies (non-fatal in test mode)
         try:
-            install_dependencies = bt._get_install_dependencies(
+            install_dependencies = bt.get_install_dependencies(
                 req=wi.req,
                 resolved_version=wi.resolved_version,
                 wheel_filename=wi.build_result.wheel_filename,
@@ -931,7 +931,7 @@ class ProcessInstallDepsItem(PhaseItem):
         except Exception as dep_error:
             if not bt.test_mode:
                 raise
-            bt._record_test_mode_failure(
+            bt.record_test_mode_failure(
                 wi.req,
                 str(wi.resolved_version),
                 dep_error,
@@ -947,7 +947,7 @@ class ProcessInstallDepsItem(PhaseItem):
 
         pbi = bt.ctx.package_build_info(wi.req)
         constraint = bt.ctx.constraints.get_constraint(wi.req.name)
-        bt._add_to_build_order(
+        bt.add_to_build_order(
             req=wi.req,
             version=wi.resolved_version,
             source_url=wi.source_url,
@@ -1115,7 +1115,7 @@ class Bootstrapper:
                         req, "unresolved", err, "no versions resolved, skipping"
                     )
                     if self.test_mode:
-                        self._record_test_mode_failure(req, None, err, "resolution")
+                        self.record_test_mode_failure(req, None, err, "resolution")
                     return None
                 raise RuntimeError(f"Could not resolve any versions for {req}")
 
@@ -1125,11 +1125,11 @@ class Bootstrapper:
             if self.multiple_versions:
                 self._record_failed_version(req, "unresolved", err, "failed to resolve")
                 if self.test_mode:
-                    self._record_test_mode_failure(req, None, err, "resolution")
+                    self.record_test_mode_failure(req, None, err, "resolution")
                 return None
             if not self.test_mode:
                 raise
-            self._record_test_mode_failure(req, None, err, "resolution")
+            self.record_test_mode_failure(req, None, err, "resolution")
             return None
 
     def resolve_versions(
@@ -1360,7 +1360,7 @@ class Bootstrapper:
         finally:
             self.why.pop()
 
-    def _record_test_mode_failure(
+    def record_test_mode_failure(
         self,
         req: Requirement,
         version: str | None,
@@ -1570,7 +1570,7 @@ class Bootstrapper:
         assert result.unpack_dir is not None
         return (result.wheel_filename, result.unpack_dir)
 
-    def _get_install_dependencies(
+    def get_install_dependencies(
         self,
         req: Requirement,
         resolved_version: Version,
@@ -1964,7 +1964,7 @@ class Bootstrapper:
         typ: typing.Literal["sdist", "wheel"] = "sdist" if sdist_only else "wheel"
         return self._resolved_key(req, version, typ) in self._seen_requirements
 
-    def _add_to_build_order(
+    def add_to_build_order(
         self,
         req: Requirement,
         version: Version,
@@ -2182,7 +2182,7 @@ class Bootstrapper:
         # Resolution failures: recoverable in test mode and multiple versions mode
         if isinstance(item, ResolveItem):
             if self.test_mode:
-                self._record_test_mode_failure(wi.req, None, err, "resolution")
+                self.record_test_mode_failure(wi.req, None, err, "resolution")
                 if self.multiple_versions:
                     self._record_failed_version(
                         wi.req,
@@ -2217,7 +2217,7 @@ class Bootstrapper:
                 if fallback is not None:
                     wi.build_result = fallback
                     return [ProcessInstallDepsItem(wi)]
-            self._record_test_mode_failure(
+            self.record_test_mode_failure(
                 wi.req, str(wi.resolved_version), err, "bootstrap"
             )
             return []
