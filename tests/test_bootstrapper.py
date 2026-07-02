@@ -319,7 +319,7 @@ def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> N
 
     with (
         patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
-        patch.object(bt, "_build_wheel", return_value=(mock_wheel, None)),
+        patch.object(item, "_build_wheel", return_value=(mock_wheel, None)),
     ):
         with bt._track_why(item):
             result_items = item.run(bt)
@@ -937,3 +937,175 @@ def test_bg_prepare_prebuilt_log_prefix_includes_version(
         assert msg.startswith("mypkg-1.2.3: "), (
             f"Expected 'mypkg-1.2.3: ' prefix, got: {msg!r}"
         )
+
+
+def test_build_item_build_sdist_finds_existing(tmp_context: WorkContext) -> None:
+    """BuildItem._build_sdist returns cached sdist when finders.find_sdist hits."""
+    sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+    sdist_root.mkdir(parents=True, exist_ok=True)
+    wi = bootstrapper.WorkItem(
+        req=Requirement("testpkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        resolved_version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+        build_env=Mock(),
+    )
+    item = bootstrapper.BuildItem(wi)
+    cached = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
+    cached.touch()
+
+    with patch("fromager.finders.find_sdist", return_value=cached):
+        result = item._build_sdist(tmp_context)
+
+    assert result == cached
+
+
+def test_build_item_build_sdist_calls_build_when_not_cached(
+    tmp_context: WorkContext,
+) -> None:
+    """BuildItem._build_sdist calls sources.build_sdist when no cached sdist found."""
+    sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+    sdist_root.mkdir(parents=True, exist_ok=True)
+    wi = bootstrapper.WorkItem(
+        req=Requirement("testpkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        resolved_version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+        build_env=Mock(),
+    )
+    item = bootstrapper.BuildItem(wi)
+    built = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
+
+    with (
+        patch("fromager.finders.find_sdist", return_value=None),
+        patch("fromager.sources.build_sdist", return_value=built) as mock_build,
+    ):
+        result = item._build_sdist(tmp_context)
+
+    mock_build.assert_called_once_with(
+        ctx=tmp_context,
+        req=wi.req,
+        version=wi.resolved_version,
+        sdist_root_dir=sdist_root,
+        build_env=wi.build_env,
+    )
+    assert result == built
+
+
+def test_build_item_build_wheel(tmp_context: WorkContext) -> None:
+    """BuildItem._build_wheel builds sdist then wheel and updates mirror."""
+    sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+    sdist_root.mkdir(parents=True, exist_ok=True)
+    wi = bootstrapper.WorkItem(
+        req=Requirement("testpkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        resolved_version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+        build_env=Mock(),
+    )
+    item = bootstrapper.BuildItem(wi)
+    built_wheel = tmp_context.wheels_build / "testpkg-1.0-py3-none-any.whl"
+    built_sdist = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
+
+    with (
+        patch.object(
+            item, "_build_sdist", return_value=built_sdist
+        ) as mock_build_sdist,
+        patch("fromager.wheels.build_wheel", return_value=built_wheel),
+        patch("fromager.server.update_wheel_mirror"),
+    ):
+        wheel_filename, sdist_filename = item._build_wheel(tmp_context)
+
+    mock_build_sdist.assert_called_once_with(tmp_context)
+    assert wheel_filename == tmp_context.wheels_downloads / built_wheel.name
+    assert sdist_filename == built_sdist
+
+
+def test_build_item_do_build_returns_cached_wheel(
+    tmp_context: WorkContext,
+) -> None:
+    """BuildItem.do_build returns cached wheel immediately without building."""
+    cached = tmp_context.wheels_downloads / "testpkg-1.0-py3-none-any.whl"
+    cached.touch()
+    wi = bootstrapper.WorkItem(
+        req=Requirement("testpkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        resolved_version=Version("1.0"),
+        build_sdist_only=False,
+        cached_wheel_filename=cached,
+        sdist_root_dir=tmp_context.work_dir,
+        build_env=Mock(),
+    )
+    item = bootstrapper.BuildItem(wi)
+
+    with patch.object(item, "_build_wheel") as mock_wheel:
+        wheel, sdist = item.do_build(tmp_context)
+
+    mock_wheel.assert_not_called()
+    assert wheel == cached
+    assert sdist is None
+
+
+def test_build_item_do_build_sdist_only(tmp_context: WorkContext) -> None:
+    """BuildItem.do_build calls _build_sdist and returns (None, sdist) when build_sdist_only=True."""
+    built_sdist = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
+    sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+    sdist_root.mkdir(parents=True, exist_ok=True)
+    wi = bootstrapper.WorkItem(
+        req=Requirement("testpkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        resolved_version=Version("1.0"),
+        build_sdist_only=True,
+        cached_wheel_filename=None,
+        sdist_root_dir=sdist_root,
+        build_env=Mock(),
+    )
+    item = bootstrapper.BuildItem(wi)
+
+    with (
+        patch.object(item, "_build_sdist", return_value=built_sdist) as mock_sdist,
+        patch.object(item, "_build_wheel") as mock_wheel,
+    ):
+        wheel, sdist = item.do_build(tmp_context)
+
+    mock_wheel.assert_not_called()
+    mock_sdist.assert_called_once_with(tmp_context)
+    assert wheel is None
+    assert sdist == built_sdist
+
+
+def test_build_item_do_build_builds_wheel(tmp_context: WorkContext) -> None:
+    """BuildItem.do_build calls _build_wheel when no cache and not sdist_only."""
+    built_wheel = tmp_context.wheels_downloads / "testpkg-1.0-py3-none-any.whl"
+    built_sdist = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
+    sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+    sdist_root.mkdir(parents=True, exist_ok=True)
+    wi = bootstrapper.WorkItem(
+        req=Requirement("testpkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        resolved_version=Version("1.0"),
+        build_sdist_only=False,
+        cached_wheel_filename=None,
+        sdist_root_dir=sdist_root,
+        build_env=Mock(),
+    )
+    item = bootstrapper.BuildItem(wi)
+
+    with patch.object(
+        item, "_build_wheel", return_value=(built_wheel, built_sdist)
+    ) as mock_wheel:
+        wheel, sdist = item.do_build(
+            tmp_context, explain="top_level dependency testpkg (1.0)"
+        )
+
+    mock_wheel.assert_called_once_with(
+        tmp_context, "top_level dependency testpkg (1.0)"
+    )
+    assert wheel == built_wheel
+    assert sdist == built_sdist

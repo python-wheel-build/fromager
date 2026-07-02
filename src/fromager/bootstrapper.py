@@ -940,14 +940,7 @@ class BuildItem(PhaseItem):
         if remaining_deps.isdisjoint(wi.build_system_deps):
             wi.build_env.install(remaining_deps)
 
-        wheel_filename, sdist_filename = bt.do_build(
-            req=wi.req,
-            resolved_version=wi.resolved_version,
-            sdist_root_dir=wi.sdist_root_dir,
-            build_env=wi.build_env,
-            build_sdist_only=wi.build_sdist_only,
-            cached_wheel_filename=wi.cached_wheel_filename,
-        )
+        wheel_filename, sdist_filename = self.do_build(bt.ctx, bt.explain)
 
         source_type = sources.get_source_type(bt.ctx, wi.req)
 
@@ -961,6 +954,97 @@ class BuildItem(PhaseItem):
         )
 
         return [ProcessInstallDepsItem(wi)]
+
+    def _build_sdist(self, ctx: context.WorkContext) -> pathlib.Path:
+        """Build or locate an sdist for this item's package.
+
+        Checks ``ctx.sdists_builds`` for an existing sdist before invoking
+        ``sources.build_sdist()``.
+        """
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.sdist_root_dir is not None
+        assert wi.build_env is not None
+        find_sdist_result = finders.find_sdist(
+            ctx, ctx.sdists_builds, wi.req, str(wi.resolved_version)
+        )
+        if not find_sdist_result:
+            sdist_filename: pathlib.Path = sources.build_sdist(
+                ctx=ctx,
+                req=wi.req,
+                version=wi.resolved_version,
+                sdist_root_dir=wi.sdist_root_dir,
+                build_env=wi.build_env,
+            )
+        else:
+            sdist_filename = find_sdist_result
+            logger.info(
+                f"have sdist version {wi.resolved_version}: {find_sdist_result}"
+            )
+        return sdist_filename
+
+    def _build_wheel(
+        self,
+        ctx: context.WorkContext,
+        explain: str = "",
+    ) -> tuple[pathlib.Path, pathlib.Path]:
+        """Build a wheel for this item's package.
+
+        Calls :meth:`_build_sdist` first, then invokes ``wheels.build_wheel()``
+        and updates the local wheel mirror. Returns ``(wheel_filename,
+        sdist_filename)`` where *wheel_filename* is the path in
+        ``ctx.wheels_downloads`` after the mirror update.
+        """
+        wi = self.work_item
+        assert wi.resolved_version is not None
+        assert wi.sdist_root_dir is not None
+        assert wi.build_env is not None
+        sdist_filename = self._build_sdist(ctx)
+
+        logger.info(f"starting build of {explain} for {ctx.variant}")
+        built_filename = wheels.build_wheel(
+            ctx=ctx,
+            req=wi.req,
+            sdist_root_dir=wi.sdist_root_dir,
+            version=wi.resolved_version,
+            build_env=wi.build_env,
+        )
+        server.update_wheel_mirror(ctx)
+        # When we update the mirror, the built file moves to the downloads directory.
+        wheel_filename = ctx.wheels_downloads / built_filename.name
+        logger.info(f"built wheel for version {wi.resolved_version}: {wheel_filename}")
+        return wheel_filename, sdist_filename
+
+    def do_build(
+        self,
+        ctx: context.WorkContext,
+        explain: str = "",
+    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+        """Build a wheel or sdist for this item's package.
+
+        Returns ``(wheel_filename, sdist_filename)``.  Either value may be
+        ``None`` depending on the build path:
+
+        - Cached wheel:  ``(cached_wheel_filename, None)``
+        - sdist-only:    ``(None, sdist_filename)``
+        - Full wheel:    ``(wheel_filename, sdist_filename)``
+        """
+        wi = self.work_item
+        if wi.cached_wheel_filename:
+            logger.debug(
+                f"getting install requirements from cached wheel {wi.cached_wheel_filename.name}"
+            )
+            return wi.cached_wheel_filename, None
+        elif wi.build_sdist_only:
+            logger.debug(
+                f"getting install requirements from sdist {wi.req.name}=={wi.resolved_version}"
+            )
+            return None, self._build_sdist(ctx)
+        else:
+            logger.debug(
+                f"building wheel {wi.req.name}=={wi.resolved_version} to get install requirements"
+            )
+            return self._build_wheel(ctx, explain)
 
 
 class ProcessInstallDepsItem(PhaseItem):
@@ -1468,55 +1552,6 @@ class Bootstrapper:
             for req_type, req, resolved_version in reversed(self.why)
         )
 
-    def _build_sdist(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-        sdist_root_dir: pathlib.Path,
-        build_env: build_environment.BuildEnvironment,
-    ) -> pathlib.Path:
-        find_sdist_result = finders.find_sdist(
-            self.ctx, self.ctx.sdists_builds, req, str(resolved_version)
-        )
-        if not find_sdist_result:
-            sdist_filename: pathlib.Path = sources.build_sdist(
-                ctx=self.ctx,
-                req=req,
-                version=resolved_version,
-                sdist_root_dir=sdist_root_dir,
-                build_env=build_env,
-            )
-        else:
-            sdist_filename = find_sdist_result
-            logger.info(f"have sdist version {resolved_version}: {find_sdist_result}")
-        return sdist_filename
-
-    def _build_wheel(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-        sdist_root_dir: pathlib.Path,
-        build_env: build_environment.BuildEnvironment,
-    ) -> tuple[pathlib.Path, pathlib.Path]:
-        sdist_filename = self._build_sdist(
-            req, resolved_version, sdist_root_dir, build_env
-        )
-
-        logger.info(f"starting build of {self.explain} for {self.ctx.variant}")
-        built_filename = wheels.build_wheel(
-            ctx=self.ctx,
-            req=req,
-            sdist_root_dir=sdist_root_dir,
-            version=resolved_version,
-            build_env=build_env,
-        )
-        server.update_wheel_mirror(self.ctx)
-        # When we update the mirror, the built file moves to the
-        # downloads directory.
-        wheel_filename = self.ctx.wheels_downloads / built_filename.name
-        logger.info(f"built wheel for version {resolved_version}: {wheel_filename}")
-        return wheel_filename, sdist_filename
-
     def _prepare_build_dependencies(
         self,
         req: Requirement,
@@ -1665,34 +1700,6 @@ class Bootstrapper:
             version=resolved_version,
         )
         return result
-
-    def do_build(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-        sdist_root_dir: pathlib.Path,
-        build_env: build_environment.BuildEnvironment,
-        build_sdist_only: bool,
-        cached_wheel_filename: pathlib.Path | None,
-    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-        """Build wheel or sdist from prepared source."""
-        if cached_wheel_filename:
-            logger.debug(
-                f"getting install requirements from cached wheel {cached_wheel_filename.name}"
-            )
-            return cached_wheel_filename, None
-        elif build_sdist_only:
-            logger.debug(
-                f"getting install requirements from sdist {req.name}=={resolved_version}"
-            )
-            return None, self._build_sdist(
-                req, resolved_version, sdist_root_dir, build_env
-            )
-        else:
-            logger.debug(
-                f"building wheel {req.name}=={resolved_version} to get install requirements"
-            )
-            return self._build_wheel(req, resolved_version, sdist_root_dir, build_env)
 
     def _handle_test_mode_failure(
         self,
