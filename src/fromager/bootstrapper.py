@@ -796,15 +796,15 @@ class PrepareBuildItem(PhaseItem):
 
         # Filter out deps already satisfied by build-system dependencies
         # to avoid resolving to a different (typically newer) version.
-        resolved_build_sys = bt._get_resolved_build_system_versions(wi)
+        resolved_build_sys = bt.get_resolved_build_system_versions(wi)
         parent = (wi.req, wi.resolved_version)
-        wi.build_backend_deps = bt._filter_deps_satisfied_by_build_system(
+        wi.build_backend_deps = bt.filter_deps_satisfied_by_build_system(
             wi.build_backend_deps,
             resolved_build_sys,
             RequirementType.BUILD_BACKEND,
             parent,
         )
-        wi.build_sdist_deps = bt._filter_deps_satisfied_by_build_system(
+        wi.build_sdist_deps = bt.filter_deps_satisfied_by_build_system(
             wi.build_sdist_deps,
             resolved_build_sys,
             RequirementType.BUILD_SDIST,
@@ -1501,12 +1501,12 @@ class Bootstrapper:
         resolved_build_sys = self._resolve_build_system_versions_by_name(
             build_system_dependencies,
         )
-        build_backend_dependencies = self._filter_deps_satisfied_by_build_system(
+        build_backend_dependencies = self.filter_deps_satisfied_by_build_system(
             build_backend_dependencies,
             resolved_build_sys,
             RequirementType.BUILD_BACKEND,
         )
-        build_sdist_dependencies = self._filter_deps_satisfied_by_build_system(
+        build_sdist_dependencies = self.filter_deps_satisfied_by_build_system(
             build_sdist_dependencies,
             resolved_build_sys,
             RequirementType.BUILD_SDIST,
@@ -2084,7 +2084,7 @@ class Bootstrapper:
                     break
         return resolved
 
-    def _get_resolved_build_system_versions(
+    def get_resolved_build_system_versions(
         self,
         item: WorkItem,
     ) -> dict[NormalizedName, tuple[Version, str]]:
@@ -2112,7 +2112,7 @@ class Bootstrapper:
                 )
         return resolved
 
-    def _filter_deps_satisfied_by_build_system(
+    def filter_deps_satisfied_by_build_system(
         self,
         deps: set[Requirement],
         resolved_build_sys: dict[NormalizedName, tuple[Version, str]],
