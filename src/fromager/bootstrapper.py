@@ -161,6 +161,7 @@ class WorkItem:
     cached_wheel_filename: pathlib.Path | None = None
     build_result: SourceBuildResult | None = None
     pbi_pre_built: bool = False
+    exclusive_build: bool = False
     build_system_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_backend_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_sdist_deps: set[Requirement] = dataclasses.field(default_factory=set)
@@ -436,6 +437,15 @@ class PhaseItem(abc.ABC):
     @abc.abstractmethod
     def run(self, bt: Bootstrapper) -> list[PhaseItem]: ...
 
+    @property
+    def requires_exclusive_run(self) -> bool:
+        """Return True if this item must run without concurrent background I/O.
+
+        When True, the bootstrap loop drains the background thread pool before
+        calling ``run()``. Override in subclasses that require exclusive access.
+        """
+        return False
+
     def background_work(
         self, bt: Bootstrapper
     ) -> typing.Callable[[], typing.Any] | None:
@@ -635,7 +645,9 @@ class StartItem(PhaseItem):
 
         # Must set pbi_pre_built before constructing PrepareSourceItem so that
         # PrepareSourceItem.background_work() immediately sees the correct value.
-        wi.pbi_pre_built = bt.ctx.package_build_info(wi.req).pre_built
+        pbi = bt.ctx.package_build_info(wi.req)
+        wi.pbi_pre_built = pbi.pre_built
+        wi.exclusive_build = pbi.exclusive_build
         return [PrepareSourceItem(wi)]
 
 
@@ -834,6 +846,10 @@ class BuildItem(PhaseItem):
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.BUILD
     tracks_why: typing.ClassVar[bool] = True
 
+    @property
+    def requires_exclusive_run(self) -> bool:
+        return self.work_item.exclusive_build
+
     def run(self, bt: Bootstrapper) -> list[PhaseItem]:
         """BUILD phase: install remaining deps, build wheel/sdist.
 
@@ -844,12 +860,6 @@ class BuildItem(PhaseItem):
         assert wi.resolved_version is not None
         assert wi.build_env is not None
         assert wi.sdist_root_dir is not None
-
-        # Drain all in-flight background I/O before an exclusive build starts.
-        pbi = bt.ctx.package_build_info(wi.req)
-        if pbi.exclusive_build:
-            logger.info("%s requires exclusive build, draining background pool", wi.req)
-            bt.drain_background_pool()
 
         # Install backend+sdist deps if disjoint from system deps
         remaining_deps = wi.build_backend_deps | wi.build_sdist_deps
@@ -1244,6 +1254,13 @@ class Bootstrapper:
             self._record_stack_state(stack)
             item = stack.pop()
             self.why = list(item.work_item.why_snapshot)
+
+            if item.requires_exclusive_run:
+                logger.info(
+                    "%s requires exclusive build, draining background pool",
+                    item.work_item.req,
+                )
+                self._drain_background_pool()
 
             with (
                 req_ctxvar_context(item.work_item.req, item.work_item.resolved_version),
@@ -2027,7 +2044,7 @@ class Bootstrapper:
                 if bg_work is not None:
                     item.bg_future = self._bg_pool.submit(bg_work)
 
-    def drain_background_pool(self) -> None:
+    def _drain_background_pool(self) -> None:
         """Drain all in-flight background tasks and recreate the pool.
 
         Used as an exclusive-build barrier: ensures all background I/O completes
