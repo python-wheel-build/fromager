@@ -20,7 +20,7 @@ Tests cover:
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import Mock, call, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 from packaging.requirements import Requirement
@@ -29,6 +29,12 @@ from packaging.version import Version
 
 from fromager import bootstrapper, build_environment
 from fromager.bootstrapper import BootstrapPhase, SourceBuildResult, WorkItem
+from fromager.cache import (
+    CacheCollection,
+    CacheManager,
+    LocalDirectoryBackend,
+    StoreRouter,
+)
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
 
@@ -1207,12 +1213,6 @@ class TestPhasePrepareSourceCacheManager:
         self, tmp_context: WorkContext
     ) -> None:
         """Cache hit via CacheManager skips all build phases."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         # Set up a CacheManager with a wheel in the default collection
         wheels_dir = tmp_context.wheels_downloads
@@ -1281,12 +1281,6 @@ class TestPhasePrepareSourceCacheManager:
     ) -> None:
         """Cache hit calls update_wheel_mirror so downloaded wheels are available
         to subsequent build environments via the internal wheel server."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
@@ -1334,12 +1328,6 @@ class TestPhasePrepareSourceCacheManager:
         self, tmp_context: WorkContext
     ) -> None:
         """Cache miss via CacheManager proceeds to normal build path."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         # Empty cache — no wheels
         wheels_dir = tmp_context.wheels_downloads
@@ -1387,15 +1375,6 @@ class TestPhasePrepareSourceCacheManager:
 
     def test_cache_hit_records_stats(self, tmp_context: WorkContext) -> None:
         """Cache hit via CacheManager records a hit event in stats."""
-
-        from unittest.mock import MagicMock
-
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
@@ -1482,12 +1461,6 @@ class TestPhasePrepareSourceCacheManager:
 
     def test_force_mode_skips_cache(self, tmp_context: WorkContext) -> None:
         """--force flag causes CacheManager to return miss, triggering full build."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         # Put a wheel in the cache
@@ -1870,12 +1843,6 @@ class TestPhaseBuild:
     ) -> None:
         """When CacheManager is active and a wheel is built (not cached),
         store_wheel routes it to the appropriate collection."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         variant_dir = tmp_context.wheels_repo / "variants" / "gaudi-ubi9"
@@ -1936,12 +1903,6 @@ class TestPhaseBuild:
         self, tmp_context: WorkContext
     ) -> None:
         """Unlisted packages (not accelerated) are stored in the default collection."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         variant_dir = tmp_context.wheels_repo / "variants" / "gaudi-ubi9"
@@ -2001,12 +1962,6 @@ class TestPhaseBuild:
 
     def test_store_wheel_skipped_when_cached(self, tmp_context: WorkContext) -> None:
         """When a cached wheel is used (not freshly built), store_wheel is not called."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         shared_backend = LocalDirectoryBackend(wheels_dir, backend_name="local:shared")
@@ -2714,12 +2669,6 @@ class TestFindCachedWheelDispatch:
         self, tmp_context: WorkContext
     ) -> None:
         """With CacheManager set, _find_cached_wheel calls via_manager."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
@@ -2775,12 +2724,6 @@ class TestFindCachedWheelDispatch:
 
     def test_via_manager_returns_hit_path(self, tmp_context: WorkContext) -> None:
         """_find_cached_wheel_via_manager returns path on cache hit."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         wheels_dir = tmp_context.wheels_downloads
         wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
@@ -2821,12 +2764,6 @@ class TestFindCachedWheelDispatch:
 
     def test_via_manager_returns_none_on_miss(self, tmp_context: WorkContext) -> None:
         """_find_cached_wheel_via_manager returns (None, None) on cache miss."""
-        from fromager.cache import (
-            CacheCollection,
-            CacheManager,
-            LocalDirectoryBackend,
-            StoreRouter,
-        )
 
         # Empty cache
         wheels_dir = tmp_context.wheels_downloads

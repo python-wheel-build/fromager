@@ -3,12 +3,14 @@
 import pathlib
 
 import pytest
+import requests
 import requests_mock
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from fromager.cache import (
+    ArtifactInfo,
     CacheCollection,
     CacheManager,
     CacheResult,
@@ -439,8 +441,6 @@ class TestRemotePEP503Backend:
         self, requests_mock: requests_mock.Mocker
     ) -> None:
         """scan() gracefully handles a network error."""
-        import requests
-
         requests_mock.get(
             "https://cache.test/simple/", exc=requests.ConnectionError("timeout")
         )
@@ -540,8 +540,6 @@ class TestRemotePEP503Backend:
             content=wheel_content,
         )
 
-        from fromager.cache import ArtifactInfo
-
         backend = RemotePEP503Backend(
             server_url="https://cache.test/simple",
             download_dir=tmp_path / "downloads",
@@ -565,7 +563,6 @@ class TestRemotePEP503Backend:
 
     def test_fetch_skips_existing_file(self, tmp_path: pathlib.Path) -> None:
         """fetch() returns existing path without downloading if file exists."""
-        from fromager.cache import ArtifactInfo
 
         dest = tmp_path / "dest"
         dest.mkdir()
@@ -668,8 +665,6 @@ class TestRemotePEP503Backend:
         )
         info = backend.lookup(key)
         assert info is not None
-
-        import pytest
 
         dest = tmp_path / "local-cache"
         with pytest.raises(ValueError, match="sha256 mismatch"):
