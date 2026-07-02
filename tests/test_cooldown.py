@@ -6,6 +6,7 @@ published and immediately pulled in by automated builds.
 """
 
 import datetime
+import json
 import logging
 import pathlib
 import re
@@ -84,7 +85,7 @@ _COOLDOWN = candidate.Cooldown(
 
 @pytest.fixture(autouse=True)
 def clear_resolver_cache() -> typing.Generator[None, None, None]:
-    """Clear the class-level resolver cache before each test.
+    """Clear the class-level resolver cache and cooldown report before each test.
 
     BaseProvider.resolver_cache is a ClassVar that persists across test
     instances. Without clearing it, candidates fetched in one test are reused
@@ -93,7 +94,9 @@ def clear_resolver_cache() -> typing.Generator[None, None, None]:
     """
     resolver.BaseProvider.clear_cache()
     resolver.BaseProvider._cooldown_unsupported_warned.clear()
+    resolver.cooldown_report.clear()
     yield
+    resolver.cooldown_report.clear()
 
 
 def test_cooldown_filters_recent_version(
@@ -965,3 +968,121 @@ def test_resolve_package_cooldown_toplevel_compound_specifier_not_exempt(
         ctx, Requirement("test-pkg==1.0,>0.9"), req_type=RequirementType.TOP_LEVEL
     )
     assert result is _COOLDOWN
+
+
+# ---------------------------------------------------------------------------
+# CooldownReport tests
+# ---------------------------------------------------------------------------
+
+
+def test_cooldown_report_records_blocked_version() -> None:
+    """Blocked versions are recorded in the module-level cooldown report."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True, cooldown=_COOLDOWN)
+        rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
+        rslvr.resolve([Requirement("test-pkg")])
+
+    entries = resolver.cooldown_report.entries()
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.package == "test-pkg"
+    assert entry.version == "2.0.0"
+    assert entry.upload_time == "2026-03-24T00:00:00+00:00"
+    assert entry.cooldown_min_age_days == 7
+
+
+def test_cooldown_report_empty_when_disabled() -> None:
+    """No entries recorded when cooldown is not configured."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True, cooldown=None)
+        rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
+        rslvr.resolve([Requirement("test-pkg")])
+
+    assert resolver.cooldown_report.entries() == []
+
+
+def test_cooldown_report_write_to_json(tmp_path: pathlib.Path) -> None:
+    """write_to() produces valid JSON with the expected structure."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True, cooldown=_COOLDOWN)
+        rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
+        rslvr.resolve([Requirement("test-pkg")])
+
+    output = tmp_path / "cooldown-skipped-versions.json"
+    resolver.cooldown_report.write_to(output)
+
+    assert output.exists()
+    report = json.loads(output.read_text())
+    assert report["total_blocked"] == 1
+    assert "test-pkg" in report["packages"]
+    assert report["packages"]["test-pkg"][0]["version"] == "2.0.0"
+    assert "generated_at" in report
+
+
+def test_cooldown_report_empty_file_when_no_blocked(tmp_path: pathlib.Path) -> None:
+    """write_to() creates a file with zero blocked entries when report is empty."""
+    output = tmp_path / "cooldown-skipped-versions.json"
+    resolver.cooldown_report.write_to(output)
+    assert output.exists()
+    report = json.loads(output.read_text())
+    assert report["total_blocked"] == 0
+    assert report["packages"] == {}
+
+
+def test_cooldown_report_deduplicates() -> None:
+    """Repeated find_matches calls for the same package record only once."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(
+            include_sdists=True, cooldown=_COOLDOWN, use_resolver_cache=False
+        )
+        req = Requirement("test-pkg")
+        # Simulate resolvelib backtracking — call find_matches twice
+        provider.find_matches(
+            identifier="test-pkg",
+            requirements={"test-pkg": [req]},
+            incompatibilities={"test-pkg": []},
+        )
+        provider.find_matches(
+            identifier="test-pkg",
+            requirements={"test-pkg": [req]},
+            incompatibilities={"test-pkg": []},
+        )
+
+    entries = resolver.cooldown_report.entries()
+    assert len(entries) == 1
+
+
+def test_cooldown_report_clear() -> None:
+    """clear() removes all recorded entries."""
+    resolver.cooldown_report.record(
+        resolver.CooldownBlockedEntry(
+            package="pkg",
+            version="1.0.0",
+            upload_time=None,
+            cooldown_min_age_days=7,
+            provider="test",
+        )
+    )
+    assert len(resolver.cooldown_report.entries()) == 1
+    resolver.cooldown_report.clear()
+    assert resolver.cooldown_report.entries() == []
