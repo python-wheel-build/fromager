@@ -729,9 +729,8 @@ class PrepareSourceItem(PhaseItem):
         wi.sdist_root_dir = sdist_root_dir
         wi.unpack_dir = sdist_root_dir.parent
 
-        wi.build_env = bt._create_build_env(
-            req=wi.req,
-            resolved_version=wi.resolved_version,
+        wi.build_env = build_environment.BuildEnvironment(
+            ctx=bt.ctx,
             parent_dir=sdist_root_dir.parent,
         )
 
@@ -743,7 +742,7 @@ class PrepareSourceItem(PhaseItem):
             sdist_root_dir=sdist_root_dir,
         )
 
-        dep_items = bt._create_unresolved_work_items(
+        dep_items = bt.create_unresolved_work_items(
             wi.build_system_deps,
             RequirementType.BUILD_SYSTEM,
             wi.req,
@@ -812,13 +811,13 @@ class PrepareBuildItem(PhaseItem):
             parent,
         )
 
-        backend_items = bt._create_unresolved_work_items(
+        backend_items = bt.create_unresolved_work_items(
             wi.build_backend_deps,
             RequirementType.BUILD_BACKEND,
             wi.req,
             wi.resolved_version,
         )
-        sdist_items = bt._create_unresolved_work_items(
+        sdist_items = bt.create_unresolved_work_items(
             wi.build_sdist_deps,
             RequirementType.BUILD_SDIST,
             wi.req,
@@ -957,7 +956,7 @@ class ProcessInstallDepsItem(PhaseItem):
             constraint=constraint,
         )
 
-        dep_items = bt._create_unresolved_work_items(
+        dep_items = bt.create_unresolved_work_items(
             install_dependencies,
             RequirementType.INSTALL,
             wi.req,
@@ -1651,18 +1650,6 @@ class Bootstrapper:
         )
         return result
 
-    def _create_build_env(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-        parent_dir: pathlib.Path,
-    ) -> build_environment.BuildEnvironment:
-        """Create isolated build environment."""
-        return build_environment.BuildEnvironment(
-            ctx=self.ctx,
-            parent_dir=parent_dir,
-        )
-
     def _do_build(
         self,
         req: Requirement,
@@ -2053,7 +2040,7 @@ class Bootstrapper:
                 max_workers=self._num_bg_threads, thread_name_prefix="fromager-bg"
             )
 
-    def _create_unresolved_work_items(
+    def create_unresolved_work_items(
         self,
         deps: typing.Iterable[Requirement],
         dep_req_type: RequirementType,

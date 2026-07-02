@@ -4,7 +4,7 @@ Tests cover:
 - PhaseItem class hierarchy: class variables and base class behavior
 - WorkItem dataclass defaults and state accumulation
 - _track_why context manager behavior
-- _create_unresolved_work_items helper
+- create_unresolved_work_items helper
 - ResolveItem.run() version expansion
 - StartItem.run() graph addition and seen-check
 - PrepareSourceItem.run() all branches (prebuilt, source, cached, bad path)
@@ -300,7 +300,7 @@ class TestCreateUnresolvedWorkItems:
         bt = bootstrapper.Bootstrapper(tmp_context)
         deps = [Requirement("dep-a"), Requirement("dep-b")]
 
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             deps, RequirementType.BUILD_SYSTEM, Requirement("parent"), Version("1.0")
         )
 
@@ -317,7 +317,7 @@ class TestCreateUnresolvedWorkItems:
         bt = bootstrapper.Bootstrapper(tmp_context)
         bt.why = [(RequirementType.TOP_LEVEL, Requirement("root"), Version("2.0"))]
 
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             [Requirement("dep")],
             RequirementType.INSTALL,
             Requirement("parent"),
@@ -334,7 +334,7 @@ class TestCreateUnresolvedWorkItems:
         bt = bootstrapper.Bootstrapper(tmp_context)
         deps = [Requirement("zebra"), Requirement("alpha"), Requirement("middle")]
 
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             deps, RequirementType.INSTALL, Requirement("p"), Version("1.0")
         )
 
@@ -343,7 +343,7 @@ class TestCreateUnresolvedWorkItems:
 
     def test_empty_deps(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             [], RequirementType.INSTALL, Requirement("p"), Version("1.0")
         )
         assert items == []
@@ -1203,15 +1203,16 @@ class TestPhasePrepareSource:
 
         with (
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(
-                bt, "_create_build_env", return_value=mock_env
-            ) as mock_create_env,
+            patch(
+                "fromager.build_environment.BuildEnvironment",
+                return_value=mock_env,
+            ) as mock_build_env_cls,
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
                 return_value={Requirement("setuptools")},
             ),
             patch.object(
-                bt, "_create_unresolved_work_items", return_value=[mock_dep_item]
+                bt, "create_unresolved_work_items", return_value=[mock_dep_item]
             ) as mock_create_items,
         ):
             result = item.run(bt)
@@ -1224,7 +1225,10 @@ class TestPhasePrepareSource:
         assert wi.unpack_dir == sdist_root.parent
         assert wi.cached_wheel_filename is None
         assert result[1] is mock_dep_item
-        mock_create_env.assert_called_once()
+        mock_build_env_cls.assert_called_once_with(
+            ctx=bt.ctx,
+            parent_dir=sdist_root.parent,
+        )
         mock_create_items.assert_called_once_with(
             wi.build_system_deps,
             RequirementType.BUILD_SYSTEM,
@@ -1252,12 +1256,15 @@ class TestPhasePrepareSource:
 
         with (
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.build_environment.BuildEnvironment",
+                return_value=mock_env,
+            ),
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
                 return_value=set(),
             ),
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             result = item.run(bt)
 
@@ -1300,12 +1307,15 @@ class TestPhasePrepareSource:
                 "get_constraint",
                 return_value=Requirement("testpkg>=1.0"),
             ),
-            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.build_environment.BuildEnvironment",
+                return_value=mock_env,
+            ),
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
                 return_value=set(),
             ),
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             result = item.run(bt)
 
@@ -1346,7 +1356,7 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[backend_item], [sdist_item]],
             ),
         ):
@@ -1383,7 +1393,7 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[], []],
             ),
         ):
@@ -1419,7 +1429,7 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[], []],
             ),
         ):
@@ -1453,7 +1463,7 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[], []],
             ) as mock_create_items,
         ):
@@ -1709,7 +1719,7 @@ class TestPhaseProcessInstallDeps:
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "_add_to_build_order") as mock_build_order,
             patch.object(
-                bt, "_create_unresolved_work_items", return_value=[dep_item]
+                bt, "create_unresolved_work_items", return_value=[dep_item]
             ) as mock_create_items,
         ):
             result = item.run(bt)
@@ -1747,7 +1757,7 @@ class TestPhaseProcessInstallDeps:
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "_add_to_build_order") as mock_build_order,
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             result = item.run(bt)
 
@@ -1794,7 +1804,7 @@ class TestPhaseProcessInstallDeps:
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "_add_to_build_order") as mock_build_order,
             patch.object(
-                bt, "_create_unresolved_work_items", return_value=[]
+                bt, "create_unresolved_work_items", return_value=[]
             ) as mock_create_items,
         ):
             result = item.run(bt)
@@ -1843,7 +1853,7 @@ class TestPhaseProcessInstallDeps:
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "_add_to_build_order"),
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             result = item.run(bt)
 
@@ -1873,7 +1883,7 @@ class TestPhaseProcessInstallDeps:
                 return_value=constraint,
             ),
             patch.object(bt, "_add_to_build_order") as mock_build_order,
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             item.run(bt)
 
@@ -2216,7 +2226,7 @@ class TestPhasePrepareBuildFiltering:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 return_value=[],
             ) as mock_create,
         ):
@@ -2272,7 +2282,7 @@ class TestPhasePrepareBuildFiltering:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[resolve_item], []],
             ) as mock_create,
         ):
@@ -2319,7 +2329,7 @@ class TestPhasePrepareBuildFiltering:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[resolve_item], []],
             ) as mock_create,
         ):
@@ -2446,12 +2456,12 @@ class TestThreadPoolSubmission:
 
 
 class TestCreateUnresolvedWorkItemsReturnType:
-    """_create_unresolved_work_items returns ResolveItem instances."""
+    """create_unresolved_work_items returns ResolveItem instances."""
 
     def test_returns_resolve_items(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         deps = [Requirement("dep-a")]
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             deps, RequirementType.INSTALL, Requirement("parent"), Version("1.0")
         )
         assert len(items) == 1
