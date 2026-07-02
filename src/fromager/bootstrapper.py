@@ -166,6 +166,31 @@ class WorkItem:
     build_backend_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_sdist_deps: set[Requirement] = dataclasses.field(default_factory=set)
 
+    def is_build_requirement_context(self) -> bool:
+        """Return True if this item is being processed as part of a build requirement.
+
+        A package is a build dependency if its own requirement type is
+        build_system, build_backend, or build_sdist, OR if it is an install
+        requirement of something that is itself a build dependency (checked
+        by walking the ``why_snapshot`` chain).
+        """
+        if self.req_type.is_build_requirement:
+            logger.debug(f"is itself a build requirement: {self.req_type}")
+            return True
+        if not self.req_type.is_install_requirement:
+            logger.debug(
+                "is not an install requirement, not checking dependency chain for a build requirement"
+            )
+            return False
+        for req_type, req, resolved_version in reversed(self.why_snapshot):
+            if req_type.is_build_requirement:
+                logger.debug(
+                    f"is a build requirement because {req_type} dependency {req} ({resolved_version}) depends on it"
+                )
+                return True
+        logger.debug("is not a build requirement")
+        return False
+
 
 def _create_unpack_dir(
     work_dir: pathlib.Path,
@@ -677,9 +702,7 @@ class StartItem(PhaseItem):
                 wi.parent,
             )
 
-        wi.build_sdist_only = bt.sdist_only and not bt.processing_build_requirement(
-            wi.req_type
-        )
+        wi.build_sdist_only = bt.sdist_only and not wi.is_build_requirement_context()
 
         if bt.has_been_seen(wi.req, wi.resolved_version, wi.build_sdist_only):
             logger.debug(
@@ -1330,32 +1353,6 @@ class Bootstrapper:
                 self.progressbar.update()
 
             self._push_items(stack, new_items)
-
-    def processing_build_requirement(self, current_req_type: RequirementType) -> bool:
-        """Are we currently processing a build requirement?
-
-        We determine that a package is a build dependency if its requirement
-        type is build_system, build_backend, or build_sdist OR if it is an
-        installation requirement of something that is a build dependency. We
-        use a verbose loop to determine the status so we can log the reason
-        something is treated as a build dependency.
-        """
-        if current_req_type.is_build_requirement:
-            logger.debug(f"is itself a build requirement: {current_req_type}")
-            return True
-        if not current_req_type.is_install_requirement:
-            logger.debug(
-                "is not an install requirement, not checking dependency chain for a build requirement"
-            )
-            return False
-        for req_type, req, resolved_version in reversed(self.why):
-            if req_type.is_build_requirement:
-                logger.debug(
-                    f"is a build requirement because {req_type} dependency {req} ({resolved_version}) depends on it"
-                )
-                return True
-        logger.debug("is not a build requirement")
-        return False
 
     def _bootstrap_one(self, req: Requirement, req_type: RequirementType) -> None:
         """Bootstrap a single requirement using an iterative DFS loop.
