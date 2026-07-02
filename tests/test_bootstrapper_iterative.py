@@ -20,7 +20,7 @@ Tests cover:
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import Mock, call, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 from packaging.requirements import Requirement
@@ -29,6 +29,12 @@ from packaging.version import Version
 
 from fromager import bootstrapper, build_environment
 from fromager.bootstrapper import BootstrapPhase, SourceBuildResult, WorkItem
+from fromager.cache import (
+    CacheCollection,
+    CacheManager,
+    LocalDirectoryBackend,
+    StoreRouter,
+)
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
 
@@ -1195,6 +1201,314 @@ class TestPhasePrepareSource:
         assert "matches constraint" in caplog.text
 
 
+class TestPhasePrepareSourceCacheManager:
+    """Tests for _phase_prepare_source using the CacheManager short-circuit path.
+
+    When a CacheManager is configured on WorkContext and provides a cache hit,
+    PREPARE_SOURCE should skip directly to PROCESS_INSTALL_DEPS without
+    downloading source, creating a build environment, or resolving build deps.
+    """
+
+    def test_cache_hit_short_circuits_to_process_install_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Cache hit via CacheManager skips all build phases."""
+
+        # Set up a CacheManager with a wheel in the default collection
+        wheels_dir = tmp_context.wheels_downloads
+        wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        wheel_file.write_bytes(b"fake wheel")
+
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(
+                bt,
+                "_find_cached_wheel_via_manager",
+                return_value=(wheel_file, tmp_context.work_dir / "testpkg-1.0"),
+            ),
+            patch.object(
+                bt,
+                "_create_unpack_dir",
+                return_value=tmp_context.work_dir / "testpkg-1.0",
+            ),
+            patch.object(bt, "_download_source") as mock_dl_src,
+            patch.object(bt, "_prepare_source") as mock_prep,
+            patch.object(bt, "_create_build_env") as mock_create_env,
+            patch("fromager.bootstrapper.server.update_wheel_mirror") as mock_mirror,
+        ):
+            result = bt._phase_prepare_source(item)
+
+        # Short-circuit: jumped to PROCESS_INSTALL_DEPS
+        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        assert item.build_result is not None
+        assert item.build_result.wheel_filename == wheel_file
+        assert item.build_result.source_type == SourceType.CACHED
+        assert item.build_result.build_env is None
+        assert item.build_result.sdist_filename is None
+
+        # Nothing from the build path was called
+        mock_dl_src.assert_not_called()
+        mock_prep.assert_not_called()
+        mock_create_env.assert_not_called()
+
+        # Wheel mirror was updated so cached wheel is indexed for build deps
+        mock_mirror.assert_called_once_with(tmp_context)
+
+        # Only the continuation item, no build dep items
+        assert len(result) == 1
+        assert result[0] is item
+
+    def test_cache_hit_updates_wheel_mirror_for_build_dep_resolution(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Cache hit calls update_wheel_mirror so downloaded wheels are available
+        to subsequent build environments via the internal wheel server."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        wheel_file.write_bytes(b"fake wheel")
+
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(
+                bt,
+                "_find_cached_wheel_via_manager",
+                return_value=(wheel_file, tmp_context.work_dir / "testpkg-1.0"),
+            ),
+            patch.object(
+                bt,
+                "_create_unpack_dir",
+                return_value=tmp_context.work_dir / "testpkg-1.0",
+            ),
+            patch("fromager.bootstrapper.server.update_wheel_mirror") as mock_mirror,
+        ):
+            bt._phase_prepare_source(item)
+
+        # update_wheel_mirror called before returning, ensuring the wheel is
+        # symlinked into the simple/ index for uv pip install to find it
+        mock_mirror.assert_called_once_with(tmp_context)
+
+    def test_cache_miss_with_manager_falls_through_to_build(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Cache miss via CacheManager proceeds to normal build path."""
+
+        # Empty cache — no wheels
+        wheels_dir = tmp_context.wheels_downloads
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        mock_env = Mock()
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(
+                bt, "_download_source", return_value=tmp_context.work_dir / "src.tar.gz"
+            ) as mock_dl_src,
+            patch.object(bt, "_prepare_source", return_value=sdist_root) as mock_prep,
+            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.dependencies.get_build_system_dependencies",
+                return_value=set(),
+            ),
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            bt._phase_prepare_source(item)
+
+        # Normal build path — advances to PREPARE_BUILD
+        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        assert item.build_env is mock_env
+        mock_dl_src.assert_called_once()
+        mock_prep.assert_called_once()
+
+    def test_cache_hit_records_stats(self, tmp_context: WorkContext) -> None:
+        """Cache hit via CacheManager records a hit event in stats."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        wheel_file.write_bytes(b"fake wheel")
+
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        mock_pbi = MagicMock()
+        mock_pbi.build_tag.return_value = (1, "")
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(tmp_context, "package_build_info", return_value=mock_pbi),
+            patch.object(
+                bt,
+                "_unpack_metadata_from_wheel",
+                return_value=tmp_context.work_dir / "testpkg-1.0",
+            ),
+            patch.object(
+                bt,
+                "_create_unpack_dir",
+                return_value=tmp_context.work_dir / "testpkg-1.0",
+            ),
+            patch("fromager.bootstrapper.server.update_wheel_mirror"),
+        ):
+            bt._phase_prepare_source(item)
+
+        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        # Stats recorded the hit through the real lookup_wheel path
+        summary = cache_mgr.stats.summary()
+        assert summary["hits"]["total"] == 1
+        assert summary["hits"]["by_collection"]["default"] == 1
+
+    def test_no_cache_manager_uses_legacy_path(self, tmp_context: WorkContext) -> None:
+        """Without CacheManager, legacy path is used (no short-circuit)."""
+        # Explicitly no cache manager
+        assert tmp_context.cache is None
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        unpacked = tmp_context.work_dir / "testpkg-1.0"
+        unpacked.mkdir(parents=True)
+        cached_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
+        mock_env = Mock()
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(
+                bt, "_find_cached_wheel", return_value=(cached_wheel, unpacked)
+            ),
+            patch.object(bt, "_download_source") as mock_dl_src,
+            patch.object(bt, "_prepare_source") as mock_prep,
+            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.dependencies.get_build_system_dependencies",
+                return_value=set(),
+            ),
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            bt._phase_prepare_source(item)
+
+        # Legacy path: cached wheel found but no short-circuit — goes to PREPARE_BUILD
+        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        assert item.cached_wheel_filename == cached_wheel
+        mock_dl_src.assert_not_called()
+        mock_prep.assert_not_called()
+
+    def test_force_mode_skips_cache(self, tmp_context: WorkContext) -> None:
+        """--force flag causes CacheManager to return miss, triggering full build."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        # Put a wheel in the cache
+        wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        wheel_file.write_bytes(b"fake wheel")
+
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+            force=True,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        mock_env = Mock()
+
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(
+                bt, "_download_source", return_value=tmp_context.work_dir / "src.tar.gz"
+            ) as mock_dl_src,
+            patch.object(bt, "_prepare_source", return_value=sdist_root),
+            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.dependencies.get_build_system_dependencies",
+                return_value=set(),
+            ),
+            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+        ):
+            bt._phase_prepare_source(item)
+
+        # Force mode: goes through full build path despite wheel existing
+        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        mock_dl_src.assert_called_once()
+
+
 class TestPhasePrepareBuild:
     """Tests for _phase_prepare_build: dep installation and extraction."""
 
@@ -1523,6 +1837,169 @@ class TestPhaseBuild:
         assert len(result) == 1
         assert result[0] is item
         assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+
+    def test_store_wheel_called_for_freshly_built_wheel(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """When CacheManager is active and a wheel is built (not cached),
+        store_wheel routes it to the appropriate collection."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        variant_dir = tmp_context.wheels_repo / "variants" / "gaudi-ubi9"
+        variant_dir.mkdir(parents=True)
+
+        shared_backend = LocalDirectoryBackend(wheels_dir, backend_name="local:shared")
+        variant_backend = LocalDirectoryBackend(
+            variant_dir, backend_name="local:gaudi-ubi9"
+        )
+
+        default_coll = CacheCollection(
+            name="default", backends=[shared_backend], store_backend=shared_backend
+        )
+        variant_coll = CacheCollection(
+            name="gaudi-ubi9",
+            backends=[variant_backend],
+            store_backend=variant_backend,
+        )
+
+        router = StoreRouter(
+            overrides={},
+            accelerated_packages={canonicalize_name("testpkg")},
+            active_variant="gaudi-ubi9",
+        )
+        cache_mgr = CacheManager(
+            collections={"default": default_coll, "gaudi-ubi9": variant_coll},
+            search_order=["gaudi-ubi9", "default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        item = _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+        )
+
+        built_wheel = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        built_wheel.write_bytes(b"fake built wheel")
+
+        with (
+            patch.object(bt, "_do_build", return_value=(built_wheel, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            bt._phase_build(item)
+
+        # Wheel was copied to the variant collection directory
+        assert (variant_dir / "testpkg-1.0-1-py3-none-any.whl").exists()
+        # Original in downloads preserved for internal wheel server
+        assert built_wheel.exists()
+
+    def test_store_wheel_routes_unlisted_to_default(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Unlisted packages (not accelerated) are stored in the default collection."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        variant_dir = tmp_context.wheels_repo / "variants" / "gaudi-ubi9"
+        variant_dir.mkdir(parents=True)
+
+        shared_backend = LocalDirectoryBackend(wheels_dir, backend_name="local:shared")
+        variant_backend = LocalDirectoryBackend(
+            variant_dir, backend_name="local:gaudi-ubi9"
+        )
+
+        default_coll = CacheCollection(
+            name="default", backends=[shared_backend], store_backend=shared_backend
+        )
+        variant_coll = CacheCollection(
+            name="gaudi-ubi9",
+            backends=[variant_backend],
+            store_backend=variant_backend,
+        )
+
+        # testpkg is NOT in accelerated_packages
+        router = StoreRouter(
+            overrides={},
+            accelerated_packages={canonicalize_name("torch")},
+            active_variant="gaudi-ubi9",
+        )
+        cache_mgr = CacheManager(
+            collections={"default": default_coll, "gaudi-ubi9": variant_coll},
+            search_order=["gaudi-ubi9", "default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        item = _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+        )
+
+        built_wheel = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        built_wheel.write_bytes(b"fake built wheel")
+
+        with (
+            patch.object(bt, "_do_build", return_value=(built_wheel, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            bt._phase_build(item)
+
+        # Wheel stays in downloads (default collection dir == downloads)
+        assert built_wheel.exists()
+        # NOT copied to variant dir
+        assert not (variant_dir / "testpkg-1.0-1-py3-none-any.whl").exists()
+
+    def test_store_wheel_skipped_when_cached(self, tmp_context: WorkContext) -> None:
+        """When a cached wheel is used (not freshly built), store_wheel is not called."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        shared_backend = LocalDirectoryBackend(wheels_dir, backend_name="local:shared")
+        default_coll = CacheCollection(
+            name="default", backends=[shared_backend], store_backend=shared_backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": default_coll},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        mock_env = Mock()
+        sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+        sdist_root.parent.mkdir(parents=True, exist_ok=True)
+        cached_wheel = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        cached_wheel.write_bytes(b"cached wheel")
+        item = _make_build_item(
+            phase=BootstrapPhase.BUILD,
+            build_env=mock_env,
+            sdist_root_dir=sdist_root,
+            cached_wheel_filename=cached_wheel,
+        )
+
+        with (
+            patch.object(bt, "_do_build", return_value=(cached_wheel, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+            patch.object(cache_mgr, "store_wheel") as mock_store,
+        ):
+            bt._phase_build(item)
+
+        mock_store.assert_not_called()
 
 
 class TestPhaseProcessInstallDeps:
@@ -2183,3 +2660,137 @@ class TestPhasePrepareBuildFiltering:
         calls = mock_create.call_args_list
         assert calls[0][0][0] == {Requirement("wheel")}
         assert result == [item, resolve_item]
+
+
+class TestFindCachedWheelDispatch:
+    """Tests for _find_cached_wheel dispatch to manager vs legacy."""
+
+    def test_dispatches_to_manager_when_configured(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """With CacheManager set, _find_cached_wheel calls via_manager."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        req = Requirement("testpkg")
+        version = Version("1.0")
+
+        with (
+            patch.object(
+                bt, "_find_cached_wheel_via_manager", return_value=(None, None)
+            ) as mock_mgr,
+            patch.object(bt, "_find_cached_wheel_legacy") as mock_legacy,
+        ):
+            bt._find_cached_wheel(req, version)
+
+        mock_mgr.assert_called_once_with(req, version)
+        mock_legacy.assert_not_called()
+
+    def test_dispatches_to_legacy_when_no_manager(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Without CacheManager, _find_cached_wheel calls legacy."""
+        assert tmp_context.cache is None
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        req = Requirement("testpkg")
+        version = Version("1.0")
+
+        with (
+            patch.object(bt, "_find_cached_wheel_via_manager") as mock_mgr,
+            patch.object(
+                bt, "_find_cached_wheel_legacy", return_value=(None, None)
+            ) as mock_legacy,
+        ):
+            bt._find_cached_wheel(req, version)
+
+        mock_legacy.assert_called_once_with(req, version)
+        mock_mgr.assert_not_called()
+
+    def test_via_manager_returns_hit_path(self, tmp_context: WorkContext) -> None:
+        """_find_cached_wheel_via_manager returns path on cache hit."""
+
+        wheels_dir = tmp_context.wheels_downloads
+        wheel_file = wheels_dir / "testpkg-1.0-1-py3-none-any.whl"
+        wheel_file.write_bytes(b"fake wheel content")
+
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        req = Requirement("testpkg")
+        version = Version("1.0")
+
+        # build_tag must be a BuildTag tuple matching what parse_wheel_filename produces
+        mock_pbi = Mock()
+        mock_pbi.build_tag.return_value = (1, "")
+        metadata_dir = tmp_context.work_dir / "testpkg-1.0.dist-info"
+
+        with (
+            patch.object(tmp_context, "package_build_info", return_value=mock_pbi),
+            patch.object(bt, "_unpack_metadata_from_wheel", return_value=metadata_dir),
+        ):
+            wheel_path, meta_dir = bt._find_cached_wheel_via_manager(req, version)
+
+        assert wheel_path == wheel_file
+        assert meta_dir == metadata_dir
+
+    def test_via_manager_returns_none_on_miss(self, tmp_context: WorkContext) -> None:
+        """_find_cached_wheel_via_manager returns (None, None) on cache miss."""
+
+        # Empty cache
+        wheels_dir = tmp_context.wheels_downloads
+        backend = LocalDirectoryBackend(wheels_dir, backend_name="local:default")
+        collection = CacheCollection(
+            name="default", backends=[backend], store_backend=backend
+        )
+        router = StoreRouter(
+            overrides={}, accelerated_packages=set(), active_variant="cpu"
+        )
+        cache_mgr = CacheManager(
+            collections={"default": collection},
+            search_order=["default"],
+            store_routing=router,
+        )
+        cache_mgr.initialize()
+        tmp_context.cache = cache_mgr
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        req = Requirement("testpkg")
+        version = Version("1.0")
+
+        mock_pbi = Mock()
+        mock_pbi.build_tag.return_value = (1, "")
+
+        with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
+            wheel_path, meta_dir = bt._find_cached_wheel_via_manager(req, version)
+
+        assert wheel_path is None
+        assert meta_dir is None
