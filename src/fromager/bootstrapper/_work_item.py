@@ -20,7 +20,7 @@ class WorkItem:
 
     Carries identity fields set at creation time and accumulated state
     populated across phases as processing advances. The current phase is
-    encoded by the ``PhaseItem`` subclass wrapping this object.
+    encoded by the ``Phase`` subclass wrapping this object.
 
     Items enter at the RESOLVE phase with only req and req_type set.
     The RESOLVE phase populates source_url and resolved_version, then

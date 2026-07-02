@@ -10,8 +10,8 @@ from packaging.version import Version
 
 from .. import build_environment, dependencies, hooks
 from ..requirements_file import RequirementType
-from ._complete_item import CompleteItem
-from ._phase_item import PhaseItem
+from ._complete import Complete
+from ._phase import Phase
 from ._types import BootstrapPhase
 
 if typing.TYPE_CHECKING:
@@ -72,17 +72,17 @@ def _get_install_dependencies(
         raise RuntimeError("wheel_filename and sdist_filename are None")
 
 
-class ProcessInstallDepsItem(PhaseItem):
+class ProcessInstallDeps(Phase):
     """PROCESS_INSTALL_DEPS phase: hooks, extract deps, build order."""
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PROCESS_INSTALL_DEPS
     tracks_why: typing.ClassVar[bool] = True
 
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+    def run(self, bt: Bootstrapper) -> list[Phase]:
         """PROCESS_INSTALL_DEPS phase: hooks, extract deps, build order.
 
         Returns:
-            [CompleteItem, *install_dep_items].
+            [Complete, *install_dep_items].
         """
         wi = self.work_item
         assert wi.resolved_version is not None
@@ -150,11 +150,11 @@ class ProcessInstallDepsItem(PhaseItem):
             constraint=constraint,
         )
 
-        dep_items: list[PhaseItem] = bt.create_unresolved_work_items(
+        dep_items: list[Phase] = bt.create_unresolved_work_items(
             install_dependencies,
             RequirementType.INSTALL,
             wi.req,
             wi.resolved_version,
         )
 
-        return [CompleteItem(wi)] + dep_items
+        return [Complete(wi)] + dep_items

@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import typing
 
-from ._phase_item import PhaseItem
+from ._phase import Phase
 from ._types import BootstrapPhase
 
 if typing.TYPE_CHECKING:
     from ._bootstrapper import Bootstrapper
 
 
-class CompleteItem(PhaseItem):
+class Complete(Phase):
     """COMPLETE phase: clean up build directories."""
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.COMPLETE
     tracks_why: typing.ClassVar[bool] = True
 
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+    def run(self, bt: Bootstrapper) -> list[Phase]:
         """COMPLETE phase: clean up build directories.
 
         Returns:

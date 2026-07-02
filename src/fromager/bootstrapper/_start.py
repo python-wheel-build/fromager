@@ -4,8 +4,8 @@ import logging
 import typing
 
 from ..requirements_file import RequirementType
-from ._phase_item import PhaseItem
-from ._prepare_source_item import PrepareSourceItem
+from ._phase import Phase
+from ._prepare_source import PrepareSource
 from ._types import BootstrapPhase
 
 if typing.TYPE_CHECKING:
@@ -14,13 +14,13 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class StartItem(PhaseItem):
+class Start(Phase):
     """START phase: add to graph, check if already seen."""
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.START
     tracks_why: typing.ClassVar[bool] = False
 
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+    def run(self, bt: Bootstrapper) -> list[Phase]:
         """START phase: add to graph, check if already seen.
 
         _track_why is a no-op for this phase (tracks_why is False),
@@ -29,7 +29,7 @@ class StartItem(PhaseItem):
 
         Returns:
             Empty list if already seen (nothing to do).
-            [PrepareSourceItem] if this is new work.
+            [PrepareSource] if this is new work.
         """
         wi = self.work_item
         assert wi.resolved_version is not None
@@ -60,9 +60,9 @@ class StartItem(PhaseItem):
             f"new {wi.req_type} dependency {wi.req} resolves to {wi.resolved_version}"
         )
 
-        # Must set pbi_pre_built before constructing PrepareSourceItem so that
-        # PrepareSourceItem.background_work() immediately sees the correct value.
+        # Must set pbi_pre_built before constructing PrepareSource so that
+        # PrepareSource.background_work() immediately sees the correct value.
         pbi = bt.ctx.package_build_info(wi.req)
         wi.pbi_pre_built = pbi.pre_built
         wi.exclusive_build = pbi.exclusive_build
-        return [PrepareSourceItem(wi)]
+        return [PrepareSource(wi)]

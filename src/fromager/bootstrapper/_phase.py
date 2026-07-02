@@ -14,7 +14,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class PhaseItem(abc.ABC):
+class Phase(abc.ABC):
     """Abstract base for items pushed onto the bootstrap stack.
 
     Each subclass encodes one phase of the bootstrap pipeline.
@@ -30,7 +30,7 @@ class PhaseItem(abc.ABC):
         self.bg_future: concurrent.futures.Future[typing.Any] | None = None
 
     @abc.abstractmethod
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]: ...
+    def run(self, bt: Bootstrapper) -> list[Phase]: ...
 
     @property
     def requires_exclusive_run(self) -> bool:

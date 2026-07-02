@@ -12,23 +12,23 @@ from packaging.version import Version
 from resolvelib.resolvers import ResolverException
 
 from fromager import bootstrapper, log
-from fromager.bootstrapper._build_item import BuildItem
+from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._cache import (
     _bg_prepare_prebuilt,
     _download_wheel_from_cache,
     _find_cached_wheel,
 )
-from fromager.bootstrapper._phase_item import PhaseItem
-from fromager.bootstrapper._prepare_source_item import (
-    PrepareSourceItem,
+from fromager.bootstrapper._phase import Phase
+from fromager.bootstrapper._prepare_source import (
+    PrepareSource,
     _bg_prepare_source,
 )
-from fromager.bootstrapper._process_install_deps_item import (
-    ProcessInstallDepsItem,
+from fromager.bootstrapper._process_install_deps import (
+    ProcessInstallDeps,
     _get_install_dependencies,
 )
-from fromager.bootstrapper._resolve_item import ResolveItem
-from fromager.bootstrapper._start_item import StartItem
+from fromager.bootstrapper._resolve import Resolve
+from fromager.bootstrapper._start import Start
 from fromager.bootstrapper._types import (
     BootstrapPhase,
     SourceBuildResult,
@@ -314,7 +314,7 @@ def test_get_install_dependencies_returns_list(
 
 
 def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> None:
-    """Verify BuildItem.run() produces a SourceBuildResult with correct values."""
+    """Verify Build.run() produces a SourceBuildResult with correct values."""
     bt = bootstrapper.Bootstrapper(tmp_context)
 
     mock_sdist_root = tmp_context.work_dir / "package-1.0.0" / "package-1.0.0"
@@ -334,7 +334,7 @@ def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> N
         build_backend_deps=set(),
         build_sdist_deps=set(),
     )
-    item = BuildItem(wi)
+    item = Build(wi)
 
     # Set up why stack so _track_why works
     bt.why = []
@@ -347,7 +347,7 @@ def test_phase_build_produces_source_build_result(tmp_context: WorkContext) -> N
             result_items = item.run(bt)
 
     assert len(result_items) == 1
-    assert isinstance(result_items[0], ProcessInstallDepsItem)
+    assert isinstance(result_items[0], ProcessInstallDeps)
 
     result = result_items[0].work_item.build_result
     assert isinstance(result, SourceBuildResult)
@@ -377,9 +377,9 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
         build_phase_count = {"count": 0}
 
         def prepare_source_run(
-            self: PrepareSourceItem,
+            self: PrepareSource,
             bt_arg: bootstrapper.Bootstrapper,
-        ) -> list[PhaseItem]:
+        ) -> list[Phase]:
             build_phase_count["count"] += 1
             if str(self.work_item.resolved_version) == "1.5":
                 raise ValueError("Simulated failure for version 1.5")
@@ -387,7 +387,7 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
 
         req = Requirement("testpkg>=1.0")
 
-        with patch.object(PrepareSourceItem, "run", prepare_source_run):
+        with patch.object(PrepareSource, "run", prepare_source_run):
             with patch.object(bt, "has_been_seen", return_value=False):
                 bt._bootstrap_one(
                     req=req,
@@ -613,8 +613,8 @@ def _make_resolve_item(
     req_type: RequirementType = RequirementType.TOP_LEVEL,
     why_snapshot: list[tuple[RequirementType, Requirement, Version]] | None = None,
     parent: tuple[Requirement, Version] | None = None,
-) -> ResolveItem:
-    return ResolveItem(
+) -> Resolve:
+    return Resolve(
         WorkItem(
             req=Requirement(req),
             req_type=req_type,
@@ -625,7 +625,7 @@ def _make_resolve_item(
 
 
 def _record_and_load(
-    bt: bootstrapper.Bootstrapper, stack: list[PhaseItem]
+    bt: bootstrapper.Bootstrapper, stack: list[Phase]
 ) -> list[typing.Any]:
     bt._record_stack_state(stack)
     return typing.cast(list[typing.Any], json.loads(bt._stack_filename.read_text()))
@@ -657,7 +657,7 @@ def test_record_stack_state_full_item(tmp_context: WorkContext) -> None:
     parent_version = Version("2.0")
     why_snapshot = [(RequirementType.INSTALL, parent_req, parent_version)]
 
-    item = BuildItem(
+    item = Build(
         WorkItem(
             req=Requirement("child-pkg>=1.0"),
             req_type=RequirementType.INSTALL,
@@ -694,7 +694,7 @@ def test_record_stack_state_full_item(tmp_context: WorkContext) -> None:
 def test_record_stack_state_dep_sets_are_sorted(tmp_context: WorkContext) -> None:
     """Mixed-order dep sets come out alphabetically sorted."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    item = BuildItem(
+    item = Build(
         WorkItem(
             req=Requirement("mypkg"),
             req_type=RequirementType.TOP_LEVEL,
@@ -714,7 +714,7 @@ def test_record_stack_state_dep_sets_are_sorted(tmp_context: WorkContext) -> Non
 def test_record_stack_state_writes_file(tmp_context: WorkContext) -> None:
     """File is created; list length matches stack size."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    stack: list[PhaseItem] = [
+    stack: list[Phase] = [
         _make_resolve_item("pkga"),
         _make_resolve_item("pkgb"),
     ]
@@ -730,7 +730,7 @@ def test_record_stack_state_writes_file(tmp_context: WorkContext) -> None:
 def test_record_stack_state_ordering(tmp_context: WorkContext) -> None:
     """Index 0 = stack[-1] (next to pop); last index = stack[0]."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    stack: list[PhaseItem] = [
+    stack: list[Phase] = [
         _make_resolve_item("pkga"),
         _make_resolve_item("pkgb"),
         _make_resolve_item("pkgc"),
@@ -765,7 +765,7 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
 
     original = bt._record_stack_state
 
-    def counting_record(stack: list[PhaseItem]) -> None:
+    def counting_record(stack: list[Phase]) -> None:
         call_count["n"] += 1
         original(stack)
 
@@ -778,7 +778,7 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
             "resolve",
             return_value=[("https://pypi.test/testpkg-1.0.tar.gz", Version("1.0"))],
         ),
-        patch.object(StartItem, "run", return_value=[]),
+        patch.object(Start, "run", return_value=[]),
     ):
         bt._bootstrap_one(req=req, req_type=RequirementType.TOP_LEVEL)
 
@@ -788,7 +788,7 @@ def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:
 def test_bootstrap_with_empty_list(tmp_context: WorkContext) -> None:
     """bootstrap([]) completes without error and runs no phases."""
     bt = bootstrapper.Bootstrapper(tmp_context)
-    with patch.object(ResolveItem, "run") as mock_run:
+    with patch.object(Resolve, "run") as mock_run:
         bt.bootstrap([])
     mock_run.assert_not_called()
 
@@ -797,11 +797,9 @@ def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
     """bootstrap([req]) resolves and processes the requirement."""
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testpkg==1.0")
-    captured: list[ResolveItem] = []
+    captured: list[Resolve] = []
 
-    def capture_run(
-        self: ResolveItem, bt_arg: bootstrapper.Bootstrapper
-    ) -> list[PhaseItem]:
+    def capture_run(self: Resolve, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
         captured.append(self)
         return []
 
@@ -811,13 +809,13 @@ def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
             "_resolve_and_add_top_level",
             return_value=("http://example.test/testpkg-1.0.tar.gz", Version("1.0")),
         ),
-        patch.object(ResolveItem, "run", capture_run),
+        patch.object(Resolve, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
         bt.bootstrap([req])
 
     assert len(captured) == 1
-    assert isinstance(captured[0], ResolveItem)
+    assert isinstance(captured[0], Resolve)
     assert captured[0].work_item.req == req
     assert captured[0].work_item.req_type == RequirementType.TOP_LEVEL
 
@@ -829,7 +827,7 @@ def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
 
     with (
         patch.object(bt, "_resolve_and_add_top_level", return_value=None),
-        patch.object(ResolveItem, "run") as mock_run,
+        patch.object(Resolve, "run") as mock_run,
         patch.object(bt, "_record_stack_state"),
     ):
         bt.bootstrap([req])
@@ -845,9 +843,7 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
 
     dispatch_calls: list = []
 
-    def capture_run(
-        self: ResolveItem, bt_arg: bootstrapper.Bootstrapper
-    ) -> list[PhaseItem]:
+    def capture_run(self: Resolve, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
         dispatch_calls.append(self.work_item.req.name)
         return []
 
@@ -857,7 +853,7 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
             "_resolve_and_add_top_level",
             return_value=("http://example.test/pkg-1.0.tar.gz", Version("1.0")),
         ),
-        patch.object(ResolveItem, "run", capture_run),
+        patch.object(Resolve, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
         bt.bootstrap([req1, req2])
@@ -962,7 +958,7 @@ def test_bg_prepare_prebuilt_log_prefix_includes_version(
 
 
 def test_build_item_build_sdist_finds_existing(tmp_context: WorkContext) -> None:
-    """BuildItem._build_sdist returns cached sdist when finders.find_sdist hits."""
+    """Build._build_sdist returns cached sdist when finders.find_sdist hits."""
     sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
     sdist_root.mkdir(parents=True, exist_ok=True)
     wi = WorkItem(
@@ -973,7 +969,7 @@ def test_build_item_build_sdist_finds_existing(tmp_context: WorkContext) -> None
         sdist_root_dir=sdist_root,
         build_env=Mock(),
     )
-    item = BuildItem(wi)
+    item = Build(wi)
     cached = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
     cached.touch()
 
@@ -986,7 +982,7 @@ def test_build_item_build_sdist_finds_existing(tmp_context: WorkContext) -> None
 def test_build_item_build_sdist_calls_build_when_not_cached(
     tmp_context: WorkContext,
 ) -> None:
-    """BuildItem._build_sdist calls sources.build_sdist when no cached sdist found."""
+    """Build._build_sdist calls sources.build_sdist when no cached sdist found."""
     sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
     sdist_root.mkdir(parents=True, exist_ok=True)
     wi = WorkItem(
@@ -997,7 +993,7 @@ def test_build_item_build_sdist_calls_build_when_not_cached(
         sdist_root_dir=sdist_root,
         build_env=Mock(),
     )
-    item = BuildItem(wi)
+    item = Build(wi)
     built = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
 
     with (
@@ -1017,7 +1013,7 @@ def test_build_item_build_sdist_calls_build_when_not_cached(
 
 
 def test_build_item_build_wheel(tmp_context: WorkContext) -> None:
-    """BuildItem._build_wheel builds sdist then wheel and updates mirror."""
+    """Build._build_wheel builds sdist then wheel and updates mirror."""
     sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
     sdist_root.mkdir(parents=True, exist_ok=True)
     wi = WorkItem(
@@ -1028,7 +1024,7 @@ def test_build_item_build_wheel(tmp_context: WorkContext) -> None:
         sdist_root_dir=sdist_root,
         build_env=Mock(),
     )
-    item = BuildItem(wi)
+    item = Build(wi)
     built_wheel = tmp_context.wheels_build / "testpkg-1.0-py3-none-any.whl"
     built_sdist = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
 
@@ -1049,7 +1045,7 @@ def test_build_item_build_wheel(tmp_context: WorkContext) -> None:
 def test_build_item_do_build_returns_cached_wheel(
     tmp_context: WorkContext,
 ) -> None:
-    """BuildItem.do_build returns cached wheel immediately without building."""
+    """Build.do_build returns cached wheel immediately without building."""
     cached = tmp_context.wheels_downloads / "testpkg-1.0-py3-none-any.whl"
     cached.touch()
     wi = WorkItem(
@@ -1062,7 +1058,7 @@ def test_build_item_do_build_returns_cached_wheel(
         sdist_root_dir=tmp_context.work_dir,
         build_env=Mock(),
     )
-    item = BuildItem(wi)
+    item = Build(wi)
 
     with patch.object(item, "_build_wheel") as mock_wheel:
         wheel, sdist = item.do_build(tmp_context)
@@ -1073,7 +1069,7 @@ def test_build_item_do_build_returns_cached_wheel(
 
 
 def test_build_item_do_build_sdist_only(tmp_context: WorkContext) -> None:
-    """BuildItem.do_build calls _build_sdist and returns (None, sdist) when build_sdist_only=True."""
+    """Build.do_build calls _build_sdist and returns (None, sdist) when build_sdist_only=True."""
     built_sdist = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
     sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
     sdist_root.mkdir(parents=True, exist_ok=True)
@@ -1087,7 +1083,7 @@ def test_build_item_do_build_sdist_only(tmp_context: WorkContext) -> None:
         sdist_root_dir=sdist_root,
         build_env=Mock(),
     )
-    item = BuildItem(wi)
+    item = Build(wi)
 
     with (
         patch.object(item, "_build_sdist", return_value=built_sdist) as mock_sdist,
@@ -1102,7 +1098,7 @@ def test_build_item_do_build_sdist_only(tmp_context: WorkContext) -> None:
 
 
 def test_build_item_do_build_builds_wheel(tmp_context: WorkContext) -> None:
-    """BuildItem.do_build calls _build_wheel when no cache and not sdist_only."""
+    """Build.do_build calls _build_wheel when no cache and not sdist_only."""
     built_wheel = tmp_context.wheels_downloads / "testpkg-1.0-py3-none-any.whl"
     built_sdist = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
     sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
@@ -1117,7 +1113,7 @@ def test_build_item_do_build_builds_wheel(tmp_context: WorkContext) -> None:
         sdist_root_dir=sdist_root,
         build_env=Mock(),
     )
-    item = BuildItem(wi)
+    item = Build(wi)
 
     with patch.object(
         item, "_build_wheel", return_value=(built_wheel, built_sdist)
