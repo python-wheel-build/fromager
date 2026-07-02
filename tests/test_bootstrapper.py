@@ -195,29 +195,57 @@ def test_explain(tmp_context: WorkContext) -> None:
     )
 
 
+def _make_work_item(
+    req_type: RequirementType,
+    why_snapshot: list[tuple[RequirementType, Requirement, Version]] | None = None,
+) -> bootstrapper.WorkItem:
+    return bootstrapper.WorkItem(
+        req=Requirement("testpkg"),
+        req_type=req_type,
+        why_snapshot=why_snapshot or [],
+    )
+
+
 def test_is_build_requirement(tmp_context: WorkContext) -> None:
-    bt = bootstrapper.Bootstrapper(tmp_context)
-    bt.why = []
-    assert not bt.processing_build_requirement(RequirementType.TOP_LEVEL)
-    assert bt.processing_build_requirement(RequirementType.BUILD_SYSTEM)
-    assert bt.processing_build_requirement(RequirementType.BUILD_BACKEND)
-    assert bt.processing_build_requirement(RequirementType.BUILD_SDIST)
-    assert not bt.processing_build_requirement(RequirementType.INSTALL)
+    # No ancestry: req_type alone determines result
+    assert not _make_work_item(RequirementType.TOP_LEVEL).is_build_requirement_context()
+    assert _make_work_item(RequirementType.BUILD_SYSTEM).is_build_requirement_context()
+    assert _make_work_item(RequirementType.BUILD_BACKEND).is_build_requirement_context()
+    assert _make_work_item(RequirementType.BUILD_SDIST).is_build_requirement_context()
+    assert not _make_work_item(RequirementType.INSTALL).is_build_requirement_context()
 
-    bt.why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
-    assert not bt.processing_build_requirement(RequirementType.INSTALL)
-    assert bt.processing_build_requirement(RequirementType.BUILD_SYSTEM)
-    assert bt.processing_build_requirement(RequirementType.BUILD_BACKEND)
-    assert bt.processing_build_requirement(RequirementType.BUILD_SDIST)
+    # TOP_LEVEL ancestry: install is still not a build requirement
+    top_level_why = [(RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0"))]
+    assert not _make_work_item(
+        RequirementType.INSTALL, top_level_why
+    ).is_build_requirement_context()
+    assert _make_work_item(
+        RequirementType.BUILD_SYSTEM, top_level_why
+    ).is_build_requirement_context()
+    assert _make_work_item(
+        RequirementType.BUILD_BACKEND, top_level_why
+    ).is_build_requirement_context()
+    assert _make_work_item(
+        RequirementType.BUILD_SDIST, top_level_why
+    ).is_build_requirement_context()
 
-    bt.why = [
+    # BUILD_SYSTEM in ancestry: install becomes a build requirement
+    build_why = [
         (RequirementType.TOP_LEVEL, Requirement("foo"), Version("1.0.0")),
         (RequirementType.BUILD_SYSTEM, Requirement("bar==4.0.0"), Version("4.0.0")),
     ]
-    assert bt.processing_build_requirement(RequirementType.INSTALL)
-    assert bt.processing_build_requirement(RequirementType.BUILD_SYSTEM)
-    assert bt.processing_build_requirement(RequirementType.BUILD_BACKEND)
-    assert bt.processing_build_requirement(RequirementType.BUILD_SDIST)
+    assert _make_work_item(
+        RequirementType.INSTALL, build_why
+    ).is_build_requirement_context()
+    assert _make_work_item(
+        RequirementType.BUILD_SYSTEM, build_why
+    ).is_build_requirement_context()
+    assert _make_work_item(
+        RequirementType.BUILD_BACKEND, build_why
+    ).is_build_requirement_context()
+    assert _make_work_item(
+        RequirementType.BUILD_SDIST, build_why
+    ).is_build_requirement_context()
 
 
 def test_find_cached_wheel_returns_tuple(tmp_context: WorkContext) -> None:
