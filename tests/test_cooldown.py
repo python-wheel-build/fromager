@@ -637,17 +637,16 @@ def test_github_cooldown_skips_with_warning(
     assert "cooldown cannot be enforced" in caplog.text
 
 
-def test_local_wheel_server_allows_without_upload_time(
+def test_local_wheel_server_skips_cooldown_entirely(
     tmp_path: pathlib.Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """resolve_all_prebuilt_wheels() allows candidates from the local wheel server
-    even when upload_time is missing.
+    """resolve_cached_wheel() disables cooldown for the local wheel server.
 
-    The local fromager wheel server is PEP 503-only and serves packages that were
-    already resolved and built earlier in the same run. They are trusted and must
-    not be fail-closed by the cooldown just because the local server cannot supply
-    upload timestamps.
+    The local fromager wheel server serves packages that were already resolved
+    and built earlier in the same run.  They are trusted, so resolve_cached_wheel
+    uses PyPICacheProvider (cooldown=None) and no cooldown-related warnings are
+    emitted.
     """
     local_server_url = "http://127.0.0.1:9999/simple/"
     ctx = context.WorkContext(
@@ -658,7 +657,6 @@ def test_local_wheel_server_allows_without_upload_time(
         work_dir=tmp_path / "work-dir",
         cooldown=_COOLDOWN,
     )
-    ctx.wheel_server_url = local_server_url
 
     no_timestamp_response = {
         "meta": {"api-version": "1.1"},
@@ -668,7 +666,6 @@ def test_local_wheel_server_allows_without_upload_time(
                 "filename": "test_pkg-1.3.2-py3-none-any.whl",
                 "url": f"{local_server_url}test-pkg/test_pkg-1.3.2-py3-none-any.whl",
                 "hashes": {"sha256": "bbb"},
-                # no upload-time — as served by fromager's local PEP 503 server
             },
         ],
     }
@@ -679,16 +676,112 @@ def test_local_wheel_server_allows_without_upload_time(
                 json=no_timestamp_response,
                 headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
             )
+            _url, version = wheels.resolve_cached_wheel(
+                ctx=ctx,
+                req=Requirement("test-pkg"),
+                cache_server_url=local_server_url,
+            )
+
+    assert str(version) == "1.3.2"
+    assert "cooldown" not in caplog.text.lower()
+
+
+def test_cache_wheel_server_skips_cooldown_entirely(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """resolve_cached_wheel() disables cooldown for the cache wheel server.
+
+    The cache wheel server contains wheels from previous fromager runs that
+    were already vetted during original sdist resolution.  Cooldown is not
+    applicable.
+    """
+    cache_server_url = "https://registry.example.com/packages/pypi/simple/"
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
+
+    no_timestamp_response = {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": "test_pkg-1.3.2-py3-none-any.whl",
+                "url": f"{cache_server_url}test-pkg/test_pkg-1.3.2-py3-none-any.whl",
+                "hashes": {"sha256": "bbb"},
+            },
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{cache_server_url}test-pkg/",
+                json=no_timestamp_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            _url, version = wheels.resolve_cached_wheel(
+                ctx=ctx,
+                req=Requirement("test-pkg"),
+                cache_server_url=cache_server_url,
+            )
+
+    assert str(version) == "1.3.2"
+    assert "cooldown" not in caplog.text.lower()
+
+
+def test_non_cache_server_retains_cooldown(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """resolve_all_prebuilt_wheels() keeps cooldown active for non-cache servers.
+
+    When a server URL is an external/upstream index (not local or cache),
+    cooldown remains active.  Candidates without upload timestamps trigger a
+    warning because the server does not support upload_time.
+    """
+    external_server_url = "https://external.example.com/simple/"
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
+
+    no_timestamp_response = {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": "test_pkg-1.3.2-py3-none-any.whl",
+                "url": f"{external_server_url}test-pkg/test_pkg-1.3.2-py3-none-any.whl",
+                "hashes": {"sha256": "bbb"},
+            },
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{external_server_url}test-pkg/",
+                json=no_timestamp_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
             results = wheels.resolve_all_prebuilt_wheels(
                 ctx=ctx,
                 req=Requirement("test-pkg"),
-                wheel_server_urls=[local_server_url],
+                wheel_server_urls=[external_server_url],
             )
 
     assert len(results) == 1
     _, version = results[0]
     assert str(version) == "1.3.2"
-    assert "cooldown check skipped" in caplog.text
+    assert "cooldown" in caplog.text.lower()
 
 
 # ---------------------------------------------------------------------------
