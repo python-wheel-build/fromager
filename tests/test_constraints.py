@@ -202,3 +202,139 @@ def test_non_blocked_then_blocked_raises() -> None:
 def test_is_blocked_unknown_package() -> None:
     c = Constraints()
     assert not c.is_blocked("unknown")
+
+
+def test_provenance_single_source() -> None:
+    """Provenance tracks the source for a directly added constraint."""
+    c = Constraints()
+    c.add_constraint("foo>=2.0", provenance="/path/to/base.txt")
+    req, sources = c.get_constraint_with_provenance("foo")
+    assert req == Requirement("foo>=2.0")
+    assert sources == {"/path/to/base.txt"}
+
+
+def test_provenance_multiple_sources() -> None:
+    """Provenance records both files when two files constrain the same package."""
+    c = Constraints()
+    c.add_constraint("foo>=2.0", provenance="/path/to/base.txt")
+    c.add_constraint("foo!=2.1.1", provenance="/path/to/override.txt")
+    req, sources = c.get_constraint_with_provenance("foo")
+    assert req == Requirement("foo!=2.1.1,>=2.0")
+    assert sources == {"/path/to/base.txt", "/path/to/override.txt"}
+
+
+def test_provenance_same_source_multiple_lines() -> None:
+    """Multiple constraints from the same file appear once in the set."""
+    c = Constraints()
+    c.add_constraint("foo>=2.0", provenance="shared.txt")
+    c.add_constraint("foo!=2.1.1", provenance="shared.txt")
+    req, sources = c.get_constraint_with_provenance("foo")
+    assert req == Requirement("foo!=2.1.1,>=2.0")
+    assert sources == {"shared.txt"}
+
+
+def test_provenance_unknown_package() -> None:
+    """Provenance returns (None, None) for unconstrained packages."""
+    c = Constraints()
+    req, sources = c.get_constraint_with_provenance("nonexistent")
+    assert req is None
+    assert sources is None
+
+
+def test_provenance_load_constraints_file(tmp_path: pathlib.Path) -> None:
+    """Loading a file records the file path as the provenance source."""
+    constraint_file = tmp_path / "constraints-base.txt"
+    constraint_file.write_text("egg==1.0\ntorch>=2.0\n")
+    c = Constraints()
+    c.load_constraints_file(constraint_file)
+    _, egg_sources = c.get_constraint_with_provenance("egg")
+    _, torch_sources = c.get_constraint_with_provenance("torch")
+    assert egg_sources == {str(constraint_file)}
+    assert torch_sources == {str(constraint_file)}
+
+
+def test_provenance_load_multiple_files(tmp_path: pathlib.Path) -> None:
+    """Loading two files with the same package tracks both sources."""
+    base = tmp_path / "base.txt"
+    base.write_text("foo>=2.0\nbar==1.0\n")
+    override = tmp_path / "override.txt"
+    override.write_text("foo!=2.1.1\n")
+
+    c = Constraints()
+    c.load_constraints_file(base)
+    c.load_constraints_file(override)
+
+    _, foo_sources = c.get_constraint_with_provenance("foo")
+    _, bar_sources = c.get_constraint_with_provenance("bar")
+    assert foo_sources == {str(base), str(override)}
+    assert bar_sources == {str(base)}
+
+
+def test_provenance_returns_copy() -> None:
+    """get_constraint_with_provenance returns a copy of sources."""
+    c = Constraints()
+    c.add_constraint("foo>=1.0", provenance="a.txt")
+    _, sources = c.get_constraint_with_provenance("foo")
+    assert sources is not None
+    sources.add("injected.txt")
+    _, sources2 = c.get_constraint_with_provenance("foo")
+    assert sources2 is not None
+    assert "injected.txt" not in sources2
+
+
+def test_dump_constraints_multiple_sources() -> None:
+    """dump_constraints lists source files as comments above each constraint."""
+    c = Constraints()
+    c.add_constraint("foo>=2.0", provenance="/path/to/base.txt")
+    c.add_constraint("foo!=2.1.1", provenance="/path/to/override.txt")
+    c.add_constraint("bar==1.0", provenance="/path/to/base.txt")
+
+    out = io.StringIO()
+    c.dump_constraints(out)
+    result = out.getvalue()
+
+    assert "# /path/to/base.txt\nbar==1.0\n" in result
+    assert "# /path/to/base.txt\n# /path/to/override.txt\nfoo!=2.1.1,>=2.0\n" in result
+
+
+def test_conflict_error_includes_provenance() -> None:
+    """InvalidConstraintError message includes source file provenance."""
+    c = Constraints()
+    c.add_constraint("foo>=2.0", provenance="/constraints/base.txt")
+    with pytest.raises(
+        InvalidConstraintError,
+        match=r"(?=.*base\.txt)(?=.*override\.txt)",
+    ):
+        c.add_constraint("foo<1.0", provenance="/constraints/override.txt")
+
+
+def test_conflict_error_without_provenance() -> None:
+    """Error messages omit 'from' clause when provenance is None."""
+    c = Constraints()
+    c.add_constraint("foo>=2.0")
+    with pytest.raises(InvalidConstraintError, match=r"existing: foo>=2\.0,") as exc:
+        c.add_constraint("foo<1.0")
+    assert "from None" not in str(exc.value)
+    assert "from ," not in str(exc.value)
+
+
+def test_add_constraint_without_provenance() -> None:
+    """Constraints added without provenance work and don't pollute tracking."""
+    c = Constraints()
+    c.add_constraint("foo>=1.0")
+    req, sources = c.get_constraint_with_provenance("foo")
+    assert req == Requirement("foo>=1.0")
+    assert sources == set()
+    assert c.format_provenance("foo") == ""
+
+
+def test_format_provenance() -> None:
+    """format_provenance returns a sorted comma-separated string of sources."""
+    c = Constraints()
+    assert c.format_provenance("foo") == ""
+
+    c.add_constraint("foo>=2.0", provenance="/path/to/base.txt")
+    assert c.format_provenance("foo") == "/path/to/base.txt"
+
+    c.add_constraint("foo!=2.1.1", provenance="/path/to/override.txt")
+    assert c.format_provenance("foo") == "/path/to/base.txt, /path/to/override.txt"
