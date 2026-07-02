@@ -1343,12 +1343,12 @@ def _print_check(
 )
 @click.argument(
     "graph-file",
-    type=str,
+    type=clickext.ClickPath(exists=True),
 )
 @click.pass_obj
 def check(
     wkctx: context.WorkContext,
-    graph_file: str,
+    graph_file: pathlib.Path,
     as_json: bool,
     as_constraints: bool,
 ) -> None:
@@ -1368,8 +1368,11 @@ def check(
         raise click.UsageError("--json and --constraints are mutually exclusive")
 
     # Load raw dict for well-formedness (needs access to raw edges)
-    with open(graph_file) as f:
-        graph_dict = json.load(f)
+    try:
+        with open(graph_file) as f:
+            graph_dict = json.load(f)
+    except json.JSONDecodeError as err:
+        raise click.ClickException(f"Invalid JSON in {graph_file}: {err}") from err
 
     wf_issues = _check_well_formed(graph_dict)
 
