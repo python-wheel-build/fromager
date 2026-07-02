@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import typing
 from concurrent import futures
 
@@ -8,7 +7,7 @@ import click
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from .. import context, progress, read, sources, wheels
+from .. import context, progress, read, sources, threading_utils, wheels
 from ..log import requirement_ctxvar
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 )
 @click.option(
     "--num-threads",
-    default=os.cpu_count(),
+    default=threading_utils.get_cpu_count(),
     type=int,
 )
 @click.pass_obj

@@ -33,6 +33,7 @@ from . import (
     resolver,
     server,
     sources,
+    threading_utils,
     wheels,
 )
 from .dependency_graph import DependencyGraph
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 # package name, extras, version, sdist/wheel
 SeenKey = tuple[NormalizedName, tuple[str, ...], str, typing.Literal["sdist", "wheel"]]
 
-_DEFAULT_BG_THREADS: int = max(1, (os.cpu_count() or 2) // 2)
+_DEFAULT_BG_THREADS: int = max(1, threading_utils.get_cpu_count() // 2)
 
 
 @dataclasses.dataclass

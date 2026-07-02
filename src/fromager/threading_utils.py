@@ -1,8 +1,17 @@
 """Threading utilities for the fromager package."""
 
 import functools
+import os
 import threading
 import typing
+
+
+def get_cpu_count() -> int:
+    """CPU count from scheduler affinity"""
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    else:
+        return os.cpu_count() or 1
 
 
 def with_thread_lock() -> typing.Callable[[typing.Callable], typing.Callable]:
