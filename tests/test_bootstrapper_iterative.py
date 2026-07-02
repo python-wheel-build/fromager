@@ -1944,7 +1944,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("biotite==1.6.0"), Version("1.6.0"))
 
         with patch.object(bt, "add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+            result = bt.filter_deps_satisfied_by_build_system(
                 {Requirement("hatch-cython")},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1971,7 +1971,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
         with patch.object(bt, "add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+            result = bt.filter_deps_satisfied_by_build_system(
                 {Requirement("foo>=1.0")},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1991,7 +1991,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         wheel_req = Requirement("wheel")
 
         with patch.object(bt, "add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+            result = bt.filter_deps_satisfied_by_build_system(
                 {wheel_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -2013,7 +2013,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         foo_req = Requirement("foo>=2.0")
 
         with patch.object(bt, "add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+            result = bt.filter_deps_satisfied_by_build_system(
                 {foo_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -2034,7 +2034,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
         with patch.object(bt, "add_to_graph"):
-            bt._filter_deps_satisfied_by_build_system(
+            bt.filter_deps_satisfied_by_build_system(
                 {Requirement("foo>=2.0")},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -2059,7 +2059,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         wheel_req = Requirement("wheel")
 
         with patch.object(bt, "add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+            result = bt.filter_deps_satisfied_by_build_system(
                 {cython_req, wheel_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -2077,7 +2077,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        result = bt._filter_deps_satisfied_by_build_system(
+        result = bt.filter_deps_satisfied_by_build_system(
             set(),
             resolved_build_sys,
             RequirementType.BUILD_BACKEND,
@@ -2094,7 +2094,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         wheel_req = Requirement("wheel")
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        result = bt._filter_deps_satisfied_by_build_system(
+        result = bt.filter_deps_satisfied_by_build_system(
             {wheel_req},
             {},
             RequirementType.BUILD_BACKEND,
@@ -2113,7 +2113,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         extras_req = Requirement("foo[bar]>=1.0")
 
         with patch.object(bt, "add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+            result = bt.filter_deps_satisfied_by_build_system(
                 {extras_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -2125,7 +2125,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
 
 
 class TestGetResolvedBuildSystemVersions:
-    """Tests for _get_resolved_build_system_versions."""
+    """Tests for get_resolved_build_system_versions."""
 
     def test_returns_build_system_edges(self, tmp_context: WorkContext) -> None:
         """Returns resolved versions from BUILD_SYSTEM edges."""
@@ -2157,7 +2157,7 @@ class TestGetResolvedBuildSystemVersions:
         bt = bootstrapper.Bootstrapper(tmp_context)
         wi = _make_work_item(req="biotite", version="1.6.0")
 
-        result = bt._get_resolved_build_system_versions(wi)
+        result = bt.get_resolved_build_system_versions(wi)
 
         assert canonicalize_name("hatch-cython") in result
         assert result[canonicalize_name("hatch-cython")] == (
@@ -2173,7 +2173,7 @@ class TestGetResolvedBuildSystemVersions:
         bt = bootstrapper.Bootstrapper(tmp_context)
         wi = _make_work_item(req="nonexistent", version="1.0")
 
-        result = bt._get_resolved_build_system_versions(wi)
+        result = bt.get_resolved_build_system_versions(wi)
 
         assert result == {}
 
