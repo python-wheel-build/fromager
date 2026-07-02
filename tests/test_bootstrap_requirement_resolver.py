@@ -754,8 +754,10 @@ def test_resolve_prebuilt_after_source_uses_separate_cache(
 class TestResolveFromCacheServer:
     """Tests for the cache server fallback in _resolve_from_cache_server."""
 
-    def test_returns_newest_version_from_cache(self, tmp_context: WorkContext) -> None:
-        """Falls back to cache server and returns only the newest version."""
+    def test_resolves_sdist_url_via_source_provider(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Finds version on cache, then resolves sdist URL via source provider."""
         brr = BootstrapRequirementResolver(
             tmp_context,
             multiple_versions=True,
@@ -763,18 +765,28 @@ class TestResolveFromCacheServer:
         )
         req = Requirement("testpkg")
 
-        with patch(
-            "fromager.bootstrap_requirement_resolver.resolver"
-            ".find_all_matching_from_provider",
-            return_value=[
-                ("http://cache.test/testpkg-3.0.whl", Version("3.0")),
-                ("http://cache.test/testpkg-2.0.whl", Version("2.0")),
-            ],
+        cache_results = [
+            ("http://cache.test/testpkg-3.0-py3-none-any.whl", Version("3.0")),
+        ]
+        sdist_results = [
+            ("https://pypi.test/testpkg-3.0.tar.gz", Version("3.0")),
+        ]
+
+        with (
+            patch(
+                "fromager.bootstrap_requirement_resolver.resolver"
+                ".find_all_matching_from_provider",
+                side_effect=[cache_results, [], sdist_results],
+            ),
+            patch(
+                "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            ),
         ):
-            result = brr._resolve_from_cache_server(req)
+            result = brr._resolve_from_cache_server(req, RequirementType.INSTALL)
 
         assert len(result) == 1
         assert result[0][1] == Version("3.0")
+        assert result[0][0] == "https://pypi.test/testpkg-3.0.tar.gz"
 
     def test_returns_empty_when_cache_has_no_match(
         self, tmp_context: WorkContext
@@ -792,11 +804,11 @@ class TestResolveFromCacheServer:
             ".find_all_matching_from_provider",
             return_value=[],
         ):
-            result = brr._resolve_from_cache_server(req)
+            result = brr._resolve_from_cache_server(req, RequirementType.INSTALL)
 
         assert result == []
 
-    def test_returns_empty_on_exception(self, tmp_context: WorkContext) -> None:
+    def test_returns_empty_on_cache_exception(self, tmp_context: WorkContext) -> None:
         """Returns empty list when cache server query fails."""
         brr = BootstrapRequirementResolver(
             tmp_context,
@@ -810,7 +822,36 @@ class TestResolveFromCacheServer:
             ".find_all_matching_from_provider",
             side_effect=RuntimeError("connection refused"),
         ):
-            result = brr._resolve_from_cache_server(req)
+            result = brr._resolve_from_cache_server(req, RequirementType.INSTALL)
+
+        assert result == []
+
+    def test_returns_empty_when_source_provider_has_no_sdist(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Returns empty when cache has version but source provider has no sdist."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=True,
+            cache_wheel_server_url="http://cache.test/simple",
+        )
+        req = Requirement("testpkg")
+
+        cache_results = [
+            ("http://cache.test/testpkg-3.0-py3-none-any.whl", Version("3.0")),
+        ]
+
+        with (
+            patch(
+                "fromager.bootstrap_requirement_resolver.resolver"
+                ".find_all_matching_from_provider",
+                side_effect=[cache_results, [], []],
+            ),
+            patch(
+                "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            ),
+        ):
+            result = brr._resolve_from_cache_server(req, RequirementType.INSTALL)
 
         assert result == []
 
@@ -838,7 +879,7 @@ class TestResolveFromCacheServer:
             patch.object(
                 brr,
                 "_resolve_from_cache_server",
-                return_value=[("http://cache.test/testpkg-1.0.whl", Version("1.0"))],
+                return_value=[("https://pypi.test/testpkg-1.0.tar.gz", Version("1.0"))],
             ) as mock_cache,
         ):
             result = brr.resolve(
@@ -850,7 +891,7 @@ class TestResolveFromCacheServer:
             )
 
         mock_pypi.assert_called_once()
-        mock_cache.assert_called_once_with(req)
+        mock_cache.assert_called_once_with(req, RequirementType.INSTALL)
         assert len(result) == 1
         assert result[0][1] == Version("1.0")
 

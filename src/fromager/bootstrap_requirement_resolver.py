@@ -200,7 +200,7 @@ class BootstrapRequirementResolver:
                     "falling back to the cache server %s",
                     self.cache_wheel_server_url,
                 )
-                results = self._resolve_from_cache_server(req)
+                results = self._resolve_from_cache_server(req, req_type)
 
             if not results:
                 logger.warning(
@@ -213,11 +213,16 @@ class BootstrapRequirementResolver:
         if results:
             self._extend_known_versions(req, pre_built, results)
 
-    def _resolve_from_cache_server(self, req: Requirement) -> list[tuple[str, Version]]:
+    def _resolve_from_cache_server(
+        self, req: Requirement, req_type: RequirementType
+    ) -> list[tuple[str, Version]]:
         """Fall back to the remote wheel cache server for a cached version.
 
         When age filtering removes all candidates in multi-version mode,
-        queries the remote cache server for the newest available wheel.
+        queries the remote cache server (both wheels and sdists) to find
+        the newest available version, then re-resolves the sdist URL
+        through the normal source provider (including overrides).
+
         Returns at most one version so that transitive dependencies are
         re-processed without rebuilding every old version.
         """
@@ -245,9 +250,49 @@ class BootstrapRequirementResolver:
                     self.cache_wheel_server_url,
                     err,
                 )
-        if best is not None:
-            logger.info("found version %s on cache server", best[1])
-            return [best]
+
+        if best is None:
+            logger.debug(
+                "no versions found on cache server %s for %s",
+                self.cache_wheel_server_url,
+                req.name,
+            )
+            return []
+
+        _, version = best
+        logger.info("found version %s on cache server, resolving sdist URL", version)
+
+        pinned_req = Requirement(f"{req.name}=={version}")
+        try:
+            source_provider = sources.get_source_provider(
+                ctx=self.ctx,
+                req=pinned_req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
+                req_type=req_type,
+            )
+            sdist_results = resolver.find_all_matching_from_provider(
+                source_provider, pinned_req
+            )
+            if sdist_results:
+                logger.info(
+                    "resolved sdist URL for %s==%s from source provider",
+                    req.name,
+                    version,
+                )
+                return [sdist_results[0]]
+        except Exception as err:
+            logger.warning(
+                "failed to resolve sdist URL for %s==%s: %s",
+                req.name,
+                version,
+                err,
+            )
+
+        logger.warning(
+            "cache server has %s==%s but source provider returned no sdist",
+            req.name,
+            version,
+        )
         return []
 
     def get_matching_versions(
