@@ -492,12 +492,16 @@ def _is_wheel_built(
             wheel_server_urls=wheel_server_urls,
         )
         logger.info("found candidate wheel %s", url)
-        pbi = wkctx.package_build_info(req)
-        build_tag_from_settings = pbi.build_tag(resolved_version)
-        build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
         wheel_basename = resolver.extract_filename_from_url(url)
-        _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_basename)
+        _, _, build_tag_from_name, wheel_tags = parse_wheel_filename(wheel_basename)
         existing_build_tag = build_tag_from_name if build_tag_from_name else (0, "")
+        expected_tag = wheels.get_build_tag(
+            ctx=wkctx,
+            req=req,
+            version=resolved_version,
+            wheel_tags=wheel_tags,
+        )
+        build_tag = expected_tag if expected_tag else (0, "")
         if (
             existing_build_tag[0] > build_tag[0]
             and existing_build_tag[1] == build_tag[1]

@@ -146,3 +146,50 @@ def test_pypi_cache_provider() -> None:
         finders.PyPICacheProvider(
             cache_server_url=url, include_sdists=False, include_wheels=False
         )
+
+
+def test_find_wheel_with_build_tag(tmp_path: pathlib.Path) -> None:
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    wheel = downloads / "mypkg-1.0.0-2-py3-none-any.whl"
+    wheel.write_text("not-empty")
+
+    req = Requirement("mypkg")
+    actual = finders.find_wheel(downloads, req, "1.0.0", (2, ""))
+    assert actual == wheel
+
+
+def test_find_wheel_with_build_tag_suffix(tmp_path: pathlib.Path) -> None:
+    """find_wheel with an empty suffix should also match suffixed filenames."""
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    wheel = downloads / "mypkg-1.0.0-2_el9.6-cp312-cp312-linux_x86_64.whl"
+    wheel.write_text("not-empty")
+
+    req = Requirement("mypkg")
+    # Search with base tag (no suffix) — should still find the suffixed wheel
+    actual = finders.find_wheel(downloads, req, "1.0.0", (2, ""))
+    assert actual == wheel
+
+
+def test_find_wheel_with_exact_suffix(tmp_path: pathlib.Path) -> None:
+    """find_wheel with an exact suffix matches the right wheel."""
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    wheel = downloads / "mypkg-1.0.0-2_el9.6_cuda13.0-cp312-cp312-linux_x86_64.whl"
+    wheel.write_text("not-empty")
+
+    req = Requirement("mypkg")
+    actual = finders.find_wheel(downloads, req, "1.0.0", (2, "_el9.6_cuda13.0"))
+    assert actual == wheel
+
+
+def test_find_wheel_suffix_no_false_positive(tmp_path: pathlib.Path) -> None:
+    """Build tag 2 should not match build tag 20."""
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    (downloads / "mypkg-1.0.0-20-py3-none-any.whl").write_text("not-empty")
+
+    req = Requirement("mypkg")
+    actual = finders.find_wheel(downloads, req, "1.0.0", (2, ""))
+    assert actual is None

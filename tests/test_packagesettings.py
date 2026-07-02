@@ -932,3 +932,61 @@ env:
     result = pbi.get_extra_environ(template_env={}, version=None)
     assert result["FOO"] == "bar"
     assert "__version__" not in result
+
+
+def test_wheel_settings_default() -> None:
+    gs = SettingsFile.from_string("")
+    assert gs.wheels is None
+
+
+def test_wheel_settings_empty() -> None:
+    gs = SettingsFile.from_string("wheels: {}")
+    assert gs.wheels is not None
+    assert gs.wheels.build_tag_hook is None
+
+
+def test_wheel_settings_build_tag_hook_dot_syntax() -> None:
+    gs = SettingsFile.from_string("wheels:\n  build_tag_hook: os.path.join")
+    assert gs.wheels is not None
+    assert gs.wheels.build_tag_hook is not None
+    import os.path
+
+    assert gs.wheels.build_tag_hook is os.path.join
+
+
+def test_wheel_settings_build_tag_hook_colon_syntax() -> None:
+    gs = SettingsFile.from_string("wheels:\n  build_tag_hook: 'os.path:join'")
+    assert gs.wheels is not None
+    import os.path
+
+    assert gs.wheels.build_tag_hook is os.path.join
+
+
+def test_wheel_settings_build_tag_hook_invalid_import() -> None:
+    with pytest.raises(RuntimeError, match="failed to load global settings"):
+        SettingsFile.from_string("wheels:\n  build_tag_hook: 'nonexistent.module.func'")
+
+
+def test_settings_build_tag_hook_property_none() -> None:
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    assert settings.build_tag_hook is None
+
+
+def test_settings_build_tag_hook_property_with_hook() -> None:
+    sf = SettingsFile.from_string("wheels:\n  build_tag_hook: os.path.join")
+    settings = Settings(
+        settings=sf,
+        package_settings=[],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp"),
+        max_jobs=1,
+    )
+    import os.path
+
+    assert settings.build_tag_hook is os.path.join

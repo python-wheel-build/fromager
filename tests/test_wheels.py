@@ -1,4 +1,5 @@
 import pathlib
+import typing
 import zipfile
 from unittest.mock import Mock, patch
 
@@ -6,10 +7,17 @@ import pytest
 import wheel.wheelfile  # type: ignore
 from conftest import make_sbom_ctx
 from packaging.requirements import Requirement
+from packaging.tags import Tag
 from packaging.version import Version
 
 from fromager import build_environment, context, sources, wheels
-from fromager.packagesettings import SbomSettings
+from fromager.packagesettings import (
+    SbomSettings,
+    Settings,
+    SettingsFile,
+    Variant,
+    WheelSettings,
+)
 
 
 @patch("fromager.sources.download_url")
@@ -353,3 +361,169 @@ def test_validate_wheel_file(
     else:
         with pytest.raises(ValueError):
             wheels.validate_wheel_filename(req, version, wheel_file)
+
+
+# -- get_build_tag and build tag hook tests --
+
+
+def _make_ctx_with_hook(
+    tmp_path: pathlib.Path,
+    hook: typing.Callable[..., typing.Any] | None = None,
+) -> context.WorkContext:
+    """Create a WorkContext with an optional build_tag_hook."""
+    if hook is not None:
+        sf = SettingsFile(
+            wheels=WheelSettings(build_tag_hook=hook),
+            changelog={Variant("cpu"): ["variant change"]},
+        )
+    else:
+        sf = SettingsFile(changelog={Variant("cpu"): ["variant change"]})
+    settings = Settings(
+        settings=sf,
+        package_settings=[],
+        variant="cpu",
+        patches_dir=tmp_path / "patches",
+        max_jobs=1,
+    )
+    ctx = context.WorkContext(
+        active_settings=settings,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+    )
+    ctx.setup()
+    return ctx
+
+
+_PLATLIB_TAGS: frozenset[Tag] = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+_PURELIB_TAGS: frozenset[Tag] = frozenset({Tag("py3", "none", "any")})
+
+
+def test_get_build_tag_no_hook(tmp_path: pathlib.Path) -> None:
+    ctx = _make_ctx_with_hook(tmp_path, hook=None)
+    req = Requirement("some-pkg==1.0.0")
+    tag = wheels.get_build_tag(
+        ctx=ctx, req=req, version=Version("1.0.0"), wheel_tags=_PLATLIB_TAGS
+    )
+    pbi = ctx.package_build_info(req)
+    assert tag == pbi.build_tag(Version("1.0.0"))
+
+
+def test_get_build_tag_no_wheel_tags(tmp_path: pathlib.Path) -> None:
+    def hook(**kwargs: typing.Any) -> list[str]:
+        return ["el9.6"]
+
+    ctx = _make_ctx_with_hook(tmp_path, hook=hook)
+    req = Requirement("some-pkg==1.0.0")
+    tag = wheels.get_build_tag(
+        ctx=ctx, req=req, version=Version("1.0.0"), wheel_tags=None
+    )
+    pbi = ctx.package_build_info(req)
+    assert tag == pbi.build_tag(Version("1.0.0"))
+
+
+def test_get_build_tag_with_hook_platlib(tmp_path: pathlib.Path) -> None:
+    def hook(**kwargs: typing.Any) -> list[str]:
+        wt = kwargs["wheel_tags"]
+        if any(t.platform != "any" for t in wt):
+            return ["el9.6", "cuda13.0"]
+        return []
+
+    ctx = _make_ctx_with_hook(tmp_path, hook=hook)
+    req = Requirement("some-pkg==1.0.0")
+    tag = wheels.get_build_tag(
+        ctx=ctx, req=req, version=Version("1.0.0"), wheel_tags=_PLATLIB_TAGS
+    )
+    assert tag == (1, "_el9.6_cuda13.0")
+
+
+def test_get_build_tag_with_hook_purelib(tmp_path: pathlib.Path) -> None:
+    def hook(**kwargs: typing.Any) -> list[str]:
+        wt = kwargs["wheel_tags"]
+        if any(t.platform != "any" for t in wt):
+            return ["el9.6"]
+        return []
+
+    ctx = _make_ctx_with_hook(tmp_path, hook=hook)
+    req = Requirement("some-pkg==1.0.0")
+    tag = wheels.get_build_tag(
+        ctx=ctx, req=req, version=Version("1.0.0"), wheel_tags=_PURELIB_TAGS
+    )
+    # Hook returns [] for purelib → base tag unchanged
+    assert tag == (1, "")
+
+
+def test_get_build_tag_no_changelog(tmp_path: pathlib.Path) -> None:
+    def hook(**kwargs: typing.Any) -> list[str]:
+        return ["el9.6"]
+
+    sf = SettingsFile(wheels=WheelSettings(build_tag_hook=hook))
+    settings = Settings(
+        settings=sf,
+        package_settings=[],
+        variant="cpu",
+        patches_dir=tmp_path / "patches",
+        max_jobs=1,
+    )
+    ctx = context.WorkContext(
+        active_settings=settings,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+    )
+    ctx.setup()
+    req = Requirement("some-pkg==1.0.0")
+    # No changelog → empty build tag, hook is not called
+    tag = wheels.get_build_tag(
+        ctx=ctx, req=req, version=Version("1.0.0"), wheel_tags=_PLATLIB_TAGS
+    )
+    assert tag == ()
+
+
+def test_validate_build_tag_segments_valid() -> None:
+    wheels._validate_build_tag_segments(["el9.6", "cuda13.0", "torch2.10.0"])
+    wheels._validate_build_tag_segments([])
+    wheels._validate_build_tag_segments(["fc43"])
+
+
+def test_validate_build_tag_segments_invalid() -> None:
+    with pytest.raises(ValueError, match="invalid segment"):
+        wheels._validate_build_tag_segments(["el-9.6"])
+
+    with pytest.raises(ValueError, match="invalid segment"):
+        wheels._validate_build_tag_segments(["has space"])
+
+    with pytest.raises(ValueError, match="invalid segment"):
+        wheels._validate_build_tag_segments(["has_underscore"])
+
+
+def test_get_build_tag_hook_raises(tmp_path: pathlib.Path) -> None:
+    def bad_hook(**kwargs: typing.Any) -> list[str]:
+        raise RuntimeError("hook failed")
+
+    ctx = _make_ctx_with_hook(tmp_path, hook=bad_hook)
+    req = Requirement("some-pkg==1.0.0")
+    with pytest.raises(RuntimeError, match="hook failed"):
+        wheels.get_build_tag(
+            ctx=ctx,
+            req=req,
+            version=Version("1.0.0"),
+            wheel_tags=_PLATLIB_TAGS,
+        )
+
+
+def test_get_build_tag_hook_invalid_segment(tmp_path: pathlib.Path) -> None:
+    def bad_hook(**kwargs: typing.Any) -> list[str]:
+        return ["valid", "in-valid"]
+
+    ctx = _make_ctx_with_hook(tmp_path, hook=bad_hook)
+    req = Requirement("some-pkg==1.0.0")
+    with pytest.raises(ValueError, match="invalid segment"):
+        wheels.get_build_tag(
+            ctx=ctx,
+            req=req,
+            version=Version("1.0.0"),
+            wheel_tags=_PLATLIB_TAGS,
+        )

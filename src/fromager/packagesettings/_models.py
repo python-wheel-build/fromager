@@ -72,6 +72,36 @@ class SbomSettings(pydantic.BaseModel):
     """
 
 
+class WheelSettings(pydantic.BaseModel):
+    """Global wheel settings
+
+    ::
+
+      wheels:
+        build_tag_hook: "mypackage.hooks:build_tag_hook"
+
+    .. versionadded:: 0.82.0
+    """
+
+    model_config = MODEL_CONFIG
+
+    build_tag_hook: pydantic.ImportString[typing.Callable[..., typing.Any]] | None = (
+        None
+    )
+    """Dotted import path to a callable that returns build tag suffix segments.
+
+    The callable receives keyword-only arguments ``ctx``, ``req``,
+    ``version``, and ``wheel_tags``, and returns ``Sequence[str]``.
+    """
+
+    @pydantic.field_validator("build_tag_hook", mode="before")
+    @classmethod
+    def _colon_to_dot(cls, v: typing.Any) -> typing.Any:
+        if isinstance(v, str) and ":" in v:
+            return v.replace(":", ".", 1)
+        return v
+
+
 class PurlConfig(pydantic.BaseModel):
     """Per-package purl configuration for SBOM generation.
 
