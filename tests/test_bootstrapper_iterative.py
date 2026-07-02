@@ -1708,7 +1708,7 @@ class TestPhaseProcessInstallDeps:
             patch("fromager.hooks.run_post_bootstrap_hooks"),
             patch.object(
                 bt,
-                "_get_install_dependencies",
+                "get_install_dependencies",
                 return_value=[Requirement("dep-a")],
             ),
             patch.object(
@@ -1717,7 +1717,7 @@ class TestPhaseProcessInstallDeps:
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "add_to_build_order") as mock_build_order,
             patch.object(
                 bt, "create_unresolved_work_items", return_value=[dep_item]
             ) as mock_create_items,
@@ -1748,7 +1748,7 @@ class TestPhaseProcessInstallDeps:
                 side_effect=RuntimeError("hook failed"),
             ),
             patch.object(
-                bt, "_get_install_dependencies", return_value=[]
+                bt, "get_install_dependencies", return_value=[]
             ) as mock_get_deps,
             patch.object(
                 tmp_context,
@@ -1756,7 +1756,7 @@ class TestPhaseProcessInstallDeps:
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "add_to_build_order") as mock_build_order,
             patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             result = item.run(bt)
@@ -1793,7 +1793,7 @@ class TestPhaseProcessInstallDeps:
             patch("fromager.hooks.run_post_bootstrap_hooks"),
             patch.object(
                 bt,
-                "_get_install_dependencies",
+                "get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
             patch.object(
@@ -1802,7 +1802,7 @@ class TestPhaseProcessInstallDeps:
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "add_to_build_order") as mock_build_order,
             patch.object(
                 bt, "create_unresolved_work_items", return_value=[]
             ) as mock_create_items,
@@ -1831,7 +1831,7 @@ class TestPhaseProcessInstallDeps:
             patch("fromager.hooks.run_post_bootstrap_hooks"),
             patch.object(
                 bt,
-                "_get_install_dependencies",
+                "get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
         ):
@@ -1845,14 +1845,14 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(bt, "_get_install_dependencies", return_value=[]),
+            patch.object(bt, "get_install_dependencies", return_value=[]),
             patch.object(
                 tmp_context,
                 "package_build_info",
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order"),
+            patch.object(bt, "add_to_build_order"),
             patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             result = item.run(bt)
@@ -1863,7 +1863,7 @@ class TestPhaseProcessInstallDeps:
     def test_build_order_called_with_correct_args(
         self, tmp_context: WorkContext
     ) -> None:
-        """_add_to_build_order receives correct source_type, prebuilt, constraint."""
+        """add_to_build_order receives correct source_type, prebuilt, constraint."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = self._make_process_item(tmp_context)
         wi = item.work_item
@@ -1871,7 +1871,7 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(bt, "_get_install_dependencies", return_value=[]),
+            patch.object(bt, "get_install_dependencies", return_value=[]),
             patch.object(
                 tmp_context,
                 "package_build_info",
@@ -1882,7 +1882,7 @@ class TestPhaseProcessInstallDeps:
                 "get_constraint",
                 return_value=constraint,
             ),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "add_to_build_order") as mock_build_order,
             patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
             item.run(bt)

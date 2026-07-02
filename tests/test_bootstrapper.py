@@ -74,13 +74,13 @@ def test_seen_requirements_sdist(tmp_context: WorkContext) -> None:
 
 def test_build_order(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
-    bt._add_to_build_order(
+    bt.add_to_build_order(
         req=Requirement("buildme>1.0"),
         version=Version("6.0"),
         source_url="url",
         source_type=SourceType.SDIST,
     )
-    bt._add_to_build_order(
+    bt.add_to_build_order(
         req=Requirement("testdist>1.0"),
         version=Version("1.2"),
         source_url="url",
@@ -113,19 +113,19 @@ def test_build_order(tmp_context: WorkContext) -> None:
 
 def test_build_order_repeats(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
-    bt._add_to_build_order(
+    bt.add_to_build_order(
         Requirement("buildme>1.0"),
         Version("6.0"),
         "url",
         SourceType.SDIST,
     )
-    bt._add_to_build_order(
+    bt.add_to_build_order(
         Requirement("buildme>1.0"),
         Version("6.0"),
         "url",
         SourceType.SDIST,
     )
-    bt._add_to_build_order(
+    bt.add_to_build_order(
         Requirement("buildme[extra]>1.0"),
         Version("6.0"),
         "url",
@@ -149,13 +149,13 @@ def test_build_order_repeats(tmp_context: WorkContext) -> None:
 
 def test_build_order_name_canonicalization(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
-    bt._add_to_build_order(
+    bt.add_to_build_order(
         Requirement("flit-core>1.0"),
         Version("3.9.0"),
         "url",
         SourceType.SDIST,
     )
-    bt._add_to_build_order(
+    bt.add_to_build_order(
         Requirement("flit_core>1.0"),
         Version("3.9.0"),
         "url",
@@ -241,14 +241,14 @@ def test_find_cached_wheel_returns_tuple(tmp_context: WorkContext) -> None:
 def test_get_install_dependencies_returns_list(
     mock_get_deps: Mock, tmp_context: WorkContext
 ) -> None:
-    """Verify _get_install_dependencies returns list."""
+    """Verify get_install_dependencies returns list."""
     bt = bootstrapper.Bootstrapper(tmp_context)
 
     # Create fake wheel file and mock dependencies
     wheel_file = pathlib.Path("/fake/package-1.0.0-py3-none-any.whl")
     unpack_dir = tmp_context.work_dir
 
-    result = bt._get_install_dependencies(
+    result = bt.get_install_dependencies(
         req=Requirement("test-package"),
         resolved_version=Version("1.0.0"),
         wheel_filename=wheel_file,
