@@ -29,19 +29,20 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from fromager import bootstrapper, build_environment
-from fromager.bootstrapper import (
+from fromager.bootstrapper._build_item import BuildItem
+from fromager.bootstrapper._complete_item import CompleteItem
+from fromager.bootstrapper._phase_item import PhaseItem
+from fromager.bootstrapper._prepare_build_item import PrepareBuildItem
+from fromager.bootstrapper._prepare_source_item import PrepareSourceItem
+from fromager.bootstrapper._process_install_deps_item import ProcessInstallDepsItem
+from fromager.bootstrapper._resolve_item import ResolveItem
+from fromager.bootstrapper._start_item import StartItem
+from fromager.bootstrapper._types import (
     BootstrapPhase,
-    BuildItem,
-    CompleteItem,
-    PhaseItem,
-    PrepareBuildItem,
-    PrepareSourceItem,
-    ProcessInstallDepsItem,
-    ResolveItem,
+    PreparedSourceData,
     SourceBuildResult,
-    StartItem,
-    WorkItem,
 )
+from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
 
@@ -423,7 +424,9 @@ class TestPhaseResolve:
                 return (tmp_context.work_dir / "pkg-2.0-py3-none-any.whl", None)
             return (None, None)
 
-        with patch("fromager.bootstrapper._find_cached_wheel", side_effect=mock_cache):
+        with patch(
+            "fromager.bootstrapper._cache._find_cached_wheel", side_effect=mock_cache
+        ):
             result = item.run(bt)
 
         assert len(result) == 2
@@ -443,7 +446,7 @@ class TestPhaseResolve:
         )
 
         with patch(
-            "fromager.bootstrapper._find_cached_wheel",
+            "fromager.bootstrapper._cache._find_cached_wheel",
             return_value=(tmp_context.work_dir / "cached.whl", None),
         ):
             result = item.run(bt)
@@ -459,7 +462,7 @@ class TestPhaseResolve:
         item = _make_resolve_item()
         item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        with patch("fromager.bootstrapper._find_cached_wheel") as mock_cache:
+        with patch("fromager.bootstrapper._cache._find_cached_wheel") as mock_cache:
             result = item.run(bt)
 
         assert len(result) == 1
@@ -496,7 +499,7 @@ class TestPhaseResolve:
         )
 
         with patch(
-            "fromager.bootstrapper._find_cached_wheel", return_value=(None, None)
+            "fromager.bootstrapper._cache._find_cached_wheel", return_value=(None, None)
         ):
             result = item.run(bt)
 
@@ -1169,9 +1172,7 @@ class TestPhasePrepareSource:
         mock_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
         mock_unpack = tmp_context.work_dir / "testpkg-1.0"
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(
-                wheel_filename=mock_wheel, unpack_dir=mock_unpack
-            )
+            PreparedSourceData(wheel_filename=mock_wheel, unpack_dir=mock_unpack)
         )
 
         with patch.object(tmp_context.constraints, "get_constraint", return_value=None):
@@ -1198,7 +1199,7 @@ class TestPhasePrepareSource:
         mock_env = Mock()
         mock_dep_item = _make_resolve_item(req="setuptools")
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(sdist_root_dir=sdist_root)
+            PreparedSourceData(sdist_root_dir=sdist_root)
         )
 
         with (
@@ -1248,7 +1249,7 @@ class TestPhasePrepareSource:
         cached_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
         mock_env = Mock()
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(
+            PreparedSourceData(
                 sdist_root_dir=unpacked / unpacked.stem,
                 cached_wheel_filename=cached_wheel,
             )
@@ -1281,7 +1282,7 @@ class TestPhasePrepareSource:
 
         bad_root = tmp_context.work_dir / "a" / "b" / "c"
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(sdist_root_dir=bad_root)
+            PreparedSourceData(sdist_root_dir=bad_root)
         )
 
         with patch.object(tmp_context.constraints, "get_constraint", return_value=None):
@@ -1298,7 +1299,7 @@ class TestPhasePrepareSource:
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
         mock_env = Mock()
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(sdist_root_dir=sdist_root)
+            PreparedSourceData(sdist_root_dir=sdist_root)
         )
 
         with (
@@ -1699,7 +1700,7 @@ class TestPhaseProcessInstallDeps:
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
             patch(
-                "fromager.bootstrapper._get_install_dependencies",
+                "fromager.bootstrapper._process_install_deps_item._get_install_dependencies",
                 return_value=[Requirement("dep-a")],
             ),
             patch.object(
@@ -1739,7 +1740,8 @@ class TestPhaseProcessInstallDeps:
                 side_effect=RuntimeError("hook failed"),
             ),
             patch(
-                "fromager.bootstrapper._get_install_dependencies", return_value=[]
+                "fromager.bootstrapper._process_install_deps_item._get_install_dependencies",
+                return_value=[],
             ) as mock_get_deps,
             patch.object(
                 tmp_context,
@@ -1783,7 +1785,7 @@ class TestPhaseProcessInstallDeps:
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
             patch(
-                "fromager.bootstrapper._get_install_dependencies",
+                "fromager.bootstrapper._process_install_deps_item._get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
             patch.object(
@@ -1820,7 +1822,7 @@ class TestPhaseProcessInstallDeps:
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
             patch(
-                "fromager.bootstrapper._get_install_dependencies",
+                "fromager.bootstrapper._process_install_deps_item._get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
         ):
@@ -1834,7 +1836,10 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch("fromager.bootstrapper._get_install_dependencies", return_value=[]),
+            patch(
+                "fromager.bootstrapper._process_install_deps_item._get_install_dependencies",
+                return_value=[],
+            ),
             patch.object(
                 tmp_context,
                 "package_build_info",
@@ -1860,7 +1865,10 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch("fromager.bootstrapper._get_install_dependencies", return_value=[]),
+            patch(
+                "fromager.bootstrapper._process_install_deps_item._get_install_dependencies",
+                return_value=[],
+            ),
             patch.object(
                 tmp_context,
                 "package_build_info",
