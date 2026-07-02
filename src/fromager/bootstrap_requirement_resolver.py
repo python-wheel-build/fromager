@@ -118,6 +118,15 @@ class BootstrapRequirementResolver:
             pbi = self.ctx.package_build_info(req)
             pre_built = pbi.pre_built
 
+        # Check session cache BEFORE the git URL guard so that background
+        # threads can retrieve pre-cached git URL resolutions (populated by
+        # Bootstrapper.resolve_versions() on the main thread before bootstrap()
+        # is called) without hitting the ValueError.
+        cached_result = self.get_cached_resolution(req, pre_built)
+        if cached_result is not None:
+            logger.debug(f"resolved {req} from cache")
+            return list(cached_result) if return_all_versions else [cached_result[0]]
+
         # Git URL source resolution must be handled by Bootstrapper.
         # But git URL prebuilt resolution is allowed - we look for wheels on PyPI
         # (test mode fallback uses this path).
@@ -145,6 +154,32 @@ class BootstrapRequirementResolver:
         if return_all_versions:
             return matching
         return [matching[0]]
+
+    def get_cached_resolution(
+        self,
+        req: Requirement,
+        pre_built: bool,
+    ) -> list[tuple[str, Version]] | None:
+        """Return cached matching versions if this requirement was already resolved.
+
+        Returns ``None`` if the requirement has not been resolved yet, allowing
+        callers to distinguish between "no matching versions" and "not yet resolved".
+
+        Used by background threads to retrieve pre-cached git URL resolutions
+        populated by the main thread before entering the parallel section.
+
+        Args:
+            req: Package requirement
+            pre_built: Whether looking for prebuilt or source resolution
+
+        Returns:
+            List of (url, version) tuples if previously resolved, None otherwise.
+        """
+        rule_key = (str(req), pre_built)
+        with self._lock:
+            if rule_key in self._resolved_rules:
+                return self._get_matching_versions(req, pre_built)
+        return None
 
     def _resolve_and_extend(
         self,

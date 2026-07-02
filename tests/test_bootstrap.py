@@ -560,6 +560,8 @@ def test_multiple_versions_auto_disables_constraints(
     mock_progress.return_value.__enter__.return_value = Mock()
     mock_progress.return_value.__exit__.return_value = None
     mock_bt_instance = Mock()
+    mock_bt_instance.__enter__ = Mock(return_value=mock_bt_instance)
+    mock_bt_instance.__exit__ = Mock(return_value=None)
     mock_bt_instance.finalize.return_value = 0
     mock_bootstrapper.return_value = mock_bt_instance
 
@@ -607,6 +609,8 @@ def test_multiple_versions_with_skip_constraints_no_duplicate_log(
     mock_progress.return_value.__enter__.return_value = Mock()
     mock_progress.return_value.__exit__.return_value = None
     mock_bt_instance = Mock()
+    mock_bt_instance.__enter__ = Mock(return_value=mock_bt_instance)
+    mock_bt_instance.__exit__ = Mock(return_value=None)
     mock_bt_instance.finalize.return_value = 0
     mock_bootstrapper.return_value = mock_bt_instance
 
@@ -655,6 +659,8 @@ def test_without_multiple_versions_constraints_not_disabled(
     mock_progress.return_value.__enter__.return_value = Mock()
     mock_progress.return_value.__exit__.return_value = None
     mock_bt_instance = Mock()
+    mock_bt_instance.__enter__ = Mock(return_value=mock_bt_instance)
+    mock_bt_instance.__exit__ = Mock(return_value=None)
     mock_bt_instance.finalize.return_value = 0
     mock_bootstrapper.return_value = mock_bt_instance
     mock_write_constraints.return_value = True
@@ -717,6 +723,8 @@ def test_max_release_age_sets_context(
     mock_progress.return_value.__enter__.return_value = Mock()
     mock_progress.return_value.__exit__.return_value = None
     mock_bt_instance = Mock()
+    mock_bt_instance.__enter__ = Mock(return_value=mock_bt_instance)
+    mock_bt_instance.__exit__ = Mock(return_value=None)
     mock_bt_instance.finalize.return_value = 0
     mock_bootstrapper.return_value = mock_bt_instance
 

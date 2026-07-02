@@ -45,7 +45,7 @@ if ! grep -q "new toplevel dependency stevedore resolves to 5.3.0" "$OUTDIR/boot
 fi
 
 # The wheel must have been downloaded as a pre-built (not built from source).
-if ! grep -q "uses a pre-built wheel" "$OUTDIR/bootstrap.log"; then
+if ! grep -q "using pre-built wheel" "$OUTDIR/bootstrap.log"; then
   echo "FAIL: stevedore was not downloaded as a pre-built wheel" 1>&2
   pass=false
 fi

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import dataclasses
 import datetime
@@ -32,6 +33,7 @@ from . import (
     resolver,
     server,
     sources,
+    threading_utils,
     wheels,
 )
 from .dependency_graph import DependencyGraph
@@ -45,6 +47,8 @@ logger = logging.getLogger(__name__)
 
 # package name, extras, version, sdist/wheel
 SeenKey = tuple[NormalizedName, tuple[str, ...], str, typing.Literal["sdist", "wheel"]]
+
+_DEFAULT_BG_THREADS: int = max(1, threading_utils.get_cpu_count() // 2)
 
 
 @dataclasses.dataclass
@@ -61,6 +65,27 @@ class SourceBuildResult:
     sdist_root_dir: pathlib.Path | None
     build_env: build_environment.BuildEnvironment | None
     source_type: SourceType
+
+
+@dataclasses.dataclass
+class PreparedSourceData:
+    """Result of background I/O pre-fetching returned to the main thread.
+
+    Fields are set in one of three combinations depending on the result type:
+
+    - Source (no cache hit): only ``sdist_root_dir`` is set.
+    - Source (cache hit): both ``sdist_root_dir`` and ``cached_wheel_filename`` are set.
+    - Prebuilt wheel: both ``wheel_filename`` and ``unpack_dir`` are set.
+    """
+
+    # Source path: set after download+unpack OR cache hit
+    sdist_root_dir: pathlib.Path | None = None
+    # Source path: set when the result came from the wheel cache
+    cached_wheel_filename: pathlib.Path | None = None
+    # Prebuilt path: downloaded wheel file
+    wheel_filename: pathlib.Path | None = None
+    # Prebuilt path: unpack directory (created by mkdir)
+    unpack_dir: pathlib.Path | None = None
 
 
 # Valid failure types for test mode error recording
@@ -144,6 +169,264 @@ class WorkItem:
     build_backend_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_sdist_deps: set[Requirement] = dataclasses.field(default_factory=set)
 
+    # Background future: set by _push_items for RESOLVE and PREPARE_SOURCE items.
+    # None for all other phases or before _push_items has been called.
+    bg_future: concurrent.futures.Future[typing.Any] | None = dataclasses.field(
+        default=None, compare=False, repr=False
+    )
+
+
+def _create_unpack_dir(
+    work_dir: pathlib.Path,
+    req: Requirement,
+    resolved_version: Version,
+) -> pathlib.Path:
+    unpack_dir = work_dir / f"{req.name}-{resolved_version}"
+    unpack_dir.mkdir(parents=True, exist_ok=True)
+    return unpack_dir
+
+
+def _extract_build_reqs_from_wheel(
+    work_dir: pathlib.Path,
+    req: Requirement,
+    resolved_version: Version,
+    wheel_filename: pathlib.Path,
+) -> pathlib.Path | None:
+    """Extract fromager build requirement files from a wheel archive.
+
+    Looks for files prefixed with `FROMAGER_BUILD_REQ_PREFIX` inside the
+    wheel's `.dist-info` directory and extracts them to a local unpack
+    directory. Returns the unpack directory on success, or None if the
+    files are not present or extraction fails.
+    """
+    dist_name, dist_version, _, _ = wheels.extract_info_from_wheel_file(
+        req, wheel_filename
+    )
+    unpack_dir = _create_unpack_dir(work_dir, req, resolved_version)
+    dist_filename = f"{dist_name}-{dist_version}"
+    dist_info_path = pathlib.Path(f"{dist_filename}.dist-info")
+    req_filenames: list[str] = [
+        dependencies.BUILD_BACKEND_REQ_FILE_NAME,
+        dependencies.BUILD_SDIST_REQ_FILE_NAME,
+        dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
+    ]
+    try:
+        with zipfile.ZipFile(wheel_filename) as archive:
+            for filename in req_filenames:
+                zipinfo = archive.getinfo(
+                    str(
+                        dist_info_path
+                        / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}"
+                    )
+                )
+                if os.path.isabs(zipinfo.filename) or ".." in zipinfo.filename:
+                    raise ValueError(f"Unsafe path in wheel: {zipinfo.filename}")
+                zipinfo.filename = filename
+                output_file = archive.extract(zipinfo, unpack_dir)
+                logger.info(f"extracted {output_file}")
+        logger.info(f"extracted build requirements from wheel into {unpack_dir}")
+        return unpack_dir
+    except Exception as e:
+        logger.info(f"could not extract build requirements from wheel: {e}")
+        for filename in req_filenames:
+            unpack_dir.joinpath(filename).unlink(missing_ok=True)
+        return None
+
+
+def _look_for_existing_wheel(
+    ctx: context.WorkContext,
+    req: Requirement,
+    resolved_version: Version,
+    search_in: pathlib.Path,
+) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+    pbi = ctx.package_build_info(req)
+    expected_build_tag = pbi.build_tag(resolved_version)
+    logger.info(
+        f"looking for existing wheel for version {resolved_version} with build tag {expected_build_tag} in {search_in}"
+    )
+    wheel_filename = finders.find_wheel(
+        downloads_dir=search_in,
+        req=req,
+        dist_version=str(resolved_version),
+        build_tag=expected_build_tag,
+    )
+    if not wheel_filename:
+        return None, None
+    _, _, build_tag, _ = wheels.extract_info_from_wheel_file(req, wheel_filename)
+    if expected_build_tag and expected_build_tag != build_tag:
+        logger.info(
+            f"found wheel for {resolved_version} in {wheel_filename} but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
+        )
+        return None, None
+    logger.info(f"found existing wheel {wheel_filename}")
+    build_reqs_dir = _extract_build_reqs_from_wheel(
+        ctx.work_dir, req, resolved_version, wheel_filename
+    )
+    return wheel_filename, build_reqs_dir
+
+
+def _download_wheel_from_cache(
+    ctx: context.WorkContext,
+    cache_wheel_server_url: str | None,
+    req: Requirement,
+    resolved_version: Version,
+) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+    if not cache_wheel_server_url:
+        return None, None
+    logger.info(f"checking if wheel was already uploaded to {cache_wheel_server_url}")
+    try:
+        pinned_req = Requirement(f"{req.name}=={resolved_version}")
+        provider = finders.PyPICacheProvider(
+            cache_server_url=cache_wheel_server_url,
+            constraints=ctx.constraints,
+        )
+        results = resolver.find_all_matching_from_provider(provider, pinned_req)
+        wheel_url, _ = results[0]
+        wheelfile_name = pathlib.Path(urlparse(wheel_url).path)
+        pbi = ctx.package_build_info(req)
+        expected_build_tag = pbi.build_tag(resolved_version)
+        logger.info(f"has expected build tag {expected_build_tag}")
+        changelogs = pbi.get_changelog(resolved_version)
+        logger.debug(f"has change logs {changelogs}")
+
+        _, _, build_tag, _ = wheels.extract_info_from_wheel_file(req, wheelfile_name)
+        if expected_build_tag and expected_build_tag != build_tag:
+            logger.info(
+                f"found wheel for {resolved_version} in cache but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
+            )
+            return None, None
+
+        cached_wheel = wheels.download_wheel(
+            req=req, wheel_url=wheel_url, output_directory=ctx.wheels_downloads
+        )
+        if cache_wheel_server_url != ctx.wheel_server_url:
+            server.update_wheel_mirror(ctx)
+        logger.info("found built wheel on cache server")
+        unpack_dir = _extract_build_reqs_from_wheel(
+            ctx.work_dir, req, resolved_version, cached_wheel
+        )
+        return cached_wheel, unpack_dir
+    except ResolverException:
+        logger.info(
+            f"did not find wheel for {resolved_version} in {cache_wheel_server_url}"
+        )
+        return None, None
+    except requests.exceptions.RequestException as err:
+        logger.warning(
+            f"network error checking wheel cache for {resolved_version} "
+            f"at {cache_wheel_server_url}: {err}"
+        )
+        return None, None
+    except Exception as err:
+        logger.warning(
+            f"unexpected error checking wheel cache for {resolved_version} "
+            f"at {cache_wheel_server_url}: {err}"
+        )
+        return None, None
+
+
+def _find_cached_wheel(
+    ctx: context.WorkContext,
+    cache_wheel_server_url: str | None,
+    req: Requirement,
+    resolved_version: Version,
+) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+    """Look for cached wheel in 3 locations (thread-safe, no Bootstrapper state).
+
+    Checks for cached wheels in order:
+    1. wheels_build directory (previously built)
+    2. wheels_downloads directory (previously downloaded)
+    3. Cache server (remote cache)
+
+    Returns:
+        Tuple of (cached_wheel_filename, unpacked_cached_wheel).
+        Both None if no cache hit.
+    """
+    cached_wheel, unpacked = _look_for_existing_wheel(
+        ctx, req, resolved_version, ctx.wheels_build
+    )
+    if cached_wheel:
+        return cached_wheel, unpacked
+
+    cached_wheel, unpacked = _look_for_existing_wheel(
+        ctx, req, resolved_version, ctx.wheels_downloads
+    )
+    if cached_wheel:
+        return cached_wheel, unpacked
+
+    cached_wheel, unpacked = _download_wheel_from_cache(
+        ctx, cache_wheel_server_url, req, resolved_version
+    )
+    if cached_wheel:
+        return cached_wheel, unpacked
+
+    return None, None
+
+
+def _bg_resolve(
+    bg_resolver: bootstrap_requirement_resolver.BootstrapRequirementResolver,
+    req: Requirement,
+    req_type: RequirementType,
+    parent_req: Requirement | None,
+    return_all_versions: bool,
+) -> list[tuple[str, Version]]:
+    """Background-safe resolution: no Bootstrapper state accessed."""
+    logger.info(f"{BootstrapPhase.RESOLVE} for {req_type} requirement")
+    return bg_resolver.resolve(
+        req=req,
+        req_type=req_type,
+        parent_req=parent_req,
+        return_all_versions=return_all_versions,
+    )
+
+
+def _bg_prepare_source(
+    ctx: context.WorkContext,
+    cache_wheel_server_url: str | None,
+    req: Requirement,
+    resolved_version: Version,
+    source_url: str,
+) -> PreparedSourceData:
+    """Background-safe source download+unpack: no Bootstrapper state accessed."""
+    # Thread-safe: _seen_requirements in the main thread prevents the same
+    # package from being submitted to the thread pool more than once.
+    # Paths from download_source() and prepare_source() include {name}-{version},
+    # making them unique across concurrent threads processing different packages.
+    logger.info("preparing source")
+    cached_wheel, unpacked = _find_cached_wheel(
+        ctx, cache_wheel_server_url, req, resolved_version
+    )
+    if unpacked is not None:
+        return PreparedSourceData(
+            sdist_root_dir=unpacked / unpacked.stem,
+            cached_wheel_filename=cached_wheel,
+        )
+    source_filename = sources.download_source(
+        ctx=ctx, req=req, version=resolved_version, download_url=source_url
+    )
+    sdist_root_dir = sources.prepare_source(
+        ctx=ctx, req=req, source_filename=source_filename, version=resolved_version
+    )
+    return PreparedSourceData(sdist_root_dir=sdist_root_dir)
+
+
+def _bg_prepare_prebuilt(
+    ctx: context.WorkContext,
+    req: Requirement,
+    req_type: RequirementType,
+    resolved_version: Version,
+    wheel_url: str,
+) -> PreparedSourceData:
+    """Background-safe prebuilt download: no Bootstrapper state accessed."""
+    # Thread-safe: paths include {req.name}-{resolved_version} (unique per package),
+    # mkdir uses exist_ok=True (atomic), and update_wheel_mirror() is already locked.
+    logger.info(f"using pre-built wheel for {req_type} requirement")
+    wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
+    unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
+    unpack_dir.mkdir(parents=True, exist_ok=True)
+    server.update_wheel_mirror(ctx)
+    return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
+
 
 class Bootstrapper:
     def __init__(
@@ -155,6 +438,7 @@ class Bootstrapper:
         sdist_only: bool = False,
         test_mode: bool = False,
         multiple_versions: bool = False,
+        num_bg_threads: int = _DEFAULT_BG_THREADS,
     ) -> None:
         if test_mode and sdist_only:
             raise ValueError(
@@ -169,6 +453,12 @@ class Bootstrapper:
         self.test_mode = test_mode
         self.multiple_versions = multiple_versions
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
+        self._num_bg_threads = max(1, num_bg_threads)
+        self._bg_pool: concurrent.futures.ThreadPoolExecutor | None = (
+            concurrent.futures.ThreadPoolExecutor(
+                max_workers=self._num_bg_threads, thread_name_prefix="fromager-bg"
+            )
+        )
 
         # Delegate resolution to BootstrapRequirementResolver
         self._resolver = bootstrap_requirement_resolver.BootstrapRequirementResolver(
@@ -230,6 +520,7 @@ class Bootstrapper:
             results = self.resolve_versions(
                 req=req,
                 req_type=RequirementType.TOP_LEVEL,
+                parent_req=None,
                 return_all_versions=self.multiple_versions,
             )
             if self.multiple_versions:
@@ -277,6 +568,7 @@ class Bootstrapper:
         self,
         req: Requirement,
         req_type: RequirementType,
+        parent_req: Requirement | None = None,
         return_all_versions: bool = False,
     ) -> list[tuple[str, Version]]:
         """Resolve version(s) of a requirement.
@@ -290,6 +582,8 @@ class Bootstrapper:
         Args:
             req: Package requirement to resolve
             req_type: Type of requirement
+            parent_req: Explicit parent requirement from dependency chain.
+                Callers must pass this explicitly; do not read ``self.why`` here.
             return_all_versions: If True, return all matching versions.
                 If False, return only highest version.
 
@@ -319,7 +613,6 @@ class Bootstrapper:
             return result  # Git URLs always return single version
 
         # Delegate to RequirementResolver
-        parent_req = self.why[-1][1] if self.why else None
         return self._resolver.resolve(
             req=req,
             req_type=req_type,
@@ -348,12 +641,13 @@ class Bootstrapper:
         # in normal mode, the context var stays set for the top-level error
         # handler in __main__.py to include the package name in its log message.
         stack: list[WorkItem] = []
+        initial_items: list[WorkItem] = []
         for req in requirements:
             token = requirement_ctxvar.set(req)
             result = self._resolve_and_add_top_level(req)
             requirement_ctxvar.reset(token)
             if result is not None:
-                stack.append(
+                initial_items.append(
                     WorkItem(
                         req=req,
                         req_type=RequirementType.TOP_LEVEL,
@@ -362,6 +656,7 @@ class Bootstrapper:
                         parent=None,
                     )
                 )
+        self._push_items(stack, initial_items)
 
         self._run_bootstrap_loop(stack)
 
@@ -381,7 +676,10 @@ class Bootstrapper:
             item = stack.pop()
             self.why = list(item.why_snapshot)
 
-            with req_ctxvar_context(item.req), self._track_why(item):
+            with (
+                req_ctxvar_context(item.req, item.resolved_version),
+                self._track_why(item),
+            ):
                 try:
                     new_items = self._dispatch_phase(item)
                 except Exception as err:
@@ -395,7 +693,7 @@ class Bootstrapper:
             if not new_items:
                 self.progressbar.update()
 
-            stack.extend(new_items)
+            self._push_items(stack, new_items)
 
     def _processing_build_requirement(self, current_req_type: RequirementType) -> bool:
         """Are we currently processing a build requirement?
@@ -453,17 +751,21 @@ class Bootstrapper:
 
         # Single RESOLVE item — resolution, version expansion, and error
         # handling all happen inside the loop via _phase_resolve.
-        stack: list[WorkItem] = [
-            WorkItem(
-                req=req,
-                req_type=req_type,
-                phase=BootstrapPhase.RESOLVE,
-                why_snapshot=list(self.why),
-                parent=parent,
-            )
-        ]
+        initial_item = WorkItem(
+            req=req,
+            req_type=req_type,
+            phase=BootstrapPhase.RESOLVE,
+            why_snapshot=list(self.why),
+            parent=parent,
+        )
+        stack: list[WorkItem] = []
+        self._push_items(stack, [initial_item])
 
         self._run_bootstrap_loop(stack)
+
+        # empty the stack state file to show watchers are are done
+        # with bootstrapping
+        self._record_stack_state([])
 
         # Restore why stack for the caller
         self.why = saved_why
@@ -692,53 +994,12 @@ class Bootstrapper:
         resolved_version: Version,
         wheel_url: str,
     ) -> tuple[pathlib.Path, pathlib.Path]:
-        logger.info(f"{req_type} requirement {req} uses a pre-built wheel")
-
-        wheel_filename = wheels.download_wheel(req, wheel_url, self.ctx.wheels_prebuilt)
-        unpack_dir = self._create_unpack_dir(req, resolved_version)
-        # Update the wheel mirror so pre-built wheels are indexed
-        # and available to subsequent builds that need them as dependencies
-        server.update_wheel_mirror(self.ctx)
-        return (wheel_filename, unpack_dir)
-
-    def _find_cached_wheel(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-        """Look for cached wheel in 3 locations.
-
-        Checks for cached wheels in order:
-        1. wheels_build directory (previously built)
-        2. wheels_downloads directory (previously downloaded)
-        3. Cache server (remote cache)
-
-        Returns:
-            Tuple of (cached_wheel_filename, unpacked_cached_wheel).
-            Both None if no cache hit.
-        """
-        # Check if we have previously built a wheel and still have it on the
-        # local filesystem.
-        cached_wheel, unpacked = self._look_for_existing_wheel(
-            req, resolved_version, self.ctx.wheels_build
+        result = _bg_prepare_prebuilt(
+            self.ctx, req, req_type, resolved_version, wheel_url
         )
-        if cached_wheel:
-            return cached_wheel, unpacked
-
-        # Check if we have previously downloaded a wheel and still have it
-        # on the local filesystem.
-        cached_wheel, unpacked = self._look_for_existing_wheel(
-            req, resolved_version, self.ctx.wheels_downloads
-        )
-        if cached_wheel:
-            return cached_wheel, unpacked
-
-        # Look for a wheel on the cache server and download it if there is one.
-        cached_wheel, unpacked = self._download_wheel_from_cache(req, resolved_version)
-        if cached_wheel:
-            return cached_wheel, unpacked
-
-        return None, None
+        assert result.wheel_filename is not None
+        assert result.unpack_dir is not None
+        return (result.wheel_filename, result.unpack_dir)
 
     def _get_install_dependencies(
         self,
@@ -936,143 +1197,6 @@ class Bootstrapper:
             # Return None to signal failure; bootstrap() will record via re-raised exception
             return None
 
-    def _look_for_existing_wheel(
-        self,
-        req: Requirement,
-        resolved_version: Version,
-        search_in: pathlib.Path,
-    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-        pbi = self.ctx.package_build_info(req)
-        expected_build_tag = pbi.build_tag(resolved_version)
-        logger.info(
-            f"looking for existing wheel for version {resolved_version} with build tag {expected_build_tag} in {search_in}"
-        )
-        wheel_filename = finders.find_wheel(
-            downloads_dir=search_in,
-            req=req,
-            dist_version=str(resolved_version),
-            build_tag=expected_build_tag,
-        )
-        if not wheel_filename:
-            return None, None
-
-        # Re-validate build tag from the actual wheel metadata because
-        # finders.find_wheel matches by filename prefix, which may not
-        # enforce an exact build tag match.
-        _, _, build_tag, _ = wheels.extract_info_from_wheel_file(req, wheel_filename)
-        if expected_build_tag and expected_build_tag != build_tag:
-            logger.info(
-                f"found wheel for {resolved_version} in {wheel_filename} but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
-            )
-            return None, None
-
-        logger.info(f"found existing wheel {wheel_filename}")
-        metadata_dir = self._unpack_metadata_from_wheel(
-            req, resolved_version, wheel_filename
-        )
-        return wheel_filename, metadata_dir
-
-    def _download_wheel_from_cache(
-        self, req: Requirement, resolved_version: Version
-    ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-        if not self.cache_wheel_server_url:
-            return None, None
-        logger.info(
-            f"checking if wheel was already uploaded to {self.cache_wheel_server_url}"
-        )
-        try:
-            pinned_req = Requirement(f"{req.name}=={resolved_version}")
-            provider = finders.PyPICacheProvider(
-                cache_server_url=self.cache_wheel_server_url,
-                constraints=self.ctx.constraints,
-            )
-            results = resolver.find_all_matching_from_provider(provider, pinned_req)
-            wheel_url, _ = results[0]
-            wheelfile_name = pathlib.Path(urlparse(wheel_url).path)
-            pbi = self.ctx.package_build_info(req)
-            expected_build_tag = pbi.build_tag(resolved_version)
-            # Log the expected build tag for debugging
-            logger.info(f"has expected build tag {expected_build_tag}")
-            # Get changelogs for debug info
-            changelogs = pbi.get_changelog(resolved_version)
-            logger.debug(f"has change logs {changelogs}")
-
-            _, _, build_tag, _ = wheels.extract_info_from_wheel_file(
-                req, wheelfile_name
-            )
-            if expected_build_tag and expected_build_tag != build_tag:
-                logger.info(
-                    f"found wheel for {resolved_version} in cache but build tag does not match. Got {build_tag} but expected {expected_build_tag}"
-                )
-                return None, None
-
-            cached_wheel = wheels.download_wheel(
-                req=req, wheel_url=wheel_url, output_directory=self.ctx.wheels_downloads
-            )
-            if self.cache_wheel_server_url != self.ctx.wheel_server_url:
-                # Only update the local server if we actually downloaded
-                # something from a different server.
-                server.update_wheel_mirror(self.ctx)
-            logger.info("found built wheel on cache server")
-            unpack_dir = self._unpack_metadata_from_wheel(
-                req, resolved_version, cached_wheel
-            )
-            return cached_wheel, unpack_dir
-        except ResolverException:
-            logger.info(
-                f"did not find wheel for {resolved_version} in {self.cache_wheel_server_url}"
-            )
-            return None, None
-        except requests.exceptions.RequestException as err:
-            logger.warning(
-                f"network error checking wheel cache for {resolved_version} "
-                f"at {self.cache_wheel_server_url}: {err}"
-            )
-            return None, None
-        except Exception as err:
-            logger.warning(
-                f"unexpected error checking wheel cache for {resolved_version} "
-                f"at {self.cache_wheel_server_url}: {err}"
-            )
-            return None, None
-
-    def _unpack_metadata_from_wheel(
-        self, req: Requirement, resolved_version: Version, wheel_filename: pathlib.Path
-    ) -> pathlib.Path | None:
-        dist_name, dist_version, _, _ = wheels.extract_info_from_wheel_file(
-            req,
-            wheel_filename,
-        )
-        unpack_dir = self._create_unpack_dir(req, resolved_version)
-        dist_filename = f"{dist_name}-{dist_version}"
-        metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
-        req_filenames: list[str] = [
-            dependencies.BUILD_BACKEND_REQ_FILE_NAME,
-            dependencies.BUILD_SDIST_REQ_FILE_NAME,
-            dependencies.BUILD_SYSTEM_REQ_FILE_NAME,
-        ]
-        try:
-            archive = zipfile.ZipFile(wheel_filename)
-            for filename in req_filenames:
-                zipinfo = archive.getinfo(
-                    str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
-                )
-                # Check for path traversal attempts
-                if os.path.isabs(zipinfo.filename) or ".." in zipinfo.filename:
-                    raise ValueError(f"Unsafe path in wheel: {zipinfo.filename}")
-                zipinfo.filename = filename
-                output_file = archive.extract(zipinfo, unpack_dir)
-                logger.info(f"extracted {output_file}")
-
-            logger.info(f"extracted build requirements from wheel into {unpack_dir}")
-            return unpack_dir
-        except Exception as e:
-            # implies that the wheel server hosted non-fromager built wheels
-            logger.info(f"could not extract build requirements from wheel: {e}")
-            for filename in req_filenames:
-                unpack_dir.joinpath(filename).unlink(missing_ok=True)
-            return None
-
     def _resolve_version_from_git_url(self, req: Requirement) -> tuple[str, Version]:
         """Resolve source path and version from a ``git+`` URL.
 
@@ -1213,13 +1337,6 @@ class Bootstrapper:
         # (e.g., declaring Metadata-Version: 2.2 but using fields from 2.4).
         metadata = dependencies.parse_metadata(metadata_filename, validate=False)
         return metadata.version
-
-    def _create_unpack_dir(
-        self, req: Requirement, resolved_version: Version
-    ) -> pathlib.Path:
-        unpack_dir = self.ctx.work_dir / f"{req.name}-{resolved_version}"
-        unpack_dir.mkdir(parents=True, exist_ok=True)
-        return unpack_dir
 
     def _add_to_graph(
         self,
@@ -1364,6 +1481,88 @@ class Bootstrapper:
 
     # ---- Iterative bootstrap: phase handlers and helpers ----
 
+    def _push_items(self, stack: list[WorkItem], items: list[WorkItem]) -> None:
+        """Push items onto the stack and submit background tasks in LIFO order.
+
+        Submits the item that will be processed first (top of stack) to the
+        background pool first, maximising overlap between background I/O and
+        main-thread serial work.
+        """
+        stack.extend(items)
+        if self._bg_pool is not None:
+            for item in reversed(items):
+                bg_work = self._get_background_work(item)
+                if bg_work is not None:
+                    item.bg_future = self._bg_pool.submit(bg_work)
+
+    def _get_background_work(
+        self, item: WorkItem
+    ) -> typing.Callable[[], typing.Any] | None:
+        """Return a zero-argument callable for background submission, or None.
+
+        Uses closures that capture local variables rather than ``self``, so
+        the returned callable cannot access mutable ``Bootstrapper`` state.
+        Each closure sets up ``req_ctxvar_context`` so log messages include
+        the package name (and version when known).
+        """
+        if item.phase == BootstrapPhase.RESOLVE:
+            bg_resolver = self._resolver
+            req = item.req
+            req_type = item.req_type
+            parent_req = item.why_snapshot[-1][1] if item.why_snapshot else None
+            return_all = self.multiple_versions
+
+            def do_resolve() -> list[tuple[str, Version]]:
+                with req_ctxvar_context(req):
+                    return _bg_resolve(
+                        bg_resolver, req, req_type, parent_req, return_all
+                    )
+
+            return do_resolve
+
+        if item.phase == BootstrapPhase.PREPARE_SOURCE:
+            assert item.resolved_version is not None
+            assert item.source_url is not None
+            ctx = self.ctx
+            cache_wheel_server_url = self.cache_wheel_server_url
+            req = item.req
+            req_type = item.req_type
+            resolved_version = item.resolved_version
+            source_url = item.source_url
+
+            if item.pbi_pre_built:
+
+                def do_prepare_prebuilt() -> PreparedSourceData:
+                    with req_ctxvar_context(req, resolved_version):
+                        return _bg_prepare_prebuilt(
+                            ctx, req, req_type, resolved_version, source_url
+                        )
+
+                return do_prepare_prebuilt
+
+            def do_prepare_source() -> PreparedSourceData:
+                with req_ctxvar_context(req, resolved_version):
+                    return _bg_prepare_source(
+                        ctx, cache_wheel_server_url, req, resolved_version, source_url
+                    )
+
+            return do_prepare_source
+
+        return None
+
+    def _drain_background_pool(self) -> None:
+        """Drain all in-flight background tasks and recreate the pool.
+
+        Used as an exclusive-build barrier: ensures all background I/O completes
+        before an exclusive build starts. ``cancel_futures=False`` guarantees
+        every submitted task runs to completion.
+        """
+        if self._bg_pool is not None:
+            self._bg_pool.shutdown(wait=True, cancel_futures=False)
+            self._bg_pool = concurrent.futures.ThreadPoolExecutor(
+                max_workers=self._num_bg_threads, thread_name_prefix="fromager-bg"
+            )
+
     def _create_unresolved_work_items(
         self,
         deps: typing.Iterable[Requirement],
@@ -1401,11 +1600,10 @@ class Bootstrapper:
             One START-phase item per resolved version that needs building.
             Empty list if all versions are already cached.
         """
-        resolved_versions = self.resolve_versions(
-            item.req,
-            item.req_type,
-            return_all_versions=self.multiple_versions,
-        )
+        assert item.bg_future is not None
+        # bg_future.result() blocks until the background resolution completes,
+        # then returns the result or re-raises any exception from the background.
+        resolved_versions = item.bg_future.result()
         if not resolved_versions:
             raise RuntimeError(f"Could not resolve any versions for {item.req}")
 
@@ -1425,7 +1623,9 @@ class Bootstrapper:
             logger.info(f"resolved {len(resolved_versions)} version(s) for {item.req}")
             filtered: list[tuple[str, Version]] = []
             for source_url, version in resolved_versions:
-                cached_wheel, _ = self._find_cached_wheel(item.req, version)
+                cached_wheel, _ = _find_cached_wheel(
+                    self.ctx, self.cache_wheel_server_url, item.req, version
+                )
                 if cached_wheel:
                     logger.info(
                         f"{item.req.name}=={version}: wheel already cached "
@@ -1511,12 +1711,20 @@ class Bootstrapper:
     def _phase_prepare_source(self, item: WorkItem) -> list[WorkItem]:
         """PREPARE_SOURCE phase: download source or prebuilt, get build system deps.
 
+        Uses background I/O result from ``item.bg_future`` when available,
+        falling back to inline I/O otherwise.
+
         Returns:
             Prebuilt: [item] advanced to PROCESS_INSTALL_DEPS (skip build phases).
             Source: [item advanced to PREPARE_BUILD, *build_system_dep_items].
         """
         assert item.resolved_version is not None
         assert item.source_url is not None
+
+        # bg_future is always set for PREPARE_SOURCE items (see _push_items / _get_background_work).
+        # bg_future.result() blocks until done and re-raises any background exception.
+        assert item.bg_future is not None
+        prepared: PreparedSourceData = item.bg_future.result()
 
         constraint = self.ctx.constraints.get_constraint(item.req.name)
         if constraint:
@@ -1526,16 +1734,13 @@ class Bootstrapper:
             )
 
         if item.pbi_pre_built:
-            wheel_filename, unpack_dir = self._download_prebuilt(
-                req=item.req,
-                req_type=item.req_type,
-                resolved_version=item.resolved_version,
-                wheel_url=item.source_url,
-            )
+            # Background task already downloaded the prebuilt wheel
+            assert prepared.wheel_filename is not None
+            assert prepared.unpack_dir is not None
             item.build_result = SourceBuildResult(
-                wheel_filename=wheel_filename,
+                wheel_filename=prepared.wheel_filename,
                 sdist_filename=None,
-                unpack_dir=unpack_dir,
+                unpack_dir=prepared.unpack_dir,
                 sdist_root_dir=None,
                 build_env=None,
                 source_type=SourceType.PREBUILT,
@@ -1543,27 +1748,10 @@ class Bootstrapper:
             item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
             return [item]
 
-        # Source build path
-        cached_wheel, unpacked = self._find_cached_wheel(
-            item.req, item.resolved_version
-        )
-        item.cached_wheel_filename = cached_wheel
-
-        if not unpacked:
-            logger.debug("no cached wheel, downloading sources")
-            source_filename = self._download_source(
-                req=item.req,
-                resolved_version=item.resolved_version,
-                source_url=item.source_url,
-            )
-            sdist_root_dir = self._prepare_source(
-                req=item.req,
-                resolved_version=item.resolved_version,
-                source_filename=source_filename,
-            )
-        else:
-            logger.debug(f"have cached wheel in {unpacked}")
-            sdist_root_dir = unpacked / unpacked.stem
+        # Source build path: background task already downloaded and prepared the source
+        assert prepared.sdist_root_dir is not None
+        sdist_root_dir = prepared.sdist_root_dir
+        item.cached_wheel_filename = prepared.cached_wheel_filename
 
         assert sdist_root_dir is not None
 
@@ -1777,6 +1965,16 @@ class Bootstrapper:
         assert item.resolved_version is not None
         assert item.build_env is not None
         assert item.sdist_root_dir is not None
+
+        # Drain all in-flight background I/O before an exclusive build starts.
+        # This ensures no parallel background tasks interfere with a build that
+        # must run without resource contention.
+        pbi = self.ctx.package_build_info(item.req)
+        if pbi.exclusive_build:
+            logger.info(
+                "%s requires exclusive build, draining background pool", item.req
+            )
+            self._drain_background_pool()
 
         # Install backend+sdist deps if disjoint from system deps
         remaining_deps = item.build_backend_deps | item.build_sdist_deps
@@ -2033,6 +2231,13 @@ class Bootstrapper:
             0 if all packages built successfully (or not in test/multiple versions mode)
             1 if any packages failed in test mode
         """
+        if self._bg_pool is not None:
+            # cancel_futures=True cancels pending (not-yet-started) futures immediately
+            # so we don't block waiting for work whose result will never be used.
+            # Already-running futures still complete naturally.
+            self._bg_pool.shutdown(wait=True, cancel_futures=True)
+            self._bg_pool = None
+
         if self.multiple_versions and self._failed_versions:
             self._log_failed_versions_table()
 
@@ -2058,3 +2263,16 @@ class Bootstrapper:
             ", ".join(failed_names),
         )
         return 1
+
+    def __enter__(self) -> Bootstrapper:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        if self._bg_pool is not None:
+            self._bg_pool.shutdown(wait=False, cancel_futures=True)
+            self._bg_pool = None

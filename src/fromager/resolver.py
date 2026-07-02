@@ -371,6 +371,10 @@ def get_project_from_pypi(
     )
     try:
         package = client.get_project_page(project)
+    except pypi_simple.errors.NoSuchProjectError as e:
+        raise resolvelib.resolvers.ResolverException(
+            f"project {project} not found on {sdist_server_url}"
+        ) from e
     except Exception as e:
         logger.debug(
             "failed to fetch package index from %s: %s",

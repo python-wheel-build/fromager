@@ -220,6 +220,7 @@ __marimo__/
 /work-dir*/
 /build-logs/
 /e2e-output/
+/e2e-failed*
 /artifacts
 /overrides/
 

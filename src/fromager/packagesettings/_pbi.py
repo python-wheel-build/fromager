@@ -13,7 +13,7 @@ import psutil
 from packaging.utils import BuildTag, NormalizedName
 from packaging.version import Version
 
-from .. import overrides
+from .. import overrides, threading_utils
 from ._models import (
     GitOptions,
     PackageSettings,
@@ -29,14 +29,6 @@ if typing.TYPE_CHECKING:
     from ._settings import Settings
 
 logger = logging.getLogger(__name__)
-
-
-def get_cpu_count() -> int:
-    """CPU count from scheduler affinity"""
-    if hasattr(os, "sched_getaffinity"):
-        return len(os.sched_getaffinity(0))
-    else:
-        return os.cpu_count() or 1
 
 
 def get_available_memory_gib() -> float:
@@ -378,7 +370,7 @@ class PackageBuildInfo:
         """How many parallel jobs?"""
         # adjust by CPU cores, at least 1
         cpu_cores_per_job = self._ps.build_options.cpu_cores_per_job
-        cpu_count = get_cpu_count()
+        cpu_count = threading_utils.get_cpu_count()
         max_num_job_cores = int(max(1, cpu_count // cpu_cores_per_job))
         logger.debug(
             f"{self.package}: {max_num_job_cores=}, {cpu_cores_per_job=}, {cpu_count=}"
