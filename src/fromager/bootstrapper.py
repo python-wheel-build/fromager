@@ -849,14 +849,14 @@ class BuildItem(PhaseItem):
         pbi = bt.ctx.package_build_info(wi.req)
         if pbi.exclusive_build:
             logger.info("%s requires exclusive build, draining background pool", wi.req)
-            bt._drain_background_pool()
+            bt.drain_background_pool()
 
         # Install backend+sdist deps if disjoint from system deps
         remaining_deps = wi.build_backend_deps | wi.build_sdist_deps
         if remaining_deps.isdisjoint(wi.build_system_deps):
             wi.build_env.install(remaining_deps)
 
-        wheel_filename, sdist_filename = bt._do_build(
+        wheel_filename, sdist_filename = bt.do_build(
             req=wi.req,
             resolved_version=wi.resolved_version,
             sdist_root_dir=wi.sdist_root_dir,
@@ -1650,7 +1650,7 @@ class Bootstrapper:
         )
         return result
 
-    def _do_build(
+    def do_build(
         self,
         req: Requirement,
         resolved_version: Version,
@@ -2027,7 +2027,7 @@ class Bootstrapper:
                 if bg_work is not None:
                     item.bg_future = self._bg_pool.submit(bg_work)
 
-    def _drain_background_pool(self) -> None:
+    def drain_background_pool(self) -> None:
         """Drain all in-flight background tasks and recreate the pool.
 
         Used as an exclusive-build barrier: ensures all background I/O completes
