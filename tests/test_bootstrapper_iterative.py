@@ -1706,9 +1706,8 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(
-                bt,
-                "get_install_dependencies",
+            patch(
+                "fromager.bootstrapper._get_install_dependencies",
                 return_value=[Requirement("dep-a")],
             ),
             patch.object(
@@ -1747,8 +1746,8 @@ class TestPhaseProcessInstallDeps:
                 "fromager.hooks.run_post_bootstrap_hooks",
                 side_effect=RuntimeError("hook failed"),
             ),
-            patch.object(
-                bt, "get_install_dependencies", return_value=[]
+            patch(
+                "fromager.bootstrapper._get_install_dependencies", return_value=[]
             ) as mock_get_deps,
             patch.object(
                 tmp_context,
@@ -1791,9 +1790,8 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(
-                bt,
-                "get_install_dependencies",
+            patch(
+                "fromager.bootstrapper._get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
             patch.object(
@@ -1829,9 +1827,8 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(
-                bt,
-                "get_install_dependencies",
+            patch(
+                "fromager.bootstrapper._get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
         ):
@@ -1845,7 +1842,7 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(bt, "get_install_dependencies", return_value=[]),
+            patch("fromager.bootstrapper._get_install_dependencies", return_value=[]),
             patch.object(
                 tmp_context,
                 "package_build_info",
@@ -1871,7 +1868,7 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(bt, "get_install_dependencies", return_value=[]),
+            patch("fromager.bootstrapper._get_install_dependencies", return_value=[]),
             patch.object(
                 tmp_context,
                 "package_build_info",
