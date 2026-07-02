@@ -5,8 +5,8 @@ import pathlib
 import typing
 
 from .. import finders, server, sources, wheels
-from ._phase_item import PhaseItem
-from ._process_install_deps_item import ProcessInstallDepsItem
+from ._phase import Phase
+from ._process_install_deps import ProcessInstallDeps
 from ._types import BootstrapPhase, SourceBuildResult
 
 if typing.TYPE_CHECKING:
@@ -16,7 +16,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class BuildItem(PhaseItem):
+class Build(Phase):
     """BUILD phase: install remaining deps, build wheel/sdist."""
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.BUILD
@@ -26,11 +26,11 @@ class BuildItem(PhaseItem):
     def requires_exclusive_run(self) -> bool:
         return self.work_item.exclusive_build
 
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+    def run(self, bt: Bootstrapper) -> list[Phase]:
         """BUILD phase: install remaining deps, build wheel/sdist.
 
         Returns:
-            [ProcessInstallDepsItem].
+            [ProcessInstallDeps].
         """
         wi = self.work_item
         assert wi.resolved_version is not None
@@ -55,7 +55,7 @@ class BuildItem(PhaseItem):
             source_type=source_type,
         )
 
-        return [ProcessInstallDepsItem(wi)]
+        return [ProcessInstallDeps(wi)]
 
     def _build_sdist(self, ctx: context.WorkContext) -> pathlib.Path:
         """Build or locate an sdist for this item's package.

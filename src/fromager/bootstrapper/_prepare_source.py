@@ -10,9 +10,9 @@ from .. import build_environment, dependencies, sources
 from ..log import req_ctxvar_context
 from ..requirements_file import RequirementType, SourceType
 from . import _cache
-from ._phase_item import PhaseItem
-from ._prepare_build_item import PrepareBuildItem
-from ._process_install_deps_item import ProcessInstallDepsItem
+from ._phase import Phase
+from ._prepare_build import PrepareBuild
+from ._process_install_deps import ProcessInstallDeps
 from ._types import BootstrapPhase, PreparedSourceData, SourceBuildResult
 
 if typing.TYPE_CHECKING:
@@ -52,7 +52,7 @@ def _bg_prepare_source(
     return PreparedSourceData(sdist_root_dir=sdist_root_dir)
 
 
-class PrepareSourceItem(PhaseItem):
+class PrepareSource(Phase):
     """PREPARE_SOURCE phase: download source or prebuilt, get build system deps."""
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PREPARE_SOURCE
@@ -90,15 +90,15 @@ class PrepareSourceItem(PhaseItem):
 
         return do_prepare_source
 
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+    def run(self, bt: Bootstrapper) -> list[Phase]:
         """PREPARE_SOURCE phase: download source or prebuilt, get build system deps.
 
         Uses background I/O result from ``self.bg_future`` when available,
         falling back to inline I/O otherwise.
 
         Returns:
-            Prebuilt: [ProcessInstallDepsItem] (skip build phases).
-            Source: [PrepareBuildItem, *build_system_dep_items].
+            Prebuilt: [ProcessInstallDeps] (skip build phases).
+            Source: [PrepareBuild, *build_system_dep_items].
         """
         wi = self.work_item
         assert wi.resolved_version is not None
@@ -128,7 +128,7 @@ class PrepareSourceItem(PhaseItem):
                 build_env=None,
                 source_type=SourceType.PREBUILT,
             )
-            return [ProcessInstallDepsItem(wi)]
+            return [ProcessInstallDeps(wi)]
 
         # Source build path: background task already downloaded and prepared the source
         assert prepared.sdist_root_dir is not None
@@ -155,11 +155,11 @@ class PrepareSourceItem(PhaseItem):
             sdist_root_dir=sdist_root_dir,
         )
 
-        dep_items: list[PhaseItem] = bt.create_unresolved_work_items(
+        dep_items: list[Phase] = bt.create_unresolved_work_items(
             wi.build_system_deps,
             RequirementType.BUILD_SYSTEM,
             wi.req,
             wi.resolved_version,
         )
 
-        return [PrepareBuildItem(wi)] + dep_items
+        return [PrepareBuild(wi)] + dep_items

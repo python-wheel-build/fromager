@@ -5,8 +5,8 @@ import typing
 
 from .. import dependencies
 from ..requirements_file import RequirementType
-from ._build_item import BuildItem
-from ._phase_item import PhaseItem
+from ._build import Build
+from ._phase import Phase
 from ._types import BootstrapPhase
 
 if typing.TYPE_CHECKING:
@@ -15,13 +15,13 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class PrepareBuildItem(PhaseItem):
+class PrepareBuild(Phase):
     """PREPARE_BUILD phase: install system deps, get backend/sdist deps."""
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PREPARE_BUILD
     tracks_why: typing.ClassVar[bool] = True
 
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
+    def run(self, bt: Bootstrapper) -> list[Phase]:
         """PREPARE_BUILD phase: install system deps, get backend/sdist deps.
 
         Build-backend and build-sdist dependencies that are already satisfied
@@ -29,7 +29,7 @@ class PrepareBuildItem(PhaseItem):
         resolving independently (see :issue:`1194`).
 
         Returns:
-            [BuildItem, *backend_dep_items, *sdist_dep_items].
+            [Build, *backend_dep_items, *sdist_dep_items].
         """
         wi = self.work_item
         assert wi.resolved_version is not None
@@ -74,13 +74,13 @@ class PrepareBuildItem(PhaseItem):
             parent,
         )
 
-        backend_items: list[PhaseItem] = bt.create_unresolved_work_items(
+        backend_items: list[Phase] = bt.create_unresolved_work_items(
             wi.build_backend_deps,
             RequirementType.BUILD_BACKEND,
             wi.req,
             wi.resolved_version,
         )
-        sdist_items: list[PhaseItem] = bt.create_unresolved_work_items(
+        sdist_items: list[Phase] = bt.create_unresolved_work_items(
             wi.build_sdist_deps,
             RequirementType.BUILD_SDIST,
             wi.req,
@@ -88,4 +88,4 @@ class PrepareBuildItem(PhaseItem):
         )
         dep_items = backend_items + sdist_items
 
-        return [BuildItem(wi)] + dep_items
+        return [Build(wi)] + dep_items

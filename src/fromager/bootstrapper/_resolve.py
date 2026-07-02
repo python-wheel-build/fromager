@@ -11,8 +11,8 @@ from .. import bootstrap_requirement_resolver
 from ..log import req_ctxvar_context
 from ..requirements_file import RequirementType
 from . import _cache
-from ._phase_item import PhaseItem
-from ._start_item import StartItem
+from ._phase import Phase
+from ._start import Start
 from ._types import BootstrapPhase
 from ._work_item import WorkItem
 
@@ -39,8 +39,8 @@ def _bg_resolve(
     )
 
 
-class ResolveItem(PhaseItem):
-    """RESOLVE phase: resolve versions and expand into StartItems."""
+class Resolve(Phase):
+    """RESOLVE phase: resolve versions and expand into Start items."""
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.RESOLVE
     tracks_why: typing.ClassVar[bool] = False
@@ -63,8 +63,8 @@ class ResolveItem(PhaseItem):
 
         return do_resolve
 
-    def run(self, bt: Bootstrapper) -> list[PhaseItem]:
-        """RESOLVE phase: resolve versions and expand into StartItems.
+    def run(self, bt: Bootstrapper) -> list[Phase]:
+        """RESOLVE phase: resolve versions and expand into Start items.
 
         Centralizes version resolution so all dependencies are expanded
         uniformly. In multiple_versions mode, filters out versions that
@@ -73,7 +73,7 @@ class ResolveItem(PhaseItem):
         processing.
 
         Returns:
-            One StartItem per resolved version that needs building.
+            One Start item per resolved version that needs building.
             Empty list if all versions are already cached.
         """
         assert self.bg_future is not None
@@ -127,10 +127,10 @@ class ResolveItem(PhaseItem):
 
         # Build list so highest version ends up on top of the stack
         # (last element after extend) and is processed first.
-        items: list[PhaseItem] = []
+        items: list[Phase] = []
         for source_url, version in reversed(resolved_versions):
             items.append(
-                StartItem(
+                Start(
                     WorkItem(
                         req=self.work_item.req,
                         req_type=self.work_item.req_type,

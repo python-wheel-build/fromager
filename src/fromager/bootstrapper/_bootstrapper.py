@@ -27,12 +27,12 @@ from ..dependency_graph import DependencyGraph
 from ..log import req_ctxvar_context, requirement_ctxvar
 from ..requirements_file import RequirementType, SourceType
 from . import _cache
-from ._build_item import BuildItem
-from ._phase_item import PhaseItem
-from ._prepare_build_item import PrepareBuildItem
-from ._prepare_source_item import PrepareSourceItem
-from ._process_install_deps_item import ProcessInstallDepsItem
-from ._resolve_item import ResolveItem
+from ._build import Build
+from ._phase import Phase
+from ._prepare_build import PrepareBuild
+from ._prepare_source import PrepareSource
+from ._process_install_deps import ProcessInstallDeps
+from ._resolve import Resolve
 from ._types import (
     _DEFAULT_BG_THREADS,
     FailureRecord,
@@ -269,15 +269,15 @@ class Bootstrapper:
         # Use the token pattern (no try/finally) so that if resolution raises
         # in normal mode, the context var stays set for the top-level error
         # handler in __main__.py to include the package name in its log message.
-        stack: list[PhaseItem] = []
-        initial_items: list[PhaseItem] = []
+        stack: list[Phase] = []
+        initial_items: list[Phase] = []
         for req in requirements:
             token = requirement_ctxvar.set(req)
             result = self._resolve_and_add_top_level(req)
             requirement_ctxvar.reset(token)
             if result is not None:
                 initial_items.append(
-                    ResolveItem(
+                    Resolve(
                         WorkItem(
                             req=req,
                             req_type=RequirementType.TOP_LEVEL,
@@ -290,7 +290,7 @@ class Bootstrapper:
 
         self._run_bootstrap_loop(stack)
 
-    def _run_bootstrap_loop(self, stack: list[PhaseItem]) -> None:
+    def _run_bootstrap_loop(self, stack: list[Phase]) -> None:
         """Run the iterative DFS bootstrap loop over a pre-built work stack.
 
         Pops items one at a time, dispatches each phase, and pushes any
@@ -298,7 +298,7 @@ class Bootstrapper:
         stack. Updates the progress bar as items complete.
 
         Args:
-            stack: Initial list of ``PhaseItem`` objects to process. Modified
+            stack: Initial list of ``Phase`` objects to process. Modified
                 in-place; empty on return.
         """
         while stack:
@@ -322,7 +322,7 @@ class Bootstrapper:
                 except Exception as err:
                     new_items = self._handle_phase_error(item, err)
 
-            new_dep_count = sum(1 for it in new_items if isinstance(it, ResolveItem))
+            new_dep_count = sum(1 for it in new_items if isinstance(it, Resolve))
             if new_dep_count > 0:
                 self.progressbar.update_total(new_dep_count)
             if not new_items:
@@ -359,8 +359,8 @@ class Bootstrapper:
         saved_why = list(self.why)
 
         # Single RESOLVE item — resolution, version expansion, and error
-        # handling all happen inside the loop via ResolveItem.run().
-        initial_item = ResolveItem(
+        # handling all happen inside the loop via Resolve.run().
+        initial_item = Resolve(
             WorkItem(
                 req=req,
                 req_type=req_type,
@@ -368,7 +368,7 @@ class Bootstrapper:
                 parent=parent,
             )
         )
-        stack: list[PhaseItem] = []
+        stack: list[Phase] = []
         self._push_items(stack, [initial_item])
 
         self._run_bootstrap_loop(stack)
@@ -383,7 +383,7 @@ class Bootstrapper:
     @contextlib.contextmanager
     def _track_why(
         self,
-        item: PhaseItem,
+        item: Phase,
     ) -> typing.Generator[None, None, None]:
         """Context manager to track dependency chain in self.why stack.
 
@@ -917,7 +917,7 @@ class Bootstrapper:
             # converted to JSON without help.
             json.dump(self._build_stack, f, indent=2, default=str)
 
-    def _record_stack_state(self, stack: list[PhaseItem]) -> None:
+    def _record_stack_state(self, stack: list[Phase]) -> None:
         """Write the current bootstrap stack to `self._stack_filename`.
 
         Index 0 in the output corresponds to `stack[-1]`, the next item to be
@@ -929,7 +929,7 @@ class Bootstrapper:
 
     # ---- Iterative bootstrap: phase handlers and helpers ----
 
-    def _push_items(self, stack: list[PhaseItem], items: list[PhaseItem]) -> None:
+    def _push_items(self, stack: list[Phase], items: list[Phase]) -> None:
         """Push items onto the stack and submit background tasks in LIFO order.
 
         Submits the item that will be processed first (top of stack) to the
@@ -962,7 +962,7 @@ class Bootstrapper:
         dep_req_type: RequirementType,
         parent_req: Requirement,
         parent_version: Version,
-    ) -> list[PhaseItem]:
+    ) -> list[Phase]:
         """Create RESOLVE-phase work items for dependencies.
 
         Called inside a parent's _track_why context so that why_snapshot
@@ -970,7 +970,7 @@ class Bootstrapper:
         handling happen later when each item's RESOLVE phase runs.
         """
         return [
-            ResolveItem(
+            Resolve(
                 WorkItem(
                     req=dep,
                     req_type=dep_req_type,
@@ -1086,9 +1086,9 @@ class Bootstrapper:
 
     def _handle_phase_error(
         self,
-        item: PhaseItem,
+        item: Phase,
         err: Exception,
-    ) -> list[PhaseItem]:
+    ) -> list[Phase]:
         """Handle errors from phase processing.
 
         Returns work items to continue processing (e.g. prebuilt fallback),
@@ -1096,7 +1096,7 @@ class Bootstrapper:
         """
         wi = item.work_item
         # Resolution failures: recoverable in test mode and multiple versions mode
-        if isinstance(item, ResolveItem):
+        if isinstance(item, Resolve):
             if self.test_mode:
                 self.record_test_mode_failure(wi.req, None, err, "resolution")
                 if self.multiple_versions:
@@ -1120,7 +1120,7 @@ class Bootstrapper:
         # Test mode: try prebuilt fallback for build-related phases
         if self.test_mode:
             if (
-                isinstance(item, PrepareSourceItem | PrepareBuildItem | BuildItem)
+                isinstance(item, PrepareSource | PrepareBuild | Build)
                 and not wi.pbi_pre_built
             ):
                 assert wi.resolved_version is not None
@@ -1132,7 +1132,7 @@ class Bootstrapper:
                 )
                 if fallback is not None:
                     wi.build_result = fallback
-                    return [ProcessInstallDepsItem(wi)]
+                    return [ProcessInstallDeps(wi)]
             self.record_test_mode_failure(
                 wi.req, str(wi.resolved_version), err, "bootstrap"
             )
