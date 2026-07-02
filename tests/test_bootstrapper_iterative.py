@@ -1519,7 +1519,7 @@ class TestPhaseBuild:
         mock_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
 
         with (
-            patch.object(bt, "do_build", return_value=(mock_wheel, None)),
+            patch.object(item, "do_build", return_value=(mock_wheel, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
             result = item.run(bt)
@@ -1546,7 +1546,7 @@ class TestPhaseBuild:
         )
 
         with (
-            patch.object(bt, "do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
             item.run(bt)
@@ -1569,7 +1569,7 @@ class TestPhaseBuild:
         )
 
         with (
-            patch.object(bt, "do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
             item.run(bt)
@@ -1577,7 +1577,7 @@ class TestPhaseBuild:
         mock_env.install.assert_not_called()
 
     def test_do_build_receives_item_fields(self, tmp_context: WorkContext) -> None:
-        """build_sdist_only and cached_wheel_filename are forwarded to do_build."""
+        """build_sdist_only and cached_wheel_filename are read directly by do_build, not forwarded as parameters."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         mock_env = Mock()
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
@@ -1590,22 +1590,14 @@ class TestPhaseBuild:
             build_sdist_only=True,
             cached_wheel_filename=cached_wheel,
         )
-        wi = item.work_item
 
         with (
-            patch.object(bt, "do_build", return_value=(None, None)) as mock_do_build,
+            patch.object(item, "do_build", return_value=(None, None)) as mock_do_build,
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
             item.run(bt)
 
-        mock_do_build.assert_called_once_with(
-            req=wi.req,
-            resolved_version=wi.resolved_version,
-            sdist_root_dir=sdist_root,
-            build_env=mock_env,
-            build_sdist_only=True,
-            cached_wheel_filename=cached_wheel,
-        )
+        mock_do_build.assert_called_once_with(bt.ctx, bt.explain)
 
     def test_build_result_references_item_build_env(
         self, tmp_context: WorkContext
@@ -1616,7 +1608,7 @@ class TestPhaseBuild:
         wi = item.work_item
 
         with (
-            patch.object(bt, "do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
             item.run(bt)
@@ -1633,7 +1625,7 @@ class TestPhaseBuild:
         wi = item.work_item
 
         with (
-            patch.object(bt, "do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.PREBUILT),
         ):
             item.run(bt)
@@ -1649,7 +1641,7 @@ class TestPhaseBuild:
         item = self._make_build_phase_item(tmp_context)
 
         with (
-            patch.object(bt, "do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
             result = item.run(bt)
@@ -1667,7 +1659,7 @@ class TestPhaseBuild:
         wi = item.work_item
 
         with (
-            patch.object(bt, "do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
             result = item.run(bt)
