@@ -241,14 +241,13 @@ def test_find_cached_wheel_returns_tuple(tmp_context: WorkContext) -> None:
 def test_get_install_dependencies_returns_list(
     mock_get_deps: Mock, tmp_context: WorkContext
 ) -> None:
-    """Verify get_install_dependencies returns list."""
-    bt = bootstrapper.Bootstrapper(tmp_context)
-
+    """Verify _get_install_dependencies returns list."""
     # Create fake wheel file and mock dependencies
     wheel_file = pathlib.Path("/fake/package-1.0.0-py3-none-any.whl")
     unpack_dir = tmp_context.work_dir
 
-    result = bt.get_install_dependencies(
+    result = bootstrapper._get_install_dependencies(
+        ctx=tmp_context,
         req=Requirement("test-package"),
         resolved_version=Version("1.0.0"),
         wheel_filename=wheel_file,
