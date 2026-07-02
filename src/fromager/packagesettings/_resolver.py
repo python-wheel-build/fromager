@@ -34,7 +34,9 @@ class AbstractResolver(pydantic.BaseModel):
     provider: str
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.BaseProvider:
         raise NotImplementedError
 
@@ -88,7 +90,9 @@ class PyPISDistResolver(AbstractPyPIResolver):
     build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -123,7 +127,9 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
     build_sdist: typing.ClassVar[BuildSDist | None] = None
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=False,
@@ -177,7 +183,9 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
         return value
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -245,7 +253,9 @@ class PyPIGitResolver(AbstractPyPIResolver):
         return value
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.PyPIProvider:
         download_url = f"git+{self.clone_url}@refs/tags/{self.tag}"
         return resolver.PyPIProvider(
@@ -342,7 +352,7 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
         self,
         *,
         ctx: context.WorkContext,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None = None,
         override_download_url: str | None = None,
     ) -> resolver.GitHubTagProvider:
         if self.project_url.host != "github.com":
@@ -366,7 +376,7 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
         self,
         *,
         ctx: context.WorkContext,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None = None,
         override_download_url: str | None = None,
     ) -> resolver.GitLabTagProvider:
         if not self.project_url.path:
@@ -398,7 +408,9 @@ class GitHubTagDownloadResolver(AbstractGitSourceResolver):
     provider: typing.Literal["github-tag-download"]
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -423,7 +435,9 @@ class GitHubTagCloneResolver(AbstractGitSourceResolver):
     provider: typing.Literal["github-tag-git"]
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -448,7 +462,9 @@ class GitLabTagDownloadResolver(AbstractGitSourceResolver):
     provider: typing.Literal["gitlab-tag-download"]
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -473,7 +489,9 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
     provider: typing.Literal["gitlab-tag-git"]
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -488,7 +506,9 @@ class NotAvailableResolver(AbstractResolver):
     provider: typing.Literal["not-available"]
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.BaseProvider:
         raise ValueError("package is not available")
 
@@ -499,7 +519,9 @@ class HookResolver(AbstractResolver):
     provider: typing.Literal["hook"]
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req_type: requirements_file.RequirementType | None = None,
     ) -> resolver.BaseProvider:
         # TODO
         raise NotImplementedError("Hook resolver needs a hook")
