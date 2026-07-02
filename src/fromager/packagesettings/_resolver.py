@@ -14,6 +14,8 @@ from ..candidate import Cooldown
 from ._typedefs import MODEL_CONFIG
 
 if typing.TYPE_CHECKING:
+    from packaging.requirements import Requirement
+
     from .. import context, requirements_file
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,20 @@ class BuildSDist(enum.StrEnum):
     tarball = "tarball"
 
 
+class DownloadKind(enum.StrEnum):
+    """Kind of artifact that the resolver downloads."""
+
+    sdist = "sdist"
+    tarball = "tarball"
+    prebuilt_wheel = "prebuilt_wheel"
+    git_checkout = "git_checkout"
+    any_source = "any_source"
+    not_available = "n/a"
+
+    def __bool__(self) -> bool:
+        return self is not DownloadKind.not_available
+
+
 class AbstractResolver(pydantic.BaseModel):
     """Abstract base class for resolvers"""
 
@@ -33,9 +49,24 @@ class AbstractResolver(pydantic.BaseModel):
 
     provider: str
 
+    supports_override_hooks: typing.ClassVar[bool] = False
+    """Does resolver support override hooks?"""
+
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.not_available
+    """Kind of artifact that the resolver downloads."""
+
+    @property
+    def resolves_prebuilt_wheel(self) -> bool:
+        """Does resolver return pre-built wheels?"""
+        return self.download_kind is DownloadKind.prebuilt_wheel
+
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.BaseProvider:
+        """Return a resolver provider for the given requirement."""
         raise NotImplementedError
 
 
@@ -86,9 +117,13 @@ class PyPISDistResolver(AbstractPyPIResolver):
     # It is not safe to use PEP 517 to re-generate a source distribution.
     # Some PEP 517 backends require VCS to generate correct sdist.
     build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.sdist
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -121,9 +156,13 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
     provider: typing.Literal["pypi-prebuilt"]
 
     build_sdist: typing.ClassVar[BuildSDist | None] = None
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.prebuilt_wheel
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=False,
@@ -166,6 +205,7 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
     """
 
     build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.tarball
 
     @pydantic.field_validator("download_url", mode="after")
     @classmethod
@@ -177,7 +217,10 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
         return value
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -217,13 +260,20 @@ class PyPIGitResolver(AbstractPyPIResolver):
 
     provider: typing.Literal["pypi-git"]
 
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.git_checkout
+
     clone_url: pydantic.AnyUrl
     """git clone URL
 
     https://git.test/repo.git
     """
 
-    tag: str
+    tag: str = pydantic.Field(pattern=r".*version.*")
+    """Tag template containing a ``version`` reference.
+
+    Supports simple substitution (``{version}``) and f-string
+    expressions like ``{version.major}_{version.minor}``.
+    """
 
     build_sdist: BuildSDist = BuildSDist.pep517
     """Source distribution build method"""
@@ -237,15 +287,11 @@ class PyPIGitResolver(AbstractPyPIResolver):
             raise ValueError(f"url {value} has an empty path")
         return value
 
-    @pydantic.field_validator("tag", mode="after")
-    @classmethod
-    def validate_tag(cls, value: str) -> str:
-        if "{version}" not in value:
-            raise ValueError(f"missing '{{version}}' in tag {value}")
-        return value
-
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.PyPIProvider:
         download_url = f"git+{self.clone_url}@refs/tags/{self.tag}"
         return resolver.PyPIProvider(
@@ -397,8 +443,13 @@ class GitHubTagDownloadResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["github-tag-download"]
 
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.tarball
+
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -422,8 +473,13 @@ class GitHubTagCloneResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["github-tag-git"]
 
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.git_checkout
+
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -447,8 +503,13 @@ class GitLabTagDownloadResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["gitlab-tag-download"]
 
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.tarball
+
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -472,8 +533,13 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["gitlab-tag-git"]
 
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.git_checkout
+
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -487,22 +553,65 @@ class NotAvailableResolver(AbstractResolver):
 
     provider: typing.Literal["not-available"]
 
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.not_available
+
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.BaseProvider:
-        raise ValueError("package is not available")
+        raise ValueError(f"package {req.name} is not available")
 
 
-class HookResolver(AbstractResolver):
-    """Call resolver_provider and download_source hook"""
+class AbstractHookResolver(AbstractResolver, CooldownMixin):
+    """Abstract base class for hook-based resolvers"""
 
-    provider: typing.Literal["hook"]
+    supports_override_hooks: typing.ClassVar[bool] = True
+    """Hook resolvers support override hooks."""
 
     def resolver_provider(
-        self, ctx: context.WorkContext, req_type: requirements_file.RequirementType
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
     ) -> resolver.BaseProvider:
         # TODO
         raise NotImplementedError("Hook resolver needs a hook")
+
+
+class HookSDistResolver(AbstractHookResolver):
+    """Call resolver_provider and download_source hook, build from source
+
+    The ``hook-sdist`` provider delegates resolution and download to
+    plugin hooks. The downloaded artifact can be a source distribution,
+    a tarball, or a git checkout.
+
+    Example::
+
+        provider: hook-sdist
+    """
+
+    provider: typing.Literal["hook-sdist"]
+
+    # Hooks can return any source artifact (sdist, tarball, or git checkout).
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.any_source
+
+
+class HookPrebuiltResolver(AbstractHookResolver):
+    """Call resolver_provider and download_source hook, use pre-built wheel
+
+    The ``hook-prebuilt`` provider delegates resolution and download to
+    plugin hooks. The downloaded artifact must be a pre-built wheel.
+
+    Example::
+
+        provider: hook-prebuilt
+    """
+
+    provider: typing.Literal["hook-prebuilt"]
+
+    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.prebuilt_wheel
 
 
 SourceResolver = typing.Annotated[
@@ -515,6 +624,7 @@ SourceResolver = typing.Annotated[
     | GitLabTagCloneResolver
     | GitLabTagDownloadResolver
     | NotAvailableResolver
-    | HookResolver,
+    | HookSDistResolver
+    | HookPrebuiltResolver,
     pydantic.Field(..., discriminator="provider"),
 ]
