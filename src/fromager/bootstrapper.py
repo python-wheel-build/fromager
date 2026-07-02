@@ -186,18 +186,25 @@ def _create_unpack_dir(
     return unpack_dir
 
 
-def _unpack_metadata_from_wheel(
+def _extract_build_reqs_from_wheel(
     work_dir: pathlib.Path,
     req: Requirement,
     resolved_version: Version,
     wheel_filename: pathlib.Path,
 ) -> pathlib.Path | None:
+    """Extract fromager build requirement files from a wheel archive.
+
+    Looks for files prefixed with `FROMAGER_BUILD_REQ_PREFIX` inside the
+    wheel's `.dist-info` directory and extracts them to a local unpack
+    directory. Returns the unpack directory on success, or None if the
+    files are not present or extraction fails.
+    """
     dist_name, dist_version, _, _ = wheels.extract_info_from_wheel_file(
         req, wheel_filename
     )
     unpack_dir = _create_unpack_dir(work_dir, req, resolved_version)
     dist_filename = f"{dist_name}-{dist_version}"
-    metadata_dir = pathlib.Path(f"{dist_filename}.dist-info")
+    dist_info_path = pathlib.Path(f"{dist_filename}.dist-info")
     req_filenames: list[str] = [
         dependencies.BUILD_BACKEND_REQ_FILE_NAME,
         dependencies.BUILD_SDIST_REQ_FILE_NAME,
@@ -207,7 +214,10 @@ def _unpack_metadata_from_wheel(
         with zipfile.ZipFile(wheel_filename) as archive:
             for filename in req_filenames:
                 zipinfo = archive.getinfo(
-                    str(metadata_dir / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}")
+                    str(
+                        dist_info_path
+                        / f"{wheels.FROMAGER_BUILD_REQ_PREFIX}-{filename}"
+                    )
                 )
                 if os.path.isabs(zipinfo.filename) or ".." in zipinfo.filename:
                     raise ValueError(f"Unsafe path in wheel: {zipinfo.filename}")
@@ -249,10 +259,10 @@ def _look_for_existing_wheel(
         )
         return None, None
     logger.info(f"found existing wheel {wheel_filename}")
-    metadata_dir = _unpack_metadata_from_wheel(
+    build_reqs_dir = _extract_build_reqs_from_wheel(
         ctx.work_dir, req, resolved_version, wheel_filename
     )
-    return wheel_filename, metadata_dir
+    return wheel_filename, build_reqs_dir
 
 
 def _download_wheel_from_cache(
@@ -292,7 +302,7 @@ def _download_wheel_from_cache(
         if cache_wheel_server_url != ctx.wheel_server_url:
             server.update_wheel_mirror(ctx)
         logger.info("found built wheel on cache server")
-        unpack_dir = _unpack_metadata_from_wheel(
+        unpack_dir = _extract_build_reqs_from_wheel(
             ctx.work_dir, req, resolved_version, cached_wheel
         )
         return cached_wheel, unpack_dir
