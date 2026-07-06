@@ -86,16 +86,28 @@ def download_source(
         )
         return download_path
 
-    source_path = overrides.find_and_invoke(
-        req.name,
-        "download_source",
-        default_download_source,
-        ctx=ctx,
-        req=req,
-        version=version,
-        download_url=download_url,
-        sdists_downloads_dir=ctx.sdists_downloads,
-    )
+    pbi = ctx.package_build_info(req)
+    source = pbi.source_resolver
+
+    if source is not None and source.provider != "hook":
+        source_path = default_download_source(
+            ctx=ctx,
+            req=req,
+            version=version,
+            download_url=download_url,
+            sdists_downloads_dir=ctx.sdists_downloads,
+        )
+    else:
+        source_path = overrides.find_and_invoke(
+            req.name,
+            "download_source",
+            default_download_source,
+            ctx=ctx,
+            req=req,
+            version=version,
+            download_url=download_url,
+            sdists_downloads_dir=ctx.sdists_downloads,
+        )
 
     if not isinstance(source_path, pathlib.Path):
         raise ValueError(
@@ -117,23 +129,27 @@ def get_source_provider(
     (sdist/wheel inclusion, platform matching, server URL override).
     """
     pbi = ctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+    source = pbi.source_resolver
 
-    provider = typing.cast(
-        resolver.BaseProvider,
-        overrides.find_and_invoke(
-            req.name,
-            "get_resolver_provider",
-            resolver.default_resolver_provider,
-            ctx=ctx,
-            req=req,
-            include_sdists=pbi.resolver_include_sdists,
-            include_wheels=pbi.resolver_include_wheels,
-            sdist_server_url=override_sdist_server_url,
-            req_type=req_type,
-            ignore_platform=pbi.resolver_ignore_platform,
-        ),
-    )
+    if source is not None and source.provider != "hook":
+        provider = source.resolver_provider(ctx, req_type)
+    else:
+        override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+        provider = typing.cast(
+            resolver.BaseProvider,
+            overrides.find_and_invoke(
+                req.name,
+                "get_resolver_provider",
+                resolver.default_resolver_provider,
+                ctx=ctx,
+                req=req,
+                include_sdists=pbi.resolver_include_sdists,
+                include_wheels=pbi.resolver_include_wheels,
+                sdist_server_url=override_sdist_server_url,
+                req_type=req_type,
+                ignore_platform=pbi.resolver_ignore_platform,
+            ),
+        )
     provider.cooldown = resolver.resolve_package_cooldown(ctx, req, req_type=req_type)
     return provider
 
@@ -189,10 +205,29 @@ def default_download_source(
 ) -> pathlib.Path:
     "Download the requirement and return the name of the output path."
     pbi = ctx.package_build_info(req)
-    destination_filename = pbi.download_source_destination_filename(version=version)
     url = pbi.download_source_url(version=version, default=download_url)
     if url is None:
         raise ValueError(f"Could not determine download URL for {req}")
+
+    if url.startswith("git+"):
+        clone_url, ref = gitutils.parse_vcs_url(url, require_ref=False)
+        download_path = ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
+        download_path.mkdir(parents=True, exist_ok=True)
+        gitutils.git_clone_fast(
+            output_dir=download_path,
+            repo_url=clone_url,
+            ref=ref,
+        )
+        if pbi.git_options.remove_dot_git:
+            for dot_git in download_path.rglob(".git"):
+                logger.info("removing %s", dot_git)
+                if dot_git.is_dir():
+                    shutil.rmtree(dot_git)
+                else:
+                    dot_git.unlink()
+        return download_path
+
+    destination_filename = pbi.download_source_destination_filename(version=version)
     if destination_filename is None:
         url_filename = resolver.extract_filename_from_url(url)
         if url_filename.endswith(".zip"):
@@ -220,6 +255,11 @@ def download_git_source(
     destination_dir: pathlib.Path,
     ref: str | None = None,
 ) -> None:
+    """Clone a git repository into *destination_dir*.
+
+    Applies ``git_options`` from the package settings (submodules,
+    ``remove_dot_git``).
+    """
     logger.info(f"cloning source from {url_to_clone}@{ref} to {destination_dir}")
     # Get git options from package settings
     pbi = ctx.package_build_info(req)
@@ -242,6 +282,14 @@ def download_git_source(
         submodules=submodules,
         ref=ref,
     )
+
+    if git_opts.remove_dot_git:
+        for dot_git in destination_dir.rglob(".git"):
+            logger.info("removing %s", dot_git)
+            if dot_git.is_dir():
+                shutil.rmtree(dot_git)
+            else:
+                dot_git.unlink()
 
 
 # Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
