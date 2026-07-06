@@ -25,6 +25,23 @@ class Phase(abc.ABC):
     phase: typing.ClassVar[BootstrapPhase]
     tracks_why: typing.ClassVar[bool] = True
 
+    def __init_subclass__(cls, **kwargs: typing.Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Enforce that every concrete subclass defines `phase`.  Abstract
+        # subclasses (those that still have unimplemented abstract methods)
+        # are allowed to omit it; they will be checked when their own concrete
+        # subclasses are defined.
+        #
+        # Note: ABCMeta sets __abstractmethods__ *after* __init_subclass__
+        # runs, so we cannot rely on it here.  Instead we inspect the class's
+        # MRO for any attribute still marked as abstract.
+        is_abstract = any(
+            getattr(getattr(cls, attr, None), "__isabstractmethod__", False)
+            for attr in dir(cls)
+        )
+        if not is_abstract and "phase" not in cls.__dict__:
+            raise TypeError(f"{cls.__name__} must define the 'phase' class attribute")
+
     def __init__(self, work_item: WorkItem) -> None:
         self.work_item = work_item
         self.bg_future: concurrent.futures.Future[typing.Any] | None = None

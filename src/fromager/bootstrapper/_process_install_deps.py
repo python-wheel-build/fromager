@@ -73,7 +73,15 @@ def _get_install_dependencies(
 
 
 class ProcessInstallDeps(Phase):
-    """PROCESS_INSTALL_DEPS phase: hooks, extract deps, build order."""
+    """Run post-bootstrap hooks, extract install deps, and record the build order.
+
+    Runs any configured post-bootstrap hooks for the completed package (errors
+    are fatal in normal mode; recorded as warnings in test mode).  Extracts
+    install-time dependencies from the built wheel or sdist.  Appends the
+    package to the persistent build-order file via ``Bootstrapper.add_to_build_order``.
+
+    Next phase: ``Complete`` + one ``Resolve`` per install dependency.
+    """
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PROCESS_INSTALL_DEPS
     tracks_why: typing.ClassVar[bool] = True

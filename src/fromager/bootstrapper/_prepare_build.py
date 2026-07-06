@@ -16,7 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 class PrepareBuild(Phase):
-    """PREPARE_BUILD phase: install system deps, get backend/sdist deps."""
+    """Install build-system deps and discover build-backend and build-sdist deps.
+
+    Installs the build-system wheels (already available from DFS processing),
+    then queries the build backend for its own dependencies and the
+    sdist-generation dependencies.  Dependencies already satisfied by the
+    installed build-system set are filtered out to avoid resolving a
+    conflicting version (see :issue:`1194`).
+
+    Next phase: ``Build`` + one ``Resolve`` per build-backend dependency
+    + one ``Resolve`` per build-sdist dependency.
+    """
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PREPARE_BUILD
     tracks_why: typing.ClassVar[bool] = True

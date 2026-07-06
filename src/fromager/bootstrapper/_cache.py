@@ -221,7 +221,6 @@ def _bg_prepare_prebuilt(
     # mkdir uses exist_ok=True (atomic), and update_wheel_mirror() is already locked.
     logger.info(f"using pre-built wheel for {req_type} requirement")
     wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
-    unpack_dir = ctx.work_dir / f"{req.name}-{resolved_version}"
-    unpack_dir.mkdir(parents=True, exist_ok=True)
+    unpack_dir = _create_unpack_dir(ctx.work_dir, req, resolved_version)
     server.update_wheel_mirror(ctx)
     return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)

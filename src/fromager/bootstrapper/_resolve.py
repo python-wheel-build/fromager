@@ -40,7 +40,16 @@ def _bg_resolve(
 
 
 class Resolve(Phase):
-    """RESOLVE phase: resolve versions and expand into Start items."""
+    """Resolve a requirement's available version(s) and fan out to ``Start`` items.
+
+    Resolution runs in a background thread (via ``background_work``); ``run()``
+    blocks until the result is ready.  In normal mode the highest matching
+    version is used; in ``multiple_versions`` mode every candidate version is
+    returned, minus any that previously failed or whose wheels are already
+    cached.
+
+    Next phase: one ``Start`` item per version that still needs processing.
+    """
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.RESOLVE
     tracks_why: typing.ClassVar[bool] = False

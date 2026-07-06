@@ -15,7 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class Start(Phase):
-    """START phase: add to graph, check if already seen."""
+    """Record a resolved requirement in the dependency graph and deduplicate.
+
+    Adds the ``(parent → req)`` edge to the dependency graph, then checks
+    whether this ``(req, version)`` pair has already been processed.  Duplicate
+    requirements are silently dropped; new ones proceed to source preparation.
+    ``tracks_why`` is ``False`` so graph additions happen before the why-stack
+    is updated.
+
+    Next phase: ``PrepareSource`` (new requirement) or ``[]`` (already seen).
+    """
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.START
     tracks_why: typing.ClassVar[bool] = False

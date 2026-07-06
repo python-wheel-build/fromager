@@ -306,17 +306,16 @@ class Bootstrapper:
             item = stack.pop()
             self.why = list(item.work_item.why_snapshot)
 
-            if item.requires_exclusive_run:
-                logger.info(
-                    "%s requires exclusive build, draining background pool",
-                    item.work_item.req,
-                )
-                self._drain_background_pool()
-
             with (
                 req_ctxvar_context(item.work_item.req, item.work_item.resolved_version),
                 self._track_why(item),
             ):
+                if item.requires_exclusive_run:
+                    logger.info(
+                        "%s requires exclusive build, draining background pool",
+                        item.work_item.req,
+                    )
+                    self._drain_background_pool()
                 try:
                     new_items = item.run(self)
                 except Exception as err:
@@ -819,6 +818,22 @@ class Bootstrapper:
         download_url: str,
         parent: tuple[Requirement, Version] | None,
     ) -> None:
+        """Add a resolved requirement as a node/edge in the dependency graph.
+
+        Records the dependency relationship between ``parent`` and ``req`` in
+        the in-memory graph, then writes the updated graph to disk. Must be
+        called after resolution but before the seen-check so that every edge
+        is captured even for packages that are not built again.
+
+        Args:
+            req: The requirement being added.
+            req_type: Whether this is a build-system, build-backend, install,
+                or other dependency kind.
+            req_version: The resolved version of ``req``.
+            download_url: Source URL used to obtain the distribution.
+            parent: ``(req, version)`` of the package that introduced ``req``,
+                or ``None`` for top-level requirements.
+        """
         parent_req, parent_version = parent if parent else (None, None)
         pbi = self.ctx.package_build_info(req)
         # Update the dependency graph after we determine that this requirement is
@@ -877,6 +892,18 @@ class Bootstrapper:
         version: Version,
         sdist_only: bool = False,
     ) -> bool:
+        """Return True if this requirement/version has already been processed.
+
+        Uses the same sdist-vs-wheel distinction as ``mark_as_seen``:
+        when ``sdist_only`` is True, checks only for a prior sdist build;
+        otherwise checks for a prior wheel build.
+
+        Args:
+            req: The requirement to check.
+            version: The resolved version to check.
+            sdist_only: If True, check for a sdist-only build instead of a
+                full wheel build.
+        """
         typ: typing.Literal["sdist", "wheel"] = "sdist" if sdist_only else "wheel"
         return self._resolved_key(req, version, typ) in self._seen_requirements
 
@@ -889,6 +916,21 @@ class Bootstrapper:
         prebuilt: bool = False,
         constraint: Requirement | None = None,
     ) -> None:
+        """Append a package to the build-order output file if not already present.
+
+        Deduplicates by ``(canonicalized_name, version)`` so the same package
+        is never written twice, regardless of extras. On each new entry, the
+        full build-order list is written to ``self._build_order_filename``.
+
+        Args:
+            req: The requirement being added to the build order.
+            version: The resolved version.
+            source_url: URL from which the source distribution was obtained.
+            source_type: The kind of source (sdist, wheel, git, etc.).
+            prebuilt: True if the wheel was taken from a prebuilt cache rather
+                than compiled locally.
+            constraint: The version constraint active for this package, if any.
+        """
         # We only care if this version of this package has been built,
         # and don't want to trigger building it twice. The "extras"
         # value, included in the _resolved_key() output, can confuse

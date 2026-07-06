@@ -53,7 +53,18 @@ def _bg_prepare_source(
 
 
 class PrepareSource(Phase):
-    """PREPARE_SOURCE phase: download source or prebuilt, get build system deps."""
+    """Download the source distribution or prebuilt wheel and set up build-system deps.
+
+    The download runs in a background thread (via ``background_work``).
+    For prebuilt packages the background task fetches the wheel directly and
+    the build phases are skipped entirely.  For source builds the background
+    task downloads and unpacks the sdist; ``run()`` then reads build-system
+    dependencies from the unpacked tree.
+
+    Next phase:
+    - Prebuilt wheel: ``ProcessInstallDeps``.
+    - Source build: ``PrepareBuild`` + one ``Resolve`` per build-system dependency.
+    """
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.PREPARE_SOURCE
     tracks_why: typing.ClassVar[bool] = True

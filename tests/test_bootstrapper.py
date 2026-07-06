@@ -38,6 +38,27 @@ from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
 
 
+def test_phase_subclass_without_phase_attribute_raises() -> None:
+    """Concrete Phase subclass missing 'phase' raises TypeError at class definition."""
+    with pytest.raises(TypeError, match="must define the 'phase' class attribute"):
+
+        class _BadPhase(Phase):
+            def run(self, bt: typing.Any) -> list[Phase]:  # type: ignore[override]
+                return []
+
+
+def test_phase_abstract_subclass_without_phase_attribute_is_allowed() -> None:
+    """Abstract Phase subclass may omit 'phase' without error."""
+    import abc
+
+    class _AbstractMiddle(Phase):
+        @abc.abstractmethod
+        def helper(self) -> None: ...
+
+    # Defining _AbstractMiddle itself must not raise.
+    assert _AbstractMiddle.__abstractmethods__
+
+
 def test_seen(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testdist")

@@ -17,7 +17,23 @@ logger = logging.getLogger(__name__)
 
 
 class Build(Phase):
-    """BUILD phase: install remaining deps, build wheel/sdist."""
+    """Install remaining build deps and produce a wheel or sdist for the package.
+
+    Three execution paths based on ``WorkItem`` state:
+
+    - **Cached wheel**: a matching wheel was found during source preparation;
+      no build is performed.
+    - **sdist-only**: ``sdist_only`` mode is active and this is not a build
+      requirement; only an sdist is built.
+    - **Full build**: an sdist is built first, then a wheel is compiled and
+      the local mirror is updated.
+
+    When ``pbi.exclusive_build`` is set the bootstrap loop drains the
+    background thread pool before calling ``run()`` so the build has exclusive
+    access to the environment.
+
+    Next phase: ``ProcessInstallDeps``.
+    """
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.BUILD
     tracks_why: typing.ClassVar[bool] = True

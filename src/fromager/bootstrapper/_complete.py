@@ -10,7 +10,14 @@ if typing.TYPE_CHECKING:
 
 
 class Complete(Phase):
-    """COMPLETE phase: clean up build directories."""
+    """Clean up build directories after a package has been fully processed.
+
+    Removes the unpacked source tree and build environment created during
+    ``PrepareSource`` and ``PrepareBuild`` to free disk space.  This is the
+    terminal phase for every package: ``run()`` always returns an empty list.
+
+    Next phase: none (terminal).
+    """
 
     phase: typing.ClassVar[BootstrapPhase] = BootstrapPhase.COMPLETE
     tracks_why: typing.ClassVar[bool] = True
