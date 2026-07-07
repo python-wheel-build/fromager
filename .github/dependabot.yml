@@ -11,3 +11,8 @@ updates:
     schedule:
       # Check for updates to GitHub Actions once a week
       interval: "weekly"
+    groups:
+      # Group all CodeQL action updates into a single PR
+      codeql:
+        patterns:
+          - "github/codeql-action/*"
