@@ -756,7 +756,8 @@ class Bootstrapper:
                         # dynamically computed by something like setuptools-scm.
                         logger.debug("cleaning up %s", working_src_dir)
                         shutil.rmtree(working_src_dir)
-                        working_src_dir.parent.mkdir(parents=True, exist_ok=True)
+                assert working_src_dir is not None
+                working_src_dir.parent.mkdir(parents=True, exist_ok=True)
                 logger.info("moving cloned repo to %s", working_src_dir)
                 shutil.move(clone_dir, str(working_src_dir))
 

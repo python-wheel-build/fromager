@@ -894,3 +894,43 @@ def test_resolve_version_from_git_url_invalid_scheme(
     bs = bootstrapper.Bootstrapper(tmp_context)
     with pytest.raises(ValueError, match="unsupported VCS URL scheme"):
         bs._resolve_version_from_git_url(req)
+
+
+def test_resolve_version_from_git_url_creates_parent_dir_on_first_clone(
+    tmp_context: context.WorkContext,
+) -> None:
+    """working_src_dir.parent is created before shutil.move on first clone.
+
+    When the URL has no version ref, the version is discovered after cloning,
+    so working_src_dir is computed inside the clone block. Its parent directory
+    does not exist yet and must be created before shutil.move is called.
+    """
+    req = Requirement("test-pkg @ git+https://pkg.test/repo.git")
+
+    def fake_download_git_source(
+        *,
+        ctx: context.WorkContext,
+        req: Requirement,
+        url_to_clone: str,
+        destination_dir: pathlib.Path,
+        ref: str,
+    ) -> None:
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+    with (
+        patch(
+            "fromager.sources.download_git_source",
+            side_effect=fake_download_git_source,
+        ),
+        patch(
+            "fromager.bootstrapper.Bootstrapper._get_version_from_package_metadata",
+            return_value=Version("1.0.0"),
+        ),
+    ):
+        bs = bootstrapper.Bootstrapper(tmp_context)
+        src_dir, version = bs._resolve_version_from_git_url(req)
+
+    expected = tmp_context.work_dir / "test-pkg-1.0.0" / "test-pkg-1.0.0"
+    assert pathlib.Path(src_dir) == expected
+    assert expected.exists()
+    assert version == Version("1.0.0")
