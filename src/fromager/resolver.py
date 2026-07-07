@@ -14,7 +14,7 @@ import typing
 from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, urlparse
 
 import pypi_simple
 import resolvelib
@@ -33,6 +33,7 @@ from resolvelib.resolvers import RequirementInformation
 from . import overrides
 from .candidate import Candidate, Cooldown
 from .constraints import Constraints
+from .downloads import extract_filename_from_url as extract_filename_from_url
 from .extras_provider import ExtrasProvider
 from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
@@ -202,13 +203,6 @@ def _compute_max_age_cutoff(
         else datetime.datetime.now(datetime.UTC)
     )
     return bootstrap_time - ctx.max_release_age
-
-
-def extract_filename_from_url(url: str) -> str:
-    """Extract filename from URL and decode it."""
-    path = urlparse(url).path
-    filename = os.path.basename(path)
-    return unquote(filename)
 
 
 class LogReporter(resolvelib.BaseReporter):

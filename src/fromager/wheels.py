@@ -12,7 +12,6 @@ import zipfile
 
 import elfdeps
 import tomlkit
-import wheel.wheelfile  # type: ignore
 from packaging.requirements import Requirement
 from packaging.tags import Tag
 from packaging.utils import (
@@ -24,6 +23,7 @@ from packaging.version import Version
 
 from . import (
     dependencies,
+    downloads,
     external_commands,
     metrics,
     overrides,
@@ -31,7 +31,6 @@ from . import (
     requirements_file,
     resolver,
     sbom,
-    sources,
 )
 
 if typing.TYPE_CHECKING:
@@ -454,27 +453,17 @@ def download_wheel(
     wheel_url: str,
     output_directory: pathlib.Path,
 ) -> pathlib.Path:
-    wheel_filename = output_directory / resolver.extract_filename_from_url(wheel_url)
+    wheel_filename = output_directory / downloads.extract_filename_from_url(wheel_url)
     if not wheel_filename.exists():
         logger.info(f"downloading pre-built wheel {wheel_url}")
-        wheel_filename = _download_wheel_check(req, output_directory, wheel_url)
+        wheel_filename = downloads.download_wheel(
+            destination_dir=output_directory,
+            url=wheel_url,
+        )
         logger.info(f"saved wheel to {wheel_filename}")
     else:
         logger.info(f"have existing wheel {wheel_filename}")
 
-    return wheel_filename
-
-
-def _download_wheel_check(
-    req: Requirement, destination_dir: pathlib.Path, wheel_url: str
-) -> pathlib.Path:
-    wheel_filename = sources.download_url(
-        req=req,
-        destination_dir=destination_dir,
-        url=wheel_url,
-    )
-    # validates whether the wheel is correct or not. will raise an error in the wheel is invalid
-    wheel.wheelfile.WheelFile(wheel_filename)
     return wheel_filename
 
 

@@ -3,28 +3,12 @@ import zipfile
 from unittest.mock import Mock, patch
 
 import pytest
-import wheel.wheelfile  # type: ignore
 from conftest import make_sbom_ctx
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import build_environment, context, sources, wheels
+from fromager import build_environment, context, downloads, wheels
 from fromager.packagesettings import SbomSettings
-
-
-@patch("fromager.sources.download_url")
-def test_invalid_wheel_file_exception(
-    mock_download_url: Mock, tmp_path: pathlib.Path
-) -> None:
-    mock_download_url.return_value = pathlib.Path(tmp_path / "test" / "fake_wheel.txt")
-    fake_url = "https://www.thisisafakeurl.com"
-    fake_dir = tmp_path / "test"
-    fake_dir.mkdir()
-    text_file = fake_dir / "fake_wheel.txt"
-    text_file.write_text("This is a test file")
-    req = Requirement("test_pkg")
-    with pytest.raises(wheel.wheelfile.WheelError):
-        wheels._download_wheel_check(req, fake_dir, fake_url)
 
 
 @patch("pyproject_hooks.BuildBackendHookCaller.build_wheel")
@@ -247,9 +231,8 @@ def test_download_wheel_unquotes_url_encoded_filenames(tmp_path: pathlib.Path) -
         assert result_filename == expected_filename
 
 
-def test_sources_download_url_unquotes_filenames(tmp_path: pathlib.Path) -> None:
-    """Test that sources.download_url properly unquotes URL-encoded characters in filenames."""
-    req = Requirement("test_pkg")
+def test_download_url_unquotes_filenames(tmp_path: pathlib.Path) -> None:
+    """Test that downloads.download_url properly unquotes URL-encoded characters in filenames."""
     # URL with encoded plus sign (%2B)
     url = "https://example.test/test_pkg-1.0%2Blocal.tar.gz"
 
@@ -260,9 +243,7 @@ def test_sources_download_url_unquotes_filenames(tmp_path: pathlib.Path) -> None
         mock_response.iter_content.return_value = [b"test content"]
         mock_get.return_value.__enter__.return_value = mock_response
 
-        result_filename = sources.download_url(
-            req=req, destination_dir=tmp_path, url=url
-        )
+        result_filename = downloads.download_url(destination_dir=tmp_path, url=url)
 
         # The filename should be unquoted, containing actual + character
         expected_filename = tmp_path / "test_pkg-1.0+local.tar.gz"
