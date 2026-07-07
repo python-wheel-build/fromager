@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import pathlib
 import typing
@@ -5,7 +7,10 @@ from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
 
-from fromager import context, external_commands
+from fromager import external_commands
+
+if typing.TYPE_CHECKING:
+    from fromager import context
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +143,19 @@ def git_clone_fast(
         external_commands.run(cmd, cwd=str(output_dir), network_isolation=False)
     else:
         logger.debug("no .gitmodules file")
+
+
+def git_clean(source_dir: pathlib.Path) -> None:
+    """Remove untracked files and directories from a git working tree.
+
+    Runs ``git clean -xdf`` in *source_dir* to remove all untracked and
+    ignored files, restoring the working tree to a pristine state.
+
+    .. versionadded:: 0.90.0
+    """
+    cmd: list[str] = ["git", "clean", "-xdf"]
+    logger.debug("cleaning untracked files in %s", source_dir)
+    external_commands.run(cmd, cwd=str(source_dir))
 
 
 def parse_vcs_url(vcs_url: str, *, require_ref: bool = True) -> tuple[str, str]:

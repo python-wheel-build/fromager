@@ -20,7 +20,7 @@ fromager \
 pass=true
 
 # Check for log message that the override is loaded
-if ! grep -q "flit_core: new toplevel dependency flit_core<2.0.1 resolves to 2.0" "$OUTDIR/bootstrap.log"; then
+if ! grep -q "flit_core-2.0: new toplevel dependency flit_core<2.0.1 resolves to 2.0" "$OUTDIR/bootstrap.log"; then
   echo "FAIL: flit_core did not resolve to 2.0 $OUTDIR/bootstrap.log" 1>&2
   pass=false
 fi
@@ -41,7 +41,7 @@ DEBUG_RESOLVER=true fromager \
 
 
 # Check for log message that the override is loaded
-if ! grep -q "flit_core: new toplevel dependency flit_core<2.0.1 resolves to 2.0rc3" "$OUTDIR/bootstrap.log"; then
+if ! grep -q "flit_core-2.0rc3: new toplevel dependency flit_core<2.0.1 resolves to 2.0rc3" "$OUTDIR/bootstrap.log"; then
   echo "FAIL: flit_core did not resolve to 2.0rc3 $OUTDIR/bootstrap.log" 1>&2
   pass=false
 fi

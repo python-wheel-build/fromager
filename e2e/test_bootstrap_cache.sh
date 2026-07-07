@@ -42,11 +42,11 @@ fromager \
   bootstrap --cache-wheel-server-url="https://pypi.org/simple" "$DIST==$VER"
 
 EXPECTED_LOG_MESSAGES=(
-"$DIST: looking for existing wheel for version $VER with build tag () in"
-"$DIST: found existing wheel"
+"$DIST-$VER: looking for existing wheel for version $VER with build tag () in"
+"$DIST-$VER: found existing wheel"
 )
 for pattern in "${EXPECTED_LOG_MESSAGES[@]}"; do
-  if ! grep -q "$pattern" "$OUTDIR/bootstrap.log"; then
+  if ! grep -qF "$pattern" "$OUTDIR/bootstrap.log"; then
     echo "FAIL: Did not find log message $pattern in $OUTDIR/bootstrap.log" 1>&2
     pass=false
   fi
@@ -54,11 +54,11 @@ done
 $pass
 
 UNEXPECTED_LOG_MESSAGES=(
-"$DIST: checking if wheel was already uploaded to https://pypi.org/simple"
+"$DIST-$VER: checking if wheel was already uploaded to https://pypi.org/simple"
 )
 
 for pattern in "${UNEXPECTED_LOG_MESSAGES[@]}"; do
-  if grep -q "$pattern" "$OUTDIR/bootstrap.log"; then
+  if grep -qF "$pattern" "$OUTDIR/bootstrap.log"; then
     echo "FAIL: Found log message $pattern in $OUTDIR/bootstrap.log" 1>&2
     pass=false
   fi
@@ -105,14 +105,14 @@ done
 $pass
 
 UNEXPECTED_LOG_MESSAGES=(
-"$DIST: loading build sdist dependencies from build-sdist-requirements.txt"
-"$DIST: loading build backend dependencies from build-backend-requirements.txt"
-"$DIST: loading build system dependencies from build-system-requirements.txt"
+"$DIST-$VER: loading build sdist dependencies from build-sdist-requirements.txt"
+"$DIST-$VER: loading build backend dependencies from build-backend-requirements.txt"
+"$DIST-$VER: loading build system dependencies from build-system-requirements.txt"
 )
 
 for pattern in "${UNEXPECTED_LOG_MESSAGES[@]}"; do
   echo $pattern
-  if grep -q "$pattern" "$OUTDIR/bootstrap.log"; then
+  if grep -qF "$pattern" "$OUTDIR/bootstrap.log"; then
     echo "FAIL: found log message $pattern in $OUTDIR/bootstrap.log" 1>&2
     pass=false
   fi

@@ -31,36 +31,60 @@ Source Resolver
 
 .. autopydantic_model:: PyPISDistResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: PyPIPrebuiltResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: PyPIDownloadResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: PyPIGitResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitHubTagDownloadResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitHubTagCloneResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitLabTagDownloadResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitLabTagCloneResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: NotAvailableResolver
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
-.. autopydantic_model:: HookResolver
+.. autopydantic_model:: HookSDistResolver
+   :inherited-members: AbstractHookResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
+
+.. autopydantic_model:: HookPrebuiltResolver
+   :inherited-members: AbstractHookResolver, CooldownMixin
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autoclass:: BuildSDist
 
    .. autoattribute:: pep517
    .. autoattribute:: tarball
+
+.. autoclass:: DownloadKind
+
+   .. autoattribute:: sdist
+   .. autoattribute:: tarball
+   .. autoattribute:: prebuilt_wheel
+   .. autoattribute:: git_checkout
+   .. autoattribute:: any_source
+   .. autoattribute:: not_available
 
 
 Global Settings

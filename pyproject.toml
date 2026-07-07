@@ -133,11 +133,10 @@ lint-requirements = "fromager.commands.lint_requirements:lint_requirements"
 branch = true
 parallel = true
 relative_files = true
-source = ["fromager", "tests/"]
+source = ["fromager"]
 
 [tool.coverage.paths]
 source = ["src/fromager", ".hatch/**/site-packages/fromager"]
-tests = ["tests/"]
 
 [tool.coverage.report]
 show_missing = true
@@ -209,7 +208,7 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "spdx_tools.*", "stevedore"]
+module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "spdx_tools.*", "stevedore", "wheel.*"]
 ignore_missing_imports = true
 
 [tool.basedpyright]
@@ -297,6 +296,7 @@ build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail
 [tool.pytest.ini_options]
 # run tests in parallel with 3 pytest-xdist workers
 addopts = "-n 3"
+testpaths = ["tests"]
 markers = [
     "network: test that need network access",
 ]

@@ -55,7 +55,7 @@ fromager \
   --settings-file="$SCRIPTDIR/bootstrap_settings.yaml" \
   bootstrap --cache-wheel-server-url=$WHEEL_SERVER_URL 'stevedore==5.2.0'
 
-if ! grep -q "stevedore: found built wheel on cache server" "$LOGFILE"; then
+if ! grep -q "stevedore-5.2.0: found built wheel on cache server" "$LOGFILE"; then
   echo "FAIL: Did not find log message found built wheel on cache server in $LOGFILE" 1>&2
   pass=false
 fi
@@ -77,7 +77,7 @@ fromager \
   --settings-file="$SCRIPTDIR/bootstrap_settings.yaml" \
   bootstrap --cache-wheel-server-url=$WHEEL_SERVER_URL 'stevedore==5.2.0'
 
-if ! grep -q "stevedore: found existing wheel " "$LOGFILE"; then
+if ! grep -q "stevedore-5.2.0: found existing wheel " "$LOGFILE"; then
   echo "FAIL: Did not find log message found existing wheel in $LOGFILE" 1>&2
   pass=false
 fi

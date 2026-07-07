@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 from packaging.version import Version
 
-from fromager.gitutils import GIT_HEAD, git_clone_fast, parse_vcs_url
+from fromager.gitutils import GIT_HEAD, git_clean, git_clone_fast, parse_vcs_url
 
 needs_git_command = pytest.mark.skipif(
     shutil.which("git") is None, reason="requires 'git' command"
@@ -73,6 +73,16 @@ def test_git_clone_fast_submodules(m_run: Mock, tmp_path: pathlib.Path) -> None:
         ],
         cwd=str(tmp_path),
         network_isolation=False,
+    )
+
+
+@patch("fromager.external_commands.run")
+def test_git_clean(m_run: Mock, tmp_path: pathlib.Path) -> None:
+    git_clean(tmp_path)
+
+    m_run.assert_called_once_with(
+        ["git", "clean", "-xdf"],
+        cwd=str(tmp_path),
     )
 
 

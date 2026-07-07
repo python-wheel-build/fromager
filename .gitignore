@@ -220,6 +220,7 @@ __marimo__/
 /work-dir*/
 /build-logs/
 /e2e-output/
+/e2e-failed*
 /artifacts
 /overrides/
 
@@ -253,5 +254,6 @@ __marimo__/
 
 # Misc
 .skip-coverage
-.claude
+.claude/*
+!.claude/commands/
 /.beads/

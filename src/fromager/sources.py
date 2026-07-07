@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import tarfile
 import typing
+import warnings
 import zipfile
 
 import resolvelib
@@ -15,12 +16,11 @@ from packaging.utils import (
     parse_sdist_filename,
 )
 from packaging.version import Version
-from requests.exceptions import ChunkedEncodingError, ConnectionError
-from urllib3.exceptions import IncompleteRead, ProtocolError
 
 from . import (
     build_environment,
     dependencies,
+    downloads,
     external_commands,
     gitutils,
     metrics,
@@ -31,14 +31,38 @@ from . import (
     tarballs,
     vendor_rust,
 )
-from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
-from .request_session import session
 from .requirements_file import RequirementType, SourceType
 
 if typing.TYPE_CHECKING:
     from . import build_environment, context
 
 logger = logging.getLogger(__name__)
+
+
+def download_url(
+    *,
+    req: Requirement,
+    destination_dir: pathlib.Path,
+    url: str,
+    destination_filename: str | None = None,
+) -> pathlib.Path:
+    """Download a URL to destination_dir, returning the local path.
+
+    .. deprecated::
+        Use :func:`fromager.downloads.download_url` instead.
+        The ``req`` parameter is unused and will be removed.
+    """
+    warnings.warn(
+        "fromager.sources.download_url() is deprecated, "
+        "use fromager.downloads.download_url() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return downloads.download_url(
+        destination_dir=destination_dir,
+        url=url,
+        destination_filename=destination_filename,
+    )
 
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
@@ -194,7 +218,7 @@ def default_download_source(
     if url is None:
         raise ValueError(f"Could not determine download URL for {req}")
     if destination_filename is None:
-        url_filename = resolver.extract_filename_from_url(url)
+        url_filename = downloads.extract_filename_from_url(url)
         if url_filename.endswith(".zip"):
             destination_filename = f"{pbi.override_module_name}-{version}.zip"
         else:
@@ -202,8 +226,7 @@ def default_download_source(
         logger.debug(
             "config has no destination_filename, use default %r", destination_filename
         )
-    source_filename = _download_source_check(
-        req=req,
+    source_filename = downloads.download_sdist(
         destination_dir=sdists_downloads_dir,
         url=url,
         destination_filename=destination_filename,
@@ -242,128 +265,6 @@ def download_git_source(
         submodules=submodules,
         ref=ref,
     )
-
-
-# Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
-# It will throw exception if any other file is encountered. Eg: index.html
-def _download_source_check(
-    req: Requirement,
-    destination_dir: pathlib.Path,
-    url: str,
-    destination_filename: str | None = None,
-) -> pathlib.Path:
-    source_filename = download_url(
-        req=req,
-        destination_dir=destination_dir,
-        url=url,
-        destination_filename=destination_filename,
-    )
-    if source_filename.suffix == ".zip":
-        with zipfile.ZipFile(source_filename) as zip_file:
-            source_file_contents = zip_file.namelist()
-            if not source_file_contents:
-                raise zipfile.BadZipFile(
-                    f"Empty zip file encountered: {source_filename}"
-                )
-    elif (
-        source_filename.suffix == ".tgz"
-        or source_filename.suffix == ".gz"
-        or str(source_filename).endswith(".tar.gz")
-    ):
-        with tarfile.open(source_filename) as tar:
-            if not tar.next():
-                raise tarfile.TarError(f"Empty tar file encountered: {source_filename}")
-    else:
-        raise ValueError(
-            f"The source file encountered is not a zip or tar file: {source_filename}"
-        )
-    return source_filename
-
-
-def download_url(
-    *,
-    req: Requirement,
-    destination_dir: pathlib.Path,
-    url: str,
-    destination_filename: str | None = None,
-) -> pathlib.Path:
-    """Download a URL to destination_dir, returning the local path.
-
-    Returns immediately if the file already exists. Downloads to a
-    temporary file first and renames it on success to avoid leaving
-    partial files. Retries on transient network errors.
-    """
-    basename = (
-        destination_filename
-        if destination_filename
-        else resolver.extract_filename_from_url(url)
-    )
-    outfile = pathlib.Path(destination_dir) / basename
-    logger.debug(
-        "looking for %s %s",
-        outfile,
-        "(exists)" if outfile.exists() else "(not there)",
-    )
-    if outfile.exists():
-        logger.debug("already have %s", outfile)
-        return outfile
-
-    # Create a temporary file to avoid partial downloads
-    temp_file = outfile.with_suffix(outfile.suffix + ".tmp")
-
-    def _download_with_retry() -> pathlib.Path:
-        """Internal function that performs the actual download with retry logic."""
-        logger.debug(f"reading from {url}")
-        try:
-            with session.get(url, stream=True) as r:
-                r.raise_for_status()
-                with open(temp_file, "wb") as f:
-                    logger.debug("writing to %s", temp_file)
-                    # Use smaller chunk size for better error recovery
-                    for chunk in r.iter_content(chunk_size=64 * 1024):
-                        if chunk:  # Filter out keep-alive chunks
-                            f.write(chunk)
-
-            # Only move to final location if download completed successfully
-            temp_file.rename(outfile)
-            logger.info("saved %s", outfile)
-            return outfile
-
-        except (
-            ChunkedEncodingError,
-            IncompleteRead,
-            ProtocolError,
-            ConnectionError,
-        ) as e:
-            # Clean up partial file on failure
-            if temp_file.exists():
-                temp_file.unlink()
-            logger.warning(f"Download failed for {url}: {e}")
-            raise
-        except Exception:
-            # Clean up partial file on any other failure
-            if temp_file.exists():
-                temp_file.unlink()
-            raise
-
-    # Apply retry logic specifically for download operations
-    @retry_on_exception(
-        exceptions=RETRYABLE_EXCEPTIONS,
-        max_attempts=5,
-        backoff_factor=1.5,
-        max_backoff=120.0,
-    )
-    def download_with_retry() -> pathlib.Path:
-        return _download_with_retry()
-
-    try:
-        result: pathlib.Path = download_with_retry()
-        return result
-    except Exception:
-        # Ensure temp file is cleaned up if it still exists
-        if temp_file.exists():
-            temp_file.unlink()
-        raise
 
 
 def _takes_arg(f: typing.Callable, arg_name: str) -> bool:

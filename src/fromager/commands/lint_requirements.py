@@ -47,61 +47,60 @@ def lint_requirements(
     failures: list[str] = []
 
     # Create bootstrapper for requirement resolution
-    bt = bootstrapper.Bootstrapper(
+    with bootstrapper.Bootstrapper(
         ctx=wkctx,
         progressbar=progress.Progressbar(None),
         prev_graph=None,
         cache_wheel_server_url=None,
         sdist_only=True,
-    )
-
-    for path in input_files_path:
-        is_constraints: bool = path.name.endswith("constraints.txt")
-        parsed_lines = requirements_file.parse_requirements_file(path)
-        unique_entries: dict[tuple[str, str], Requirement] = {}
-        for line in parsed_lines:
-            try:
-                requirement = Requirement(line)
-                marker_key = str(requirement.marker) if requirement.marker else ""
-                unique_key = (requirement.name, marker_key)
-
-                if is_constraints:
-                    if unique_key in unique_entries:
-                        raise InvalidRequirement(
-                            f"Duplicate entry, first found: {unique_entries[unique_key]}"
-                        )
-                    unique_entries[unique_key] = requirement
-                    if requirement.extras:
-                        raise InvalidRequirement(
-                            f"{requirement.name}: Constraints files cannot contain extra dependencies"
-                        )
-                    if not requirement.specifier:
-                        raise InvalidRequirement(
-                            f"{requirement.name}: Constraints must have a version specifier"
-                        )
-            except InvalidRequirement as err:
-                msg = f"{path}: {line}: {err}"
-                logger.error(msg)
-                failures.append(msg)
-
-            # Resolve the requirement to ensure it can be found
-            # Skip resolution for constraints files as they should only specify versions
-            if resolve_requirements and not is_constraints:
-                token = requirement_ctxvar.set(requirement)
+    ) as bt:
+        for path in input_files_path:
+            is_constraints: bool = path.name.endswith("constraints.txt")
+            parsed_lines = requirements_file.parse_requirements_file(path)
+            unique_entries: dict[tuple[str, str], Requirement] = {}
+            for line in parsed_lines:
                 try:
-                    results = bt.resolve_versions(
-                        req=requirement,
-                        req_type=RequirementType.TOP_LEVEL,
-                    )
-                    _, version = results[0]
-                    logger.info(f"{requirement} resolves to {version}")
-                except Exception as err:
-                    logger.error(
-                        f"{path}: {line}: Failed to resolve requirement: {err}"
-                    )
-                    failures.append(f"{path}: {line}: {err}")
-                finally:
-                    requirement_ctxvar.reset(token)
+                    requirement = Requirement(line)
+                    marker_key = str(requirement.marker) if requirement.marker else ""
+                    unique_key = (requirement.name, marker_key)
+
+                    if is_constraints:
+                        if unique_key in unique_entries:
+                            raise InvalidRequirement(
+                                f"Duplicate entry, first found: {unique_entries[unique_key]}"
+                            )
+                        unique_entries[unique_key] = requirement
+                        if requirement.extras:
+                            raise InvalidRequirement(
+                                f"{requirement.name}: Constraints files cannot contain extra dependencies"
+                            )
+                        if not requirement.specifier:
+                            raise InvalidRequirement(
+                                f"{requirement.name}: Constraints must have a version specifier"
+                            )
+                except InvalidRequirement as err:
+                    msg = f"{path}: {line}: {err}"
+                    logger.error(msg)
+                    failures.append(msg)
+
+                # Resolve the requirement to ensure it can be found
+                # Skip resolution for constraints files as they should only specify versions
+                if resolve_requirements and not is_constraints:
+                    token = requirement_ctxvar.set(requirement)
+                    try:
+                        results = bt.resolve_versions(
+                            req=requirement,
+                            req_type=RequirementType.TOP_LEVEL,
+                        )
+                        _, version = results[0]
+                        logger.info(f"{requirement} resolves to {version}")
+                    except Exception as err:
+                        logger.error(
+                            f"{path}: {line}: Failed to resolve requirement: {err}"
+                        )
+                        failures.append(f"{path}: {line}: {err}")
+                    finally:
+                        requirement_ctxvar.reset(token)
 
     if failures:
         click.echo("Validation error:", err=True)

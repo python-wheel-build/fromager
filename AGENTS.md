@@ -122,6 +122,20 @@ Closes: #123
 
 This produces a commit message with both the `Signed-off-by` trailer (from `--signoff`) and the `Co-Authored-By` trailer.
 
+## End-to-end tests
+
+There is a set of end-to-end tests in `./e2e`. Files named like
+`test_*.sh` are test scripts and files named like `ci_*.sh` are CI
+test suites that run the individual test scripts.
+
+The end-to-end tests are expensive so **ONLY** run them when asked.
+
+The CI test suites produce a lot of output. The most important
+information is in the summary at the end, where it shows which test
+scripts fail. Always run CI jobs in a way that only adds the last 25
+lines to the context window, then run an individual failing test
+script to debug the problem.
+
 ## Workflow for Complex Tasks
 
 1. **Search codebase** for similar patterns first
