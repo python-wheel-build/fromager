@@ -151,6 +151,16 @@ variants:
 - The `hook-prebuilt` profile is similar to `hook-sdist` but the downloaded
   artifact must be a pre-built wheel.
 
+- The `legacy` profile preserves the old resolution and download behavior
+  as a typed resolver. It reads `resolver_dist` settings from the per-package
+  build info, invokes the `resolver_provider` and `download_source`
+  [hooks](../reference/hooks.rst) (falling back to their defaults), and
+  applies the per-package release-age cooldown. When `pre_built` is true for
+  the variant, the download returns a pre-built wheel; otherwise it returns
+  a tarball via the `download_source` hook. This profile is useful for
+  gradual migration: packages without an explicit typed resolver can use
+  `provider: legacy` to keep the existing behavior.
+
 - The `not-available` profile raises an error. It can be used to block a
   package and only enable it for a single variant.
 
