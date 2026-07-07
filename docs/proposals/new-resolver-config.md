@@ -143,8 +143,13 @@ variants:
   `gitlab-tag-git` and `github-tag-git` profiles. Instead of cloning a git
   repository, they download a git tarball or an release artifact.
 
-- The `hooks` profile calls the `resolver_provider` and `download_source`
-  [hooks](../reference/hooks.rst).
+- The `hook-sdist` profile calls the `resolver_provider` and `download_source`
+  [hooks](../reference/hooks.rst). The `resolver_provider` hook receives the
+  `req` argument for access to the current requirement. Hooks can return
+  any source artifact (sdist, tarball, or git checkout).
+
+- The `hook-prebuilt` profile is similar to `hook-sdist` but the downloaded
+  artifact must be a pre-built wheel.
 
 - The `not-available` profile raises an error. It can be used to block a
   package and only enable it for a single variant.
@@ -158,17 +163,16 @@ distributions on PyPI.
 
 When a package has a plugin with a `resolver_provider` or `download_source`
 hook and `source` settings, then at least one `source` setting (top-level or
-variant) must use `provider: hooks`. The rule ensures that the hooks are
-used.
+variant) must use `provider: hook-sdist` or `provider: hook-prebuilt`. The
+rule ensures that the hooks are used.
 
 ### git clone
 
-Like pip's VCS feature, all git clone operations automatically retrieve all
-submodules recursively. The final sdist does not include a `.git` directory.
-Instead Fromager generates a `.git_archival.txt` file for setuptools-scm's
-[builtin mechanism for obtaining version numbers](https://setuptools-scm.readthedocs.io/en/latest/usage/#builtin-mechanisms-for-obtaining-version-numbers).
+Git cloning uses the more efficient `git_clone_fast` function. Like pip's
+VCS feature, it uses blobless clones and automatically retrieve all
+submodules recursively.
 
-The resolver and `Candidate` class do not support VCS URLs, yet. Fromager can
+The resolver and `Candidate` class do not support VCS URLs, yet. Fromager will
 adopt pip's [VCS support](https://pip.pypa.io/en/stable/topics/vcs-support/)
 syntax. The URL `git+https://git.example/viking/viking.git@v1.1.0` clones the
 git repository over HTTPS and checks out the tag `v1.1.0`.

@@ -8,17 +8,20 @@ import typing
 import pydantic
 import pytest
 import yaml
+from packaging.requirements import Requirement
 
 from fromager import resolver
 from fromager.candidate import Cooldown
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
     BuildSDist,
+    DownloadKind,
     GitHubTagCloneResolver,
     GitHubTagDownloadResolver,
     GitLabTagCloneResolver,
     GitLabTagDownloadResolver,
-    HookResolver,
+    HookPrebuiltResolver,
+    HookSDistResolver,
     NotAvailableResolver,
     PyPIDownloadResolver,
     PyPIGitResolver,
@@ -54,6 +57,7 @@ def _bad_matcher_returns_bad_sig(ctx: WorkContext) -> typing.Callable[..., None]
     return bad_func
 
 
+_REQ = Requirement("test-pkg")
 _REQ_TYPE = RequirementType.INSTALL
 
 
@@ -88,6 +92,9 @@ class TestPyPISDistResolver:
         assert str(r.index_url) == "https://pypi.test/simple"
         assert r.build_sdist == BuildSDist.tarball
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.sdist
 
     def test_default_index_url(self) -> None:
         r = PyPISDistResolver(provider="pypi-sdist")
@@ -103,7 +110,7 @@ class TestPyPISDistResolver:
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.PyPIProvider)
         assert p.include_sdists is True
         assert p.include_wheels is False
@@ -114,7 +121,7 @@ class TestPyPISDistResolver:
 
     def test_resolver_provider_cooldown(self, tmp_context: WorkContext) -> None:
         r = PyPISDistResolver(provider="pypi-sdist", min_release_age=7)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p.cooldown, Cooldown)
         assert p.cooldown.min_age == datetime.timedelta(days=7)
 
@@ -122,7 +129,7 @@ class TestPyPISDistResolver:
         self, tmp_context: WorkContext
     ) -> None:
         r = PyPISDistResolver(provider="pypi-sdist", min_release_age=0)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert p.cooldown is None
 
     def test_cooldown_negative(self) -> None:
@@ -144,10 +151,13 @@ class TestPyPIPrebuiltResolver:
         assert str(r.index_url) == "https://pypi.test/simple"
         assert r.build_sdist is None
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is True
+        assert r.download_kind == DownloadKind.prebuilt_wheel
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.PyPIProvider)
         assert p.include_sdists is False
         assert p.include_wheels is True
@@ -171,10 +181,13 @@ class TestPyPIDownloadResolver:
         assert "%7Bversion%7D" in str(r.download_url)
         assert r.build_sdist == BuildSDist.tarball
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.tarball
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.PyPIProvider)
         assert p.include_sdists is True
         assert p.include_wheels is True
@@ -210,10 +223,13 @@ class TestPyPIGitResolver:
         assert r.tag == "v{version}"
         assert r.build_sdist == BuildSDist.pep517
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.git_checkout
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.PyPIProvider)
         assert p.include_sdists is True
         assert p.include_wheels is True
@@ -259,6 +275,9 @@ class TestGitHubTagDownloadResolver:
         assert callable(r.matcher_factory)
         assert r.build_sdist == BuildSDist.pep517
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.tarball
 
     def test_explicit_matcher_factory(self) -> None:
         r = _parse("""\
@@ -288,7 +307,7 @@ class TestGitHubTagDownloadResolver:
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.GitHubTagProvider)
         assert p.organization == "python-wheel-build"
         assert p.repo == "fromager"
@@ -301,7 +320,7 @@ class TestGitHubTagDownloadResolver:
             project_url="https://github.com/python-wheel-build/fromager",  # type: ignore[arg-type]
             min_release_age=14,
         )
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p.cooldown, Cooldown)
         assert p.cooldown.min_age == datetime.timedelta(days=14)
 
@@ -314,7 +333,7 @@ class TestGitHubTagDownloadResolver:
             matcher_factory=_bad_matcher_returns_string,  # type: ignore[arg-type]
         )
         with pytest.raises(TypeError, match=r"expected re\.Pattern or callable"):
-            r.resolver_provider(tmp_context, _REQ_TYPE)
+            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
     def test_matcher_factory_rejects_no_groups(self, tmp_context: WorkContext) -> None:
         r = GitHubTagDownloadResolver(
@@ -323,7 +342,7 @@ class TestGitHubTagDownloadResolver:
             matcher_factory=_bad_matcher_returns_no_groups,  # type: ignore[arg-type]
         )
         with pytest.raises(ValueError, match="exactly one match group"):
-            r.resolver_provider(tmp_context, _REQ_TYPE)
+            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
     def test_matcher_factory_rejects_bad_signature(
         self, tmp_context: WorkContext
@@ -334,7 +353,7 @@ class TestGitHubTagDownloadResolver:
             matcher_factory=_bad_matcher_returns_bad_sig,  # type: ignore[arg-type]
         )
         with pytest.raises(TypeError, match=r"identifier.*item"):
-            r.resolver_provider(tmp_context, _REQ_TYPE)
+            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
     def test_project_url_rejects_dot_git(self) -> None:
         with pytest.raises(pydantic.ValidationError, match=r"\.git"):
@@ -359,10 +378,13 @@ class TestGitHubTagCloneResolver:
         assert callable(r.matcher_factory)
         assert r.build_sdist == BuildSDist.pep517
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.git_checkout
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.GitHubTagProvider)
         assert p.organization == "python-wheel-build"
         assert p.repo == "fromager"
@@ -386,10 +408,13 @@ class TestGitLabTagDownloadResolver:
         assert callable(r.matcher_factory)
         assert r.build_sdist == BuildSDist.pep517
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.tarball
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.GitLabTagProvider)
         assert p.project_path == "python-wheel-build/fromager"
         assert "gitlab.test" in p.server_url
@@ -411,10 +436,13 @@ class TestGitLabTagCloneResolver:
         assert callable(r.matcher_factory)
         assert r.build_sdist == BuildSDist.pep517
         assert r.min_release_age is None
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.git_checkout
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
-        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.GitLabTagProvider)
         assert p.project_path == "python-wheel-build/fromager"
         assert "gitlab.test" in p.server_url
@@ -436,28 +464,56 @@ class TestNotAvailableResolver:
         r = _parse(self.YAML)
         assert isinstance(r, NotAvailableResolver)
         assert r.provider == "not-available"
+        assert r.supports_override_hooks is False
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.not_available
+        assert not r.download_kind
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
         with pytest.raises(ValueError, match="not available"):
-            r.resolver_provider(tmp_context, _REQ_TYPE)
+            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
 
-class TestHookResolver:
+class TestHookSDistResolver:
     YAML = """\
         source:
-          provider: hook
+          provider: hook-sdist
     """
 
     def test_parse(self) -> None:
         r = _parse(self.YAML)
-        assert isinstance(r, HookResolver)
-        assert r.provider == "hook"
+        assert isinstance(r, HookSDistResolver)
+        assert r.provider == "hook-sdist"
+        assert r.supports_override_hooks is True
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kind == DownloadKind.any_source
+        assert r.download_kind
 
     def test_resolver_provider(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
         with pytest.raises(NotImplementedError):
-            r.resolver_provider(tmp_context, _REQ_TYPE)
+            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+
+class TestHookPrebuiltResolver:
+    YAML = """\
+        source:
+          provider: hook-prebuilt
+    """
+
+    def test_parse(self) -> None:
+        r = _parse(self.YAML)
+        assert isinstance(r, HookPrebuiltResolver)
+        assert r.provider == "hook-prebuilt"
+        assert r.supports_override_hooks is True
+        assert r.resolves_prebuilt_wheel is True
+        assert r.download_kind == DownloadKind.prebuilt_wheel
+
+    def test_resolver_provider(self, tmp_context: WorkContext) -> None:
+        r = _parse(self.YAML)
+        with pytest.raises(NotImplementedError):
+            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
 
 # -- Discriminated union validation -------------------------------------------
