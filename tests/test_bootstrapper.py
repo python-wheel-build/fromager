@@ -1054,11 +1054,12 @@ def test_build_item_build_wheel(tmp_context: WorkContext) -> None:
             item, "_build_sdist", return_value=built_sdist
         ) as mock_build_sdist,
         patch("fromager.wheels.build_wheel", return_value=built_wheel),
-        patch("fromager.server.update_wheel_mirror"),
+        patch("fromager.server.update_wheel_mirror") as mock_update_mirror,
     ):
         wheel_filename, sdist_filename = item._build_wheel(tmp_context)
 
     mock_build_sdist.assert_called_once_with(tmp_context)
+    mock_update_mirror.assert_called_once_with(tmp_context)
     assert wheel_filename == tmp_context.wheels_downloads / built_wheel.name
     assert sdist_filename == built_sdist
 
