@@ -31,46 +31,46 @@ Source Resolver
 
 .. autopydantic_model:: PyPISDistResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: PyPIPrebuiltResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: PyPIDownloadResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: PyPIGitResolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitHubTagDownloadResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitHubTagCloneResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitLabTagDownloadResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: GitLabTagCloneResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: NotAvailableResolver
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: HookSDistResolver
    :inherited-members: AbstractHookResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autopydantic_model:: HookPrebuiltResolver
    :inherited-members: AbstractHookResolver, CooldownMixin
-   :members: download_kind, supports_override_hooks
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
 .. autoclass:: BuildSDist
 

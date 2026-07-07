@@ -4,12 +4,13 @@ import datetime
 import enum
 import inspect
 import logging
+import pathlib
 import re
 import typing
 
 import pydantic
 
-from .. import resolver
+from .. import downloads, resolver
 from ..candidate import Cooldown
 from ._typedefs import MODEL_CONFIG
 
@@ -17,6 +18,7 @@ if typing.TYPE_CHECKING:
     from packaging.requirements import Requirement
 
     from .. import context, requirements_file
+    from ..candidate import Candidate
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,9 @@ class DownloadKind(enum.StrEnum):
         return self is not DownloadKind.not_available
 
 
+DownloadKindSet = frozenset[DownloadKind]
+
+
 class AbstractResolver(pydantic.BaseModel):
     """Abstract base class for resolvers"""
 
@@ -52,13 +57,11 @@ class AbstractResolver(pydantic.BaseModel):
     supports_override_hooks: typing.ClassVar[bool] = False
     """Does resolver support override hooks?"""
 
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.not_available
-    """Kind of artifact that the resolver downloads."""
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset()
+    """Set of download kinds this resolver can return."""
 
-    @property
-    def resolves_prebuilt_wheel(self) -> bool:
-        """Does resolver return pre-built wheels?"""
-        return self.download_kind is DownloadKind.prebuilt_wheel
+    resolves_prebuilt_wheel: typing.ClassVar[bool] = False
+    """Does resolver return pre-built wheels?"""
 
     def resolver_provider(
         self,
@@ -68,6 +71,78 @@ class AbstractResolver(pydantic.BaseModel):
     ) -> resolver.BaseProvider:
         """Return a resolver provider for the given requirement."""
         raise NotImplementedError
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download the resolved artifact for *candidate*."""
+        raise NotImplementedError
+
+    def _download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+        download_kind: DownloadKind,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download the resolved artifact for *candidate*.
+
+        Returns the local path and the kind of artifact that was
+        downloaded.  Dispatches to the appropriate download helper
+        based on *download_kind*.
+        """
+        if download_kind not in self.download_kinds:
+            raise ValueError(
+                f"provider {self.provider!r} does not support download kind "
+                f"{download_kind!r}, expected one of {self.download_kinds!r}"
+            )
+        match download_kind:
+            case DownloadKind.sdist:
+                destination_dir = ctx.sdists_downloads
+                path = downloads.download_sdist(
+                    destination_dir=destination_dir,
+                    url=candidate.url,
+                )
+            case DownloadKind.tarball:
+                # TODO: A tarball is not a proper sdist; it should not
+                # live in sdists_downloads.  Using it here for now until
+                # a dedicated tarballs directory is introduced.
+                destination_dir = ctx.sdists_downloads
+                # GitHub tarball URLs have no usable filename in the
+                # path, so always provide a destination filename.
+                path = downloads.download_url(
+                    destination_dir=destination_dir,
+                    url=candidate.url,
+                    destination_filename=(
+                        f"{candidate.name}-{candidate.version}.tar.gz"
+                    ),
+                )
+            case DownloadKind.prebuilt_wheel:
+                destination_dir = ctx.wheels_prebuilt
+                path = downloads.download_wheel(
+                    destination_dir=destination_dir,
+                    url=candidate.url,
+                )
+            case DownloadKind.git_checkout:
+                # TODO: Maybe use dedicated directory like
+                # 'work_dir / f"{name}-{version}" / "checkout"' for
+                # checkout, generate a proper sdist, then unpack to
+                # final destination?
+                destination_dir = (
+                    ctx.work_dir
+                    / f"{req.name}-{candidate.version}"
+                    / f"{req.name}-{candidate.version}"
+                )
+                path = downloads.download_git_source(
+                    destination_dir=destination_dir,
+                    vcs_url=candidate.url,
+                )
+            case _:  # includes any_source and not_available
+                typing.assert_never(download_kind)  # type: ignore[arg-type]
+        return path, download_kind
 
 
 class CooldownMixin(pydantic.BaseModel):
@@ -117,7 +192,7 @@ class PyPISDistResolver(AbstractPyPIResolver):
     # It is not safe to use PEP 517 to re-generate a source distribution.
     # Some PEP 517 backends require VCS to generate correct sdist.
     build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.sdist
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset({DownloadKind.sdist})
 
     def resolver_provider(
         self,
@@ -134,6 +209,15 @@ class PyPISDistResolver(AbstractPyPIResolver):
             ignore_platform=False,
             cooldown=self._cooldown,
         )
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download an sdist from PyPI."""
+        return self._download(ctx, req, candidate, DownloadKind.sdist)
 
 
 class PyPIPrebuiltResolver(AbstractPyPIResolver):
@@ -156,7 +240,10 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
     provider: typing.Literal["pypi-prebuilt"]
 
     build_sdist: typing.ClassVar[BuildSDist | None] = None
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.prebuilt_wheel
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.prebuilt_wheel}
+    )
+    resolves_prebuilt_wheel: typing.ClassVar[bool] = True
 
     def resolver_provider(
         self,
@@ -173,6 +260,15 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
             ignore_platform=False,
             cooldown=self._cooldown,
         )
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download a pre-built wheel from PyPI."""
+        return self._download(ctx, req, candidate, DownloadKind.prebuilt_wheel)
 
 
 class PyPIDownloadResolver(AbstractPyPIResolver):
@@ -194,6 +290,7 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
         provider: pypi-download
         index_url: https://pypi.test/simple
         download_url: https://download.test/test_pypidownload-{version}.tar.gz
+        download_kind: tarball
     """
 
     provider: typing.Literal["pypi-download"]
@@ -205,7 +302,12 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
     """
 
     build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.tarball
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.sdist, DownloadKind.tarball}
+    )
+
+    download_kind: typing.Literal[DownloadKind.sdist, DownloadKind.tarball]
+    """Kind of artifact that the resolver downloads."""
 
     @pydantic.field_validator("download_url", mode="after")
     @classmethod
@@ -235,6 +337,15 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
             cooldown=self._cooldown,
         )
 
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download an sdist or tarball from a custom URL."""
+        return self._download(ctx, req, candidate, self.download_kind)
+
 
 class PyPIGitResolver(AbstractPyPIResolver):
     """Resolve version with PyPI, build sdist from git clone
@@ -260,7 +371,9 @@ class PyPIGitResolver(AbstractPyPIResolver):
 
     provider: typing.Literal["pypi-git"]
 
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.git_checkout
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.git_checkout}
+    )
 
     clone_url: pydantic.AnyUrl
     """git clone URL
@@ -304,6 +417,15 @@ class PyPIGitResolver(AbstractPyPIResolver):
             override_download_url=download_url,
             cooldown=self._cooldown,
         )
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Clone a git repository at a specific tag."""
+        return self._download(ctx, req, candidate, DownloadKind.git_checkout)
 
 
 _PEP440_TAG_PATTERN = re.compile(r"^(v?\d.*)$")
@@ -443,7 +565,7 @@ class GitHubTagDownloadResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["github-tag-download"]
 
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.tarball
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset({DownloadKind.tarball})
 
     def resolver_provider(
         self,
@@ -456,6 +578,15 @@ class GitHubTagDownloadResolver(AbstractGitSourceResolver):
             req_type=req_type,
             override_download_url=None,
         )
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download a tarball from a GitHub tag."""
+        return self._download(ctx, req, candidate, DownloadKind.tarball)
 
 
 class GitHubTagCloneResolver(AbstractGitSourceResolver):
@@ -473,7 +604,9 @@ class GitHubTagCloneResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["github-tag-git"]
 
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.git_checkout
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.git_checkout}
+    )
 
     def resolver_provider(
         self,
@@ -486,6 +619,15 @@ class GitHubTagCloneResolver(AbstractGitSourceResolver):
             req_type=req_type,
             override_download_url=f"git+{self.project_url}@{{tagname}}",
         )
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Clone a git repository from a GitHub tag."""
+        return self._download(ctx, req, candidate, DownloadKind.git_checkout)
 
 
 class GitLabTagDownloadResolver(AbstractGitSourceResolver):
@@ -503,7 +645,7 @@ class GitLabTagDownloadResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["gitlab-tag-download"]
 
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.tarball
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset({DownloadKind.tarball})
 
     def resolver_provider(
         self,
@@ -516,6 +658,15 @@ class GitLabTagDownloadResolver(AbstractGitSourceResolver):
             req_type=req_type,
             override_download_url=None,
         )
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download a tarball from a GitLab tag."""
+        return self._download(ctx, req, candidate, DownloadKind.tarball)
 
 
 class GitLabTagCloneResolver(AbstractGitSourceResolver):
@@ -533,7 +684,9 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
 
     provider: typing.Literal["gitlab-tag-git"]
 
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.git_checkout
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.git_checkout}
+    )
 
     def resolver_provider(
         self,
@@ -547,13 +700,20 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
             override_download_url=f"git+{self.project_url}@{{tagname}}",
         )
 
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Clone a git repository from a GitLab tag."""
+        return self._download(ctx, req, candidate, DownloadKind.git_checkout)
+
 
 class NotAvailableResolver(AbstractResolver):
     """Prevent resolve and download"""
 
     provider: typing.Literal["not-available"]
-
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.not_available
 
     def resolver_provider(
         self,
@@ -561,6 +721,15 @@ class NotAvailableResolver(AbstractResolver):
         req: Requirement,
         req_type: requirements_file.RequirementType,
     ) -> resolver.BaseProvider:
+        raise ValueError(f"package {req.name} is not available")
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Raise because package is not available."""
         raise ValueError(f"package {req.name} is not available")
 
 
@@ -579,6 +748,15 @@ class AbstractHookResolver(AbstractResolver, CooldownMixin):
         # TODO
         raise NotImplementedError("Hook resolver needs a hook")
 
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Raise because hook-based download is not yet implemented."""
+        raise NotImplementedError("Hook resolver download needs a hook")
+
 
 class HookSDistResolver(AbstractHookResolver):
     """Call resolver_provider and download_source hook, build from source
@@ -594,8 +772,9 @@ class HookSDistResolver(AbstractHookResolver):
 
     provider: typing.Literal["hook-sdist"]
 
-    # Hooks can return any source artifact (sdist, tarball, or git checkout).
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.any_source
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
+    )
 
 
 class HookPrebuiltResolver(AbstractHookResolver):
@@ -611,7 +790,10 @@ class HookPrebuiltResolver(AbstractHookResolver):
 
     provider: typing.Literal["hook-prebuilt"]
 
-    download_kind: typing.ClassVar[DownloadKind] = DownloadKind.prebuilt_wheel
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.prebuilt_wheel}
+    )
+    resolves_prebuilt_wheel: typing.ClassVar[bool] = True
 
 
 SourceResolver = typing.Annotated[
