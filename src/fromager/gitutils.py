@@ -140,6 +140,19 @@ def git_clone_fast(
         logger.debug("no .gitmodules file")
 
 
+def git_clean(source_dir: pathlib.Path) -> None:
+    """Remove untracked files and directories from a git working tree.
+
+    Runs ``git clean -xdf`` in *source_dir* to remove all untracked and
+    ignored files, restoring the working tree to a pristine state.
+
+    .. versionadded:: 0.90.0
+    """
+    cmd: list[str] = ["git", "clean", "-xdf"]
+    logger.debug("cleaning untracked files in %s", source_dir)
+    external_commands.run(cmd, cwd=str(source_dir))
+
+
 def parse_vcs_url(vcs_url: str, *, require_ref: bool = True) -> tuple[str, str]:
     """Parse a `pip VCS URL`_ into a repo clone URL and git ref.
 
