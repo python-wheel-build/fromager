@@ -13,6 +13,7 @@ from packaging.utils import InvalidSdistFilename, InvalidWheelFilename
 from wheel.wheelfile import WheelFile
 
 from fromager.downloads import (
+    _validate_wheel_with_local_version,
     download_git_source,
     download_sdist,
     download_url,
@@ -199,6 +200,54 @@ def test_download_wheel_missing_metadata(tmp_path: pathlib.Path) -> None:
                 destination_dir=tmp_path,
                 url=_WHEEL_URL,
             )
+
+
+def test_download_wheel_local_version_mismatch(tmp_path: pathlib.Path) -> None:
+    """Wheel whose dist-info uses base version while filename has local."""
+    filename = "pkg-1.0+local123-py3-none-any.whl"
+    f = tmp_path / filename
+    with zipfile.ZipFile(f, "w") as zf:
+        zf.writestr(
+            "pkg-1.0.dist-info/METADATA",
+            "Metadata-Version: 1.0\nName: pkg\nVersion: 1.0+local123\n",
+        )
+        zf.writestr("pkg-1.0.dist-info/WHEEL", "Wheel-Version: 1.0\n")
+        zf.writestr("pkg-1.0.dist-info/RECORD", "")
+    with _patch_download(f):
+        result = download_wheel(
+            destination_dir=tmp_path,
+            url=f"https://pkg.test/{filename}",
+        )
+    assert result == f
+
+
+def test_validate_wheel_with_local_version_valid(tmp_path: pathlib.Path) -> None:
+    """Fallback validation passes for a well-formed wheel with base-only dist-info."""
+    filename = "pkg-1.0+local-py3-none-any.whl"
+    f = tmp_path / filename
+    with zipfile.ZipFile(f, "w") as zf:
+        zf.writestr("pkg-1.0.dist-info/METADATA", "Metadata-Version: 1.0\n")
+        zf.writestr("pkg-1.0.dist-info/RECORD", "")
+    assert _validate_wheel_with_local_version(f, filename) is True
+
+
+def test_validate_wheel_with_local_version_no_local(tmp_path: pathlib.Path) -> None:
+    """Fallback returns False when the filename has no local version."""
+    filename = "pkg-1.0-py3-none-any.whl"
+    f = tmp_path / filename
+    with zipfile.ZipFile(f, "w") as zf:
+        zf.writestr("pkg-1.0.dist-info/METADATA", "Metadata-Version: 1.0\n")
+        zf.writestr("pkg-1.0.dist-info/RECORD", "")
+    assert _validate_wheel_with_local_version(f, filename) is False
+
+
+def test_validate_wheel_with_local_version_no_record(tmp_path: pathlib.Path) -> None:
+    """Fallback returns False when RECORD is missing from base-version dist-info."""
+    filename = "pkg-1.0+local-py3-none-any.whl"
+    f = tmp_path / filename
+    with zipfile.ZipFile(f, "w") as zf:
+        zf.writestr("pkg-1.0.dist-info/METADATA", "Metadata-Version: 1.0\n")
+    assert _validate_wheel_with_local_version(f, filename) is False
 
 
 # -- download_git_source ------------------------------------------------------

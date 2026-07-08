@@ -144,6 +144,41 @@ def download_sdist(
     return filepath
 
 
+def _validate_wheel_with_local_version(filepath: pathlib.Path, basename: str) -> bool:
+    """Check whether a wheel with a local version has valid dist-info under the base version.
+
+    Some third-party wheels name their dist-info directory using only the
+    public (base) version (e.g. ``pkg-1.0.dist-info``) while the wheel
+    filename carries a local segment (e.g. ``pkg-1.0+local``).
+    ``wheelfile.WheelFile`` rejects these because it expects the directory
+    name to match the full filename version.
+
+    Returns ``True`` when the wheel has a local version **and** the
+    base-version dist-info directory contains both ``RECORD`` and
+    ``METADATA``; ``False`` otherwise.
+    """
+    _, version, _, _ = parse_wheel_filename(basename)
+    if not version.local:
+        return False
+
+    dist_name = basename.split("-", 1)[0]
+    base_dist_info = f"{dist_name}-{version.public}.dist-info"
+    with zipfile.ZipFile(filepath) as zf:
+        names = zf.namelist()
+        record_path = f"{base_dist_info}/RECORD"
+        metadata_path = f"{base_dist_info}/METADATA"
+        if record_path in names and metadata_path in names:
+            logger.warning(
+                "wheel %s has dist-info directory %s instead of expected %s-%s.dist-info",
+                basename,
+                base_dist_info,
+                dist_name,
+                version,
+            )
+            return True
+    return False
+
+
 def download_wheel(
     *,
     destination_dir: pathlib.Path,
@@ -152,16 +187,16 @@ def download_wheel(
 ) -> pathlib.Path:
     """Download a wheel and verify it.
 
-    Validates that the filename is a valid wheel name (using
-    :func:`packaging.utils.parse_wheel_filename`) before downloading,
-    then checks that the zip archive is non-empty.
+    Validates the filename with
+    :func:`packaging.utils.parse_wheel_filename`, downloads the file,
+    then opens it with :class:`wheel.wheelfile.WheelFile` to verify
+    that the dist-info directory and ``RECORD`` / ``METADATA`` files
+    exist.
 
-    .. note::
-
-       The function does not validate dist-info ``METADATA`` and other
-       files described in the `binary distribution format
-       <https://packaging.python.org/en/latest/specifications/binary-distribution-format/>`_
-       specification.
+    When the wheel carries a local version segment in its filename but
+    the dist-info directory uses only the base version (a pattern seen
+    in some third-party builds), the strict ``WheelFile`` check is
+    relaxed via :func:`_validate_wheel_with_local_version`.
 
     .. versionadded:: 0.90.0
     """
@@ -182,10 +217,17 @@ def download_wheel(
     # NOTE: Does not validate that METADATA file is valid or consistent with
     #       wheel's distribution name and version.
     # https://packaging.python.org/en/latest/specifications/binary-distribution-format/
-    with wheelfile.WheelFile(filepath) as wf:
-        di_metadata = f"{wf.dist_info_path}/METADATA"
-        if di_metadata not in wf.namelist():
-            raise wheelfile.WheelError(f"{di_metadata!r} missing")
+    try:
+        with wheelfile.WheelFile(filepath) as wf:
+            di_metadata = f"{wf.dist_info_path}/METADATA"
+            if di_metadata not in wf.namelist():
+                raise wheelfile.WheelError(f"{di_metadata!r} missing")
+    except wheelfile.WheelError:
+        # Some wheels omit the local version segment from the dist-info
+        # directory name (e.g. "pkg-1.0.dist-info" when the filename says
+        # "pkg-1.0+local"). Fall back to a manual check.
+        if not _validate_wheel_with_local_version(filepath, basename):
+            raise
 
     return filepath
 
