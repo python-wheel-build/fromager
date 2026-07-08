@@ -325,23 +325,52 @@ def _download_wheel_from_cache(
         return None, None
 
 
+def _find_cached_wheel_via_manager(
+    ctx: context.WorkContext,
+    req: Requirement,
+    resolved_version: Version,
+) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+    """Cache lookup using the CacheManager (thread-safe, no Bootstrapper state).
+
+    Delegates to ``ctx.cache.lookup_wheel()`` for a unified hierarchical
+    lookup across collections.
+
+    Returns:
+        Tuple of (cached_wheel_filename, parent_dir_as_sentinel).
+        Both None if no cache hit. The second value is non-None on hit
+        to signal the caller that a cached wheel was found.
+    """
+    assert ctx.cache is not None
+    pbi = ctx.package_build_info(req)
+    build_tag = pbi.build_tag(resolved_version)
+
+    result = ctx.cache.lookup_wheel(req, resolved_version, build_tag)
+    if not result.hit:
+        return None, None
+
+    assert result.path is not None
+    return result.path, result.path.parent
+
+
 def _find_cached_wheel(
     ctx: context.WorkContext,
     cache_wheel_server_url: str | None,
     req: Requirement,
     resolved_version: Version,
 ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-    """Look for cached wheel in 3 locations (thread-safe, no Bootstrapper state).
+    """Look for cached wheel (thread-safe, no Bootstrapper state).
 
-    Checks for cached wheels in order:
-    1. wheels_build directory (previously built)
-    2. wheels_downloads directory (previously downloaded)
-    3. Cache server (remote cache)
+    When a CacheManager is configured on the context, delegates to it
+    for a unified hierarchical lookup across collections. Otherwise
+    falls back to the legacy per-directory search.
 
     Returns:
         Tuple of (cached_wheel_filename, unpacked_cached_wheel).
         Both None if no cache hit.
     """
+    if ctx.cache is not None:
+        return _find_cached_wheel_via_manager(ctx, req, resolved_version)
+
     cached_wheel, unpacked = _look_for_existing_wheel(
         ctx, req, resolved_version, ctx.wheels_build
     )
@@ -1753,6 +1782,33 @@ class Bootstrapper:
         sdist_root_dir = prepared.sdist_root_dir
         item.cached_wheel_filename = prepared.cached_wheel_filename
 
+        # Short-circuit: when CacheManager provides a hit, skip directly to
+        # PROCESS_INSTALL_DEPS -- no source download, no build env, no build
+        # deps resolution needed. Install deps are extracted from the wheel.
+        if prepared.cached_wheel_filename and self.ctx.cache is not None:
+            pbi = self.ctx.package_build_info(item.req)
+            build_tag = pbi.build_tag(item.resolved_version)
+            self.ctx.cache.store_wheel(
+                item.req,
+                item.resolved_version,
+                build_tag,
+                prepared.cached_wheel_filename,
+            )
+            server.update_wheel_mirror(self.ctx)
+            unpack_dir = _create_unpack_dir(
+                self.ctx.work_dir, item.req, item.resolved_version
+            )
+            item.build_result = SourceBuildResult(
+                wheel_filename=prepared.cached_wheel_filename,
+                sdist_filename=None,
+                unpack_dir=unpack_dir,
+                sdist_root_dir=None,
+                build_env=None,
+                source_type=SourceType.CACHED,
+            )
+            item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
+            return [item]
+
         assert sdist_root_dir is not None
 
         if sdist_root_dir.parent.parent != self.ctx.work_dir:
@@ -1989,6 +2045,20 @@ class Bootstrapper:
             build_sdist_only=item.build_sdist_only,
             cached_wheel_filename=item.cached_wheel_filename,
         )
+
+        # Route newly built wheels to the appropriate collection directory.
+        # This copies the wheel into the routed collection's storage while
+        # keeping the original in downloads/ for the internal wheel server.
+        if (
+            wheel_filename is not None
+            and self.ctx.cache is not None
+            and not item.cached_wheel_filename
+        ):
+            pbi = self.ctx.package_build_info(item.req)
+            build_tag = pbi.build_tag(item.resolved_version)
+            self.ctx.cache.store_wheel(
+                item.req, item.resolved_version, build_tag, wheel_filename
+            )
 
         source_type = sources.get_source_type(self.ctx, item.req)
 

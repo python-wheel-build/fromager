@@ -128,6 +128,7 @@ canonicalize = "fromager.commands.canonicalize:canonicalize"
 download-sequence = "fromager.commands.download_sequence:download_sequence"
 wheel-server = "fromager.commands.server:wheel_server"
 lint-requirements = "fromager.commands.lint_requirements:lint_requirements"
+cache = "fromager.commands.cache_cmd:cache"
 
 [tool.coverage.run]
 branch = true
