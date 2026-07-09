@@ -112,7 +112,7 @@ class Resolve(Phase):
             )
             filtered: list[tuple[str, Version]] = []
             for source_url, version in resolved_versions:
-                cached_wheel, _ = _cache._find_cached_wheel(
+                cached_wheel, _ = _cache.find_cached_wheel(
                     bt.ctx, bt.cache_wheel_server_url, self.work_item.req, version
                 )
                 if cached_wheel:

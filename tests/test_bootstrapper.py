@@ -14,9 +14,9 @@ from resolvelib.resolvers import ResolverException
 from fromager import bootstrapper, log
 from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._cache import (
-    _bg_prepare_prebuilt,
     _download_wheel_from_cache,
-    _find_cached_wheel,
+    bg_prepare_prebuilt,
+    find_cached_wheel,
 )
 from fromager.bootstrapper._phase import Phase
 from fromager.bootstrapper._prepare_source import (
@@ -292,11 +292,11 @@ def test_is_build_requirement(tmp_context: WorkContext) -> None:
 
 
 def test_find_cached_wheel_returns_tuple(tmp_context: WorkContext) -> None:
-    """Verify _find_cached_wheel returns tuple of (Path|None, Path|None)."""
+    """Verify `find_cached_wheel` returns tuple of (Path|None, Path|None)."""
     bt = bootstrapper.Bootstrapper(tmp_context)
 
     # Call method (will return None, None since no wheels exist)
-    result = _find_cached_wheel(
+    result = find_cached_wheel(
         bt.ctx,
         bt.cache_wheel_server_url,
         req=Requirement("test-package"),
@@ -897,7 +897,7 @@ def test_bg_prepare_source_log_prefix_includes_version(
         with (
             caplog.at_level(logging.INFO, logger="fromager.bootstrapper"),
             patch(
-                "fromager.bootstrapper._cache._find_cached_wheel",
+                "fromager.bootstrapper._cache.find_cached_wheel",
                 return_value=(None, None),
             ),
             patch(
@@ -937,7 +937,7 @@ def test_bg_prepare_prebuilt_log_prefix_includes_version(
     tmp_context: WorkContext,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """_bg_prepare_prebuilt log message includes name-version prefix when called with context."""
+    """`bg_prepare_prebuilt` log message includes name-version prefix when called with context."""
     old_factory = logging.getLogRecordFactory()
     logging.setLogRecordFactory(log.FromagerLogRecord)
     req = Requirement("mypkg==1.2.3")
@@ -954,7 +954,7 @@ def test_bg_prepare_prebuilt_log_prefix_includes_version(
             patch("fromager.server.update_wheel_mirror"),
             log.req_ctxvar_context(req, version),
         ):
-            _bg_prepare_prebuilt(
+            bg_prepare_prebuilt(
                 ctx=tmp_context,
                 req=req,
                 req_type=RequirementType.INSTALL,

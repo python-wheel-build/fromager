@@ -425,7 +425,7 @@ class TestPhaseResolve:
             return (None, None)
 
         with patch(
-            "fromager.bootstrapper._cache._find_cached_wheel", side_effect=mock_cache
+            "fromager.bootstrapper._cache.find_cached_wheel", side_effect=mock_cache
         ):
             result = item.run(bt)
 
@@ -446,7 +446,7 @@ class TestPhaseResolve:
         )
 
         with patch(
-            "fromager.bootstrapper._cache._find_cached_wheel",
+            "fromager.bootstrapper._cache.find_cached_wheel",
             return_value=(tmp_context.work_dir / "cached.whl", None),
         ):
             result = item.run(bt)
@@ -462,7 +462,7 @@ class TestPhaseResolve:
         item = _make_resolve_item()
         item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        with patch("fromager.bootstrapper._cache._find_cached_wheel") as mock_cache:
+        with patch("fromager.bootstrapper._cache.find_cached_wheel") as mock_cache:
             result = item.run(bt)
 
         assert len(result) == 1
@@ -499,7 +499,7 @@ class TestPhaseResolve:
         )
 
         with patch(
-            "fromager.bootstrapper._cache._find_cached_wheel", return_value=(None, None)
+            "fromager.bootstrapper._cache.find_cached_wheel", return_value=(None, None)
         ):
             result = item.run(bt)
 
