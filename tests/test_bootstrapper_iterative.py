@@ -1,18 +1,17 @@
 """Tests for the iterative bootstrap implementation.
 
 Tests cover:
-- BootstrapPhase enum and tracks_why property
+- Phase class hierarchy: class variables and base class behavior
 - WorkItem dataclass defaults and state accumulation
 - _track_why context manager behavior
-- _create_unresolved_work_items helper
-- _phase_resolve version expansion
-- _phase_start graph addition and seen-check
-- _phase_prepare_source all branches (prebuilt, source, cached, bad path)
-- _phase_prepare_build dep installation and extraction
-- _phase_build conditional install and result construction
-- _phase_process_install_deps hooks, dep extraction, error modes
-- _phase_complete cleanup
-- _dispatch_phase routing
+- create_unresolved_work_items helper
+- Resolve.run() version expansion
+- Start.run() graph addition and seen-check
+- PrepareSource.run() all branches (prebuilt, source, cached, bad path)
+- PrepareBuild.run() dep installation and extraction
+- Build.run() conditional install and result construction
+- ProcessInstallDeps.run() hooks, dep extraction, error modes
+- Complete.run() cleanup
 - _handle_phase_error for all three error modes
 - End-to-end iterative loop with LIFO ordering
 """
@@ -30,7 +29,20 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from fromager import bootstrapper, build_environment
-from fromager.bootstrapper import BootstrapPhase, SourceBuildResult, WorkItem
+from fromager.bootstrapper._build import Build
+from fromager.bootstrapper._complete import Complete
+from fromager.bootstrapper._phase import Phase
+from fromager.bootstrapper._prepare_build import PrepareBuild
+from fromager.bootstrapper._prepare_source import PrepareSource
+from fromager.bootstrapper._process_install_deps import ProcessInstallDeps
+from fromager.bootstrapper._resolve import Resolve
+from fromager.bootstrapper._start import Start
+from fromager.bootstrapper._types import (
+    BootstrapPhase,
+    PreparedSourceData,
+    SourceBuildResult,
+)
+from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
 
@@ -44,18 +56,59 @@ def _make_resolved_future(
     return future
 
 
+def _make_work_item(
+    req: str = "testpkg",
+    req_type: RequirementType = RequirementType.INSTALL,
+    why_snapshot: list | None = None,
+    parent: tuple | None = None,
+    source_url: str | None = None,
+    version: str | None = None,
+    build_env: build_environment.BuildEnvironment | None = None,
+    sdist_root_dir: pathlib.Path | None = None,
+    unpack_dir: pathlib.Path | None = None,
+    build_result: SourceBuildResult | None = None,
+    build_system_deps: set[Requirement] | None = None,
+    build_backend_deps: set[Requirement] | None = None,
+    build_sdist_deps: set[Requirement] | None = None,
+    pbi_pre_built: bool = False,
+    cached_wheel_filename: pathlib.Path | None = None,
+    build_sdist_only: bool = False,
+) -> WorkItem:
+    return WorkItem(
+        req=Requirement(req),
+        req_type=req_type,
+        why_snapshot=why_snapshot or [],
+        parent=parent,
+        source_url=source_url,
+        resolved_version=Version(version) if version else None,
+        build_env=build_env,
+        sdist_root_dir=sdist_root_dir,
+        unpack_dir=unpack_dir,
+        build_result=build_result,
+        build_system_deps=build_system_deps if build_system_deps is not None else set(),
+        build_backend_deps=build_backend_deps
+        if build_backend_deps is not None
+        else set(),
+        build_sdist_deps=build_sdist_deps if build_sdist_deps is not None else set(),
+        pbi_pre_built=pbi_pre_built,
+        cached_wheel_filename=cached_wheel_filename,
+        build_sdist_only=build_sdist_only,
+    )
+
+
 def _make_resolve_item(
     req: str = "testpkg",
     req_type: RequirementType = RequirementType.INSTALL,
     why_snapshot: list | None = None,
     parent: tuple | None = None,
-) -> WorkItem:
-    return WorkItem(
-        req=Requirement(req),
-        req_type=req_type,
-        phase=BootstrapPhase.RESOLVE,
-        why_snapshot=why_snapshot or [],
-        parent=parent,
+) -> Resolve:
+    return Resolve(
+        WorkItem(
+            req=Requirement(req),
+            req_type=req_type,
+            why_snapshot=why_snapshot or [],
+            parent=parent,
+        )
     )
 
 
@@ -66,16 +119,28 @@ def _make_start_item(
     version: str = "1.0",
     why_snapshot: list | None = None,
     parent: tuple | None = None,
-) -> WorkItem:
-    return WorkItem(
-        req=Requirement(req),
-        req_type=req_type,
-        phase=BootstrapPhase.START,
-        why_snapshot=why_snapshot or [],
-        parent=parent,
-        source_url=source_url,
-        resolved_version=Version(version),
+) -> Start:
+    return Start(
+        WorkItem(
+            req=Requirement(req),
+            req_type=req_type,
+            why_snapshot=why_snapshot or [],
+            parent=parent,
+            source_url=source_url,
+            resolved_version=Version(version),
+        )
     )
+
+
+_PHASE_TO_CLASS: dict[BootstrapPhase, type[Phase]] = {
+    BootstrapPhase.RESOLVE: Resolve,
+    BootstrapPhase.START: Start,
+    BootstrapPhase.PREPARE_SOURCE: PrepareSource,
+    BootstrapPhase.PREPARE_BUILD: PrepareBuild,
+    BootstrapPhase.BUILD: Build,
+    BootstrapPhase.PROCESS_INSTALL_DEPS: ProcessInstallDeps,
+    BootstrapPhase.COMPLETE: Complete,
+}
 
 
 def _make_build_item(
@@ -93,11 +158,10 @@ def _make_build_item(
     pbi_pre_built: bool = False,
     cached_wheel_filename: pathlib.Path | None = None,
     build_sdist_only: bool = False,
-) -> WorkItem:
-    return WorkItem(
+) -> Phase:
+    wi = WorkItem(
         req=Requirement(req),
         req_type=RequirementType.INSTALL,
-        phase=phase,
         why_snapshot=[],
         source_url=source_url,
         resolved_version=Version(version),
@@ -114,48 +178,75 @@ def _make_build_item(
         cached_wheel_filename=cached_wheel_filename,
         build_sdist_only=build_sdist_only,
     )
+    return _PHASE_TO_CLASS[phase](wi)
 
 
-class TestBootstrapPhase:
-    def test_tracks_why_false_for_resolve(self) -> None:
-        assert BootstrapPhase.RESOLVE.tracks_why is False
+class TestPhaseClassVariables:
+    """Verify class-variable declarations on each Phase subclass."""
 
-    def test_tracks_why_false_for_start(self) -> None:
-        assert BootstrapPhase.START.tracks_why is False
+    @pytest.mark.parametrize(
+        "cls, expected_phase, expected_tracks_why",
+        [
+            (Resolve, BootstrapPhase.RESOLVE, False),
+            (Start, BootstrapPhase.START, False),
+            (PrepareSource, BootstrapPhase.PREPARE_SOURCE, True),
+            (PrepareBuild, BootstrapPhase.PREPARE_BUILD, True),
+            (Build, BootstrapPhase.BUILD, True),
+            (ProcessInstallDeps, BootstrapPhase.PROCESS_INSTALL_DEPS, True),
+            (Complete, BootstrapPhase.COMPLETE, True),
+        ],
+    )
+    def test_class_variables(
+        self,
+        tmp_context: WorkContext,
+        cls: type[Phase],
+        expected_phase: BootstrapPhase,
+        expected_tracks_why: bool,
+    ) -> None:
+        assert cls.phase == expected_phase
+        assert cls.tracks_why == expected_tracks_why
 
-    def test_tracks_why_true_for_build_phases(self) -> None:
-        for phase in (
-            BootstrapPhase.PREPARE_SOURCE,
-            BootstrapPhase.PREPARE_BUILD,
-            BootstrapPhase.BUILD,
-            BootstrapPhase.PROCESS_INSTALL_DEPS,
-            BootstrapPhase.COMPLETE,
-        ):
-            assert phase.tracks_why is True, f"{phase} should track why"
+    def test_str_default(self) -> None:
+        wi = _make_work_item(req="mypkg")
+        item = Build(wi)
+        assert str(item) == "Build(mypkg)"
+
+    def test_background_work_returns_none_by_default(
+        self, tmp_context: WorkContext
+    ) -> None:
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        for cls in (PrepareBuild, Build, ProcessInstallDeps, Complete):
+            wi = _make_work_item(req="testpkg", version="1.0")
+            item = cls(wi)
+            assert item.background_work(bt) is None, (
+                f"{cls.__name__}.background_work() should return None"
+            )
 
 
 class TestWorkItem:
     def test_defaults_for_resolve_item(self) -> None:
         item = _make_resolve_item()
-        assert item.source_url is None
-        assert item.resolved_version is None
-        assert item.build_sdist_only is False
-        assert item.build_env is None
-        assert item.build_result is None
-        assert item.pbi_pre_built is False
-        assert item.build_system_deps == set()
-        assert item.build_backend_deps == set()
-        assert item.build_sdist_deps == set()
+        wi = item.work_item
+        assert wi.source_url is None
+        assert wi.resolved_version is None
+        assert wi.build_sdist_only is False
+        assert wi.build_env is None
+        assert wi.build_result is None
+        assert wi.pbi_pre_built is False
+        assert wi.build_system_deps == set()
+        assert wi.build_backend_deps == set()
+        assert wi.build_sdist_deps == set()
 
     def test_state_accumulation(self) -> None:
         item = _make_start_item()
-        item.pbi_pre_built = True
-        item.build_sdist_only = True
+        wi = item.work_item
+        wi.pbi_pre_built = True
+        wi.build_sdist_only = True
         mock_env = Mock()
-        item.build_env = mock_env
-        assert item.pbi_pre_built is True
-        assert item.build_sdist_only is True
-        assert item.build_env is mock_env
+        wi.build_env = mock_env
+        assert wi.pbi_pre_built is True
+        assert wi.build_sdist_only is True
+        assert wi.build_env is mock_env
 
 
 class TestTrackWhy:
@@ -183,11 +274,12 @@ class TestTrackWhy:
         bt = bootstrapper.Bootstrapper(tmp_context)
         bt.why = []
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+        wi = item.work_item
 
         with bt._track_why(item):
             assert len(bt.why) == 1
-            assert bt.why[0][1] == item.req
-            assert bt.why[0][2] == item.resolved_version
+            assert bt.why[0][1] == wi.req
+            assert bt.why[0][2] == wi.resolved_version
 
         assert len(bt.why) == 0
 
@@ -209,23 +301,24 @@ class TestCreateUnresolvedWorkItems:
         bt = bootstrapper.Bootstrapper(tmp_context)
         deps = [Requirement("dep-a"), Requirement("dep-b")]
 
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             deps, RequirementType.BUILD_SYSTEM, Requirement("parent"), Version("1.0")
         )
 
         assert len(items) == 2
         for item in items:
+            assert isinstance(item, Resolve)
             assert item.phase == BootstrapPhase.RESOLVE
-            assert item.req_type == RequirementType.BUILD_SYSTEM
-            assert item.parent == (Requirement("parent"), Version("1.0"))
-            assert item.source_url is None
-            assert item.resolved_version is None
+            assert item.work_item.req_type == RequirementType.BUILD_SYSTEM
+            assert item.work_item.parent == (Requirement("parent"), Version("1.0"))
+            assert item.work_item.source_url is None
+            assert item.work_item.resolved_version is None
 
     def test_captures_why_snapshot(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         bt.why = [(RequirementType.TOP_LEVEL, Requirement("root"), Version("2.0"))]
 
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             [Requirement("dep")],
             RequirementType.INSTALL,
             Requirement("parent"),
@@ -233,25 +326,25 @@ class TestCreateUnresolvedWorkItems:
         )
 
         assert len(items) == 1
-        assert items[0].why_snapshot == bt.why
+        assert items[0].work_item.why_snapshot == bt.why
         # Verify it's a copy, not a reference
         bt.why.append((RequirementType.INSTALL, Requirement("other"), Version("3.0")))
-        assert len(items[0].why_snapshot) == 1
+        assert len(items[0].work_item.why_snapshot) == 1
 
     def test_sorts_by_name(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         deps = [Requirement("zebra"), Requirement("alpha"), Requirement("middle")]
 
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             deps, RequirementType.INSTALL, Requirement("p"), Version("1.0")
         )
 
-        names = [str(item.req.name) for item in items]
+        names = [str(item.work_item.req.name) for item in items]
         assert names == ["alpha", "middle", "zebra"]
 
     def test_empty_deps(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
-        items = bt._create_unresolved_work_items(
+        items = bt.create_unresolved_work_items(
             [], RequirementType.INSTALL, Requirement("p"), Version("1.0")
         )
         assert items == []
@@ -261,19 +354,19 @@ class TestPhaseResolve:
     def test_single_version(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_resolve_item()
-        parent = (Requirement("parent"), Version("2.0"))
-        item.parent = parent
+        wi = item.work_item
+        wi.parent = (Requirement("parent"), Version("2.0"))
         item.bg_future = _make_resolved_future(
             [("https://pypi.org/testpkg-1.0.tar.gz", Version("1.0"))]
         )
 
-        result = bt._phase_resolve(item)
+        result = item.run(bt)
 
         assert len(result) == 1
-        assert result[0].phase == BootstrapPhase.START
-        assert result[0].source_url == "https://pypi.org/testpkg-1.0.tar.gz"
-        assert result[0].resolved_version == Version("1.0")
-        assert result[0].parent == parent
+        assert isinstance(result[0], Start)
+        assert result[0].work_item.source_url == "https://pypi.org/testpkg-1.0.tar.gz"
+        assert result[0].work_item.resolved_version == Version("1.0")
+        assert result[0].work_item.parent == wi.parent
 
     def test_multiple_versions(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
@@ -285,12 +378,12 @@ class TestPhaseResolve:
             ]
         )
 
-        result = bt._phase_resolve(item)
+        result = item.run(bt)
 
         assert len(result) == 2
         # Reversed so highest version ends up on top of stack (last element)
-        assert result[0].resolved_version == Version("1.0")
-        assert result[1].resolved_version == Version("2.0")
+        assert result[0].work_item.resolved_version == Version("1.0")
+        assert result[1].work_item.resolved_version == Version("2.0")
 
     def test_empty_resolution_raises(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
@@ -298,7 +391,7 @@ class TestPhaseResolve:
         item.bg_future = _make_resolved_future([])
 
         with pytest.raises(RuntimeError, match="Could not resolve"):
-            bt._phase_resolve(item)
+            item.run(bt)
 
     def test_preserves_why_snapshot(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
@@ -306,14 +399,14 @@ class TestPhaseResolve:
         item = _make_resolve_item(why_snapshot=list(snapshot))
         item.bg_future = _make_resolved_future([("url", Version("1.0"))])
 
-        result = bt._phase_resolve(item)
+        result = item.run(bt)
 
-        assert result[0].why_snapshot == snapshot
+        assert result[0].work_item.why_snapshot == snapshot
 
     def test_filters_cached_versions_in_multiple_versions_mode(
         self, tmp_context: WorkContext
     ) -> None:
-        """Cached versions are filtered out before creating START items."""
+        """Cached versions are filtered out before creating Starts."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
         item.bg_future = _make_resolved_future(
@@ -331,11 +424,13 @@ class TestPhaseResolve:
                 return (tmp_context.work_dir / "pkg-2.0-py3-none-any.whl", None)
             return (None, None)
 
-        with patch("fromager.bootstrapper._find_cached_wheel", side_effect=mock_cache):
-            result = bt._phase_resolve(item)
+        with patch(
+            "fromager.bootstrapper._cache._find_cached_wheel", side_effect=mock_cache
+        ):
+            result = item.run(bt)
 
         assert len(result) == 2
-        versions = {str(it.resolved_version) for it in result}
+        versions = {str(it.work_item.resolved_version) for it in result}
         assert versions == {"1.0", "3.0"}
 
     def test_all_cached_keeps_highest_version(self, tmp_context: WorkContext) -> None:
@@ -351,13 +446,13 @@ class TestPhaseResolve:
         )
 
         with patch(
-            "fromager.bootstrapper._find_cached_wheel",
+            "fromager.bootstrapper._cache._find_cached_wheel",
             return_value=(tmp_context.work_dir / "cached.whl", None),
         ):
-            result = bt._phase_resolve(item)
+            result = item.run(bt)
 
         assert len(result) == 1
-        assert result[0].resolved_version == Version("3.0")
+        assert result[0].work_item.resolved_version == Version("3.0")
 
     def test_no_filtering_in_single_version_mode(
         self, tmp_context: WorkContext
@@ -367,8 +462,8 @@ class TestPhaseResolve:
         item = _make_resolve_item()
         item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        with patch("fromager.bootstrapper._find_cached_wheel") as mock_cache:
-            result = bt._phase_resolve(item)
+        with patch("fromager.bootstrapper._cache._find_cached_wheel") as mock_cache:
+            result = item.run(bt)
 
         assert len(result) == 1
         mock_cache.assert_not_called()
@@ -383,12 +478,12 @@ class TestPhaseResolve:
             item.bg_future = _make_resolved_future([])
 
             with pytest.raises(RuntimeError, match="Could not resolve"):
-                bt._phase_resolve(item)
+                item.run(bt)
 
     def test_filters_failed_versions_in_multiple_versions_mode(
         self, tmp_context: WorkContext
     ) -> None:
-        """Previously failed versions are excluded before creating START items."""
+        """Previously failed versions are excluded before creating Starts."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
 
@@ -404,11 +499,11 @@ class TestPhaseResolve:
         )
 
         with patch(
-            "fromager.bootstrapper._find_cached_wheel", return_value=(None, None)
+            "fromager.bootstrapper._cache._find_cached_wheel", return_value=(None, None)
         ):
-            result = bt._phase_resolve(item)
+            result = item.run(bt)
 
-        versions = {str(it.resolved_version) for it in result}
+        versions = {str(it.work_item.resolved_version) for it in result}
         assert versions == {"1.0", "3.0"}
 
     def test_failed_version_filter_does_not_apply_in_single_version_mode(
@@ -423,10 +518,10 @@ class TestPhaseResolve:
         )
         item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
-        result = bt._phase_resolve(item)
+        result = item.run(bt)
 
         assert len(result) == 1
-        assert result[0].resolved_version == Version("1.0")
+        assert result[0].work_item.resolved_version == Version("1.0")
 
     def test_all_versions_failed_raises_runtime_error(
         self, tmp_context: WorkContext
@@ -441,10 +536,10 @@ class TestPhaseResolve:
         item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
         with pytest.raises(RuntimeError, match="failed previously"):
-            bt._phase_resolve(item)
+            item.run(bt)
 
     def test_bg_future_exception_propagates(self, tmp_context: WorkContext) -> None:
-        """Exceptions from the background resolver thread are surfaced by _phase_resolve."""
+        """Exceptions from the background resolver thread are surfaced by run()."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_resolve_item()
         future: concurrent.futures.Future[list[tuple[str, Version]]] = (
@@ -454,7 +549,7 @@ class TestPhaseResolve:
         item.bg_future = future
 
         with pytest.raises(ValueError, match="resolver exploded"):
-            bt._phase_resolve(item)
+            item.run(bt)
 
 
 class TestPhaseStart:
@@ -465,22 +560,23 @@ class TestPhaseStart:
         bt.why = []
         item = _make_start_item()
 
-        result = bt._phase_start(item)
+        result = item.run(bt)
 
         assert len(result) == 1
-        assert result[0].phase == BootstrapPhase.PREPARE_SOURCE
-        assert result[0] is item
+        assert isinstance(result[0], PrepareSource)
+        assert result[0].work_item is item.work_item
 
     def test_already_seen_returns_empty(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         bt.why = []
         item = _make_start_item()
+        wi = item.work_item
 
         # Mark as seen first
-        assert item.resolved_version is not None
-        bt._mark_as_seen(item.req, item.resolved_version)
+        assert wi.resolved_version is not None
+        bt.mark_as_seen(wi.req, wi.resolved_version)
 
-        result = bt._phase_start(item)
+        result = item.run(bt)
 
         assert result == []
 
@@ -489,7 +585,7 @@ class TestPhaseStart:
         bt.why = []
         item = _make_start_item(req_type=RequirementType.INSTALL)
 
-        bt._phase_start(item)
+        item.run(bt)
 
         key = f"{canonicalize_name('testpkg')}==1.0"
         assert key in tmp_context.dependency_graph.nodes
@@ -499,7 +595,7 @@ class TestPhaseStart:
         bt.why = []
         item = _make_start_item(req_type=RequirementType.TOP_LEVEL)
 
-        bt._phase_start(item)
+        item.run(bt)
 
         key = f"{canonicalize_name('testpkg')}==1.0"
         assert key not in tmp_context.dependency_graph.nodes
@@ -511,9 +607,9 @@ class TestPhaseStart:
         bt.why = []
         item = _make_start_item(req_type=RequirementType.INSTALL)
 
-        bt._phase_start(item)
+        item.run(bt)
 
-        assert item.build_sdist_only is True
+        assert item.work_item.build_sdist_only is True
 
     def test_sdist_only_not_set_for_build_requirement(
         self, tmp_context: WorkContext
@@ -522,22 +618,42 @@ class TestPhaseStart:
         bt.why = []
         item = _make_start_item(req_type=RequirementType.BUILD_SYSTEM)
 
-        bt._phase_start(item)
+        item.run(bt)
 
-        assert item.build_sdist_only is False
+        assert item.work_item.build_sdist_only is False
 
     def test_marks_as_seen(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         bt.why = []
         item = _make_start_item()
-        assert item.resolved_version is not None
+        wi = item.work_item
+        assert wi.resolved_version is not None
 
-        assert not bt._has_been_seen(item.req, item.resolved_version)
-        bt._phase_start(item)
-        assert bt._has_been_seen(item.req, item.resolved_version)
+        assert not bt.has_been_seen(wi.req, wi.resolved_version)
+        item.run(bt)
+        assert bt.has_been_seen(wi.req, wi.resolved_version)
+
+    def test_sets_pbi_pre_built_before_prepare_source(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """pbi_pre_built is set on work_item before PrepareSource is constructed."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        bt.why = []
+        item = _make_start_item()
+
+        with patch.object(
+            tmp_context,
+            "package_build_info",
+            return_value=Mock(pre_built=True),
+        ):
+            result = item.run(bt)
+
+        assert len(result) == 1
+        assert isinstance(result[0], PrepareSource)
+        assert result[0].work_item.pbi_pre_built is True
 
 
-class TestPhaseComplete:
+class TestComplete:
     def test_calls_clean_build_dirs(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         mock_sdist_root = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
@@ -551,10 +667,10 @@ class TestPhaseComplete:
             source_type=SourceType.SDIST,
         )
         item = _make_build_item(phase=BootstrapPhase.COMPLETE)
-        item.build_result = build_result
+        item.work_item.build_result = build_result
 
         with patch.object(tmp_context, "clean_build_dirs") as mock_clean:
-            result = bt._phase_complete(item)
+            result = item.run(bt)
 
         assert result == []
         mock_clean.assert_called_once_with(mock_sdist_root, mock_env)
@@ -562,40 +678,18 @@ class TestPhaseComplete:
     def test_no_build_result_skips_cleanup(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_build_item(phase=BootstrapPhase.COMPLETE)
-        item.build_result = None
+        item.work_item.build_result = None
 
         with patch.object(tmp_context, "clean_build_dirs") as mock_clean:
-            result = bt._phase_complete(item)
+            result = item.run(bt)
 
         assert result == []
         mock_clean.assert_not_called()
 
-
-class TestDispatchPhase:
-    @pytest.mark.parametrize(
-        "phase,method_name",
-        [
-            (BootstrapPhase.RESOLVE, "_phase_resolve"),
-            (BootstrapPhase.START, "_phase_start"),
-            (BootstrapPhase.PREPARE_SOURCE, "_phase_prepare_source"),
-            (BootstrapPhase.PREPARE_BUILD, "_phase_prepare_build"),
-            (BootstrapPhase.BUILD, "_phase_build"),
-            (BootstrapPhase.PROCESS_INSTALL_DEPS, "_phase_process_install_deps"),
-            (BootstrapPhase.COMPLETE, "_phase_complete"),
-        ],
-    )
-    def test_routes_to_correct_handler(
-        self, tmp_context: WorkContext, phase: BootstrapPhase, method_name: str
-    ) -> None:
+    def test_returns_empty_list(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
-        item = _make_build_item(phase=phase)
-        expected = [item]
-
-        with patch.object(bt, method_name, return_value=expected) as mock_method:
-            result = bt._dispatch_phase(item)
-
-        assert result is expected
-        mock_method.assert_called_once_with(item)
+        item = _make_build_item(phase=BootstrapPhase.COMPLETE)
+        assert item.run(bt) == []
 
 
 class TestHandlePhaseError:
@@ -654,7 +748,7 @@ class TestHandlePhaseError:
     ) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
-        item.pbi_pre_built = False
+        item.work_item.pbi_pre_built = False
         err = RuntimeError("build failed")
 
         mock_fallback = Mock(spec=SourceBuildResult)
@@ -662,9 +756,9 @@ class TestHandlePhaseError:
             result = bt._handle_phase_error(item, err)
 
         assert len(result) == 1
-        assert result[0] is item
-        assert item.build_result is mock_fallback
-        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        assert isinstance(result[0], ProcessInstallDeps)
+        assert result[0].work_item is item.work_item
+        assert result[0].work_item.build_result is mock_fallback
         assert len(bt.failed_packages) == 0
 
     def test_build_phase_test_mode_fallback_failure(
@@ -672,7 +766,7 @@ class TestHandlePhaseError:
     ) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
         item = _make_build_item(phase=BootstrapPhase.BUILD)
-        item.pbi_pre_built = False
+        item.work_item.pbi_pre_built = False
         err = RuntimeError("build failed")
 
         with patch.object(bt, "_handle_test_mode_failure", return_value=None):
@@ -687,7 +781,7 @@ class TestHandlePhaseError:
     ) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
-        item.pbi_pre_built = True
+        item.work_item.pbi_pre_built = True
         err = RuntimeError("download failed")
 
         result = bt._handle_phase_error(item, err)
@@ -716,8 +810,9 @@ class TestHandlePhaseError:
     ) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_build_item(phase=BootstrapPhase.BUILD)
-        assert item.resolved_version is not None
-        assert item.source_url is not None
+        wi = item.work_item
+        assert wi.resolved_version is not None
+        assert wi.source_url is not None
         err = ValueError("build failed")
 
         # Add to graph first so remove_dependency has something to remove
@@ -725,13 +820,13 @@ class TestHandlePhaseError:
             parent_name=None,
             parent_version=None,
             req_type=RequirementType.TOP_LEVEL,
-            req=item.req,
-            req_version=item.resolved_version,
-            download_url=item.source_url,
+            req=wi.req,
+            req_version=wi.resolved_version,
+            download_url=wi.source_url,
             pre_built=False,
         )
         # Mark as seen
-        bt._mark_as_seen(item.req, item.resolved_version)
+        bt.mark_as_seen(wi.req, wi.resolved_version)
 
         result = bt._handle_phase_error(item, err)
 
@@ -743,8 +838,8 @@ class TestHandlePhaseError:
         key = f"{canonicalize_name('testpkg')}==1.0"
         assert key not in tmp_context.dependency_graph.nodes
         # Seen markers cleared
-        assert not bt._has_been_seen(item.req, item.resolved_version)
-        assert not bt._has_been_seen(item.req, item.resolved_version, sdist_only=True)
+        assert not bt.has_been_seen(wi.req, wi.resolved_version)
+        assert not bt.has_been_seen(wi.req, wi.resolved_version, sdist_only=True)
 
     def test_multiple_versions_logs_phase(
         self, tmp_context: WorkContext, caplog: pytest.LogCaptureFixture
@@ -777,45 +872,68 @@ class TestIterativeBootstrapLoop:
         """Drive a package through RESOLVE -> START -> ... -> COMPLETE."""
         bt = bootstrapper.Bootstrapper(tmp_context)
 
-        # Track which phases are visited
         phases_visited: list[BootstrapPhase] = []
-        original_dispatch = bt._dispatch_phase
+        original_resolve_run = Resolve.run
+        original_start_run = Start.run
 
-        def tracking_dispatch(item: WorkItem) -> list[WorkItem]:
-            phases_visited.append(item.phase)
-            if item.phase == BootstrapPhase.RESOLVE:
-                return original_dispatch(item)
-            if item.phase == BootstrapPhase.START:
-                return original_dispatch(item)
-            if item.phase == BootstrapPhase.PREPARE_SOURCE:
-                # Skip actual source download, simulate source build path
-                item.phase = BootstrapPhase.PREPARE_BUILD
-                item.build_env = Mock()
-                item.sdist_root_dir = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
-                return [item]
-            if item.phase == BootstrapPhase.PREPARE_BUILD:
-                item.phase = BootstrapPhase.BUILD
-                return [item]
-            if item.phase == BootstrapPhase.BUILD:
-                item.build_result = SourceBuildResult(
-                    wheel_filename=None,
-                    sdist_filename=None,
-                    unpack_dir=tmp_context.work_dir,
-                    sdist_root_dir=None,
-                    build_env=None,
-                    source_type=SourceType.SDIST,
-                )
-                item.phase = BootstrapPhase.PROCESS_INSTALL_DEPS
-                return [item]
-            if item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS:
-                item.phase = BootstrapPhase.COMPLETE
-                return [item]
-            if item.phase == BootstrapPhase.COMPLETE:
-                return []
+        def resolve_run(
+            self: Resolve, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            phases_visited.append(type(self).phase)
+            return original_resolve_run(self, bt_arg)
+
+        def start_run(self: Start, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
+            phases_visited.append(type(self).phase)
+            return original_start_run(self, bt_arg)
+
+        def prepare_source_run(
+            self: PrepareSource, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            phases_visited.append(type(self).phase)
+            wi = self.work_item
+            wi.build_env = Mock()
+            wi.sdist_root_dir = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+            return [PrepareBuild(wi)]
+
+        def prepare_build_run(
+            self: PrepareBuild, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            phases_visited.append(type(self).phase)
+            return [Build(self.work_item)]
+
+        def build_run(self: Build, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
+            phases_visited.append(type(self).phase)
+            wi = self.work_item
+            wi.build_result = SourceBuildResult(
+                wheel_filename=None,
+                sdist_filename=None,
+                unpack_dir=tmp_context.work_dir,
+                sdist_root_dir=None,
+                build_env=None,
+                source_type=SourceType.SDIST,
+            )
+            return [ProcessInstallDeps(wi)]
+
+        def process_install_deps_run(
+            self: ProcessInstallDeps, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            phases_visited.append(type(self).phase)
+            return [Complete(self.work_item)]
+
+        def complete_run(
+            self: Complete, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            phases_visited.append(type(self).phase)
             return []
 
         with (
-            patch.object(bt, "_dispatch_phase", side_effect=tracking_dispatch),
+            patch.object(Resolve, "run", resolve_run),
+            patch.object(Start, "run", start_run),
+            patch.object(PrepareSource, "run", prepare_source_run),
+            patch.object(PrepareBuild, "run", prepare_build_run),
+            patch.object(Build, "run", build_run),
+            patch.object(ProcessInstallDeps, "run", process_install_deps_run),
+            patch.object(Complete, "run", complete_run),
             patch.object(
                 bt._resolver,
                 "resolve",
@@ -841,31 +959,49 @@ class TestIterativeBootstrapLoop:
         bt = bootstrapper.Bootstrapper(tmp_context)
 
         processing_order: list[tuple[str, str]] = []
-        original_dispatch = bt._dispatch_phase
+        original_resolve_run = Resolve.run
+        original_start_run = Start.run
 
-        def tracking_dispatch(item: WorkItem) -> list[WorkItem]:
-            phase_name = str(item.phase)
-            req_name = str(item.req.name)
+        def resolve_run(
+            self: Resolve, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            processing_order.append(
+                (str(self.work_item.req.name), str(type(self).phase))
+            )
+            return original_resolve_run(self, bt_arg)
+
+        def start_run(self: Start, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
+            processing_order.append(
+                (str(self.work_item.req.name), str(type(self).phase))
+            )
+            return original_start_run(self, bt_arg)
+
+        def prepare_source_run(
+            self: PrepareSource, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            phase_name = str(type(self).phase)
+            req_name = str(self.work_item.req.name)
             processing_order.append((req_name, phase_name))
-
-            if item.phase == BootstrapPhase.RESOLVE:
-                return original_dispatch(item)
-            if item.phase == BootstrapPhase.START:
-                return original_dispatch(item)
-
-            # Parent discovers a dep at PREPARE_SOURCE
-            if req_name == "parent" and item.phase == BootstrapPhase.PREPARE_SOURCE:
-                assert item.resolved_version is not None
-                dep_item = WorkItem(
-                    req=Requirement("child"),
-                    req_type=RequirementType.BUILD_SYSTEM,
-                    phase=BootstrapPhase.RESOLVE,
-                    why_snapshot=[],
-                    parent=(item.req, item.resolved_version),
+            wi = self.work_item
+            if req_name == "parent":
+                assert wi.resolved_version is not None
+                dep_item = Resolve(
+                    WorkItem(
+                        req=Requirement("child"),
+                        req_type=RequirementType.BUILD_SYSTEM,
+                        why_snapshot=[],
+                        parent=(wi.req, wi.resolved_version),
+                    )
                 )
-                item.phase = BootstrapPhase.COMPLETE
-                return [item, dep_item]
+                return [Complete(wi), dep_item]
+            return []
 
+        def complete_run(
+            self: Complete, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            processing_order.append(
+                (str(self.work_item.req.name), str(type(self).phase))
+            )
             return []
 
         # Pre-add parent to graph so child can reference it as parent
@@ -880,7 +1016,10 @@ class TestIterativeBootstrapLoop:
         )
 
         with (
-            patch.object(bt, "_dispatch_phase", side_effect=tracking_dispatch),
+            patch.object(Resolve, "run", resolve_run),
+            patch.object(Start, "run", start_run),
+            patch.object(PrepareSource, "run", prepare_source_run),
+            patch.object(Complete, "run", complete_run),
             patch.object(
                 bt._resolver,
                 "resolve",
@@ -911,18 +1050,15 @@ class TestIterativeBootstrapLoop:
         """Each version fails independently without crashing the loop."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
 
-        original_dispatch = bt._dispatch_phase
-
-        def mock_dispatch(item: WorkItem) -> list[WorkItem]:
-            if item.phase in (BootstrapPhase.RESOLVE, BootstrapPhase.START):
-                return original_dispatch(item)
-            # Fail version 1.5, succeed for others
-            if str(item.resolved_version) == "1.5":
+        def prepare_source_run(
+            self: PrepareSource, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            if str(self.work_item.resolved_version) == "1.5":
                 raise ValueError("1.5 broken")
             return []
 
         with (
-            patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch),
+            patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(
                 bt._resolver,
                 "resolve",
@@ -932,7 +1068,7 @@ class TestIterativeBootstrapLoop:
                     ("url-1.0", Version("1.0")),
                 ],
             ),
-            patch.object(bt, "_has_been_seen", return_value=False),
+            patch.object(bt, "has_been_seen", return_value=False),
         ):
             bt._bootstrap_one(Requirement("pkg"), RequirementType.INSTALL)
 
@@ -948,27 +1084,31 @@ class TestIterativeBootstrapLoop:
         """RESOLVE failure for one dependency does not crash the loop."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
 
-        original_dispatch = bt._dispatch_phase
+        original_resolve_run = Resolve.run
         completed: list[str] = []
 
-        def mock_dispatch(item: WorkItem) -> list[WorkItem]:
-            if item.phase == BootstrapPhase.START:
-                return original_dispatch(item)
-            if item.phase == BootstrapPhase.RESOLVE:
-                if str(item.req.name) == "bad-dep":
-                    raise RuntimeError("Could not resolve any versions for bad-dep")
-                return original_dispatch(item)
-            completed.append(str(item.req.name))
+        def resolve_run(
+            self: Resolve, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            if str(self.work_item.req.name) == "bad-dep":
+                raise RuntimeError("Could not resolve any versions for bad-dep")
+            return original_resolve_run(self, bt_arg)
+
+        def prepare_source_run(
+            self: PrepareSource, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            completed.append(str(self.work_item.req.name))
             return []
 
         with (
-            patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch),
+            patch.object(Resolve, "run", resolve_run),
+            patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(
                 bt._resolver,
                 "resolve",
                 return_value=[("url-1.0", Version("1.0"))],
             ),
-            patch.object(bt, "_has_been_seen", return_value=False),
+            patch.object(bt, "has_been_seen", return_value=False),
         ):
             bt._bootstrap_one(Requirement("good-pkg"), RequirementType.INSTALL)
             bt._bootstrap_one(Requirement("bad-dep"), RequirementType.INSTALL)
@@ -983,19 +1123,18 @@ class TestIterativeBootstrapLoop:
         """In test mode, failed items are recorded and processing continues."""
         bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
 
-        original_dispatch = bt._dispatch_phase
         items_completed: list[str] = []
 
-        def mock_dispatch(item: WorkItem) -> list[WorkItem]:
-            if item.phase in (BootstrapPhase.RESOLVE, BootstrapPhase.START):
-                return original_dispatch(item)
-            if str(item.req.name) == "fail-pkg":
+        def prepare_source_run(
+            self: PrepareSource, bt_arg: bootstrapper.Bootstrapper
+        ) -> list[Phase]:
+            if str(self.work_item.req.name) == "fail-pkg":
                 raise RuntimeError("build error")
-            items_completed.append(str(item.req.name))
+            items_completed.append(str(self.work_item.req.name))
             return []
 
         with (
-            patch.object(bt, "_dispatch_phase", side_effect=mock_dispatch),
+            patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(
                 bt._resolver,
                 "resolve",
@@ -1013,7 +1152,7 @@ class TestIterativeBootstrapLoop:
 
 
 class TestPhasePrepareSource:
-    """Tests for _phase_prepare_source: prebuilt, source, cache, and error paths."""
+    """Tests for PrepareSource.run(): prebuilt, source, cache, and error paths."""
 
     def test_prebuilt_uses_background_result(self, tmp_context: WorkContext) -> None:
         """Prebuilt package uses bg_future result and advances to PROCESS_INSTALL_DEPS."""
@@ -1027,22 +1166,21 @@ class TestPhasePrepareSource:
         mock_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
         mock_unpack = tmp_context.work_dir / "testpkg-1.0"
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(
-                wheel_filename=mock_wheel, unpack_dir=mock_unpack
-            )
+            PreparedSourceData(wheel_filename=mock_wheel, unpack_dir=mock_unpack)
         )
 
         with patch.object(tmp_context.constraints, "get_constraint", return_value=None):
-            result = bt._phase_prepare_source(item)
+            result = item.run(bt)
 
         assert len(result) == 1
-        assert result[0] is item
-        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
-        assert item.build_result is not None
-        assert item.build_result.source_type == SourceType.PREBUILT
-        assert item.build_result.wheel_filename == mock_wheel
-        assert item.build_result.sdist_filename is None
-        assert item.build_result.build_env is None
+        assert isinstance(result[0], ProcessInstallDeps)
+        assert result[0].work_item is item.work_item
+        wi = result[0].work_item
+        assert wi.build_result is not None
+        assert wi.build_result.source_type == SourceType.PREBUILT
+        assert wi.build_result.wheel_filename == mock_wheel
+        assert wi.build_result.sdist_filename is None
+        assert wi.build_result.build_env is None
 
     def test_source_no_cache_uses_background_result(
         self, tmp_context: WorkContext
@@ -1055,37 +1193,42 @@ class TestPhasePrepareSource:
         mock_env = Mock()
         mock_dep_item = _make_resolve_item(req="setuptools")
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(sdist_root_dir=sdist_root)
+            PreparedSourceData(sdist_root_dir=sdist_root)
         )
 
         with (
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(
-                bt, "_create_build_env", return_value=mock_env
-            ) as mock_create_env,
+            patch(
+                "fromager.build_environment.BuildEnvironment",
+                return_value=mock_env,
+            ) as mock_build_env_cls,
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
                 return_value={Requirement("setuptools")},
             ),
             patch.object(
-                bt, "_create_unresolved_work_items", return_value=[mock_dep_item]
+                bt, "create_unresolved_work_items", return_value=[mock_dep_item]
             ) as mock_create_items,
         ):
-            result = bt._phase_prepare_source(item)
+            result = item.run(bt)
 
-        assert item.phase == BootstrapPhase.PREPARE_BUILD
-        assert item.build_env is mock_env
-        assert item.sdist_root_dir == sdist_root
-        assert item.unpack_dir == sdist_root.parent
-        assert item.cached_wheel_filename is None
-        assert result[0] is item
+        wi = item.work_item
+        assert isinstance(result[0], PrepareBuild)
+        assert result[0].work_item is wi
+        assert wi.build_env is mock_env
+        assert wi.sdist_root_dir == sdist_root
+        assert wi.unpack_dir == sdist_root.parent
+        assert wi.cached_wheel_filename is None
         assert result[1] is mock_dep_item
-        mock_create_env.assert_called_once()
+        mock_build_env_cls.assert_called_once_with(
+            ctx=bt.ctx,
+            parent_dir=sdist_root.parent,
+        )
         mock_create_items.assert_called_once_with(
-            item.build_system_deps,
+            wi.build_system_deps,
             RequirementType.BUILD_SYSTEM,
-            item.req,
-            item.resolved_version,
+            wi.req,
+            wi.resolved_version,
         )
 
     def test_source_cached_wheel_uses_background_result(
@@ -1100,7 +1243,7 @@ class TestPhasePrepareSource:
         cached_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
         mock_env = Mock()
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(
+            PreparedSourceData(
                 sdist_root_dir=unpacked / unpacked.stem,
                 cached_wheel_filename=cached_wheel,
             )
@@ -1108,18 +1251,22 @@ class TestPhasePrepareSource:
 
         with (
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.build_environment.BuildEnvironment",
+                return_value=mock_env,
+            ),
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
                 return_value=set(),
             ),
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
-            result = bt._phase_prepare_source(item)
+            result = item.run(bt)
 
-        assert item.cached_wheel_filename == cached_wheel
-        assert item.sdist_root_dir == unpacked / unpacked.stem
-        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        wi = item.work_item
+        assert wi.cached_wheel_filename == cached_wheel
+        assert wi.sdist_root_dir == unpacked / unpacked.stem
+        assert isinstance(result[0], PrepareBuild)
         assert len(result) == 1
 
     def test_bad_sdist_root_raises_valueerror(self, tmp_context: WorkContext) -> None:
@@ -1129,12 +1276,12 @@ class TestPhasePrepareSource:
 
         bad_root = tmp_context.work_dir / "a" / "b" / "c"
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(sdist_root_dir=bad_root)
+            PreparedSourceData(sdist_root_dir=bad_root)
         )
 
         with patch.object(tmp_context.constraints, "get_constraint", return_value=None):
             with pytest.raises(ValueError, match="should be"):
-                bt._phase_prepare_source(item)
+                item.run(bt)
 
     def test_constraint_logged_when_present(
         self, tmp_context: WorkContext, caplog: pytest.LogCaptureFixture
@@ -1146,7 +1293,7 @@ class TestPhasePrepareSource:
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
         mock_env = Mock()
         item.bg_future = _make_resolved_future(
-            bootstrapper.PreparedSourceData(sdist_root_dir=sdist_root)
+            PreparedSourceData(sdist_root_dir=sdist_root)
         )
 
         with (
@@ -1155,21 +1302,24 @@ class TestPhasePrepareSource:
                 "get_constraint",
                 return_value=Requirement("testpkg>=1.0"),
             ),
-            patch.object(bt, "_create_build_env", return_value=mock_env),
+            patch(
+                "fromager.build_environment.BuildEnvironment",
+                return_value=mock_env,
+            ),
             patch(
                 "fromager.dependencies.get_build_system_dependencies",
                 return_value=set(),
             ),
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
-            bt._phase_prepare_source(item)
+            result = item.run(bt)
 
-        assert item.phase == BootstrapPhase.PREPARE_BUILD
+        assert isinstance(result[0], PrepareBuild)
         assert "matches constraint" in caplog.text
 
 
 class TestPhasePrepareBuild:
-    """Tests for _phase_prepare_build: dep installation and extraction."""
+    """Tests for PrepareBuild.run(): dep installation and extraction."""
 
     def test_installs_system_deps_and_returns_backend_sdist_items(
         self, tmp_context: WorkContext
@@ -1185,6 +1335,7 @@ class TestPhasePrepareBuild:
             sdist_root_dir=sdist_root,
             build_system_deps=system_deps,
         )
+        wi = item.work_item
 
         backend_item = _make_resolve_item(req="wheel")
         sdist_item = _make_resolve_item(req="flit-core")
@@ -1200,17 +1351,18 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[backend_item], [sdist_item]],
             ),
         ):
-            result = bt._phase_prepare_build(item)
+            result = item.run(bt)
 
-        assert item.phase == BootstrapPhase.BUILD
-        assert item.build_backend_deps == {Requirement("wheel")}
-        assert item.build_sdist_deps == {Requirement("flit-core")}
+        assert isinstance(result[0], Build)
+        assert result[0].work_item is wi
+        assert wi.build_backend_deps == {Requirement("wheel")}
+        assert wi.build_sdist_deps == {Requirement("flit-core")}
         mock_env.install.assert_called_once_with(system_deps)
-        assert result == [item, backend_item, sdist_item]
+        assert result == [result[0], backend_item, sdist_item]
 
     def test_no_extra_deps_returns_item_only(self, tmp_context: WorkContext) -> None:
         """When backend and sdist deps are empty, returns only the item."""
@@ -1236,14 +1388,14 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[], []],
             ),
         ):
-            result = bt._phase_prepare_build(item)
+            result = item.run(bt)
 
-        assert result == [item]
-        assert item.phase == BootstrapPhase.BUILD
+        assert len(result) == 1
+        assert isinstance(result[0], Build)
         mock_env.install.assert_called_once_with(system_deps)
 
     def test_install_called_once_with_system_deps(
@@ -1272,11 +1424,11 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[], []],
             ),
         ):
-            bt._phase_prepare_build(item)
+            item.run(bt)
 
         mock_env.install.assert_called_once_with(system_deps)
 
@@ -1293,6 +1445,7 @@ class TestPhasePrepareBuild:
             sdist_root_dir=sdist_root,
             build_system_deps={Requirement("setuptools")},
         )
+        wi = item.work_item
 
         with (
             patch(
@@ -1305,35 +1458,35 @@ class TestPhasePrepareBuild:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[], []],
             ) as mock_create_items,
         ):
-            bt._phase_prepare_build(item)
+            item.run(bt)
 
         calls = mock_create_items.call_args_list
         assert calls[0] == call(
             {Requirement("wheel")},
             RequirementType.BUILD_BACKEND,
-            item.req,
-            item.resolved_version,
+            wi.req,
+            wi.resolved_version,
         )
         assert calls[1] == call(
             {Requirement("flit-core")},
             RequirementType.BUILD_SDIST,
-            item.req,
-            item.resolved_version,
+            wi.req,
+            wi.resolved_version,
         )
 
 
 class TestPhaseBuild:
-    """Tests for _phase_build: conditional dep install and result construction."""
+    """Tests for Build.run(): conditional dep install and result construction."""
 
-    def _make_build_phase_item(self, tmp_context: WorkContext) -> WorkItem:
+    def _make_build_phase_item(self, tmp_context: WorkContext) -> Build:
         mock_env = Mock()
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
         sdist_root.parent.mkdir(parents=True, exist_ok=True)
-        return _make_build_item(
+        item = _make_build_item(
             phase=BootstrapPhase.BUILD,
             build_env=mock_env,
             sdist_root_dir=sdist_root,
@@ -1341,6 +1494,8 @@ class TestPhaseBuild:
             build_backend_deps={Requirement("wheel")},
             build_sdist_deps={Requirement("flit-core")},
         )
+        assert isinstance(item, Build)
+        return item
 
     def test_disjoint_deps_installs_remaining(self, tmp_context: WorkContext) -> None:
         """Disjoint backend/sdist deps from system deps triggers install."""
@@ -1359,16 +1514,16 @@ class TestPhaseBuild:
         mock_wheel = tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl"
 
         with (
-            patch.object(bt, "_do_build", return_value=(mock_wheel, None)),
+            patch.object(item, "do_build", return_value=(mock_wheel, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
-            result = bt._phase_build(item)
+            result = item.run(bt)
 
         mock_env.install.assert_called_once_with(
             {Requirement("wheel"), Requirement("flit-core")}
         )
-        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
         assert len(result) == 1
+        assert isinstance(result[0], ProcessInstallDeps)
 
     def test_overlapping_deps_skips_install(self, tmp_context: WorkContext) -> None:
         """Overlapping backend/sdist deps with system deps skips install."""
@@ -1386,17 +1541,15 @@ class TestPhaseBuild:
         )
 
         with (
-            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
-            bt._phase_build(item)
+            item.run(bt)
 
         mock_env.install.assert_not_called()
 
     def test_partial_overlap_deps_skips_install(self, tmp_context: WorkContext) -> None:
-        """isdisjoint is False on partial overlap, so install is skipped entirely
-        even for deps not in build_system_deps (here: cython).
-        """
+        """isdisjoint is False on partial overlap, so install is skipped entirely."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         mock_env = Mock()
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
@@ -1411,15 +1564,15 @@ class TestPhaseBuild:
         )
 
         with (
-            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
-            bt._phase_build(item)
+            item.run(bt)
 
         mock_env.install.assert_not_called()
 
     def test_do_build_receives_item_fields(self, tmp_context: WorkContext) -> None:
-        """build_sdist_only and cached_wheel_filename are forwarded to _do_build."""
+        """build_sdist_only and cached_wheel_filename are read directly by do_build, not forwarded as parameters."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         mock_env = Mock()
         sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
@@ -1434,35 +1587,29 @@ class TestPhaseBuild:
         )
 
         with (
-            patch.object(bt, "_do_build", return_value=(None, None)) as mock_do_build,
+            patch.object(item, "do_build", return_value=(None, None)) as mock_do_build,
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
-            bt._phase_build(item)
+            item.run(bt)
 
-        mock_do_build.assert_called_once_with(
-            req=item.req,
-            resolved_version=item.resolved_version,
-            sdist_root_dir=sdist_root,
-            build_env=mock_env,
-            build_sdist_only=True,
-            cached_wheel_filename=cached_wheel,
-        )
+        mock_do_build.assert_called_once_with(bt.ctx, bt.explain)
 
     def test_build_result_references_item_build_env(
         self, tmp_context: WorkContext
     ) -> None:
-        """build_result.build_env is the same object as item.build_env."""
+        """build_result.build_env is the same object as item.work_item.build_env."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = self._make_build_phase_item(tmp_context)
+        wi = item.work_item
 
         with (
-            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
-            result = bt._phase_build(item)
+            item.run(bt)
 
-        assert result[0].build_result is not None
-        assert result[0].build_result.build_env is item.build_env
+        assert wi.build_result is not None
+        assert wi.build_result.build_env is wi.build_env
 
     def test_build_result_uses_source_type_from_sources(
         self, tmp_context: WorkContext
@@ -1470,38 +1617,55 @@ class TestPhaseBuild:
         """source_type comes from sources.get_source_type, not hardcoded."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = self._make_build_phase_item(tmp_context)
+        wi = item.work_item
 
         with (
-            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.PREBUILT),
         ):
-            bt._phase_build(item)
+            item.run(bt)
 
-        assert item.build_result is not None
-        assert item.build_result.source_type == SourceType.PREBUILT
+        assert wi.build_result is not None
+        assert wi.build_result.source_type == SourceType.PREBUILT
 
-    def test_returns_single_item_at_process_install_deps(
+    def test_returns_single_process_install_deps_item(
         self, tmp_context: WorkContext
     ) -> None:
-        """_phase_build returns exactly [item] with phase PROCESS_INSTALL_DEPS."""
+        """Build.run() returns exactly [ProcessInstallDeps]."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = self._make_build_phase_item(tmp_context)
 
         with (
-            patch.object(bt, "_do_build", return_value=(None, None)),
+            patch.object(item, "do_build", return_value=(None, None)),
             patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
         ):
-            result = bt._phase_build(item)
+            result = item.run(bt)
 
         assert len(result) == 1
-        assert result[0] is item
-        assert item.phase == BootstrapPhase.PROCESS_INSTALL_DEPS
+        assert isinstance(result[0], ProcessInstallDeps)
+        assert result[0].work_item is item.work_item
+
+    def test_phase_advancement_preserves_work_item_identity(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """When Build.run() returns ProcessInstallDeps, work_item is same obj."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = self._make_build_phase_item(tmp_context)
+        wi = item.work_item
+
+        with (
+            patch.object(item, "do_build", return_value=(None, None)),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            result = item.run(bt)
+
+        assert result[0].work_item is wi
 
 
 class TestPhaseProcessInstallDeps:
-    """Tests for _phase_process_install_deps: hooks, dep extraction, error modes."""
+    """Tests for ProcessInstallDeps.run(): hooks, dep extraction, error modes."""
 
-    def _make_process_item(self, tmp_context: WorkContext) -> WorkItem:
+    def _make_process_item(self, tmp_context: WorkContext) -> ProcessInstallDeps:
         build_result = SourceBuildResult(
             wheel_filename=tmp_context.work_dir / "testpkg-1.0-py3-none-any.whl",
             sdist_filename=tmp_context.work_dir / "testpkg-1.0.tar.gz",
@@ -1510,25 +1674,27 @@ class TestPhaseProcessInstallDeps:
             build_env=Mock(),
             source_type=SourceType.SDIST,
         )
-        return _make_build_item(
+        item = _make_build_item(
             phase=BootstrapPhase.PROCESS_INSTALL_DEPS,
             build_result=build_result,
             source_url="https://pkg.test/testpkg-1.0.tar.gz",
         )
+        assert isinstance(item, ProcessInstallDeps)
+        return item
 
     def test_normal_path_returns_item_and_dep_items(
         self, tmp_context: WorkContext
     ) -> None:
-        """Normal path: hooks, deps, build order, returns [item, *dep_items]."""
+        """Normal path: hooks, deps, build order, returns [Complete, *dep_items]."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = self._make_process_item(tmp_context)
+        wi = item.work_item
         dep_item = _make_resolve_item(req="dep-a")
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(
-                bt,
-                "_get_install_dependencies",
+            patch(
+                "fromager.bootstrapper._process_install_deps._get_install_dependencies",
                 return_value=[Requirement("dep-a")],
             ),
             patch.object(
@@ -1537,21 +1703,22 @@ class TestPhaseProcessInstallDeps:
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "add_to_build_order") as mock_build_order,
             patch.object(
-                bt, "_create_unresolved_work_items", return_value=[dep_item]
+                bt, "create_unresolved_work_items", return_value=[dep_item]
             ) as mock_create_items,
         ):
-            result = bt._phase_process_install_deps(item)
+            result = item.run(bt)
 
-        assert item.phase == BootstrapPhase.COMPLETE
-        assert result == [item, dep_item]
+        assert isinstance(result[0], Complete)
+        assert result[0].work_item is wi
+        assert result[1] is dep_item
         mock_build_order.assert_called_once()
         mock_create_items.assert_called_once_with(
             [Requirement("dep-a")],
             RequirementType.INSTALL,
-            item.req,
-            item.resolved_version,
+            wi.req,
+            wi.resolved_version,
         )
 
     def test_hook_error_test_mode_records_and_continues(
@@ -1566,8 +1733,9 @@ class TestPhaseProcessInstallDeps:
                 "fromager.hooks.run_post_bootstrap_hooks",
                 side_effect=RuntimeError("hook failed"),
             ),
-            patch.object(
-                bt, "_get_install_dependencies", return_value=[]
+            patch(
+                "fromager.bootstrapper._process_install_deps._get_install_dependencies",
+                return_value=[],
             ) as mock_get_deps,
             patch.object(
                 tmp_context,
@@ -1575,13 +1743,12 @@ class TestPhaseProcessInstallDeps:
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "add_to_build_order") as mock_build_order,
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
-            result = bt._phase_process_install_deps(item)
+            result = item.run(bt)
 
-        assert item.phase == BootstrapPhase.COMPLETE
-        assert result == [item]
+        assert isinstance(result[0], Complete)
         assert len(bt.failed_packages) == 1
         assert bt.failed_packages[0]["failure_type"] == "hook"
         mock_get_deps.assert_called_once()
@@ -1599,7 +1766,7 @@ class TestPhaseProcessInstallDeps:
             ),
         ):
             with pytest.raises(RuntimeError, match="hook failed"):
-                bt._phase_process_install_deps(item)
+                item.run(bt)
 
     def test_dep_extraction_error_test_mode_uses_empty_deps(
         self, tmp_context: WorkContext
@@ -1607,12 +1774,12 @@ class TestPhaseProcessInstallDeps:
         """Dep extraction error in test mode uses empty dep list, still writes build order."""
         bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
         item = self._make_process_item(tmp_context)
+        wi = item.work_item
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(
-                bt,
-                "_get_install_dependencies",
+            patch(
+                "fromager.bootstrapper._process_install_deps._get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
             patch.object(
@@ -1621,23 +1788,22 @@ class TestPhaseProcessInstallDeps:
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
+            patch.object(bt, "add_to_build_order") as mock_build_order,
             patch.object(
-                bt, "_create_unresolved_work_items", return_value=[]
+                bt, "create_unresolved_work_items", return_value=[]
             ) as mock_create_items,
         ):
-            result = bt._phase_process_install_deps(item)
+            result = item.run(bt)
 
-        assert item.phase == BootstrapPhase.COMPLETE
-        assert result == [item]
+        assert isinstance(result[0], Complete)
         assert len(bt.failed_packages) == 1
         assert bt.failed_packages[0]["failure_type"] == "dependency_extraction"
         mock_build_order.assert_called_once()
         mock_create_items.assert_called_once_with(
             [],
             RequirementType.INSTALL,
-            item.req,
-            item.resolved_version,
+            wi.req,
+            wi.resolved_version,
         )
 
     def test_dep_extraction_error_normal_mode_raises(
@@ -1649,48 +1815,54 @@ class TestPhaseProcessInstallDeps:
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(
-                bt,
-                "_get_install_dependencies",
+            patch(
+                "fromager.bootstrapper._process_install_deps._get_install_dependencies",
                 side_effect=RuntimeError("dep failed"),
             ),
         ):
             with pytest.raises(RuntimeError, match="dep failed"):
-                bt._phase_process_install_deps(item)
+                item.run(bt)
 
     def test_no_install_deps_returns_item_only(self, tmp_context: WorkContext) -> None:
-        """When no install deps, returns [item] at COMPLETE phase."""
+        """When no install deps, returns [Complete]."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = self._make_process_item(tmp_context)
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(bt, "_get_install_dependencies", return_value=[]),
+            patch(
+                "fromager.bootstrapper._process_install_deps._get_install_dependencies",
+                return_value=[],
+            ),
             patch.object(
                 tmp_context,
                 "package_build_info",
                 return_value=Mock(pre_built=False),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
-            patch.object(bt, "_add_to_build_order"),
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "add_to_build_order"),
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
-            result = bt._phase_process_install_deps(item)
+            result = item.run(bt)
 
-        assert result == [item]
-        assert item.phase == BootstrapPhase.COMPLETE
+        assert len(result) == 1
+        assert isinstance(result[0], Complete)
 
     def test_build_order_called_with_correct_args(
         self, tmp_context: WorkContext
     ) -> None:
-        """_add_to_build_order receives correct source_type, prebuilt, constraint."""
+        """add_to_build_order receives correct source_type, prebuilt, constraint."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = self._make_process_item(tmp_context)
+        wi = item.work_item
         constraint = Requirement("testpkg>=1.0")
 
         with (
             patch("fromager.hooks.run_post_bootstrap_hooks"),
-            patch.object(bt, "_get_install_dependencies", return_value=[]),
+            patch(
+                "fromager.bootstrapper._process_install_deps._get_install_dependencies",
+                return_value=[],
+            ),
             patch.object(
                 tmp_context,
                 "package_build_info",
@@ -1701,15 +1873,15 @@ class TestPhaseProcessInstallDeps:
                 "get_constraint",
                 return_value=constraint,
             ),
-            patch.object(bt, "_add_to_build_order") as mock_build_order,
-            patch.object(bt, "_create_unresolved_work_items", return_value=[]),
+            patch.object(bt, "add_to_build_order") as mock_build_order,
+            patch.object(bt, "create_unresolved_work_items", return_value=[]),
         ):
-            bt._phase_process_install_deps(item)
+            item.run(bt)
 
         mock_build_order.assert_called_once_with(
-            req=item.req,
-            version=item.resolved_version,
-            source_url=item.source_url,
+            req=wi.req,
+            version=wi.resolved_version,
+            source_url=wi.source_url,
             source_type=SourceType.SDIST,
             prebuilt=True,
             constraint=constraint,
@@ -1762,8 +1934,8 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("biotite==1.6.0"), Version("1.6.0"))
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+        with patch.object(bt, "add_to_graph") as mock_add:
+            result = bt.filter_deps_satisfied_by_build_system(
                 {Requirement("hatch-cython")},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1789,8 +1961,8 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+        with patch.object(bt, "add_to_graph") as mock_add:
+            result = bt.filter_deps_satisfied_by_build_system(
                 {Requirement("foo>=1.0")},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1809,8 +1981,8 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
         wheel_req = Requirement("wheel")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+        with patch.object(bt, "add_to_graph") as mock_add:
+            result = bt.filter_deps_satisfied_by_build_system(
                 {wheel_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1831,8 +2003,8 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
         foo_req = Requirement("foo>=2.0")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+        with patch.object(bt, "add_to_graph") as mock_add:
+            result = bt.filter_deps_satisfied_by_build_system(
                 {foo_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1852,8 +2024,8 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        with patch.object(bt, "_add_to_graph"):
-            bt._filter_deps_satisfied_by_build_system(
+        with patch.object(bt, "add_to_graph"):
+            bt.filter_deps_satisfied_by_build_system(
                 {Requirement("foo>=2.0")},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1877,8 +2049,8 @@ class TestFilterDepsSatisfiedByBuildSystem:
         cython_req = Requirement("hatch-cython")
         wheel_req = Requirement("wheel")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+        with patch.object(bt, "add_to_graph") as mock_add:
+            result = bt.filter_deps_satisfied_by_build_system(
                 {cython_req, wheel_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1896,7 +2068,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         }
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        result = bt._filter_deps_satisfied_by_build_system(
+        result = bt.filter_deps_satisfied_by_build_system(
             set(),
             resolved_build_sys,
             RequirementType.BUILD_BACKEND,
@@ -1913,7 +2085,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
         wheel_req = Requirement("wheel")
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
 
-        result = bt._filter_deps_satisfied_by_build_system(
+        result = bt.filter_deps_satisfied_by_build_system(
             {wheel_req},
             {},
             RequirementType.BUILD_BACKEND,
@@ -1931,8 +2103,8 @@ class TestFilterDepsSatisfiedByBuildSystem:
         parent = (Requirement("testpkg==1.0"), Version("1.0"))
         extras_req = Requirement("foo[bar]>=1.0")
 
-        with patch.object(bt, "_add_to_graph") as mock_add:
-            result = bt._filter_deps_satisfied_by_build_system(
+        with patch.object(bt, "add_to_graph") as mock_add:
+            result = bt.filter_deps_satisfied_by_build_system(
                 {extras_req},
                 resolved_build_sys,
                 RequirementType.BUILD_BACKEND,
@@ -1944,7 +2116,7 @@ class TestFilterDepsSatisfiedByBuildSystem:
 
 
 class TestGetResolvedBuildSystemVersions:
-    """Tests for _get_resolved_build_system_versions."""
+    """Tests for get_resolved_build_system_versions."""
 
     def test_returns_build_system_edges(self, tmp_context: WorkContext) -> None:
         """Returns resolved versions from BUILD_SYSTEM edges."""
@@ -1974,9 +2146,9 @@ class TestGetResolvedBuildSystemVersions:
         )
 
         bt = bootstrapper.Bootstrapper(tmp_context)
-        item = _make_build_item(req="biotite", version="1.6.0")
+        wi = _make_work_item(req="biotite", version="1.6.0")
 
-        result = bt._get_resolved_build_system_versions(item)
+        result = bt.get_resolved_build_system_versions(wi)
 
         assert canonicalize_name("hatch-cython") in result
         assert result[canonicalize_name("hatch-cython")] == (
@@ -1990,15 +2162,15 @@ class TestGetResolvedBuildSystemVersions:
     ) -> None:
         """Returns empty dict when parent node is not in the graph."""
         bt = bootstrapper.Bootstrapper(tmp_context)
-        item = _make_build_item(req="nonexistent", version="1.0")
+        wi = _make_work_item(req="nonexistent", version="1.0")
 
-        result = bt._get_resolved_build_system_versions(item)
+        result = bt.get_resolved_build_system_versions(wi)
 
         assert result == {}
 
 
 class TestPhasePrepareBuildFiltering:
-    """Tests for _phase_prepare_build with build-system satisfaction filtering."""
+    """Tests for PrepareBuild.run() with build-system satisfaction filtering."""
 
     def test_satisfied_backend_dep_skips_resolve(
         self, tmp_context: WorkContext
@@ -2032,6 +2204,7 @@ class TestPhasePrepareBuildFiltering:
             sdist_root_dir=sdist_root,
             build_system_deps={Requirement("hatch-cython==0.5")},
         )
+        wi = item.work_item
 
         with (
             patch(
@@ -2044,18 +2217,18 @@ class TestPhasePrepareBuildFiltering:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 return_value=[],
             ) as mock_create,
         ):
-            result = bt._phase_prepare_build(item)
+            result = item.run(bt)
 
-        assert item.phase == BootstrapPhase.BUILD
+        assert isinstance(result[0], Build)
         calls = mock_create.call_args_list
         assert calls[0][0][0] == set()
         assert calls[1][0][0] == set()
-        assert item.build_backend_deps == set()
-        assert result == [item]
+        assert wi.build_backend_deps == set()
+        assert len(result) == 1
 
     def test_extras_dep_not_filtered(self, tmp_context: WorkContext) -> None:
         """Backend dep with extras passes through even if name matches."""
@@ -2100,16 +2273,16 @@ class TestPhasePrepareBuildFiltering:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[resolve_item], []],
             ) as mock_create,
         ):
-            result = bt._phase_prepare_build(item)
+            result = item.run(bt)
 
         calls = mock_create.call_args_list
         assert calls[0][0][0] == {extras_req}
-        assert item.build_backend_deps == {extras_req}
-        assert result == [item, resolve_item]
+        assert item.work_item.build_backend_deps == {extras_req}
+        assert result[1] is resolve_item
 
     def test_unsatisfied_backend_dep_creates_resolve_item(
         self, tmp_context: WorkContext
@@ -2147,34 +2320,104 @@ class TestPhasePrepareBuildFiltering:
             ),
             patch.object(
                 bt,
-                "_create_unresolved_work_items",
+                "create_unresolved_work_items",
                 side_effect=[[resolve_item], []],
             ) as mock_create,
         ):
-            result = bt._phase_prepare_build(item)
+            result = item.run(bt)
 
         calls = mock_create.call_args_list
         assert calls[0][0][0] == {Requirement("wheel")}
-        assert result == [item, resolve_item]
+        assert result[1] is resolve_item
+
+
+class TestBackgroundWork:
+    """Tests for background_work() dispatch on Phase subclasses."""
+
+    def test_resolve_item_background_work_returns_callable(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Resolve.background_work(bt) returns a non-None callable."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_resolve_item()
+        bg = item.background_work(bt)
+        assert bg is not None
+        assert callable(bg)
+
+    def test_prepare_source_item_background_work_source(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """When pbi_pre_built=False, background_work() returns a source callable."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        wi = _make_work_item(
+            req="testpkg",
+            version="1.0",
+            source_url="https://pypi.test/testpkg-1.0.tar.gz",
+        )
+        wi.pbi_pre_built = False
+        item = PrepareSource(wi)
+        bg = item.background_work(bt)
+        assert bg is not None
+        assert callable(bg)
+
+    def test_prepare_source_item_background_work_prebuilt(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """When pbi_pre_built=True, background_work() returns a prebuilt callable."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        wi = _make_work_item(
+            req="testpkg",
+            version="1.0",
+            source_url="https://pypi.test/testpkg-1.0-py3-none-any.whl",
+        )
+        wi.pbi_pre_built = True
+        item = PrepareSource(wi)
+        bg = item.background_work(bt)
+        assert bg is not None
+        assert callable(bg)
+
+
+class TestAsJson:
+    """Tests for Phase.as_json() serialization."""
+
+    @pytest.mark.parametrize(
+        "cls, expected_phase",
+        [
+            (Resolve, BootstrapPhase.RESOLVE),
+            (Start, BootstrapPhase.START),
+            (PrepareSource, BootstrapPhase.PREPARE_SOURCE),
+            (PrepareBuild, BootstrapPhase.PREPARE_BUILD),
+            (Build, BootstrapPhase.BUILD),
+            (ProcessInstallDeps, BootstrapPhase.PROCESS_INSTALL_DEPS),
+            (Complete, BootstrapPhase.COMPLETE),
+        ],
+    )
+    def test_phase_field_per_subclass(
+        self, cls: type[Phase], expected_phase: BootstrapPhase
+    ) -> None:
+        wi = _make_work_item(req="testpkg")
+        item = cls(wi)
+        data = item.as_json()
+        assert data["phase"] == str(expected_phase)
 
 
 class TestThreadPoolSubmission:
     """Tests that exercise the real ThreadPoolExecutor submission path."""
 
-    def test_push_items_submits_resolve_to_real_thread_pool(
+    def test_push_items_sets_bg_future_when_pool_exists(
         self, tmp_context: WorkContext
     ) -> None:
-        """_push_items submits RESOLVE work to a real thread pool and result() returns correctly."""
+        """_push_items submits RESOLVE work to a real thread pool."""
         expected = [("https://pkg.test/testpkg-1.0.tar.gz", Version("1.0"))]
 
         with bootstrapper.Bootstrapper(tmp_context, num_bg_threads=1) as bt:
             with patch.object(bt._resolver, "resolve", return_value=expected):
                 item = _make_resolve_item(req="testpkg")
-                stack: list[WorkItem] = []
+                stack: list[Phase] = []
 
                 bt._push_items(stack, [item])
 
-                # bg_future must be a real Future, not pre-set
+                # bg_future must be set on the Phase, not None
                 assert item.bg_future is not None
                 assert isinstance(item.bg_future, concurrent.futures.Future)
 
@@ -2182,9 +2425,37 @@ class TestThreadPoolSubmission:
                 result = item.bg_future.result(timeout=10)
                 assert result == expected
 
-                # _phase_resolve processes the future correctly
-                new_items = bt._phase_resolve(item)
+                # Resolve.run() processes the future correctly
+                new_items = item.run(bt)
 
             assert len(new_items) == 1
-            assert new_items[0].phase == BootstrapPhase.START
-            assert new_items[0].resolved_version == Version("1.0")
+            assert isinstance(new_items[0], Start)
+            assert new_items[0].work_item.resolved_version == Version("1.0")
+
+    def test_push_items_no_bg_future_when_pool_is_none(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """When _bg_pool is None, calling _push_items leaves item.bg_future as None."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        bt._bg_pool = None
+        item = _make_resolve_item(req="testpkg")
+        stack: list[Phase] = []
+
+        bt._push_items(stack, [item])
+
+        assert item.bg_future is None
+
+
+class TestCreateUnresolvedWorkItemsReturnType:
+    """create_unresolved_work_items returns Resolve instances."""
+
+    def test_returns_resolve_items(self, tmp_context: WorkContext) -> None:
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        deps = [Requirement("dep-a")]
+        items = bt.create_unresolved_work_items(
+            deps, RequirementType.INSTALL, Requirement("parent"), Version("1.0")
+        )
+        assert len(items) == 1
+        assert isinstance(items[0], Resolve)
+        assert items[0].work_item.req == Requirement("dep-a")
+        assert items[0].work_item.req_type == RequirementType.INSTALL
