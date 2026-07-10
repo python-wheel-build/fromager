@@ -27,6 +27,7 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
+from resolvelib.resolvers import ResolverException
 
 from fromager import bootstrapper, build_environment
 from fromager.bootstrapper._build import Build
@@ -692,6 +693,145 @@ class TestComplete:
         assert item.run(bt) == []
 
 
+class TestEnrichResolutionError:
+    """Tests for _enrich_resolution_error, used by _handle_phase_error."""
+
+    def _why_snapshot(self) -> list[tuple[RequirementType, Requirement, Version]]:
+        return [
+            (RequirementType.TOP_LEVEL, Requirement("its-hub"), Version("1.0")),
+            (RequirementType.INSTALL, Requirement("reward-hub"), Version("2.0")),
+            (RequirementType.INSTALL, Requirement("vllm"), Version("3.0")),
+        ]
+
+    def test_resolver_exception_gets_dependency_chain(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Regression test for #1214: name the whole chain, not just the
+
+        top-level package.
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_resolve_item(
+            req="flashinfer-python==0.6.8.post1", why_snapshot=self._why_snapshot()
+        )
+        err = ResolverException("found no match")
+
+        enriched = bt._enrich_resolution_error(item, err)
+
+        assert isinstance(enriched, ResolverException)
+        assert str(enriched) == (
+            "found no match (dependency chain: its-hub==1.0 -> "
+            "reward-hub==2.0 -> vllm==3.0 -> flashinfer-python==0.6.8.post1)"
+        )
+
+    def test_runtime_error_gets_dependency_chain(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Regression test for a gap in the earlier fix: a plain RuntimeError
+
+        (e.g. "Could not resolve any versions for ...") also gets the chain,
+        not just ResolverException.
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_resolve_item(
+            req="flashinfer-python==0.6.8.post1", why_snapshot=self._why_snapshot()
+        )
+        err = RuntimeError("Could not resolve any versions for flashinfer-python")
+
+        enriched = bt._enrich_resolution_error(item, err)
+
+        assert isinstance(enriched, RuntimeError)
+        assert str(enriched) == (
+            "Could not resolve any versions for flashinfer-python "
+            "(dependency chain: its-hub==1.0 -> reward-hub==2.0 -> "
+            "vllm==3.0 -> flashinfer-python==0.6.8.post1)"
+        )
+
+    def test_unknown_exception_type_falls_back_to_runtime_error(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """`type(err)(msg)` isn't safe for arbitrary exception classes, so an
+
+        unrecognized type is wrapped in a RuntimeError that keeps the
+        original type name visible, instead of risking a TypeError trying
+        to reconstruct it.
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_resolve_item(
+            req="flashinfer-python==0.6.8.post1", why_snapshot=self._why_snapshot()
+        )
+        err = ValueError("some unexpected failure")
+
+        enriched = bt._enrich_resolution_error(item, err)
+
+        assert isinstance(enriched, RuntimeError)
+        assert "ValueError: some unexpected failure" in str(enriched)
+        assert "dependency chain: its-hub==1.0" in str(enriched)
+
+    def test_no_chain_returns_original_object_unchanged(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Top-level requirements have no chain, so the original exception
+
+        object is returned as-is (identity preserved, nothing reconstructed).
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_resolve_item()  # default why_snapshot=[]
+        err = ResolverException("found no match")
+
+        enriched = bt._enrich_resolution_error(item, err)
+
+        assert enriched is err
+
+    def test_non_resolve_phase_returns_original_object_unchanged(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Only RESOLVE-phase failures get a chain suffix."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.BUILD)
+        item.work_item.why_snapshot = self._why_snapshot()
+        err = RuntimeError("build failed")
+
+        enriched = bt._enrich_resolution_error(item, err)
+
+        assert enriched is err
+
+    def test_enriched_exception_chains_via_context_not_cause(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """When actually raised (not just constructed), the enriched
+
+        exception must carry the original as `__context__` (implicit
+        chaining, preserves the real traceback for `exc_info=True`
+        logging) while leaving `__cause__` unset, so
+        `__main__._format_exception()` - which only follows `__cause__` -
+        doesn't print the original message a second time via
+        "... because ...". See #1243 for that formatter's own,
+        independent duplication bug.
+        """
+        from fromager import __main__
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_resolve_item(
+            req="flashinfer-python==0.6.8.post1", why_snapshot=self._why_snapshot()
+        )
+        original = ResolverException("found no match")
+
+        try:
+            raise original
+        except ResolverException as caught:
+            enriched = bt._enrich_resolution_error(item, caught)
+            try:
+                raise enriched
+            except ResolverException as raised:
+                final = raised
+
+        assert final.__cause__ is None
+        assert final.__context__ is original
+        formatted = __main__._format_exception(final)
+        assert formatted.count("found no match") == 1
+
+
 class TestHandlePhaseError:
     # -- RESOLVE phase errors --
 
@@ -740,6 +880,75 @@ class TestHandlePhaseError:
         key = (canonicalize_name("testpkg"), "unresolved")
         assert key in bt._failed_versions
         assert bt._failed_versions[key] is err
+
+    def test_resolve_error_enriched_before_test_mode_record(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Gap identified in review: test mode must record the enriched
+
+        message, not the raw one, so `failed_packages[].exception_message`
+        shows the real dependency chain.
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
+        why_snapshot = [
+            (RequirementType.TOP_LEVEL, Requirement("its-hub"), Version("1.0")),
+        ]
+        item = _make_resolve_item(
+            req="flashinfer-python==0.6.8.post1", why_snapshot=why_snapshot
+        )
+        err = ResolverException("found no match")
+
+        bt._handle_phase_error(item, err)
+
+        assert len(bt.failed_packages) == 1
+        assert (
+            "dependency chain: its-hub==1.0"
+            in (bt.failed_packages[0]["exception_message"])
+        )
+
+    def test_resolve_error_enriched_before_multiple_versions_record(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Gap identified in review: multiple-versions mode must record the
+
+        enriched message too.
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        why_snapshot = [
+            (RequirementType.TOP_LEVEL, Requirement("its-hub"), Version("1.0")),
+        ]
+        item = _make_resolve_item(
+            req="flashinfer-python==0.6.8.post1", why_snapshot=why_snapshot
+        )
+        err = ResolverException("found no match")
+
+        bt._handle_phase_error(item, err)
+
+        key = (canonicalize_name("flashinfer-python"), "unresolved")
+        assert "dependency chain: its-hub==1.0" in str(bt._failed_versions[key])
+
+    def test_resolve_error_enriched_before_normal_mode_raise(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Gap this feature originally targeted: a plain RuntimeError
+
+        ("Could not resolve any versions...") also gets the chain in
+        normal (fail-fast) mode, not just ResolverException.
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        why_snapshot = [
+            (RequirementType.TOP_LEVEL, Requirement("its-hub"), Version("1.0")),
+        ]
+        item = _make_resolve_item(
+            req="flashinfer-python==0.6.8.post1", why_snapshot=why_snapshot
+        )
+        err = RuntimeError("Could not resolve any versions for flashinfer-python")
+
+        with pytest.raises(RuntimeError, match=r"dependency chain: its-hub==1\.0"):
+            try:
+                raise err
+            except RuntimeError:
+                bt._handle_phase_error(item, err)
 
     # -- Build phase errors in test mode --
 
