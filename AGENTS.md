@@ -102,6 +102,12 @@ Look at these before writing code:
 
 - Use single backticks around function and class names in markdown (e.g. `req_ctxvar_context()`, `WorkContext`), double backticks in .rst (reStructuredText)
 - Use Sphinx `versionadded`, `versionremoved`, `versionchanged` directives for user-facing changes (get next version from last git tag)
+- When code changes affect the architecture described in `docs/concepts/`, update the relevant doc:
+  - `architecture-overview.rst` — major subsystems, data flow, extension points, key data structures
+  - `bootstrapper-architecture.rst` — phase pipeline, class hierarchy, bootstrapper-phase interaction
+  - `resolver-architecture.rst` — resolution strategies, provider hierarchy, version filtering
+  - `hooks-and-overrides.rst` — override hook points, global hooks, plugin discovery
+  - `package-settings.rst` — settings loading flow, merge order, PackageBuildInfo facade
 
 ## Commit Messages
 
