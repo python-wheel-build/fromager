@@ -1,8 +1,10 @@
 import dataclasses
 import datetime
 import logging
+import posixpath
 import typing
 from io import BytesIO
+from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from packaging.metadata import Metadata
@@ -10,6 +12,7 @@ from packaging.requirements import Requirement
 from packaging.utils import BuildTag, canonicalize_name
 from packaging.version import Version
 
+from .pkgmetadata.pep376 import dist_info_name
 from .request_session import session
 
 logger = logging.getLogger(__name__)
@@ -141,12 +144,15 @@ def get_metadata_for_wheel(
     logger.debug(f"Downloading full wheel to extract metadata: {url}")
     data = session.get(url).content
     with ZipFile(BytesIO(data)) as z:
-        for n in z.namelist():
-            if n.endswith(".dist-info/METADATA"):
-                metadata_content = z.read(n)
-                # Parse metadata directly using packaging.metadata.Metadata
-                # (avoiding circular import with dependencies module)
-                return Metadata.from_email(metadata_content, validate=validate)
+        metadata_path = _wheel_metadata_path(url)
+        try:
+            metadata_content = z.read(metadata_path)
+        except KeyError as err:
+            raise ValueError(f"Could not find {metadata_path} in wheel: {url}") from err
+        return Metadata.from_email(metadata_content, validate=validate)
 
-    # If we didn't find the metadata, raise an error
-    raise ValueError(f"Could not find METADATA file in wheel: {url}")
+
+def _wheel_metadata_path(url: str) -> str:
+    """Derive the METADATA path inside a wheel from its URL."""
+    filename = posixpath.basename(urlparse(url).path)
+    return f"{dist_info_name(filename)}/METADATA"
