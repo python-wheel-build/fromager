@@ -480,6 +480,12 @@ def why(
     default=False,
     help="Only include the package and its dependencies; exclude dependents (packages that depend on it).",
 )
+@click.option(
+    "--dependents-only",
+    is_flag=True,
+    default=False,
+    help="Only include the package and its dependents; exclude dependencies of the package.",
+)
 @click.argument(
     "graph-file",
     type=str,
@@ -493,6 +499,7 @@ def subset(
     output: pathlib.Path | None,
     version: Version | None,
     dependencies_only: bool,
+    dependents_only: bool,
 ) -> None:
     """Extract a subset of a build graph related to a specific package.
 
@@ -500,10 +507,14 @@ def subset(
     and the dependencies of that package. By default includes all versions of the
     package, but can be limited to a specific version with --version.
     """
+    if dependencies_only and dependents_only:
+        raise click.UsageError(
+            "--dependencies-only and --dependents-only are mutually exclusive"
+        )
     try:
         graph = DependencyGraph.from_file(graph_file)
         subset_graph = extract_package_subset(
-            graph, package_name, version, dependencies_only
+            graph, package_name, version, dependencies_only, dependents_only
         )
 
         if output:
@@ -520,19 +531,21 @@ def extract_package_subset(
     package_name: str,
     version: Version | None = None,
     dependencies_only: bool = False,
+    dependents_only: bool = False,
 ) -> DependencyGraph:
     """Extract a subset of the graph containing nodes related to a specific package.
 
     Creates a new graph containing:
     - All nodes matching the package name (optionally filtered by version)
     - All nodes that depend on the target package (dependents), unless dependencies_only is True
-    - All dependencies of the target package
+    - All dependencies of the target package, unless dependents_only is True
 
     Args:
         graph: The source dependency graph
         package_name: Name of the package to extract subset for
         version: Optional version to filter target nodes
         dependencies_only: If True, exclude dependents (packages that depend on the target)
+        dependents_only: If True, exclude dependencies of the target package
 
     Returns:
         A new DependencyGraph containing only the related nodes
@@ -563,9 +576,10 @@ def extract_package_subset(
             _collect_dependents(target_node, related_nodes, visited_up)
 
     # Traverse down to find dependencies (what our package depends on)
-    visited_down: set[str] = set()
-    for target_node in target_nodes:
-        _collect_dependencies(target_node, related_nodes, visited_down)
+    if not dependents_only:
+        visited_down: set[str] = set()
+        for target_node in target_nodes:
+            _collect_dependencies(target_node, related_nodes, visited_down)
 
     # Always include ROOT so the graph is rooted
     related_nodes.add(ROOT)
