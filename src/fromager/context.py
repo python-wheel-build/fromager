@@ -156,10 +156,6 @@ class WorkContext:
         cmd.extend(req_list)
         external_commands.run(cmd, extra_environ=extra_environ)
 
-    def write_to_graph_to_file(self) -> None:
-        with self.graph_file.open("w", encoding="utf-8") as f:
-            self.dependency_graph.serialize(f)
-
     def package_build_info(
         self, package: str | packagesettings.Package | Requirement
     ) -> packagesettings.PackageBuildInfo:

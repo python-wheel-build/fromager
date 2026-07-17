@@ -129,6 +129,7 @@ def test_build_order(tmp_context: WorkContext) -> None:
         source_url="url",
         source_type=SourceType.SDIST,
     )
+    bt.finalize()
     contents_str = bt._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
@@ -174,6 +175,7 @@ def test_build_order_repeats(tmp_context: WorkContext) -> None:
         "url",
         SourceType.SDIST,
     )
+    bt.finalize()
     contents_str = bt._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
@@ -204,6 +206,7 @@ def test_build_order_name_canonicalization(tmp_context: WorkContext) -> None:
         "url",
         SourceType.SDIST,
     )
+    bt.finalize()
     contents_str = bt._build_order_filename.read_text()
     contents = json.loads(contents_str)
     expected = [
@@ -764,12 +767,14 @@ def test_record_stack_state_ordering(tmp_context: WorkContext) -> None:
 
 
 def test_record_stack_state_overwrites_each_call(tmp_context: WorkContext) -> None:
-    """Second call replaces first call's content."""
+    """Second call replaces first call's content when throttle interval has elapsed."""
     bt = bootstrapper.Bootstrapper(tmp_context)
 
     bt._record_stack_state([_make_resolve_item("pkga"), _make_resolve_item("pkgb")])
     first_content = bt._stack_filename.read_text()
 
+    # Reset throttle so the second call is not suppressed
+    bt._last_stack_write = 0.0
     bt._record_stack_state([_make_resolve_item("pkgc")])
     second_content = bt._stack_filename.read_text()
 
@@ -777,6 +782,47 @@ def test_record_stack_state_overwrites_each_call(tmp_context: WorkContext) -> No
     contents = json.loads(second_content)
     assert len(contents) == 1
     assert contents[0]["req"] == "pkgc"
+
+
+def test_record_stack_state_throttled_when_called_rapidly(
+    tmp_context: WorkContext,
+) -> None:
+    """Rapid successive calls do not overwrite the file (throttle active)."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    stack: list[Phase] = [_make_resolve_item("pkga"), _make_resolve_item("pkgb")]
+
+    # First call writes (interval has elapsed from epoch)
+    bt._record_stack_state(stack)
+    first_mtime = bt._stack_filename.stat().st_mtime
+
+    # Second call is throttled — file should not change
+    bt._record_stack_state([_make_resolve_item("pkgc")])
+    second_mtime = bt._stack_filename.stat().st_mtime
+
+    assert first_mtime == second_mtime
+
+
+def test_finalize_writes_build_order_and_graph(tmp_context: WorkContext) -> None:
+    """finalize() writes build-order.json and graph.json, and drains the write pool."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.add_to_build_order(
+        req=Requirement("mypkg==1.0"),
+        version=Version("1.0"),
+        source_url="https://pypi.test/mypkg-1.0.tar.gz",
+        source_type=SourceType.SDIST,
+    )
+
+    assert not bt._build_order_filename.exists()
+
+    bt.finalize()
+
+    assert bt._build_order_filename.exists()
+    assert bt.ctx.graph_file.exists()
+    assert bt._write_pool is None  # pool was drained and closed
+
+    contents = json.loads(bt._build_order_filename.read_text())
+    assert len(contents) == 1
+    assert contents[0]["dist"] == "mypkg"
 
 
 def test_bootstrap_calls_record_stack_state(tmp_context: WorkContext) -> None:

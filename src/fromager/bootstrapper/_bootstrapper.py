@@ -3,12 +3,14 @@ from __future__ import annotations
 import concurrent.futures
 import contextlib
 import datetime
+import io
 import json
 import logging
 import operator
 import pathlib
 import shutil
 import tempfile
+import time
 import typing
 
 from packaging.requirements import Requirement
@@ -109,6 +111,16 @@ class Bootstrapper:
         self._build_order_filename = self.ctx.work_dir / "build-order.json"
         self._stack_filename = self.ctx.work_dir / "bootstrap-stack.json"
         logger.info("recording bootstrap stack state to %s", self._stack_filename)
+
+        # Single-threaded pool for background file writes (serialized, never interleave)
+        self._write_pool: concurrent.futures.ThreadPoolExecutor | None = (
+            concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="fromager-writes"
+            )
+        )
+        # Throttle stack-state writes to at most once per interval
+        self._last_stack_write: float = 0.0
+        self._STACK_WRITE_INTERVAL: float = 5.0
 
         # Track failed packages in test mode (list of typed dicts for JSON export)
         self.failed_packages: list[FailureRecord] = []
@@ -856,7 +868,7 @@ class Bootstrapper:
             pre_built=pbi.pre_built,
             constraint=self.ctx.constraints.get_constraint(req.name),
         )
-        self.ctx.write_to_graph_to_file()
+        self._write_graph_async()
 
     def _sort_requirements(
         self,
@@ -960,21 +972,37 @@ class Bootstrapper:
         if req.url:
             info["source_url"] = req.url
         self._build_stack.append(info)
-        with open(self._build_order_filename, "w") as f:
-            # Set default=str because the why value includes
-            # Requirement and Version instances that can't be
-            # converted to JSON without help.
-            json.dump(self._build_stack, f, indent=2, default=str)
+
+    def _check_write_error(self, fut: concurrent.futures.Future[int]) -> None:
+        """Log errors from background file writes."""
+        if exc := fut.exception():
+            logger.error("background file write failed: %s", exc)
+
+    def _schedule_write(self, path: pathlib.Path, content: str) -> None:
+        """Submit a pre-serialized write to the background write pool."""
+        if self._write_pool is not None:
+            fut = self._write_pool.submit(path.write_text, content, "utf-8")
+            fut.add_done_callback(self._check_write_error)
+
+    def _write_graph_async(self) -> None:
+        """Serialize the dependency graph on the main thread, write it in background."""
+        buf = io.StringIO()
+        self.ctx.dependency_graph.serialize(buf)
+        self._schedule_write(self.ctx.graph_file, buf.getvalue())
 
     def _record_stack_state(self, stack: list[Phase]) -> None:
         """Write the current bootstrap stack to `self._stack_filename`.
 
         Index 0 in the output corresponds to `stack[-1]`, the next item to be
-        processed. Overwrites the file on each call.
+        processed. Throttled to at most once every ``_STACK_WRITE_INTERVAL`` seconds.
         """
+        now = time.monotonic()
+        if now - self._last_stack_write < self._STACK_WRITE_INTERVAL:
+            return
         records = [item.as_json() for item in reversed(stack)]
         with open(self._stack_filename, "w") as f:
             json.dump(records, f, indent=2, default=str)
+        self._last_stack_write = now
 
     # ---- Iterative bootstrap: phase handlers and helpers ----
 
@@ -1204,7 +1232,7 @@ class Bootstrapper:
             self._seen_requirements.discard(
                 self._resolved_key(wi.req, wi.resolved_version, "wheel")
             )
-            self.ctx.write_to_graph_to_file()
+            self._write_graph_async()
             return []
 
         # Normal mode: fail-fast
@@ -1252,6 +1280,21 @@ class Bootstrapper:
             self._bg_pool.shutdown(wait=True, cancel_futures=True)
             self._bg_pool = None
 
+        # Write build-order once at the end (data was buffered in _build_stack)
+        with open(self._build_order_filename, "w") as f:
+            # Set default=str because values may include Requirement and Version
+            # instances that can't be converted to JSON without help.
+            json.dump(self._build_stack, f, indent=2, default=str)
+
+        # Final graph write and stack flush, then drain the write pool
+        self._write_graph_async()
+        records: list[typing.Any] = []
+        with open(self._stack_filename, "w") as f:
+            json.dump(records, f, indent=2)
+        if self._write_pool is not None:
+            self._write_pool.shutdown(wait=True, cancel_futures=False)
+            self._write_pool = None
+
         if self.multiple_versions and self._failed_versions:
             self._log_failed_versions_table()
 
@@ -1290,3 +1333,6 @@ class Bootstrapper:
         if self._bg_pool is not None:
             self._bg_pool.shutdown(wait=False, cancel_futures=True)
             self._bg_pool = None
+        if self._write_pool is not None:
+            self._write_pool.shutdown(wait=False, cancel_futures=True)
+            self._write_pool = None
