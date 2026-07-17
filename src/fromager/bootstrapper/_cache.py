@@ -171,7 +171,7 @@ def _download_wheel_from_cache(
         return None, None
 
 
-def _find_cached_wheel(
+def find_cached_wheel(
     ctx: context.WorkContext,
     cache_wheel_server_url: str | None,
     req: Requirement,
@@ -209,7 +209,7 @@ def _find_cached_wheel(
     return None, None
 
 
-def _bg_prepare_prebuilt(
+def bg_prepare_prebuilt(
     ctx: context.WorkContext,
     req: Requirement,
     req_type: RequirementType,

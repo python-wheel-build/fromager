@@ -49,6 +49,12 @@ logger = logging.getLogger(__name__)
 
 
 class Bootstrapper:
+    """Iterative DFS bootstrap engine for resolving and building packages.
+
+    Use as a context manager. Call ``bootstrap(requirements)`` to process
+    the dependency tree, then ``finalize()`` for cleanup and exit code.
+    """
+
     def __init__(
         self,
         ctx: context.WorkContext,
@@ -555,7 +561,7 @@ class Bootstrapper:
         resolved_version: Version,
         wheel_url: str,
     ) -> tuple[pathlib.Path, pathlib.Path]:
-        result = _cache._bg_prepare_prebuilt(
+        result = _cache.bg_prepare_prebuilt(
             self.ctx, req, req_type, resolved_version, wheel_url
         )
         assert result.wheel_filename is not None

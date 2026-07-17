@@ -35,7 +35,7 @@ def _bg_prepare_source(
     # Paths from download_source() and prepare_source() include {name}-{version},
     # making them unique across concurrent threads processing different packages.
     logger.info("preparing source")
-    cached_wheel, unpacked = _cache._find_cached_wheel(
+    cached_wheel, unpacked = _cache.find_cached_wheel(
         ctx, cache_wheel_server_url, req, resolved_version
     )
     if unpacked is not None:
@@ -87,7 +87,7 @@ class PrepareSource(Phase):
 
             def do_prepare_prebuilt() -> PreparedSourceData:
                 with req_ctxvar_context(req, resolved_version):
-                    return _cache._bg_prepare_prebuilt(
+                    return _cache.bg_prepare_prebuilt(
                         ctx, req, req_type, resolved_version, source_url
                     )
 
