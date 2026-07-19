@@ -419,15 +419,6 @@ def test_ensure_pkg_info_creates_in_both_dirs(
     assert (build_dir / "PKG-INFO").is_file()
 
 
-def test_get_source_type_git(
-    tmp_context: context.WorkContext,
-) -> None:
-    req = Requirement("pkg @ git+https://github.com/org/pkg.git")
-    result = sources.get_source_type(tmp_context, req)
-
-    assert result == sources.SourceType.GIT
-
-
 @patch("fromager.overrides.find_override_method")
 def test_get_source_type_override_via_download_source(
     mock_find: Mock,
@@ -597,48 +588,6 @@ def test_unpack_source_reuse_when_no_cleanup(
     assert is_new is False
     assert result == existing
     assert (result / "setup.py").read_text() == "# old"
-
-
-@patch("fromager.sources.download_git_source")
-def test_download_source_git_already_cloned(
-    mock_git: Mock,
-    tmp_context: context.WorkContext,
-    tmp_path: pathlib.Path,
-) -> None:
-    clone_dir = tmp_path / "cloned"
-    clone_dir.mkdir()
-    req = Requirement("pkg @ git+https://github.com/org/pkg.git")
-
-    result = sources.download_source(
-        ctx=tmp_context,
-        req=req,
-        version=Version("1.0"),
-        download_url=str(clone_dir),
-    )
-
-    assert result == clone_dir
-    mock_git.assert_not_called()
-
-
-@patch("fromager.sources.download_git_source")
-def test_download_source_git_with_ref(
-    mock_git: Mock,
-    tmp_context: context.WorkContext,
-) -> None:
-    req = Requirement("pkg @ git+https://github.com/org/pkg.git@v2.0")
-
-    result = sources.download_source(
-        ctx=tmp_context,
-        req=req,
-        version=Version("2.0"),
-        download_url="/nonexistent",
-    )
-
-    mock_git.assert_called_once()
-    call_kwargs = mock_git.call_args[1]
-    assert call_kwargs["ref"] == "v2.0"
-    assert call_kwargs["url_to_clone"] == "https://github.com/org/pkg.git"
-    assert result == tmp_context.work_dir / "pkg-2.0" / "pkg-2.0"
 
 
 @patch("fromager.overrides.find_and_invoke")

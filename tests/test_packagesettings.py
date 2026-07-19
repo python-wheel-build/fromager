@@ -886,11 +886,7 @@ def _make_pbi(env_yaml: str, tmp_path: pathlib.Path) -> PackageBuildInfo:
 def test_version_env_var_raises_when_version_unknown(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Using ${__version__} in env without a fallback raises when version is None.
-
-    This mirrors the git-URL bootstrap path where the version has not yet
-    been resolved (e.g. ``pkg @ git+https://host/repo.git@main``).
-    """
+    """Using ${__version__} in env without a fallback raises when version is None."""
     pbi = _make_pbi(
         """
 env:

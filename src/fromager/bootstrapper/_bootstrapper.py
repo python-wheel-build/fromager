@@ -8,8 +8,6 @@ import json
 import logging
 import operator
 import pathlib
-import shutil
-import tempfile
 import time
 import typing
 
@@ -19,9 +17,6 @@ from packaging.version import Version
 
 from .. import (
     bootstrap_requirement_resolver,
-    build_environment,
-    dependencies,
-    gitutils,
     progress,
     sources,
 )
@@ -220,11 +215,8 @@ class Bootstrapper:
     ) -> list[tuple[str, Version]]:
         """Resolve version(s) of a requirement.
 
-        Returns list of (source URL, version) tuples, sorted by version (highest first).
-
-        Git URL resolution stays in Bootstrapper because it requires
-        build orchestration (BuildEnvironment, build dependencies).
-        Delegates PyPI/graph resolution to BootstrapRequirementResolver.
+        Returns list of (source URL, version) tuples, sorted by version
+        (highest first). Delegates to ``BootstrapRequirementResolver``.
 
         Args:
             req: Package requirement to resolve
@@ -237,29 +229,16 @@ class Bootstrapper:
         Returns:
             List of (url, version) tuples. Contains one item when
             return_all_versions=False, or all matching versions when True.
+
+        Raises:
+            ValueError: If ``req`` contains a direct-reference URL.
         """
         if req.url:
-            if req_type != RequirementType.TOP_LEVEL:
-                raise ValueError(
-                    f"{req} includes a URL, but is not a top-level dependency"
-                )
-
-            # Check cache first to avoid re-resolving
-            # Git URLs are always source (not prebuilt)
-            cached_result = self._resolver.get_matching_versions(req, pre_built=False)
-            if cached_result:
-                logger.debug(f"resolved {req} from cache")
-                return cached_result if return_all_versions else [cached_result[0]]
-
-            logger.info("resolving source via URL, ignoring any plugins")
-            source_url, resolved_version = self._resolve_version_from_git_url(req=req)
-            # Cache the git URL resolution (always source, not prebuilt)
-            # Store as list for consistency with cache structure
-            result = [(source_url, resolved_version)]
-            self._resolver.extend_known_versions(req, pre_built=False, result=result)
-            return result  # Git URLs always return single version
-
-        # Delegate to RequirementResolver
+            raise ValueError(
+                f"{req.name}: PEP 508 direct-reference URLs (req.url) are no longer "
+                f"supported. Use a 'source' provider in the package settings instead. "
+                f"See https://fromager.readthedocs.io/en/latest/proposals/deprecate-req-url.html"
+            )
         return self._resolver.resolve(
             req=req,
             req_type=req_type,
@@ -461,111 +440,6 @@ class Bootstrapper:
             for req_type, req, resolved_version in reversed(self.why)
         )
 
-    def _prepare_build_dependencies(
-        self,
-        req: Requirement,
-        resolved_version: Version | None,
-        sdist_root_dir: pathlib.Path,
-        build_env: build_environment.BuildEnvironment,
-    ) -> set[Requirement]:
-        """Prepare build dependencies for a package.
-
-        Only used by the git URL resolution path
-        (_resolve_version_from_git_url -> _get_version_from_package_metadata).
-        The main iterative bootstrap loop handles build deps via phase handlers.
-        """
-        # build system
-        build_system_dependencies = dependencies.get_build_system_dependencies(
-            ctx=self.ctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=sdist_root_dir,
-        )
-        self._handle_build_requirements(
-            req,
-            RequirementType.BUILD_SYSTEM,
-            build_system_dependencies,
-        )
-        # The next hooks need build system requirements.
-        build_env.install(build_system_dependencies)
-
-        # build backend
-        build_backend_dependencies = dependencies.get_build_backend_dependencies(
-            ctx=self.ctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=sdist_root_dir,
-            build_env=build_env,
-        )
-
-        # build sdist
-        build_sdist_dependencies = dependencies.get_build_sdist_dependencies(
-            ctx=self.ctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=sdist_root_dir,
-            build_env=build_env,
-        )
-
-        # Filter out deps already satisfied by build-system dependencies
-        resolved_build_sys = self._resolve_build_system_versions_by_name(
-            build_system_dependencies,
-        )
-        build_backend_dependencies = self.filter_deps_satisfied_by_build_system(
-            build_backend_dependencies,
-            resolved_build_sys,
-            RequirementType.BUILD_BACKEND,
-        )
-        build_sdist_dependencies = self.filter_deps_satisfied_by_build_system(
-            build_sdist_dependencies,
-            resolved_build_sys,
-            RequirementType.BUILD_SDIST,
-        )
-
-        self._handle_build_requirements(
-            req,
-            RequirementType.BUILD_BACKEND,
-            build_backend_dependencies,
-        )
-        self._handle_build_requirements(
-            req,
-            RequirementType.BUILD_SDIST,
-            build_sdist_dependencies,
-        )
-
-        build_dependencies = build_sdist_dependencies | build_backend_dependencies
-        if build_dependencies.isdisjoint(build_system_dependencies):
-            build_env.install(build_dependencies)
-
-        return (
-            build_system_dependencies
-            | build_backend_dependencies
-            | build_sdist_dependencies
-        )
-
-    def _handle_build_requirements(
-        self,
-        req: Requirement,
-        build_type: RequirementType,
-        build_dependencies: set[Requirement],
-    ) -> None:
-        """Bootstrap build dependencies.
-
-        Only used by the git URL resolution path
-        (_resolve_version_from_git_url -> _get_version_from_package_metadata).
-        The main iterative bootstrap loop handles build deps via phase handlers.
-        """
-        self.progressbar.update_total(len(build_dependencies))
-
-        for dep in self._sort_requirements(build_dependencies):
-            with req_ctxvar_context(dep):
-                # Save/restore self.why because the iterative bootstrap()
-                # modifies it internally for each work item.
-                saved_why = list(self.why)
-                self._bootstrap_one(req=dep, req_type=build_type)
-                self.why = saved_why
-            self.progressbar.update()
-
     def _download_prebuilt(
         self,
         req: Requirement,
@@ -686,148 +560,6 @@ class Bootstrapper:
             )
             # Return None to signal failure; bootstrap() will record via re-raised exception
             return None
-
-    def _resolve_version_from_git_url(self, req: Requirement) -> tuple[str, Version]:
-        """Resolve source path and version from a ``git+`` URL.
-
-        Parses the URL for an ``@ref`` version hint. If the ref is a valid
-        version, reuses an existing clone when possible. Otherwise, clones
-        the repo and extracts the version from package metadata.
-        """
-
-        if not req.url:
-            raise ValueError(f"unable to resolve from URL with no URL in {req}")
-
-        # We start by not knowing where we would put the source because we don't
-        # know the version.
-        working_src_dir: pathlib.Path | None = None
-        version: Version | None = None
-
-        url_to_clone, git_ref = gitutils.parse_vcs_url(req.url, require_ref=False)
-        need_to_clone = False
-
-        if git_ref == gitutils.GIT_HEAD:
-            # No ref in URL, clone to discover the version.
-            logger.debug("no reference in URL, will clone")
-            need_to_clone = True
-        else:
-            # If we have a reference, it might be a valid python version
-            # string, or not. It _must_ be a valid git reference. If it can
-            # be parsed as a valid python version, we assume the tag points
-            # to source that will think that is its version, so we allow
-            # reusing an existing cloned repo if there is one.
-            try:
-                version = Version(git_ref)
-            except ValueError:
-                logger.info(
-                    "could not parse %r as a version, cloning to get the version",
-                    git_ref,
-                )
-                need_to_clone = True
-            else:
-                logger.info("URL %s includes version %s", req.url, version)
-                working_src_dir = (
-                    self.ctx.work_dir
-                    / f"{req.name}-{version}"
-                    / f"{req.name}-{version}"
-                )
-                if not working_src_dir.exists():
-                    need_to_clone = True
-                else:
-                    if self.ctx.cleanup:
-                        logger.debug("cleaning up %s to reclone", working_src_dir)
-                        shutil.rmtree(working_src_dir)
-                        need_to_clone = True
-                    else:
-                        logger.info("reusing %s", working_src_dir)
-
-        if need_to_clone:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                clone_dir = pathlib.Path(tmpdir) / "src"
-                sources.download_git_source(
-                    ctx=self.ctx,
-                    req=req,
-                    url_to_clone=url_to_clone,
-                    destination_dir=clone_dir,
-                    ref=git_ref,
-                )
-                if not version:
-                    # If we still do not have a version, get it from the package
-                    # metadata.
-                    version = self._get_version_from_package_metadata(req, clone_dir)
-                    logger.info("found version %s", version)
-                    working_src_dir = (
-                        self.ctx.work_dir
-                        / f"{req.name}-{version}"
-                        / f"{req.name}-{version}"
-                    )
-                    if working_src_dir.exists():
-                        # We have to check if the destination directory exists
-                        # because if we were not given a version we did not
-                        # clean it up earlier. We do not use ctx.cleanup to
-                        # control this action because we cannot trust that the
-                        # destination directory is reusable because we have had
-                        # to compute the version and we cannot be sure that the
-                        # version is dynamic. Two different commits in the repo
-                        # could have the same version if that version is set
-                        # with static data in the repo instead of via a tag or
-                        # dynamically computed by something like setuptools-scm.
-                        logger.debug("cleaning up %s", working_src_dir)
-                        shutil.rmtree(working_src_dir)
-                assert working_src_dir is not None
-                working_src_dir.parent.mkdir(parents=True, exist_ok=True)
-                logger.info("moving cloned repo to %s", working_src_dir)
-                shutil.move(clone_dir, str(working_src_dir))
-
-        if not version:
-            raise ValueError(f"unable to determine version for {req}")
-
-        if not working_src_dir:
-            raise ValueError(f"unable to determine working source directory for {req}")
-
-        logging.info("resolved from git URL to %s, %s", working_src_dir, version)
-        return (str(working_src_dir), version)
-
-    def _get_version_from_package_metadata(
-        self,
-        req: Requirement,
-        source_dir: pathlib.Path,
-    ) -> Version:
-        pbi = self.ctx.package_build_info(req)
-        build_dir = pbi.build_dir(source_dir)
-
-        logger.info(
-            "preparing build dependencies so we can access the metadata to get the version"
-        )
-        build_env = build_environment.BuildEnvironment(
-            ctx=self.ctx,
-            parent_dir=source_dir.parent,
-        )
-        build_dependencies = self._prepare_build_dependencies(
-            req=req,
-            resolved_version=None,
-            sdist_root_dir=source_dir,
-            build_env=build_env,
-        )
-        build_env.install(build_dependencies)
-
-        logger.info("generating metadata to get version")
-        hook_caller = dependencies.get_build_backend_hook_caller(
-            ctx=self.ctx,
-            req=req,
-            build_dir=build_dir,
-            override_environ={},
-            build_env=build_env,
-        )
-        metadata_dir_base = hook_caller.prepare_metadata_for_build_wheel(
-            metadata_directory=str(source_dir.parent),
-            config_settings=pbi.config_settings,
-        )
-        metadata_filename = source_dir.parent / metadata_dir_base / "METADATA"
-        # Disable validation because some packages have metadata version mismatches
-        # (e.g., declaring Metadata-Version: 2.2 but using fields from 2.4).
-        metadata = dependencies.parse_metadata(metadata_filename, validate=False)
-        return metadata.version
 
     def add_to_graph(
         self,
@@ -970,8 +702,6 @@ class Bootstrapper:
             "source_url": source_url,
             "source_url_type": str(source_type),
         }
-        if req.url:
-            info["source_url"] = req.url
         self._build_stack.append(info)
 
     def _check_write_error(self, fut: concurrent.futures.Future[int]) -> None:

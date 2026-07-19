@@ -67,8 +67,6 @@ def download_url(
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
     source_type = SourceType.SDIST
-    if req.url:
-        return SourceType.GIT
     pbi = ctx.package_build_info(req)
     if (
         overrides.find_override_method(req.name, "download_source")
@@ -88,27 +86,6 @@ def download_source(
     download_url: str,
 ) -> pathlib.Path:
     logger.info(f"downloading source for {req}")
-    download_path = pathlib.Path(download_url)
-    if req.url and download_path.exists():
-        logger.info(
-            "source is already downloaded to %s by cloning %s, ignoring any plugins",
-            download_url,
-            req.url,
-        )
-        return download_path
-    elif req.url:
-        download_path = ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
-        download_path.mkdir(parents=True, exist_ok=True)
-
-        url_to_clone, git_ref = gitutils.parse_vcs_url(req.url, require_ref=False)
-        download_git_source(
-            ctx=ctx,
-            req=req,
-            url_to_clone=url_to_clone,
-            destination_dir=download_path,
-            ref=git_ref,
-        )
-        return download_path
 
     source_path = overrides.find_and_invoke(
         req.name,
@@ -401,43 +378,29 @@ def prepare_source(
 ) -> pathlib.Path:
     """Unpack and prepare source for building.
 
-    Git URL sources skip the plugin system and are prepared directly.
-    Non-git sources go through ``find_and_invoke`` which may call a
-    package-specific override. The plugin may return a ``Path`` or a
-    ``(Path, bool)`` tuple; both forms are handled.
+    Calls ``find_and_invoke`` which may call a package-specific override.
+    The plugin may return a ``Path`` or a ``(Path, bool)`` tuple; both
+    forms are handled.
     """
-    if req.url:
-        logger.info(
-            "preparing source cloned from %s into %s, ignoring any plugins",
-            req.url,
-            source_filename,
-        )
-        source_root_dir = pathlib.Path(source_filename)
-        prepare_new_source(
-            ctx=ctx,
-            req=req,
-            source_root_dir=source_root_dir,
-            version=version,
-        )
+    logger.info(f"preparing source for {req} from {source_filename}")
+    prepare_source_details = overrides.find_and_invoke(
+        req.name,
+        "prepare_source",
+        default_prepare_source,
+        ctx=ctx,
+        req=req,
+        source_filename=source_filename,
+        version=version,
+    )
+    source_root_dir: pathlib.Path
+    if not isinstance(prepare_source_details, tuple):
+        source_root_dir = prepare_source_details
+    elif len(prepare_source_details) == 2:
+        source_root_dir, _ = prepare_source_details
     else:
-        logger.info(f"preparing source for {req} from {source_filename}")
-        prepare_source_details = overrides.find_and_invoke(
-            req.name,
-            "prepare_source",
-            default_prepare_source,
-            ctx=ctx,
-            req=req,
-            source_filename=source_filename,
-            version=version,
+        raise ValueError(
+            f"do not know how to unpack {prepare_source_details}, expected 1 or 2 members"
         )
-        if not isinstance(prepare_source_details, tuple):
-            source_root_dir = prepare_source_details
-        elif len(prepare_source_details) == 2:
-            source_root_dir, _ = prepare_source_details
-        else:
-            raise ValueError(
-                f"do not know how to unpack {prepare_source_details}, expected 1 or 2 members"
-            )
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
         logger.info(f"prepared source for {req} at {source_root_dir}")
@@ -524,35 +487,18 @@ def build_sdist(
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
-    if req.url:
-        # The default approach to making an sdist is to make a tarball from the
-        # source directory, since most of the time we got the source directory
-        # by unpacking an existing sdist. When we know we cloned a git repo to
-        # get the source tree, we can be very sure that creating a tarball will
-        # NOT produce a valid sdist, so we can use the PEP-517 approach
-        # instead.
-        logger.info("using PEP-517 sdist build, ignoring any plugins")
-        sdist_file = pep517_build_sdist(
-            ctx=ctx,
-            extra_environ=extra_environ,
-            req=req,
-            sdist_root_dir=sdist_root_dir,
-            version=version,
-            build_env=build_env,
-        )
-    else:
-        sdist_file = overrides.find_and_invoke(
-            req.name,
-            "build_sdist",
-            default_build_sdist,
-            ctx=ctx,
-            extra_environ=extra_environ,
-            req=req,
-            version=version,
-            sdist_root_dir=sdist_root_dir,
-            build_dir=build_dir,
-            build_env=build_env,
-        )
+    sdist_file: pathlib.Path = overrides.find_and_invoke(
+        req.name,
+        "build_sdist",
+        default_build_sdist,
+        ctx=ctx,
+        extra_environ=extra_environ,
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=build_dir,
+        build_env=build_env,
+    )
     logger.info(f"built source distribution {sdist_file}")
 
     # validate location and file name

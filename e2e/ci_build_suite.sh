@@ -18,6 +18,5 @@ run_test "build_steps"
 
 test_section "advanced build tests"
 run_test "build_parallel"
-run_test "build_sequence_git_url"
 
 finish_suite

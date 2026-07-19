@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
@@ -433,51 +432,6 @@ def test_resolve_from_graph_name_fallback_returns_none_for_missing_package(
     assert result is None
 
 
-def test_resolve_rejects_git_urls_for_source(tmp_context: WorkContext) -> None:
-    """BootstrapRequirementResolver.resolve() rejects git URLs when pre_built=False."""
-    resolver = BootstrapRequirementResolver(tmp_context)
-
-    with pytest.raises(
-        ValueError, match="Git URL requirements must be handled by Bootstrapper"
-    ):
-        resolver.resolve(
-            req=Requirement("package @ git+https://github.com/example/repo.git"),
-            req_type=RequirementType.TOP_LEVEL,
-            pre_built=False,
-            parent_req=None,
-        )
-
-
-@patch("fromager.resolver.find_all_matching_from_provider")
-def test_resolve_allows_git_urls_for_prebuilt(
-    mock_resolve: MagicMock,
-    tmp_context: WorkContext,
-) -> None:
-    """BootstrapRequirementResolver.resolve() allows git URLs when pre_built=True (test mode fallback)."""
-    resolver = BootstrapRequirementResolver(tmp_context)
-    req = Requirement("mypkg @ git+https://github.com/example/repo.git")
-
-    # Mock resolution to return expected result (as list)
-    mock_resolve.return_value = [
-        ("https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl", Version("1.0"))
-    ]
-
-    # Should NOT raise - git URLs are allowed when explicitly requesting prebuilt
-    results = resolver.resolve(
-        req=req,
-        req_type=RequirementType.INSTALL,
-        pre_built=True,
-        parent_req=None,
-    )
-
-    # Verify resolution was called
-    mock_resolve.assert_called_once()
-    assert len(results) == 1
-    url, version = results[0]
-    assert url == "https://files.pythonhosted.org/mypkg-1.0-py3-none-any.whl"
-    assert version == Version("1.0")
-
-
 @patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_auto_routes_to_prebuilt(
     mock_resolve: MagicMock,
@@ -560,54 +514,6 @@ def test_resolve_auto_routes_to_source(
         url, version = results[0]
         assert url == "https://files.pythonhosted.org/mypackage-2.0.tar.gz"
         assert version == Version("2.0")
-
-
-def test_extend_known_versions_accumulates(tmp_context: WorkContext) -> None:
-    """extend_known_versions() accumulates versions across calls."""
-    resolver = BootstrapRequirementResolver(tmp_context)
-    req1 = Requirement("mypkg>=1.0")
-    req2 = Requirement("mypkg>=2.0")
-
-    resolver.extend_known_versions(
-        req1,
-        pre_built=False,
-        result=[("https://files.test/mypkg-1.5.tar.gz", Version("1.5"))],
-    )
-    resolver.extend_known_versions(
-        req2,
-        pre_built=False,
-        result=[("https://files.test/mypkg-2.0.tar.gz", Version("2.0"))],
-    )
-
-    # Both versions are now available when filtering by the wider specifier
-    matching = resolver.get_matching_versions(req1, pre_built=False)
-    assert len(matching) == 2
-    assert matching[0][1] == Version("2.0")
-    assert matching[1][1] == Version("1.5")
-
-
-def test_get_matching_versions_returns_independent_lists(
-    tmp_context: WorkContext,
-) -> None:
-    """get_matching_versions() returns a new list each call."""
-    resolver = BootstrapRequirementResolver(tmp_context)
-    req = Requirement("mypkg>=1.0")
-
-    resolver.extend_known_versions(
-        req,
-        pre_built=False,
-        result=[("https://files.test/mypkg-1.0.tar.gz", Version("1.0"))],
-    )
-    list1 = resolver.get_matching_versions(req, pre_built=False)
-    list2 = resolver.get_matching_versions(req, pre_built=False)
-
-    assert list1 == list2
-    assert list1 is not list2
-
-    # Mutating one does not affect the other
-    list1.append(("https://files.test/bad.tar.gz", Version("9.9")))
-    list3 = resolver.get_matching_versions(req, pre_built=False)
-    assert len(list3) == 1
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
