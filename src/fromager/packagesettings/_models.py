@@ -171,6 +171,15 @@ class ResolverDist(pydantic.BaseModel):
     .. versionadded:: 0.82
     """
 
+    skip_pypi_quarantine: bool = False
+    """Skip PyPI quarantine status check for this package? (default: no)
+
+    Use for packages resolved from non-PyPI sources (GitHub, GitLab)
+    where the PyPI name is a different, unrelated project.
+
+    .. versionadded:: 0.86
+    """
+
     @pydantic.model_validator(mode="after")
     def validate_ignore_platform(self) -> typing.Self:
         if self.ignore_platform and not self.include_wheels:
