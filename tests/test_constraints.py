@@ -156,7 +156,7 @@ def test_invalid_constraints() -> None:
         c.add_constraint("foo")
     with pytest.raises(InvalidConstraintError, match=r".*has extras"):
         c.add_constraint("foo[extra]>=1.0")
-    with pytest.raises(InvalidConstraintError, match=r".*has an url"):
+    with pytest.raises(InvalidConstraintError, match=r".*has a URL"):
         c.add_constraint("foo@https://foo.test")
 
 

@@ -33,7 +33,6 @@ Guides for building packages from various sources and configurations.
 .. toctree::
    :maxdepth: 1
 
-   build-from-git-repo
    repeatable-builds
    parallel
    build-web-server

@@ -182,14 +182,7 @@ def build_sequence(
             resolved_version = Version(entry["version"])
             source_download_url = entry["source_url"]
 
-            # If we are building from git, use the requirement as specified so
-            # we include the URL. Otherwise, create a fake requirement with the
-            # name and version so we are explicitly building the expected
-            # version.
-            if entry["source_url_type"] == "git":
-                req = Requirement(entry["req"])
-            else:
-                req = Requirement(f"{dist_name}=={resolved_version}")
+            req = Requirement(f"{dist_name}=={resolved_version}")
 
             with req_ctxvar_context(req, resolved_version):
                 logger.info("building %s", resolved_version)
@@ -664,14 +657,7 @@ def build_parallel(
                         logger.info("requires exclusive build")
                     logger.info("ready to build")
 
-                # Use original top-level requirement only if it has a URL (git, etc.),
-                # otherwise use the resolved version to avoid building wrong versions.
-                top_level_req = graph.get_top_level_requirement(node)
-                if top_level_req and top_level_req.url:
-                    req = top_level_req
-                    logger.debug("using top-level requirement with URL: %s", req)
-                else:
-                    req = Requirement(f"{node.canonicalized_name}=={node.version}")
+                req = Requirement(f"{node.canonicalized_name}=={node.version}")
 
                 future = executor.submit(
                     _build_parallel,

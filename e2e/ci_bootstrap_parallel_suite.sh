@@ -13,7 +13,5 @@ init_suite "Bootstrap Parallel Test Suite" "bootstrap-parallel tests"
 # Bootstrap parallel tests
 test_section "bootstrap parallel tests"
 run_test "bootstrap_parallel"
-run_test "bootstrap_parallel_git_url"
-run_test "bootstrap_parallel_git_url_tag"
 
 finish_suite

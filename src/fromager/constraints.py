@@ -52,7 +52,7 @@ class Constraints:
         .. versionchanged: 0.83.0
            Non-conflicting constraints are now combined. Constraints with
            conflicts now raise :exc:`InvalidConstraintError`. Inputs without a
-           version specifier or with extras or url are also refused.
+           version specifier or with extras are also refused.
         """
         req = Requirement(unparsed)
         canon_name = canonicalize_name(req.name)
@@ -62,7 +62,7 @@ class Constraints:
         if req.extras:
             raise InvalidConstraintError(f"Constraint {unparsed!r} has extras")
         if req.url:
-            raise InvalidConstraintError(f"Constraint {unparsed!r} has an url")
+            raise InvalidConstraintError(f"Constraint {unparsed!r} has a URL")
         if not req.specifier:
             raise InvalidConstraintError(f"Constraint {unparsed!r} has no specifiers")
 

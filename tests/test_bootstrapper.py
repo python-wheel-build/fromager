@@ -1221,3 +1221,13 @@ def test_build_item_do_build_builds_wheel(tmp_context: WorkContext) -> None:
     )
     assert wheel == built_wheel
     assert sdist == built_sdist
+
+
+def test_resolve_versions_rejects_url_requirement(
+    tmp_context: WorkContext,
+) -> None:
+    """resolve_versions() raises ValueError for direct-reference URL requirements."""
+    req = Requirement("pkg @ git+https://github.com/example/repo.git")
+    bs = bootstrapper.Bootstrapper(tmp_context)
+    with pytest.raises(ValueError, match="no longer supported"):
+        bs.resolve_versions(req=req, req_type=RequirementType.TOP_LEVEL)

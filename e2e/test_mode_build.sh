@@ -2,7 +2,8 @@
 # -*- indent-tabs-mode: nil; tab-width: 2; sh-indentation: 2; -*-
 
 # Test --test-mode with a package that fails to build (no prebuilt fallback)
-# Uses a local fixture that fails during wheel build; since it's not on PyPI,
+# Creates a local sdist from a fixture that intentionally fails during wheel
+# build and serves it via the wheel server. Since the package is not on PyPI,
 # prebuilt fallback also fails and the failure is recorded.
 # See: https://github.com/python-wheel-build/fromager/issues/895
 
@@ -10,25 +11,45 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
 pass=true
 
-DIST="test_build_failure"
+DIST="test-build-failure"
+VER="1.0.0"
 FIXTURE_DIR="$SCRIPTDIR/test_build_failure"
 
-# Initialize the fixture as a git repo (files are committed without .git)
-created_git=false
-if [ ! -d "$FIXTURE_DIR/.git" ]; then
-  created_git=true
-  (cd "$FIXTURE_DIR" && \
-   git init -q && \
-   git config user.email "test@example.com" && \
-   git config user.name "Test User" && \
-   git add -A && \
-   git commit -q -m "init")
-fi
+# Build a sdist tarball from the fixture
+SDIST_NAME="test_build_failure-${VER}"
+SDIST_TARBALL="${SDIST_NAME}.tar.gz"
+SDIST_STAGING=$(mktemp -d)
+# Clean up staging dir on exit (common.sh already traps for on_exit)
+trap 'rm -rf "$SDIST_STAGING"' EXIT
 
-# Clean up .git on exit if we created it
-trap '[ "$created_git" = true ] && rm -rf "$FIXTURE_DIR/.git"' EXIT
+mkdir -p "$SDIST_STAGING/$SDIST_NAME"
+cp -r "$FIXTURE_DIR"/* "$SDIST_STAGING/$SDIST_NAME/"
+cat > "$SDIST_STAGING/$SDIST_NAME/PKG-INFO" << EOF
+Metadata-Version: 2.1
+Name: test_build_failure
+Version: ${VER}
+Summary: Test fixture that intentionally fails to build
+EOF
+tar -czf "$SDIST_STAGING/$SDIST_TARBALL" -C "$SDIST_STAGING" "$SDIST_NAME"
 
-echo "$DIST @ git+file://${FIXTURE_DIR}" > "$OUTDIR/requirements.txt"
+# Set up local index with the fixture tarball
+# The wheel server basedir is wheels-repo/simple, so layout is:
+# local-index/simple/<project>/<file>
+LOCAL_INDEX="$OUTDIR/local-index"
+mkdir -p "$LOCAL_INDEX/simple/$DIST"
+cp "$SDIST_STAGING/$SDIST_TARBALL" "$LOCAL_INDEX/simple/$DIST/"
+
+# Start the wheel server to serve the local index
+start_local_wheel_server "$LOCAL_INDEX"
+
+# Configure fromager to resolve from local server
+mkdir -p "$OUTDIR/settings"
+cat > "$OUTDIR/settings/test_build_failure.yaml" << EOF
+resolver_dist:
+  sdist_server_url: "${WHEEL_SERVER_URL}"
+  include_sdists: true
+  include_wheels: false
+EOF
 
 set +e
 fromager \
@@ -36,7 +57,8 @@ fromager \
   --sdists-repo="$OUTDIR/sdists-repo" \
   --wheels-repo="$OUTDIR/wheels-repo" \
   --work-dir="$OUTDIR/work-dir" \
-  bootstrap --test-mode -r "$OUTDIR/requirements.txt"
+  --settings-dir="$OUTDIR/settings" \
+  bootstrap --test-mode "${DIST}==${VER}"
 exit_code=$?
 set -e
 
@@ -51,13 +73,14 @@ if [ -z "$failures_file" ]; then
   echo "FAIL: no test-mode-failures JSON file found" 1>&2
   pass=false
 else
-  if ! jq -e ".failures[] | select(.package == \"$DIST\")" "$failures_file" >/dev/null 2>&1; then
-    echo "FAIL: $DIST not found in failures" 1>&2
+  # The package name in the JSON is the canonicalized name
+  if ! jq -e '.failures[] | select(.package == "test-build-failure")' "$failures_file" >/dev/null 2>&1; then
+    echo "FAIL: test-build-failure not found in failures" 1>&2
     pass=false
   fi
 
   # Must be 'bootstrap' failure (actual build failure, not resolution)
-  failure_type=$(jq -r "[.failures[] | select(.package == \"$DIST\")][0].failure_type" "$failures_file")
+  failure_type=$(jq -r '[.failures[] | select(.package == "test-build-failure")][0].failure_type' "$failures_file")
   if [ "$failure_type" != "bootstrap" ]; then
     echo "FAIL: expected failure_type 'bootstrap', got '$failure_type'" 1>&2
     pass=false
