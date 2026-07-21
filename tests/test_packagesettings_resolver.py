@@ -24,6 +24,7 @@ from fromager.packagesettings._resolver import (
     GitLabTagDownloadResolver,
     HookPrebuiltResolver,
     HookSDistResolver,
+    LegacyResolver,
     NotAvailableResolver,
     PyPIDownloadResolver,
     PyPIGitResolver,
@@ -713,6 +714,70 @@ class TestHookPrebuiltResolver:
         r = _parse(self.YAML)
         with pytest.raises(NotImplementedError, match="hook"):
             r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
+
+
+class TestLegacyResolver:
+    YAML = """\
+        source:
+          provider: legacy
+    """
+
+    def test_parse(self) -> None:
+        r = _parse(self.YAML)
+        assert isinstance(r, LegacyResolver)
+        assert r.provider == "legacy"
+        assert r.supports_override_hooks is True
+        assert r.resolves_prebuilt_wheel is False
+        assert r.download_kinds == frozenset(
+            {DownloadKind.tarball, DownloadKind.prebuilt_wheel}
+        )
+
+    def test_resolver_provider(self, tmp_context: WorkContext) -> None:
+        r = _parse(self.YAML)
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+        assert isinstance(p, resolver.PyPIProvider)
+        assert p.include_sdists is True
+        assert p.include_wheels is False
+        assert p.sdist_server_url == "https://pypi.org/simple"
+        assert p.ignore_platform is False
+
+    @mock.patch("fromager.overrides.find_and_invoke")
+    def test_download_source(
+        self, mock_invoke: mock.MagicMock, tmp_context: WorkContext
+    ) -> None:
+        expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
+        mock_invoke.return_value = expected
+        r = _parse(self.YAML)
+        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        assert path == expected
+        assert kind is DownloadKind.tarball
+        mock_invoke.assert_called_once()
+        call_args = mock_invoke.call_args
+        assert call_args[0][0] == _REQ.name
+        assert call_args[0][1] == "download_source"
+        assert call_args[1]["version"] == _VERSION
+        assert call_args[1]["download_url"] == _CANDIDATE_SDIST.url
+        assert call_args[1]["sdists_downloads_dir"] == tmp_context.sdists_downloads
+
+    @mock.patch("fromager.downloads.download_wheel")
+    def test_download_prebuilt(
+        self, mock_dl: mock.MagicMock, tmp_context: WorkContext
+    ) -> None:
+        expected = tmp_context.wheels_prebuilt / "test_pkg-1.2.3-py3-none-any.whl"
+        mock_dl.return_value = expected
+        # Configure pbi.pre_built to return True
+        pbi = tmp_context.package_build_info(_REQ)
+        with mock.patch.object(
+            type(pbi), "pre_built", new_callable=lambda: property(lambda self: True)
+        ):
+            r = _parse(self.YAML)
+            path, kind = r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
+        assert path == expected
+        assert kind is DownloadKind.prebuilt_wheel
+        mock_dl.assert_called_once_with(
+            destination_dir=tmp_context.wheels_prebuilt,
+            url=_CANDIDATE_WHEEL.url,
+        )
 
 
 # -- Discriminated union validation -------------------------------------------
