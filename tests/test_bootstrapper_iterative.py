@@ -30,6 +30,7 @@ from packaging.version import Version
 
 from fromager import bootstrapper, build_environment
 from fromager.bootstrapper._build import Build
+from fromager.bootstrapper._cache import _find_cached_wheel_via_manager
 from fromager.bootstrapper._complete import Complete
 from fromager.bootstrapper._phase import Phase
 from fromager.bootstrapper._prepare_build import PrepareBuild
@@ -43,6 +44,7 @@ from fromager.bootstrapper._types import (
     SourceBuildResult,
 )
 from fromager.bootstrapper._work_item import WorkItem
+from fromager.cache import CacheManager, LocalDirectoryBackend
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType, SourceType
 
@@ -1234,7 +1236,7 @@ class TestPhasePrepareSource:
     def test_source_cached_wheel_uses_background_result(
         self, tmp_context: WorkContext
     ) -> None:
-        """Cached wheel background result sets cached_wheel_filename and sdist_root."""
+        """Legacy cache hit (no CacheManager) still proceeds through PrepareBuild."""
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
 
@@ -1268,6 +1270,80 @@ class TestPhasePrepareSource:
         assert wi.sdist_root_dir == unpacked / unpacked.stem
         assert isinstance(result[0], PrepareBuild)
         assert len(result) == 1
+
+    def test_cache_manager_hit_short_circuits_to_install_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """CacheManager hit skips build env and goes to ProcessInstallDeps."""
+        downloads = tmp_context.wheels_downloads
+        store = LocalDirectoryBackend(downloads, backend_name="local:downloads")
+        manager = CacheManager(lookup_backends=[store], store_backend=store)
+        tmp_context.cache = manager
+
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        item = _make_build_item(phase=BootstrapPhase.PREPARE_SOURCE)
+
+        unpack_dir = tmp_context.work_dir / "testpkg-1.0"
+        unpack_dir.mkdir(parents=True)
+        cached_wheel = downloads / "testpkg-1.0-py3-none-any.whl"
+        cached_wheel.write_bytes(b"wheel")
+        item.bg_future = _make_resolved_future(
+            PreparedSourceData(
+                sdist_root_dir=unpack_dir / unpack_dir.stem,
+                cached_wheel_filename=cached_wheel,
+            )
+        )
+
+        mock_pbi = Mock()
+        mock_pbi.build_tag.return_value = ()
+        with (
+            patch.object(tmp_context.constraints, "get_constraint", return_value=None),
+            patch.object(tmp_context, "package_build_info", return_value=mock_pbi),
+            patch(
+                "fromager.bootstrapper._prepare_source.server.index_wheel"
+            ) as mock_index,
+            patch("fromager.build_environment.BuildEnvironment") as mock_build_env_cls,
+        ):
+            result = item.run(bt)
+
+        assert len(result) == 1
+        assert isinstance(result[0], ProcessInstallDeps)
+        wi = result[0].work_item
+        assert wi.build_result is not None
+        assert wi.build_result.source_type == SourceType.CACHED
+        assert wi.build_result.wheel_filename == cached_wheel
+        assert wi.build_result.sdist_root_dir is None
+        assert wi.build_result.build_env is None
+        assert wi.build_result.unpack_dir == unpack_dir
+        mock_index.assert_called_once_with(bt.ctx, cached_wheel)
+        mock_build_env_cls.assert_not_called()
+
+
+class TestFindCachedWheelViaManager:
+    """Tests for CacheManager dispatch in find_cached_wheel."""
+
+    def test_returns_unpack_dir_under_work_dir(self, tmp_context: WorkContext) -> None:
+        """Unpack dir must be under work_dir so PrepareSource path checks pass."""
+        downloads = tmp_context.wheels_downloads
+        whl = downloads / "testpkg-1.0-py3-none-any.whl"
+        whl.write_bytes(b"wheel")
+
+        store = LocalDirectoryBackend(downloads, backend_name="local:downloads")
+        store.scan()
+        manager = CacheManager(lookup_backends=[store], store_backend=store)
+        tmp_context.cache = manager
+
+        mock_pbi = Mock()
+        mock_pbi.build_tag.return_value = ()
+        with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
+            path, unpack_dir = _find_cached_wheel_via_manager(
+                tmp_context, Requirement("testpkg"), Version("1.0")
+            )
+
+        assert path == whl.resolve()
+        assert unpack_dir is not None
+        assert unpack_dir.parent == tmp_context.work_dir
+        assert unpack_dir.name == "testpkg-1.0"
 
     def test_bad_sdist_root_raises_valueerror(self, tmp_context: WorkContext) -> None:
         """ValueError raised when sdist_root_dir.parent.parent != work_dir."""

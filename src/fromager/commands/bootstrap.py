@@ -12,6 +12,7 @@ from fromager.dependency_graph import DependencyNode
 
 from .. import (
     bootstrapper,
+    cache,
     context,
     dependency_graph,
     metrics,
@@ -124,6 +125,19 @@ def _get_requirements_from_args(
     show_default=True,
     help="Number of background threads for parallel I/O pre-fetching (min 1).",
 )
+@click.option(
+    "--use-cache-manager/--no-cache-manager",
+    "use_cache_manager",
+    default=False,
+    help="Enable the unified cache manager for prioritized multi-backend lookup.",
+)
+@click.option(
+    "--cache-allow-insecure",
+    "cache_allow_insecure",
+    is_flag=True,
+    default=False,
+    help="Allow HTTP cache registries without SHA256 hashes (dev/internal use).",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -137,6 +151,8 @@ def bootstrap(
     multiple_versions: bool,
     max_release_age: int | None,
     num_bg_threads: int,
+    use_cache_manager: bool,
+    cache_allow_insecure: bool,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -198,6 +214,16 @@ def bootstrap(
         logger.info("treating %s as pre-built wheels", sorted(pre_built))
 
     server.start_wheel_server(wkctx)
+
+    if use_cache_manager:
+        wkctx.cache = cache.build_cache_manager(
+            wkctx,
+            cache_url=cache_wheel_server_url,
+            allow_insecure=cache_allow_insecure,
+        )
+        logger.info(
+            "cache manager enabled with %d backends", len(wkctx.cache.lookup_backends)
+        )
 
     with progress.progress_context(total=len(to_build * 2)) as progressbar:
         with bootstrapper.Bootstrapper(
@@ -515,6 +541,19 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     show_default=True,
     help="Number of background threads for parallel I/O pre-fetching (min 1).",
 )
+@click.option(
+    "--use-cache-manager/--no-cache-manager",
+    "use_cache_manager",
+    default=False,
+    help="Enable the unified cache manager for prioritized multi-backend lookup.",
+)
+@click.option(
+    "--cache-allow-insecure",
+    "cache_allow_insecure",
+    is_flag=True,
+    default=False,
+    help="Allow HTTP cache registries without SHA256 hashes (dev/internal use).",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 @click.pass_context
@@ -531,6 +570,8 @@ def bootstrap_parallel(
     multiple_versions: bool,
     max_release_age: int | None,
     num_bg_threads: int,
+    use_cache_manager: bool,
+    cache_allow_insecure: bool,
     toplevel: list[str],
 ) -> None:
     """Bootstrap and build-parallel
@@ -560,6 +601,8 @@ def bootstrap_parallel(
         multiple_versions=multiple_versions,
         max_release_age=max_release_age,
         num_bg_threads=num_bg_threads,
+        use_cache_manager=use_cache_manager,
+        cache_allow_insecure=cache_allow_insecure,
         toplevel=toplevel,
     )
 
