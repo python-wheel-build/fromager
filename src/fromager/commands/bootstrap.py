@@ -20,6 +20,7 @@ from .. import (
     resolver,
     server,
 )
+from ..bootstrapper import Bootstrapper
 from .build import build_parallel
 from .graph import find_why, show_explain_duplicates
 
@@ -120,7 +121,7 @@ def _get_requirements_from_args(
     "--bg-threads",
     "num_bg_threads",
     type=click.IntRange(min=1),
-    default=bootstrapper._DEFAULT_BG_THREADS,
+    default=Bootstrapper.DEFAULT_BG_THREADS,
     show_default=True,
     help="Number of background threads for parallel I/O pre-fetching (min 1).",
 )
@@ -511,7 +512,7 @@ bootstrap._fromager_show_build_settings = True  # type: ignore
     "--bg-threads",
     "num_bg_threads",
     type=click.IntRange(min=1),
-    default=bootstrapper._DEFAULT_BG_THREADS,
+    default=Bootstrapper.DEFAULT_BG_THREADS,
     show_default=True,
     help="Number of background threads for parallel I/O pre-fetching (min 1).",
 )

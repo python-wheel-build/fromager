@@ -19,6 +19,7 @@ from .. import (
     bootstrap_requirement_resolver,
     progress,
     sources,
+    threading_utils,
 )
 from ..dependency_graph import DependencyGraph
 from ..log import req_ctxvar_context, requirement_ctxvar
@@ -31,7 +32,6 @@ from ._prepare_source import PrepareSource
 from ._process_install_deps import ProcessInstallDeps
 from ._resolve import Resolve
 from ._types import (
-    _DEFAULT_BG_THREADS,
     FailureRecord,
     FailureType,
     SeenKey,
@@ -52,6 +52,8 @@ class Bootstrapper:
     the dependency tree, then ``finalize()`` for cleanup and exit code.
     """
 
+    DEFAULT_BG_THREADS: int = max(1, threading_utils.get_cpu_count() // 2)
+
     def __init__(
         self,
         ctx: context.WorkContext,
@@ -61,7 +63,7 @@ class Bootstrapper:
         sdist_only: bool = False,
         test_mode: bool = False,
         multiple_versions: bool = False,
-        num_bg_threads: int = _DEFAULT_BG_THREADS,
+        num_bg_threads: int = DEFAULT_BG_THREADS,
     ) -> None:
         if test_mode and sdist_only:
             raise ValueError(
