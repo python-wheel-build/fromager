@@ -176,3 +176,93 @@ def test_format_exception_formats_chained_exceptions() -> None:
         assert "Higher level error" in formatted
         assert "because" in formatted
         assert "Root cause" in formatted
+
+
+def test_format_exception_deduplicates_embedded_cause_suffix() -> None:
+    """Regression test for #1243.
+
+    resolver.py wraps failures as ``f"...: {original_msg}"`` where
+    ``original_msg`` is ``str(err)`` before chaining ``from err`` - the
+    cause's raw message ends up embedded at the *end* of the outer
+    message. Without deduping, ``_format_exception`` prints it twice via
+    "... because ...".
+    """
+    from resolvelib.resolvers import ResolverException
+
+    from fromager import __main__
+
+    try:
+        try:
+            raise ResolverException("found no match")
+        except ResolverException as err:
+            original_msg = str(err)
+            raise ResolverException(
+                f"Unable to resolve requirement: {original_msg}"
+            ) from err
+    except ResolverException as err:
+        formatted = __main__._format_exception(err)
+
+    assert formatted == "Unable to resolve requirement: found no match"
+
+
+def test_format_exception_still_shows_because_for_unrelated_cause() -> None:
+    """Unrelated causes (not embedded in the outer message) are still
+
+    joined with "because", so the dedupe check doesn't over-suppress.
+    """
+    from fromager import __main__
+
+    try:
+        try:
+            raise ValueError("Root cause")
+        except ValueError as e:
+            raise RuntimeError("Higher level error") from e
+    except RuntimeError as chained:
+        assert (
+            __main__._format_exception(chained)
+            == "Higher level error because Root cause"
+        )
+
+
+def test_format_exception_preserves_nested_cause_after_dedup() -> None:
+    """Deduping the immediate embedded cause must not drop a deeper cause.
+
+    If the outer message ends with the immediate cause's raw text, that
+    part is deduped - but the immediate cause may itself have its own
+    cause with information not present anywhere in the outer message,
+    which must still be shown.
+    """
+    from fromager import __main__
+
+    try:
+        try:
+            raise ValueError("root cause")
+        except ValueError as root:
+            raise RuntimeError("middle error") from root
+    except RuntimeError as middle:
+        try:
+            raise RuntimeError(f"outer error: {middle}") from middle
+        except RuntimeError as outer:
+            formatted = __main__._format_exception(outer)
+
+    assert formatted == "outer error: middle error because root cause"
+
+
+def test_format_exception_does_not_dedupe_coincidental_suffix() -> None:
+    """A short cause message that coincidentally matches the tail of an
+
+    unrelated outer message must not be deduped - only the resolver.py
+    ``f"...: {original_msg}"`` construction (anchored on the ": "
+    separator) should trigger dedup.
+    """
+    from fromager import __main__
+
+    try:
+        raise ValueError("match")
+    except ValueError as cause:
+        try:
+            raise RuntimeError("failed to match") from cause
+        except RuntimeError as outer:
+            formatted = __main__._format_exception(outer)
+
+    assert formatted == "failed to match because match"
