@@ -8,15 +8,13 @@ from enum import StrEnum
 
 from packaging.utils import NormalizedName
 
-from .. import build_environment, threading_utils
+from .. import build_environment
 from ..requirements_file import SourceType
 
 logger = logging.getLogger(__name__)
 
 # package name, extras, version, sdist/wheel
 SeenKey = tuple[NormalizedName, tuple[str, ...], str, typing.Literal["sdist", "wheel"]]
-
-_DEFAULT_BG_THREADS: int = max(1, threading_utils.get_cpu_count() // 2)
 
 
 @dataclasses.dataclass
