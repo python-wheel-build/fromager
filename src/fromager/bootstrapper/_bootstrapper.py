@@ -14,6 +14,7 @@ import typing
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
+from resolvelib.resolvers import ResolverException
 
 from .. import (
     bootstrap_requirement_resolver,
@@ -897,6 +898,54 @@ class Bootstrapper:
             unsatisfied.add(dep)
         return unsatisfied
 
+    def _dependency_chain_suffix(self, wi: WorkItem) -> str:
+        """Describe the requirement chain that pulled in a failed dependency.
+
+        Resolution failures are logged with whatever top-level package
+        happens to be active in the logging context at the time, which can
+        make an unrelated package look like the culprit when the actual
+        conflict is several levels down the dependency tree (see #1214).
+        This spells out the real chain, top-down, so the message is
+        accurate even when the log prefix is not.
+
+        Callers should only invoke this when ``wi.why_snapshot`` is
+        non-empty (i.e. not a top-level requirement).
+        """
+        chain = " -> ".join(
+            f"{req.name}=={version}" for _, req, version in wi.why_snapshot
+        )
+        return f" (dependency chain: {chain} -> {wi.req})"
+
+    def _enrich_resolution_error(self, item: Phase, err: Exception) -> Exception:
+        """Attach the dependency chain to a RESOLVE-phase failure.
+
+        Returns ``err`` unchanged for non-RESOLVE phases or top-level
+        requirements (no chain to add). Otherwise returns a *new* exception
+        of the same shape with the chain appended. The caller
+        (``_handle_phase_error()``) raises this new exception with no
+        `from` clause while still inside the original exception's active
+        handler; Python then sets the new exception's `__context__` to the
+        original one (keeping it available for traceback/debugging) while
+        leaving `__cause__` unset, so `__main__._format_exception()` -
+        which only follows `__cause__` - doesn't print the original message
+        a second time via "... because ...". See #1243 for the pre-existing,
+        independent duplication bug in that formatter.
+
+        `type(err)(msg)` isn't guaranteed to work for every exception
+        class, so only the two shapes that actually reach this code path
+        are reconstructed directly; anything else falls back to a
+        `RuntimeError` that keeps the original type name in the message.
+        """
+        wi = item.work_item
+        if not isinstance(item, Resolve) or not wi.why_snapshot:
+            return err
+        msg = f"{err}{self._dependency_chain_suffix(wi)}"
+        if isinstance(err, ResolverException):
+            return ResolverException(msg)
+        if isinstance(err, RuntimeError):
+            return RuntimeError(msg)
+        return RuntimeError(f"{type(err).__name__}: {msg}")
+
     def _handle_phase_error(
         self,
         item: Phase,
@@ -910,6 +959,7 @@ class Bootstrapper:
         wi = item.work_item
         # Resolution failures: recoverable in test mode and multiple versions mode
         if isinstance(item, Resolve):
+            err = self._enrich_resolution_error(item, err)
             if self.test_mode:
                 self.record_test_mode_failure(wi.req, None, err, "resolution")
                 if self.multiple_versions:
@@ -928,7 +978,7 @@ class Bootstrapper:
                     f"failed during {type(item).phase} phase",
                 )
                 return []
-            raise
+            raise err
 
         # Test mode: try prebuilt fallback for build-related phases
         if self.test_mode:
