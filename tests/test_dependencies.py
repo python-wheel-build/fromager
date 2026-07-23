@@ -506,3 +506,88 @@ def test_get_metadata_from_wheel_validation_disabled(tmp_path: pathlib.Path) -> 
     # Assert: Should still parse the basic fields
     assert metadata.name == "testpkg"
     assert str(metadata.version) == "1.0.0"
+
+
+class TestGetSetuptoolsConstraint:
+    """Tests for _get_setuptools_constraint."""
+
+    def test_pkg_resources_import(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text(
+            "import pkg_resources\nfrom setuptools import setup\nsetup(name='foo')\n"
+        )
+        assert dependencies._get_setuptools_constraint(tmp_path) == "setuptools<82"
+
+    def test_pkg_resources_from_import(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text(
+            "from pkg_resources import get_distribution\n"
+            "from setuptools import setup\n"
+            "setup(name='foo')\n"
+        )
+        assert dependencies._get_setuptools_constraint(tmp_path) == "setuptools<82"
+
+    def test_pkg_resources_submodule(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text(
+            "import pkg_resources.extern\n"
+            "from setuptools import setup\n"
+            "setup(name='foo')\n"
+        )
+        assert dependencies._get_setuptools_constraint(tmp_path) == "setuptools<82"
+
+    def test_dry_run_keyword(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text(
+            "from distutils.spawn import spawn\nspawn(['ls'], dry_run=True)\n"
+        )
+        assert dependencies._get_setuptools_constraint(tmp_path) == "setuptools<81"
+
+    def test_both_returns_tighter(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text(
+            "import pkg_resources\n"
+            "from distutils.dir_util import remove_tree\n"
+            "remove_tree('build', dry_run=False)\n"
+        )
+        assert dependencies._get_setuptools_constraint(tmp_path) == "setuptools<81"
+
+    def test_clean_setup_py(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text(
+            "from setuptools import setup\nsetup(name='foo', version='1.0')\n"
+        )
+        assert dependencies._get_setuptools_constraint(tmp_path) is None
+
+    def test_no_setup_py(self, tmp_path: pathlib.Path) -> None:
+        assert dependencies._get_setuptools_constraint(tmp_path) is None
+
+    def test_syntax_error(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text("def broken(:\n")
+        assert dependencies._get_setuptools_constraint(tmp_path) is None
+
+    def test_pkg_resources_in_string_not_detected(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "setup.py").write_text(
+            "from setuptools import setup\n"
+            "setup(name='foo', description='uses pkg_resources internally')\n"
+        )
+        assert dependencies._get_setuptools_constraint(tmp_path) is None
+
+
+@patch("fromager.dependencies._write_requirements_file")
+@_clean_build_artifacts
+def test_default_build_system_deps_adds_setuptools_constraint(
+    _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[build-system]\n"
+        'requires = ["setuptools"]\n'
+        'build-backend = "setuptools.build_meta"\n'
+    )
+    (tmp_path / "setup.py").write_text(
+        "import pkg_resources\nfrom setuptools import setup\nsetup(name='foo')\n"
+    )
+    results = dependencies.get_build_system_dependencies(
+        ctx=tmp_context,
+        req=Requirement("foo"),
+        version=Version("1.0.0"),
+        sdist_root_dir=tmp_path,
+    )
+    names = {r.name for r in results}
+    assert "setuptools" in names
+    constraints = [r for r in results if r.name == "setuptools"]
+    assert any(str(r) == "setuptools<82" for r in constraints)
