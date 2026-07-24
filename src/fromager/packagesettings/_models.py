@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
+import re
 import typing
 from collections.abc import Mapping
 
@@ -12,7 +13,7 @@ import pydantic
 import yaml
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
-from pydantic import AnyUrl, Field
+from pydantic import AnyUrl, Field, PrivateAttr, StringConstraints
 from pydantic_core import core_schema
 
 # from ._resolver import SourceResolver
@@ -70,6 +71,139 @@ class SbomSettings(pydantic.BaseModel):
     (e.g. ``pkg:pypi/flask@2.0?repository_url=https://example.com/simple``).
     Can be overridden per-package in the package settings file.
     """
+
+
+# Environment variable filter patterns for ExternalCommands.
+# Pattern: starts with letter or underscore, rest is letters/digits/underscores,
+# optionally ending with ``*`` (trailing wildcard).
+# DeleteEnvPattern additionally allows bare ``*`` (catch-all).
+KeepEnvPattern = typing.Annotated[
+    str,
+    StringConstraints(pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*\*?$"),
+]
+
+DeleteEnvPattern = typing.Annotated[
+    str,
+    StringConstraints(pattern=r"^(\*|[a-zA-Z_][a-zA-Z0-9_]*\*?)$"),
+]
+
+
+def _compile_env_patterns(patterns: tuple[str, ...]) -> re.Pattern[str]:
+    """Compile env filter patterns into a single regex for ``fullmatch``.
+
+    Exact patterns (e.g. ``HOME``) become ``HOME`` and prefix patterns
+    (e.g. ``LC_*``) become ``LC_.*``.  The result is
+    ``HOME|LC_.*|...`` (used with ``fullmatch``).
+
+    *patterns* must be non-empty.
+    """
+    parts: list[str] = []
+    for p in patterns:
+        if p.endswith("*"):
+            parts.append(re.escape(p[:-1]) + ".*")
+        else:
+            parts.append(re.escape(p))
+    return re.compile("|".join(parts))
+
+
+class ExternalCommands(pydantic.BaseModel):
+    """Environment variable filtering for subprocesses
+
+    Patterns control which environment variables are passed to
+    child processes.  ``keep_env`` is evaluated before ``delete_env``.
+
+    ::
+
+      external_commands:
+        keep_env:
+          - "CARGO_*"
+        delete_env:
+          - "CI_TOKEN"
+          - "AWS_*"
+
+    .. versionadded:: 0.92.0
+    """
+
+    model_config = MODEL_CONFIG
+
+    DEFAULT_KEEP_ENV: typing.ClassVar[tuple[str, ...]] = (
+        "HOME",
+        "HOSTNAME",
+        "LANG",
+        "LANGUAGE",
+        "LC_*",
+        "LOGNAME",
+        "NO_COLOR",
+        "PATH",
+        "SHELL",
+        "USER",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    )
+    """Patterns always kept regardless of user configuration."""
+
+    keep_env: list[KeepEnvPattern] = Field(default_factory=list)
+    """Allowlist patterns (evaluated before ``delete_env``)"""
+
+    delete_env: list[DeleteEnvPattern] = Field(default_factory=list)
+    """Blocklist patterns (evaluated after ``keep_env``)"""
+
+    _keep_re: re.Pattern[str] | None = PrivateAttr(default=None)
+    _delete_re: re.Pattern[str] | None = PrivateAttr(default=None)
+
+    @pydantic.model_validator(mode="after")
+    def validate_delete_env(self) -> typing.Self:
+        """Validate ``delete_env`` for conflicts and redundancy."""
+        if not self.delete_env:
+            return self
+        if "*" in self.delete_env and len(self.delete_env) > 1:
+            raise ValueError(
+                "delete_env: bare '*' must be the only entry, "
+                "additional patterns are redundant"
+            )
+        keep = set(self.DEFAULT_KEEP_ENV) | set(self.keep_env)
+        overlap = keep & set(self.delete_env)
+        if overlap:
+            raise ValueError(
+                f"delete_env overlaps with keep_env / DEFAULT_KEEP_ENV: "
+                f"{sorted(overlap)}"
+            )
+        return self
+
+    def __bool__(self) -> bool:
+        """True when filtering is configured (``delete_env`` is non-empty)."""
+        return bool(self.delete_env)
+
+    def model_post_init(self, __context: typing.Any) -> None:
+        """Pydantic post init hook to initialize internal data structures"""
+        if self.delete_env:
+            self._keep_re = _compile_env_patterns(
+                self.DEFAULT_KEEP_ENV + tuple(self.keep_env)
+            )
+            if "*" not in self.delete_env:
+                self._delete_re = _compile_env_patterns(tuple(self.delete_env))
+
+    def filter_env(self, env: Mapping[str, str]) -> Mapping[str, str]:
+        """Filter environment variables by keep/delete patterns.
+
+        Variables matching ``DEFAULT_KEEP_ENV`` or ``keep_env`` are
+        always kept.  Of the remaining variables, those matching
+        ``delete_env`` are removed.  Variables matching neither list
+        are kept.
+        """
+        # _keep_re is only set in model_post_init when delete_env is
+        # non-empty, so None means no filtering is configured.
+        if self._keep_re is None:
+            return env
+        if self._delete_re is None:
+            # delete_env is ["*"]: keep only what matches
+            return {k: v for k, v in env.items() if self._keep_re.fullmatch(k)}
+        return {
+            k: v
+            for k, v in env.items()
+            if self._keep_re.fullmatch(k) or not self._delete_re.fullmatch(k)
+        }
 
 
 class PurlConfig(pydantic.BaseModel):
