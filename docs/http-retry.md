@@ -90,8 +90,10 @@ To register authentication for additional hosts:
 ```python
 from fromager.request_session import session_auth
 
+
 def _resolve_my_auth(scheme: str, hostname: str) -> dict[str, str]:
     return {"Authorization": "Bearer my-token"}
+
 
 session_auth.add("https://my-registry.test", _resolve_my_auth)
 ```
@@ -102,6 +104,7 @@ For functions that might fail due to transient errors:
 
 ```python
 from fromager.http_retry import retry_on_exception, RETRYABLE_EXCEPTIONS
+
 
 @retry_on_exception(
     exceptions=RETRYABLE_EXCEPTIONS,
