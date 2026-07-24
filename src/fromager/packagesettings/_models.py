@@ -32,6 +32,32 @@ from ._typedefs import (
 logger = logging.getLogger(__name__)
 
 
+class WheelSettings(pydantic.BaseModel):
+    """Global wheel build settings
+
+    ::
+
+      wheels:
+        build_tag_hook: "mypackage.hooks:build_tag_hook"
+
+    .. versionadded:: 0.92.0
+    """
+
+    model_config = MODEL_CONFIG
+
+    build_tag_hook: pydantic.ImportString[typing.Callable[..., typing.Any]] | None = (
+        None
+    )
+    """Callable that returns suffix segments for the wheel build tag.
+
+    The callable receives keyword-only arguments ``ctx``, ``req``,
+    ``version``, and ``wheel_tags`` and returns
+    ``Sequence[str]`` of suffix segments.
+
+    .. versionadded:: 0.92.0
+    """
+
+
 class SbomSettings(pydantic.BaseModel):
     """Global SBOM generation settings
 
