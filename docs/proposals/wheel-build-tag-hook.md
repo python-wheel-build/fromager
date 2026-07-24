@@ -86,8 +86,7 @@ def build_tag_hook(
     req: Requirement,
     version: Version,
     wheel_tags: frozenset[Tag],
-) -> typing.Sequence[str]:
-    ...
+) -> typing.Sequence[str]: ...
 ```
 
 The hook returns `typing.Sequence[str]`, a sequence of suffix segments
