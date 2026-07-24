@@ -78,12 +78,35 @@ class BuildEnvironment:
 
     def __init__(
         self,
+        *,
         ctx: context.WorkContext,
-        parent_dir: pathlib.Path,
+        req: Requirement,
+        sdist_root_dir: pathlib.Path,
     ):
+        """Create a build environment for an sdist.
+
+        Args:
+            ctx: the work context
+            req: the requirement being built
+            sdist_root_dir: root directory of the unpacked sdist
+        """
         self._ctx = ctx
-        self.path = parent_dir.absolute() / f"build-{platform.python_version()}"
+        self._req = req
+        self._sdist_root_dir = sdist_root_dir
+        self.path = sdist_root_dir.parent.absolute().joinpath(
+            f"build-{platform.python_version()}"
+        )
         self._createenv()
+
+    @property
+    def sdist_root_dir(self) -> pathlib.Path:
+        """Root directory of the unpacked sdist."""
+        return self._sdist_root_dir
+
+    @property
+    def req(self) -> Requirement:
+        """The requirement being built."""
+        return self._req
 
     @property
     def python(self) -> pathlib.Path:
@@ -257,7 +280,8 @@ def prepare_build_environment(
 
     build_env = BuildEnvironment(
         ctx=ctx,
-        parent_dir=sdist_root_dir.parent,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
     )
 
     build_system_dependencies = dependencies.get_build_system_dependencies(

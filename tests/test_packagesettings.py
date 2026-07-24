@@ -322,9 +322,12 @@ def test_pbi_test_pkg_extra_environ(
     )
     assert "__version__" not in result
 
+    sdist_root = tmp_path / "test-pkg-1.0.0"
+    sdist_root.mkdir()
     build_env = build_environment.BuildEnvironment(
-        testdata_context,
-        parent_dir=tmp_path,
+        ctx=testdata_context,
+        req=Requirement("test-pkg"),
+        sdist_root_dir=sdist_root,
     )
     result = pbi.get_extra_environ(
         template_env={"EXTRA": "spam", "PATH": "/sbin:/bin"},
