@@ -18,6 +18,7 @@ _mgrs: dict[str, hook.HookManager] = {}
 
 # Event callbacks that run for every package (e.g., after build, after bootstrap).
 GLOBAL_HOOK_NAMES: tuple[str, ...] = (
+    "get_build_system_dependencies",
     "post_bootstrap",
     "post_build",
     "prebuilt_wheel",
@@ -69,6 +70,31 @@ def _die_on_plugin_load_failure(
     err: BaseException,
 ) -> typing.NoReturn:
     raise RuntimeError(f"failed to load overrides for {ep.name}") from err
+
+
+def run_get_build_system_dependencies_hooks(
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    build_dir: pathlib.Path,
+    requirements: list[str],
+) -> list[str]:
+    """Run global hooks that post-process build-system dependencies.
+
+    Each hook receives the current requirements list and returns a
+    (possibly modified) list.  Hooks are chained: the output of one
+    becomes the input of the next.
+    """
+    hook_mgr = _get_hooks("get_build_system_dependencies")
+    for ext in hook_mgr:
+        requirements = ext.plugin(
+            ctx=ctx,
+            req=req,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            requirements=requirements,
+        )
+    return requirements
 
 
 def run_post_build_hooks(

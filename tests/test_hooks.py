@@ -221,6 +221,101 @@ def test_run_prebuilt_wheel_hooks_calls_plugin(mock_get: Mock) -> None:
     assert "sdist_filename" not in called_with
 
 
+@patch("fromager.hooks._get_hooks")
+def test_run_get_build_system_dependencies_hooks_calls_plugin(
+    mock_get: Mock,
+) -> None:
+    called_with: dict[str, typing.Any] = {}
+
+    def fake_plugin(**kwargs: typing.Any) -> list[str]:
+        called_with.update(kwargs)
+        return kwargs["requirements"]
+
+    mock_get.return_value = _make_fake_mgr([fake_plugin])
+
+    ctx = Mock()
+    req = Requirement("numpy>=1.0")
+    sdist = pathlib.Path("/tmp/numpy-1.0")
+    build = pathlib.Path("/tmp/numpy-1.0/build")
+    reqs = ["setuptools>=40.0", "wheel"]
+
+    result = hooks.run_get_build_system_dependencies_hooks(
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist,
+        build_dir=build,
+        requirements=reqs,
+    )
+
+    mock_get.assert_called_once_with("get_build_system_dependencies")
+    assert called_with["ctx"] is ctx
+    assert called_with["req"] is req
+    assert called_with["sdist_root_dir"] is sdist
+    assert called_with["build_dir"] is build
+    assert called_with["requirements"] == reqs
+    assert result == reqs
+
+
+@patch("fromager.hooks._get_hooks")
+def test_run_get_build_system_dependencies_hooks_chains(
+    mock_get: Mock,
+) -> None:
+    def hook_a(**kwargs: typing.Any) -> list[str]:
+        return kwargs["requirements"] + ["extra-a"]
+
+    def hook_b(**kwargs: typing.Any) -> list[str]:
+        return kwargs["requirements"] + ["extra-b"]
+
+    mock_get.return_value = _make_fake_mgr([hook_a, hook_b])
+
+    result = hooks.run_get_build_system_dependencies_hooks(
+        ctx=Mock(),
+        req=Requirement("pkg"),
+        sdist_root_dir=pathlib.Path("/tmp/pkg"),
+        build_dir=pathlib.Path("/tmp/pkg/build"),
+        requirements=["setuptools"],
+    )
+
+    assert result == ["setuptools", "extra-a", "extra-b"]
+
+
+@patch("fromager.hooks._get_hooks")
+def test_run_get_build_system_dependencies_hooks_no_hooks(
+    mock_get: Mock,
+) -> None:
+    mock_get.return_value = _make_fake_mgr([])
+
+    reqs = ["setuptools>=40.0", "wheel"]
+    result = hooks.run_get_build_system_dependencies_hooks(
+        ctx=Mock(),
+        req=Requirement("pkg"),
+        sdist_root_dir=pathlib.Path("/tmp/pkg"),
+        build_dir=pathlib.Path("/tmp/pkg/build"),
+        requirements=reqs,
+    )
+
+    assert result == reqs
+
+
+@patch("fromager.hooks._get_hooks")
+def test_run_get_build_system_dependencies_hooks_exception_propagates(
+    mock_get: Mock,
+) -> None:
+    def bad_plugin(**kwargs: typing.Any) -> list[str]:
+        raise ValueError("hook failed")
+
+    mock_get.return_value = _make_fake_mgr([bad_plugin])
+
+    with pytest.raises(ValueError, match="hook failed"):
+        hooks.run_get_build_system_dependencies_hooks(
+            ctx=Mock(),
+            req=Requirement("pkg"),
+            sdist_root_dir=pathlib.Path("/tmp/pkg"),
+            build_dir=pathlib.Path("/tmp/pkg/build"),
+            requirements=["setuptools"],
+        )
+
+
 @patch("fromager.hooks.overrides._get_dist_info", return_value=("mypkg", "1.0.0"))
 @patch("fromager.hooks.extension.ExtensionManager")
 def test_log_hooks_logs_each_extension(

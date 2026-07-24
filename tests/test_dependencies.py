@@ -394,6 +394,46 @@ def test_validate_dist_name_version(
             validate()
 
 
+@patch("fromager.dependencies._write_requirements_file")
+@patch("fromager.hooks._get_hooks")
+def test_get_build_system_dependencies_runs_global_hooks(
+    mock_get_hooks: Mock,
+    _: Mock,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    pyproject_content = textwrap.dedent("""\
+        [build-system]
+        requires = ["setuptools>=40.0"]
+        build-backend = "setuptools.build_meta"
+    """)
+    (tmp_path / "pyproject.toml").write_text(pyproject_content)
+
+    called_with: dict[str, typing.Any] = {}
+
+    def fake_hook(**kwargs: typing.Any) -> list[str]:
+        called_with.update(kwargs)
+        return kwargs["requirements"] + ["setuptools<82"]
+
+    from unittest.mock import MagicMock
+
+    fake_mgr = MagicMock()
+    fake_mgr.names.return_value = ["fake_hook"]
+    fake_mgr.__iter__ = lambda self: iter([MagicMock(plugin=fake_hook)])
+    mock_get_hooks.return_value = fake_mgr
+
+    results = dependencies.get_build_system_dependencies(
+        ctx=tmp_context,
+        req=Requirement("testpkg"),
+        version=Version("1.0.0"),
+        sdist_root_dir=tmp_path,
+    )
+
+    names = set(r.name for r in results)
+    assert "setuptools" in names
+    assert called_with["requirements"] == ["setuptools>=40.0"]
+
+
 def test_get_install_dependencies_of_wheel(tmp_path: pathlib.Path) -> None:
     """Test extracting install dependencies from a wheel file built with real tools."""
     # Arrange: Build a real wheel with dependencies

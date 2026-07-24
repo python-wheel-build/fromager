@@ -18,6 +18,7 @@ from packaging.version import Version
 from . import (
     build_environment,
     external_commands,
+    hooks,
     overrides,
     packagesettings,
     requirements_file,
@@ -64,6 +65,13 @@ def get_build_system_dependencies(
         req=req,
         sdist_root_dir=sdist_root_dir,
         build_dir=pbi.build_dir(sdist_root_dir),
+    )
+    orig_deps = hooks.run_get_build_system_dependencies_hooks(
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=pbi.build_dir(sdist_root_dir),
+        requirements=list(orig_deps),
     )
     deps = _filter_requirements(req, orig_deps)
 
