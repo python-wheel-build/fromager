@@ -1431,7 +1431,8 @@ class TestPhasePrepareSource:
         assert result[1] is mock_dep_item
         mock_build_env_cls.assert_called_once_with(
             ctx=bt.ctx,
-            parent_dir=sdist_root.parent,
+            req=wi.req,
+            sdist_root_dir=sdist_root,
         )
         mock_create_items.assert_called_once_with(
             wi.build_system_deps,
