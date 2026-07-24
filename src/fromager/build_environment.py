@@ -93,8 +93,9 @@ class BuildEnvironment:
         self._ctx = ctx
         self._req = req
         self._sdist_root_dir = sdist_root_dir
+        # abiflags adds 't' for free-threaded (nogil) builds
         self.path = sdist_root_dir.parent.absolute().joinpath(
-            f"build-{platform.python_version()}"
+            f"build-{platform.python_version()}{sys.abiflags}"
         )
         self._createenv()
 
