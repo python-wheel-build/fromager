@@ -27,6 +27,7 @@ from ._resolver import (
     PyPIGitResolver,
     PyPIPrebuiltResolver,
     PyPISDistResolver,
+    VersionMapGitResolver,
     pep440_tag_matcher,
 )
 from ._settings import Settings, SettingsFile
@@ -86,6 +87,7 @@ __all__ = (
     "Variant",
     "VariantChangelog",
     "VariantInfo",
+    "VersionMapGitResolver",
     "default_update_extra_environ",
     "get_extra_environ",
     "pep440_tag_matcher",
