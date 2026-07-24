@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Get source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
@@ -36,11 +38,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up Rust ${{ matrix.rust-version }}
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af  # v1
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c  # master
         with:
           toolchain: ${{ matrix.rust-version }}
-          default: true
-          override: true
 
       - name: Disable AppArmor restriction for unprivileged user namespaces
         if: matrix.os == 'ubuntu-latest'
@@ -103,6 +103,8 @@ jobs:
     steps:
       - name: Get source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
@@ -110,11 +112,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up Rust ${{ matrix.rust-version }}
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af  # v1
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c  # master
         with:
           toolchain: ${{ matrix.rust-version }}
-          default: true
-          override: true
 
       - name: Disable AppArmor restriction for unprivileged user namespaces
         if: matrix.os == 'ubuntu-latest'
@@ -161,6 +161,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
