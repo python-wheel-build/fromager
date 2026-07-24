@@ -48,7 +48,7 @@ class PackageBuildInfo:
         self._variant_changelog = settings.variant_changelog()
         self._max_jobs: int | None = settings.max_jobs
         self._ps = ps
-        self._plugin_module: types.ModuleType | None | typing.Literal[False] = False
+        self._plugin_module: types.ModuleType | typing.Literal[False] | None = False
         self._patches: PatchMap | None = None
         self._annotations: Annotations | None = None
 

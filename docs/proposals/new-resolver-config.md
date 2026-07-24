@@ -196,19 +196,24 @@ from fromager import context, resolver
 from packaging.version import Version
 
 
-def matcher_factory_pat(ctx: context.WorkContext) -> re.Pattern | resolver.MatchFunction:
+def matcher_factory_pat(
+    ctx: context.WorkContext,
+) -> re.Pattern | resolver.MatchFunction:
     # tag must match 'v1.2+midstream.1.cpu' and results in Version("1.2+midstream.1")
     variant = re.escape(ctx.variant)
     pat = rf"^v(.*\+midstream\.\d+)\.{variant}$"
     return re.compile(pat)
 
 
-def matcher_factory_func(ctx: context.WorkContext) -> re.Pattern | resolver.MatchFunction:
+def matcher_factory_func(
+    ctx: context.WorkContext,
+) -> re.Pattern | resolver.MatchFunction:
     def pep440_matcher(identifier: str, item: str) -> Version | None:
         try:
             return Version(item)
         except ValueError:
             return None
+
     return pep440_matcher
 ```
 
