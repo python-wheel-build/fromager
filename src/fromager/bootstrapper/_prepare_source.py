@@ -155,7 +155,8 @@ class PrepareSource(Phase):
 
         wi.build_env = build_environment.BuildEnvironment(
             ctx=bt.ctx,
-            parent_dir=sdist_root_dir.parent,
+            req=wi.req,
+            sdist_root_dir=sdist_root_dir,
         )
 
         # Get build system dependencies
