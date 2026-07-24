@@ -4,6 +4,7 @@ from ._hooks import default_update_extra_environ, get_extra_environ
 from ._models import (
     BuildOptions,
     DownloadSource,
+    ExternalCommands,
     GitOptions,
     PackageSettings,
     ProjectOverride,
@@ -57,6 +58,7 @@ __all__ = (
     "DownloadSource",
     "EnvKey",
     "EnvVars",
+    "ExternalCommands",
     "GitHubTagCloneResolver",
     "GitHubTagDownloadResolver",
     "GitLabTagCloneResolver",
