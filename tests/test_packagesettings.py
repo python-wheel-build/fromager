@@ -322,9 +322,12 @@ def test_pbi_test_pkg_extra_environ(
     )
     assert "__version__" not in result
 
+    sdist_root = tmp_path / "test-pkg-1.0.0"
+    sdist_root.mkdir()
     build_env = build_environment.BuildEnvironment(
-        testdata_context,
-        parent_dir=tmp_path,
+        ctx=testdata_context,
+        req=Requirement("test-pkg"),
+        sdist_root_dir=sdist_root,
     )
     result = pbi.get_extra_environ(
         template_env={"EXTRA": "spam", "PATH": "/sbin:/bin"},
@@ -582,9 +585,9 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
 def test_settings_list(testdata_context: context.WorkContext) -> None:
     assert testdata_context.settings.list_overrides() == {
         TEST_COOLDOWN_PKG,
+        TEST_PKG,
         TEST_EMPTY_PKG,
         TEST_OTHER_PKG,
-        TEST_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
     }
@@ -597,7 +600,7 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
     ]
 
 
-@patch("fromager.packagesettings._pbi.get_cpu_count", return_value=8)
+@patch("fromager.threading_utils.get_cpu_count", return_value=8)
 @patch("fromager.packagesettings._pbi.get_available_memory_gib", return_value=7.1)
 def test_parallel_jobs(
     get_available_memory_gib: Mock,
@@ -886,11 +889,7 @@ def _make_pbi(env_yaml: str, tmp_path: pathlib.Path) -> PackageBuildInfo:
 def test_version_env_var_raises_when_version_unknown(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Using ${__version__} in env without a fallback raises when version is None.
-
-    This mirrors the git-URL bootstrap path where the version has not yet
-    been resolved (e.g. ``pkg @ git+https://host/repo.git@main``).
-    """
+    """Using ${__version__} in env without a fallback raises when version is None."""
     pbi = _make_pbi(
         """
 env:

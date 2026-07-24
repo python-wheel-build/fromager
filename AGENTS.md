@@ -102,6 +102,12 @@ Look at these before writing code:
 
 - Use single backticks around function and class names in markdown (e.g. `req_ctxvar_context()`, `WorkContext`), double backticks in .rst (reStructuredText)
 - Use Sphinx `versionadded`, `versionremoved`, `versionchanged` directives for user-facing changes (get next version from last git tag)
+- When code changes affect the architecture described in `docs/concepts/`, update the relevant doc:
+  - `architecture-overview.rst` — major subsystems, data flow, extension points, key data structures
+  - `bootstrapper-architecture.rst` — phase pipeline, class hierarchy, bootstrapper-phase interaction
+  - `resolver-architecture.rst` — resolution strategies, provider hierarchy, version filtering
+  - `hooks-and-overrides.rst` — override hook points, global hooks, plugin discovery
+  - `package-settings.rst` — settings loading flow, merge order, PackageBuildInfo facade
 
 ## Commit Messages
 
@@ -121,6 +127,20 @@ Closes: #123
 ```
 
 This produces a commit message with both the `Signed-off-by` trailer (from `--signoff`) and the `Co-Authored-By` trailer.
+
+## End-to-end tests
+
+There is a set of end-to-end tests in `./e2e`. Files named like
+`test_*.sh` are test scripts and files named like `ci_*.sh` are CI
+test suites that run the individual test scripts.
+
+The end-to-end tests are expensive so **ONLY** run them when asked.
+
+The CI test suites produce a lot of output. The most important
+information is in the summary at the end, where it shows which test
+scripts fail. Always run CI jobs in a way that only adds the last 25
+lines to the context window, then run an individual failing test
+script to debug the problem.
 
 ## Workflow for Complex Tasks
 

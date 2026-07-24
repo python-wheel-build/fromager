@@ -100,6 +100,93 @@ def test_graph_subset_nonexistent_version(
     assert "not found in graph" in result.output
 
 
+def test_graph_subset_dependencies_only(
+    cli_runner: CliRunner, e2e_path: pathlib.Path
+) -> None:
+    """Test that --dependencies-only includes the target and its dependencies."""
+    graph_json = e2e_path / "build-parallel" / "graph.json"
+    result = cli_runner.invoke(
+        fromager,
+        ["graph", "subset", str(graph_json), "keyring", "--dependencies-only"],
+    )
+
+    assert result.exit_code == 0
+    subset_data = json.loads(result.stdout)
+
+    # Should include keyring itself
+    assert "keyring==25.6.0" in subset_data
+    # Should include keyring's dependency
+    assert "jaraco-classes==3.4.0" in subset_data
+    # Should NOT include packages that depend on keyring
+    assert "imapautofiler==1.14.0" not in subset_data
+
+
+def test_graph_subset_dependencies_only_no_dependents(
+    cli_runner: CliRunner, e2e_path: pathlib.Path
+) -> None:
+    """Test that --dependencies-only excludes all dependents from the result."""
+    graph_json = e2e_path / "build-parallel" / "graph.json"
+
+    # First get the full subset to confirm imapautofiler is normally included
+    full_result = cli_runner.invoke(
+        fromager, ["graph", "subset", str(graph_json), "keyring"]
+    )
+    assert full_result.exit_code == 0
+    full_data = json.loads(full_result.stdout)
+    assert "imapautofiler==1.14.0" in full_data
+
+    # Now confirm it is excluded with --dependencies-only
+    deps_result = cli_runner.invoke(
+        fromager,
+        ["graph", "subset", str(graph_json), "keyring", "--dependencies-only"],
+    )
+    assert deps_result.exit_code == 0
+    deps_data = json.loads(deps_result.stdout)
+    assert "imapautofiler==1.14.0" not in deps_data
+
+
+def test_graph_subset_dependents_only(
+    cli_runner: CliRunner, e2e_path: pathlib.Path
+) -> None:
+    """Test that --dependents-only includes the target and its dependents."""
+    graph_json = e2e_path / "build-parallel" / "graph.json"
+    result = cli_runner.invoke(
+        fromager,
+        ["graph", "subset", str(graph_json), "keyring", "--dependents-only"],
+    )
+
+    assert result.exit_code == 0
+    subset_data = json.loads(result.stdout)
+
+    # Should include keyring itself
+    assert "keyring==25.6.0" in subset_data
+    # Should include packages that depend on keyring
+    assert "imapautofiler==1.14.0" in subset_data
+    # Should NOT include keyring's own dependencies
+    assert "jaraco-classes==3.4.0" not in subset_data
+
+
+def test_graph_subset_dependents_only_and_dependencies_only_are_exclusive(
+    cli_runner: CliRunner, e2e_path: pathlib.Path
+) -> None:
+    """Test that combining --dependents-only and --dependencies-only is an error."""
+    graph_json = e2e_path / "build-parallel" / "graph.json"
+    result = cli_runner.invoke(
+        fromager,
+        [
+            "graph",
+            "subset",
+            str(graph_json),
+            "keyring",
+            "--dependents-only",
+            "--dependencies-only",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+
+
 def test_graph_subset_structure_integrity(
     cli_runner: CliRunner, e2e_path: pathlib.Path
 ) -> None:

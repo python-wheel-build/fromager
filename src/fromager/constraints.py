@@ -84,7 +84,7 @@ class Constraints:
         if req.extras:
             raise InvalidConstraintError(f"Constraint {unparsed!r} has extras")
         if req.url:
-            raise InvalidConstraintError(f"Constraint {unparsed!r} has an url")
+            raise InvalidConstraintError(f"Constraint {unparsed!r} has a URL")
         if not req.specifier:
             raise InvalidConstraintError(f"Constraint {unparsed!r} has no specifiers")
 

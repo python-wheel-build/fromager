@@ -1,12 +1,21 @@
+from __future__ import annotations
+
 import logging
 import pathlib
+import typing
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
 
-from fromager import context, external_commands
+from fromager import external_commands
+
+if typing.TYPE_CHECKING:
+    from fromager import context
 
 logger = logging.getLogger(__name__)
+
+#: Default git ref (current HEAD of the default branch)
+GIT_HEAD: typing.Final = "HEAD"
 
 
 def git_clone(
@@ -67,7 +76,7 @@ def git_clone_fast(
     *,
     output_dir: pathlib.Path,
     repo_url: str,
-    ref: str = "HEAD",
+    ref: str = GIT_HEAD,
 ) -> None:
     """Efficient, blobless git clone with all submodules
 
@@ -134,3 +143,60 @@ def git_clone_fast(
         external_commands.run(cmd, cwd=str(output_dir), network_isolation=False)
     else:
         logger.debug("no .gitmodules file")
+
+
+def git_clean(source_dir: pathlib.Path) -> None:
+    """Remove untracked files and directories from a git working tree.
+
+    Runs ``git clean -xdf`` in *source_dir* to remove all untracked and
+    ignored files, restoring the working tree to a pristine state.
+
+    .. versionadded:: 0.90.0
+    """
+    cmd: list[str] = ["git", "clean", "-xdf"]
+    logger.debug("cleaning untracked files in %s", source_dir)
+    external_commands.run(cmd, cwd=str(source_dir))
+
+
+def parse_vcs_url(vcs_url: str, *, require_ref: bool = True) -> tuple[str, str]:
+    """Parse a `pip VCS URL`_ into a repo clone URL and git ref.
+
+    Parses a string like ``git+https://github.com/python-wheel-build/fromager.git@refs/tags/0.88.0``
+    into a git clone URL and git reference.
+
+    When *require_ref* is ``False`` and the URL has no ``@ref``,
+    the ref defaults to `GIT_HEAD` instead of raising an error.
+
+    .. _pip VCS URL: https://pip.pypa.io/en/stable/topics/vcs-support/
+
+    .. versionadded:: 0.89.0
+    """
+    parsed = urlparse(vcs_url)
+
+    supported_schemes: set[str] = {"git+https", "git+ssh", "git+file"}
+    if parsed.scheme not in supported_schemes:
+        raise ValueError(
+            f"unsupported VCS URL scheme {parsed.scheme!r},"
+            f" expected one of {sorted(supported_schemes)}"
+        )
+
+    # The ref is appended to the path after the last '@'.
+    path_before, sep, ref = parsed.path.rpartition("@")
+    if sep and not ref:
+        raise ValueError(f"VCS URL {vcs_url!r} has an empty ref after '@'")
+    if not sep:
+        if require_ref:
+            raise ValueError(
+                f"VCS URL {vcs_url!r} is missing a mandatory ref after '@'"
+            )
+        path_before = parsed.path
+        ref = GIT_HEAD
+
+    # Reconstruct the plain repo URL without the git+ prefix and ref
+    repo_url = parsed._replace(
+        scheme=parsed.scheme[4:],
+        path=path_before,
+        fragment="",
+    ).geturl()
+
+    return repo_url, ref

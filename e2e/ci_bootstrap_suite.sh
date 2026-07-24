@@ -27,6 +27,7 @@ run_test "bootstrap_prerelease"
 run_test "bootstrap_cache"
 run_test "bootstrap_sdist_only"
 run_test "bootstrap_multiple_versions"
+run_test "bootstrap_multiple_versions_resolve_error"
 run_test "bootstrap_max_release_age"
 
 test_section "bootstrap test-mode tests"
@@ -42,10 +43,5 @@ run_test "bootstrap_cooldown_gitlab"
 run_test "bootstrap_cooldown_github"
 run_test "bootstrap_cooldown_override"
 run_test "bootstrap_cooldown_prebuilt"
-
-test_section "bootstrap git URL tests"
-run_test "bootstrap_git_url"
-run_test "bootstrap_git_url_tag"
-run_test "version_env_git_url"
 
 finish_suite

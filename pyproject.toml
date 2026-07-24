@@ -71,6 +71,8 @@ mypy = [
 test = [
     "coverage[toml]!=4.4,>=4.0",
     "pytest",
+    "pytest-cov",
+    "pytest-xdist",
     "requests-mock",
     "spdx-tools",
     "twine>=6.1.0",
@@ -131,11 +133,10 @@ lint-requirements = "fromager.commands.lint_requirements:lint_requirements"
 branch = true
 parallel = true
 relative_files = true
-source = ["fromager", "tests/"]
+source = ["fromager"]
 
 [tool.coverage.paths]
 source = ["src/fromager", ".hatch/**/site-packages/fromager"]
-tests = ["tests/"]
 
 [tool.coverage.report]
 show_missing = true
@@ -207,7 +208,7 @@ exclude = [
 
 [[tool.mypy.overrides]]
 # packages without typing annotations and stubs
-module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "spdx_tools.*", "stevedore"]
+module = ["hatchling", "hatchling.build", "license_expression", "pyproject_hooks", "requests_mock", "resolver", "spdx_tools.*", "stevedore", "wheel.*"]
 ignore_missing_imports = true
 
 [tool.basedpyright]
@@ -230,7 +231,7 @@ features = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run
 
 [tool.hatch.envs.test.scripts]
-test = "python -m coverage run -m pytest --log-level DEBUG -vv {args:tests}"
+test = "python -m pytest --cov --log-level DEBUG -vv {args:tests}"
 coverage-erase = "coverage erase"
 coverage-combine = "coverage combine"
 coverage-report = ["coverage combine", "coverage report --format=markdown | tee coverage-report-$(date +%Y%m%d-%H%M%S).md"]
@@ -293,6 +294,9 @@ features = ["docs"]
 build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
 
 [tool.pytest.ini_options]
+# run tests in parallel with 3 pytest-xdist workers
+addopts = "-n 3"
+testpaths = ["tests"]
 markers = [
     "network: test that need network access",
 ]

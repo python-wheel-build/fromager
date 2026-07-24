@@ -7,8 +7,8 @@ import pathlib
 import shutil
 import tarfile
 import typing
+import warnings
 import zipfile
-from urllib.parse import urlparse
 
 import resolvelib
 from packaging.requirements import Requirement
@@ -16,12 +16,11 @@ from packaging.utils import (
     parse_sdist_filename,
 )
 from packaging.version import Version
-from requests.exceptions import ChunkedEncodingError, ConnectionError
-from urllib3.exceptions import IncompleteRead, ProtocolError
 
 from . import (
     build_environment,
     dependencies,
+    downloads,
     external_commands,
     gitutils,
     metrics,
@@ -32,8 +31,6 @@ from . import (
     tarballs,
     vendor_rust,
 )
-from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
-from .request_session import session
 from .requirements_file import RequirementType, SourceType
 
 if typing.TYPE_CHECKING:
@@ -42,10 +39,34 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def download_url(
+    *,
+    req: Requirement,
+    destination_dir: pathlib.Path,
+    url: str,
+    destination_filename: str | None = None,
+) -> pathlib.Path:
+    """Download a URL to destination_dir, returning the local path.
+
+    .. deprecated::
+        Use :func:`fromager.downloads.download_url` instead.
+        The ``req`` parameter is unused and will be removed.
+    """
+    warnings.warn(
+        "fromager.sources.download_url() is deprecated, "
+        "use fromager.downloads.download_url() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return downloads.download_url(
+        destination_dir=destination_dir,
+        url=url,
+        destination_filename=destination_filename,
+    )
+
+
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
     source_type = SourceType.SDIST
-    if req.url:
-        return SourceType.GIT
     pbi = ctx.package_build_info(req)
     if (
         overrides.find_override_method(req.name, "download_source")
@@ -65,45 +86,6 @@ def download_source(
     download_url: str,
 ) -> pathlib.Path:
     logger.info(f"downloading source for {req}")
-    download_path = pathlib.Path(download_url)
-    if req.url and download_path.exists():
-        logger.info(
-            "source is already downloaded to %s by cloning %s, ignoring any plugins",
-            download_url,
-            req.url,
-        )
-        return download_path
-    elif req.url:
-        download_path = ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
-        download_path.mkdir(parents=True, exist_ok=True)
-
-        # Parse ref from URL if it's in the form repo@ref
-        url_to_clone = req.url
-        git_ref: str | None = None
-
-        # Remove git+ prefix for parsing
-        parsing_url = url_to_clone
-        if parsing_url.startswith("git+"):
-            parsing_url = parsing_url[len("git+") :]
-
-        parsed_url = urlparse(parsing_url)
-        if "@" in parsed_url.path:
-            # Extract the ref from the path (e.g., /path/to/repo.git@5.2.0 -> @5.2.0)
-            new_path, _, git_ref = parsed_url.path.rpartition("@")
-            # Reconstruct URL without the @ref part
-            url_to_clone = parsed_url._replace(path=new_path).geturl()
-            # Add back git+ prefix if it was present
-            if req.url.startswith("git+"):
-                url_to_clone = f"git+{url_to_clone}"
-
-        download_git_source(
-            ctx=ctx,
-            req=req,
-            url_to_clone=url_to_clone,
-            destination_dir=download_path,
-            ref=git_ref,
-        )
-        return download_path
 
     source_path = overrides.find_and_invoke(
         req.name,
@@ -213,7 +195,7 @@ def default_download_source(
     if url is None:
         raise ValueError(f"Could not determine download URL for {req}")
     if destination_filename is None:
-        url_filename = resolver.extract_filename_from_url(url)
+        url_filename = downloads.extract_filename_from_url(url)
         if url_filename.endswith(".zip"):
             destination_filename = f"{pbi.override_module_name}-{version}.zip"
         else:
@@ -221,8 +203,7 @@ def default_download_source(
         logger.debug(
             "config has no destination_filename, use default %r", destination_filename
         )
-    source_filename = _download_source_check(
-        req=req,
+    source_filename = downloads.download_sdist(
         destination_dir=sdists_downloads_dir,
         url=url,
         destination_filename=destination_filename,
@@ -239,9 +220,6 @@ def download_git_source(
     destination_dir: pathlib.Path,
     ref: str | None = None,
 ) -> None:
-    if url_to_clone.startswith("git+"):
-        url_to_clone = url_to_clone[len("git+") :]
-
     logger.info(f"cloning source from {url_to_clone}@{ref} to {destination_dir}")
     # Get git options from package settings
     pbi = ctx.package_build_info(req)
@@ -264,128 +242,6 @@ def download_git_source(
         submodules=submodules,
         ref=ref,
     )
-
-
-# Helper method to check whether .zip /.tar / .tgz is able to extract and check its content.
-# It will throw exception if any other file is encountered. Eg: index.html
-def _download_source_check(
-    req: Requirement,
-    destination_dir: pathlib.Path,
-    url: str,
-    destination_filename: str | None = None,
-) -> pathlib.Path:
-    source_filename = download_url(
-        req=req,
-        destination_dir=destination_dir,
-        url=url,
-        destination_filename=destination_filename,
-    )
-    if source_filename.suffix == ".zip":
-        with zipfile.ZipFile(source_filename) as zip_file:
-            source_file_contents = zip_file.namelist()
-            if not source_file_contents:
-                raise zipfile.BadZipFile(
-                    f"Empty zip file encountered: {source_filename}"
-                )
-    elif (
-        source_filename.suffix == ".tgz"
-        or source_filename.suffix == ".gz"
-        or str(source_filename).endswith(".tar.gz")
-    ):
-        with tarfile.open(source_filename) as tar:
-            if not tar.next():
-                raise tarfile.TarError(f"Empty tar file encountered: {source_filename}")
-    else:
-        raise ValueError(
-            f"The source file encountered is not a zip or tar file: {source_filename}"
-        )
-    return source_filename
-
-
-def download_url(
-    *,
-    req: Requirement,
-    destination_dir: pathlib.Path,
-    url: str,
-    destination_filename: str | None = None,
-) -> pathlib.Path:
-    """Download a URL to destination_dir, returning the local path.
-
-    Returns immediately if the file already exists. Downloads to a
-    temporary file first and renames it on success to avoid leaving
-    partial files. Retries on transient network errors.
-    """
-    basename = (
-        destination_filename
-        if destination_filename
-        else resolver.extract_filename_from_url(url)
-    )
-    outfile = pathlib.Path(destination_dir) / basename
-    logger.debug(
-        "looking for %s %s",
-        outfile,
-        "(exists)" if outfile.exists() else "(not there)",
-    )
-    if outfile.exists():
-        logger.debug("already have %s", outfile)
-        return outfile
-
-    # Create a temporary file to avoid partial downloads
-    temp_file = outfile.with_suffix(outfile.suffix + ".tmp")
-
-    def _download_with_retry() -> pathlib.Path:
-        """Internal function that performs the actual download with retry logic."""
-        logger.debug(f"reading from {url}")
-        try:
-            with session.get(url, stream=True) as r:
-                r.raise_for_status()
-                with open(temp_file, "wb") as f:
-                    logger.debug("writing to %s", temp_file)
-                    # Use smaller chunk size for better error recovery
-                    for chunk in r.iter_content(chunk_size=64 * 1024):
-                        if chunk:  # Filter out keep-alive chunks
-                            f.write(chunk)
-
-            # Only move to final location if download completed successfully
-            temp_file.rename(outfile)
-            logger.info("saved %s", outfile)
-            return outfile
-
-        except (
-            ChunkedEncodingError,
-            IncompleteRead,
-            ProtocolError,
-            ConnectionError,
-        ) as e:
-            # Clean up partial file on failure
-            if temp_file.exists():
-                temp_file.unlink()
-            logger.warning(f"Download failed for {url}: {e}")
-            raise
-        except Exception:
-            # Clean up partial file on any other failure
-            if temp_file.exists():
-                temp_file.unlink()
-            raise
-
-    # Apply retry logic specifically for download operations
-    @retry_on_exception(
-        exceptions=RETRYABLE_EXCEPTIONS,
-        max_attempts=5,
-        backoff_factor=1.5,
-        max_backoff=120.0,
-    )
-    def download_with_retry() -> pathlib.Path:
-        return _download_with_retry()
-
-    try:
-        result: pathlib.Path = download_with_retry()
-        return result
-    except Exception:
-        # Ensure temp file is cleaned up if it still exists
-        if temp_file.exists():
-            temp_file.unlink()
-        raise
 
 
 def _takes_arg(f: typing.Callable, arg_name: str) -> bool:
@@ -522,43 +378,29 @@ def prepare_source(
 ) -> pathlib.Path:
     """Unpack and prepare source for building.
 
-    Git URL sources skip the plugin system and are prepared directly.
-    Non-git sources go through ``find_and_invoke`` which may call a
-    package-specific override. The plugin may return a ``Path`` or a
-    ``(Path, bool)`` tuple; both forms are handled.
+    Calls ``find_and_invoke`` which may call a package-specific override.
+    The plugin may return a ``Path`` or a ``(Path, bool)`` tuple; both
+    forms are handled.
     """
-    if req.url:
-        logger.info(
-            "preparing source cloned from %s into %s, ignoring any plugins",
-            req.url,
-            source_filename,
-        )
-        source_root_dir = pathlib.Path(source_filename)
-        prepare_new_source(
-            ctx=ctx,
-            req=req,
-            source_root_dir=source_root_dir,
-            version=version,
-        )
+    logger.info(f"preparing source for {req} from {source_filename}")
+    prepare_source_details = overrides.find_and_invoke(
+        req.name,
+        "prepare_source",
+        default_prepare_source,
+        ctx=ctx,
+        req=req,
+        source_filename=source_filename,
+        version=version,
+    )
+    source_root_dir: pathlib.Path
+    if not isinstance(prepare_source_details, tuple):
+        source_root_dir = prepare_source_details
+    elif len(prepare_source_details) == 2:
+        source_root_dir, _ = prepare_source_details
     else:
-        logger.info(f"preparing source for {req} from {source_filename}")
-        prepare_source_details = overrides.find_and_invoke(
-            req.name,
-            "prepare_source",
-            default_prepare_source,
-            ctx=ctx,
-            req=req,
-            source_filename=source_filename,
-            version=version,
+        raise ValueError(
+            f"do not know how to unpack {prepare_source_details}, expected 1 or 2 members"
         )
-        if not isinstance(prepare_source_details, tuple):
-            source_root_dir = prepare_source_details
-        elif len(prepare_source_details) == 2:
-            source_root_dir, _ = prepare_source_details
-        else:
-            raise ValueError(
-                f"do not know how to unpack {prepare_source_details}, expected 1 or 2 members"
-            )
     write_build_meta(source_root_dir.parent, req, source_filename, version)
     if source_root_dir is not None:
         logger.info(f"prepared source for {req} at {source_root_dir}")
@@ -645,35 +487,18 @@ def build_sdist(
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
-    if req.url:
-        # The default approach to making an sdist is to make a tarball from the
-        # source directory, since most of the time we got the source directory
-        # by unpacking an existing sdist. When we know we cloned a git repo to
-        # get the source tree, we can be very sure that creating a tarball will
-        # NOT produce a valid sdist, so we can use the PEP-517 approach
-        # instead.
-        logger.info("using PEP-517 sdist build, ignoring any plugins")
-        sdist_file = pep517_build_sdist(
-            ctx=ctx,
-            extra_environ=extra_environ,
-            req=req,
-            sdist_root_dir=sdist_root_dir,
-            version=version,
-            build_env=build_env,
-        )
-    else:
-        sdist_file = overrides.find_and_invoke(
-            req.name,
-            "build_sdist",
-            default_build_sdist,
-            ctx=ctx,
-            extra_environ=extra_environ,
-            req=req,
-            version=version,
-            sdist_root_dir=sdist_root_dir,
-            build_dir=build_dir,
-            build_env=build_env,
-        )
+    sdist_file: pathlib.Path = overrides.find_and_invoke(
+        req.name,
+        "build_sdist",
+        default_build_sdist,
+        ctx=ctx,
+        extra_environ=extra_environ,
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=build_dir,
+        build_env=build_env,
+    )
     logger.info(f"built source distribution {sdist_file}")
 
     # validate location and file name

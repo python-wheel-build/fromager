@@ -474,6 +474,18 @@ def why(
     type=clickext.PackageVersion(),
     help="Limit subset to specific version of the package",
 )
+@click.option(
+    "--dependencies-only",
+    is_flag=True,
+    default=False,
+    help="Only include the package and its dependencies; exclude dependents (packages that depend on it).",
+)
+@click.option(
+    "--dependents-only",
+    is_flag=True,
+    default=False,
+    help="Only include the package and its dependents; exclude dependencies of the package.",
+)
 @click.argument(
     "graph-file",
     type=str,
@@ -486,6 +498,8 @@ def subset(
     package_name: str,
     output: pathlib.Path | None,
     version: Version | None,
+    dependencies_only: bool,
+    dependents_only: bool,
 ) -> None:
     """Extract a subset of a build graph related to a specific package.
 
@@ -493,9 +507,15 @@ def subset(
     and the dependencies of that package. By default includes all versions of the
     package, but can be limited to a specific version with --version.
     """
+    if dependencies_only and dependents_only:
+        raise click.UsageError(
+            "--dependencies-only and --dependents-only are mutually exclusive"
+        )
     try:
         graph = DependencyGraph.from_file(graph_file)
-        subset_graph = extract_package_subset(graph, package_name, version)
+        subset_graph = extract_package_subset(
+            graph, package_name, version, dependencies_only, dependents_only
+        )
 
         if output:
             with open(output, "w") as f:
@@ -510,18 +530,22 @@ def extract_package_subset(
     graph: DependencyGraph,
     package_name: str,
     version: Version | None = None,
+    dependencies_only: bool = False,
+    dependents_only: bool = False,
 ) -> DependencyGraph:
     """Extract a subset of the graph containing nodes related to a specific package.
 
     Creates a new graph containing:
     - All nodes matching the package name (optionally filtered by version)
-    - All nodes that depend on the target package (dependents)
-    - All dependencies of the target package
+    - All nodes that depend on the target package (dependents), unless dependencies_only is True
+    - All dependencies of the target package, unless dependents_only is True
 
     Args:
         graph: The source dependency graph
         package_name: Name of the package to extract subset for
         version: Optional version to filter target nodes
+        dependencies_only: If True, exclude dependents (packages that depend on the target)
+        dependents_only: If True, exclude dependencies of the target package
 
     Returns:
         A new DependencyGraph containing only the related nodes
@@ -546,18 +570,44 @@ def extract_package_subset(
         related_nodes.add(node.key)
 
     # Traverse up to find dependents (what depends on our package)
-    visited_up: set[str] = set()
-    for target_node in target_nodes:
-        _collect_dependents(target_node, related_nodes, visited_up)
+    if not dependencies_only:
+        visited_up: set[str] = set()
+        for target_node in target_nodes:
+            _collect_dependents(target_node, related_nodes, visited_up)
 
     # Traverse down to find dependencies (what our package depends on)
-    visited_down: set[str] = set()
-    for target_node in target_nodes:
-        _collect_dependencies(target_node, related_nodes, visited_down)
+    if not dependents_only:
+        visited_down: set[str] = set()
+        for target_node in target_nodes:
+            _collect_dependencies(target_node, related_nodes, visited_down)
+
+    # Always include ROOT so the graph is rooted
+    related_nodes.add(ROOT)
 
     # Create new graph with only related nodes
     subset_graph = DependencyGraph()
-    _build_subset_graph(graph, subset_graph, related_nodes)
+    _build_subset_graph(
+        graph, subset_graph, related_nodes, skip_root_edges=dependencies_only
+    )
+
+    # When dependencies_only, target nodes may not be reachable from ROOT
+    # (if they are only transitive deps, not top-level). Add an artificial
+    # ROOT→target edge so the subset graph can be serialized correctly.
+    if dependencies_only:
+        root_node = subset_graph.nodes[ROOT]
+        root_child_keys = {edge.destination_node.key for edge in root_node.children}
+        for target_node in target_nodes:
+            if target_node.key not in root_child_keys:
+                subset_graph.add_dependency(
+                    parent_name=None,
+                    parent_version=None,
+                    req_type=RequirementType.TOP_LEVEL,
+                    req=Requirement(str(target_node.canonicalized_name)),
+                    req_version=target_node.version,
+                    download_url=target_node.download_url,
+                    pre_built=target_node.pre_built,
+                    constraint=target_node.constraint,
+                )
 
     return subset_graph
 
@@ -598,8 +648,17 @@ def _build_subset_graph(
     source_graph: DependencyGraph,
     target_graph: DependencyGraph,
     included_nodes: set[str],
+    skip_root_edges: bool = False,
 ) -> None:
-    """Build the subset graph with only the included nodes and their edges."""
+    """Build the subset graph with only the included nodes and their edges.
+
+    Args:
+        source_graph: The original graph to extract from.
+        target_graph: The graph being built.
+        included_nodes: Keys of nodes to include.
+        skip_root_edges: If True, do not copy edges originating from ROOT.
+            Use this when ROOT edges will be added explicitly afterward.
+    """
     # First pass: add all included nodes
     for node_key in included_nodes:
         source_node = source_graph.nodes[node_key]
@@ -617,6 +676,8 @@ def _build_subset_graph(
 
     # Second pass: add edges between included nodes
     for node_key in included_nodes:
+        if skip_root_edges and node_key == ROOT:
+            continue
         source_node = source_graph.nodes[node_key]
         for child_edge in source_node.children:
             child_key = child_edge.destination_node.key

@@ -159,17 +159,6 @@ def test_wheels_build_parallel(tmp_context: context.WorkContext) -> None:
     assert result.is_dir()
 
 
-def test_write_to_graph_to_file(tmp_path: pathlib.Path) -> None:
-    ctx = _make_context(tmp_path)
-    ctx.setup()
-
-    with patch.object(ctx.dependency_graph, "serialize") as mock_serialize:
-        ctx.write_to_graph_to_file()
-
-    mock_serialize.assert_called_once()
-    assert ctx.graph_file.exists()
-
-
 def test_pip_wheel_server_args_https(tmp_path: pathlib.Path) -> None:
     ctx = _make_context(tmp_path, wheel_server_url="https://wheels.example.com/simple")
     assert ctx.pip_wheel_server_args == [

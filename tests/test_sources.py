@@ -1,7 +1,6 @@
 import pathlib
 import sys
 import tarfile
-import typing
 import zipfile
 from unittest.mock import Mock, patch
 
@@ -12,28 +11,15 @@ from packaging.version import Version
 from fromager import context, packagesettings, resolver, sources
 
 
-@patch("fromager.sources.download_url")
-def test_invalid_tarfile(mock_download_url: typing.Any, tmp_path: pathlib.Path) -> None:
-    mock_download_url.return_value = pathlib.Path(tmp_path / "test" / "fake_wheel.txt")
-    fake_url = "https://www.thisisafakeurl.com"
-    fake_dir = tmp_path / "test"
-    fake_dir.mkdir()
-    text_file = fake_dir / "fake_wheel.txt"
-    text_file.write_text("This is a test file")
-    req = Requirement("test_pkg==42.1.2")
-    with pytest.raises(ValueError):
-        sources._download_source_check(req=req, destination_dir=fake_dir, url=fake_url)
-
-
 @patch("fromager.resolver.find_all_matching_from_provider")
-@patch("fromager.sources._download_source_check")
+@patch("fromager.downloads.download_sdist")
 def test_resolve_source_from_settings(
-    download_source_check: Mock,
+    download_sdist: Mock,
     find_all_matching_from_provider: Mock,
     testdata_context: context.WorkContext,
 ) -> None:
     find_all_matching_from_provider.return_value = [("url", Version("42.1.2"))]
-    download_source_check.return_value = pathlib.Path("filename.zip")
+    download_sdist.return_value = pathlib.Path("filename.zip")
     req = Requirement("test_pkg==42.1.2")
     sdist_server_url = "https://sdist.test/egg"
 
@@ -41,7 +27,6 @@ def test_resolve_source_from_settings(
         ctx=testdata_context, req=req, sdist_server_url=sdist_server_url
     )
 
-    # Verify we got the expected result
     assert url == "url"
     assert version == Version("42.1.2")
 
@@ -53,8 +38,7 @@ def test_resolve_source_from_settings(
         testdata_context.sdists_downloads,
     )
 
-    download_source_check.assert_called_with(
-        req=req,
+    download_sdist.assert_called_with(
         destination_dir=testdata_context.sdists_downloads,
         url="https://egg.test/test-pkg/v42.1.2.tar.gz",
         destination_filename="test-pkg-42.1.2.tar.gz",
@@ -62,7 +46,7 @@ def test_resolve_source_from_settings(
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
-@patch("fromager.sources._download_source_check")
+@patch("fromager.downloads.download_sdist")
 @patch.multiple(
     packagesettings.PackageBuildInfo,
     resolver_include_sdists=False,
@@ -70,12 +54,12 @@ def test_resolve_source_from_settings(
     resolver_sdist_server_url=Mock(return_value="url"),
 )
 def test_resolve_source_with_predefined_resolve_dist(
-    download_source_check: Mock,
+    download_sdist: Mock,
     find_all_matching_from_provider: Mock,
     tmp_context: context.WorkContext,
 ) -> None:
     find_all_matching_from_provider.return_value = [("url", Version("1.0"))]
-    download_source_check.return_value = pathlib.Path("filename")
+    download_sdist.return_value = pathlib.Path("filename")
     req = Requirement("foo==1.0")
 
     url, version = sources.resolve_source(
@@ -185,9 +169,9 @@ def test_patch_sources_apply_only_unversioned(
         ),
     ],
 )
-@patch("fromager.sources._download_source_check")
+@patch("fromager.downloads.download_sdist")
 def test_default_download_source_no_destination_filename(
-    download_source_check: Mock,
+    download_sdist: Mock,
     tmp_context: context.WorkContext,
     pkg: str,
     version_str: str,
@@ -202,8 +186,7 @@ def test_default_download_source_no_destination_filename(
         tmp_context, req, version, url, tmp_context.sdists_downloads
     )
 
-    download_source_check.assert_called_with(
-        req=req,
+    download_sdist.assert_called_with(
         destination_dir=tmp_context.sdists_downloads,
         url=url,
         destination_filename=expected_filename,
@@ -436,15 +419,6 @@ def test_ensure_pkg_info_creates_in_both_dirs(
     assert (build_dir / "PKG-INFO").is_file()
 
 
-def test_get_source_type_git(
-    tmp_context: context.WorkContext,
-) -> None:
-    req = Requirement("pkg @ git+https://github.com/org/pkg.git")
-    result = sources.get_source_type(tmp_context, req)
-
-    assert result == sources.SourceType.GIT
-
-
 @patch("fromager.overrides.find_override_method")
 def test_get_source_type_override_via_download_source(
     mock_find: Mock,
@@ -614,48 +588,6 @@ def test_unpack_source_reuse_when_no_cleanup(
     assert is_new is False
     assert result == existing
     assert (result / "setup.py").read_text() == "# old"
-
-
-@patch("fromager.sources.download_git_source")
-def test_download_source_git_already_cloned(
-    mock_git: Mock,
-    tmp_context: context.WorkContext,
-    tmp_path: pathlib.Path,
-) -> None:
-    clone_dir = tmp_path / "cloned"
-    clone_dir.mkdir()
-    req = Requirement("pkg @ git+https://github.com/org/pkg.git")
-
-    result = sources.download_source(
-        ctx=tmp_context,
-        req=req,
-        version=Version("1.0"),
-        download_url=str(clone_dir),
-    )
-
-    assert result == clone_dir
-    mock_git.assert_not_called()
-
-
-@patch("fromager.sources.download_git_source")
-def test_download_source_git_with_ref(
-    mock_git: Mock,
-    tmp_context: context.WorkContext,
-) -> None:
-    req = Requirement("pkg @ git+https://github.com/org/pkg.git@v2.0")
-
-    result = sources.download_source(
-        ctx=tmp_context,
-        req=req,
-        version=Version("2.0"),
-        download_url="/nonexistent",
-    )
-
-    mock_git.assert_called_once()
-    call_kwargs = mock_git.call_args[1]
-    assert call_kwargs["ref"] == "v2.0"
-    assert call_kwargs["url_to_clone"] == "git+https://github.com/org/pkg.git"
-    assert result == tmp_context.work_dir / "pkg-2.0" / "pkg-2.0"
 
 
 @patch("fromager.overrides.find_and_invoke")

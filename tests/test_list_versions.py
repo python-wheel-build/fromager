@@ -329,21 +329,48 @@ def test_list_versions_output_file(
     assert len(data) == 3
 
 
-def test_list_versions_output_ignored_for_plain_formats(
+def test_list_versions_output_file_versions_format(
     cli_runner: CliRunner, tmp_path: pathlib.Path
 ) -> None:
-    """--output is ignored with a warning for 'versions' and 'requirements' formats."""
+    """--output writes plain version list to a file for 'versions' format."""
     output_file = tmp_path / "versions.txt"
-    for fmt in ("versions", "requirements"):
-        result = _invoke_list_versions(
-            cli_runner,
-            extra_args=["--format", fmt, "--output", str(output_file)],
-        )
-        assert result.exit_code == 0
-        assert not output_file.exists(), (
-            f"--output should be ignored for --format {fmt}"
-        )
-        assert "Warning: --output option is ignored" in result.output
+    result = _invoke_list_versions(
+        cli_runner,
+        extra_args=["--format", "versions", "--output", str(output_file)],
+    )
+    assert result.exit_code == 0
+    assert output_file.exists()
+    content = output_file.read_text()
+    lines = [line for line in content.strip().split("\n") if line.strip()]
+    assert "1.2.2" in lines
+    assert "1.3.2" in lines
+    assert "2.0.0" in lines
+    # stdout should be empty (no data printed to console)
+    assert "1.2.2" not in result.stdout
+    assert "1.3.2" not in result.stdout
+    assert "2.0.0" not in result.stdout
+
+
+def test_list_versions_output_file_requirements_format(
+    cli_runner: CliRunner, tmp_path: pathlib.Path
+) -> None:
+    """--output writes requirements pins to a file for 'requirements' format."""
+    output_file = tmp_path / "requirements.txt"
+    result = _invoke_list_versions(
+        cli_runner,
+        extra_args=["--format", "requirements", "--output", str(output_file)],
+    )
+    assert result.exit_code == 0
+    assert output_file.exists()
+    content = output_file.read_text()
+    lines = [line for line in content.strip().split("\n") if line.strip()]
+    assert "test-pkg==1.2.2" in lines
+    assert "test-pkg==1.3.2" in lines
+    assert "test-pkg==2.0.0" in lines
+    # stdout should be empty (no data printed to console)
+    assert "test-pkg==1.2.2" not in result.stdout
+    assert "test-pkg==1.3.2" not in result.stdout
+    assert "test-pkg==2.0.0" not in result.stdout
 
 
 # ---------------------------------------------------------------------------

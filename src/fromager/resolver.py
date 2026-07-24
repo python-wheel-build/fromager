@@ -14,7 +14,7 @@ import typing
 from collections.abc import Iterable
 from operator import attrgetter
 from platform import python_version
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, urlparse
 
 import pypi_simple
 import resolvelib
@@ -33,6 +33,7 @@ from resolvelib.resolvers import RequirementInformation
 from . import overrides
 from .candidate import Candidate, Cooldown
 from .constraints import Constraints
+from .downloads import extract_filename_from_url as extract_filename_from_url
 from .extras_provider import ExtrasProvider
 from .http_retry import RETRYABLE_EXCEPTIONS, retry_on_exception
 from .request_session import session
@@ -204,13 +205,6 @@ def _compute_max_age_cutoff(
     return bootstrap_time - ctx.max_release_age
 
 
-def extract_filename_from_url(url: str) -> str:
-    """Extract filename from URL and decode it."""
-    path = urlparse(url).path
-    filename = os.path.basename(path)
-    return unquote(filename)
-
-
 class LogReporter(resolvelib.BaseReporter):
     """Report resolution events
 
@@ -374,6 +368,10 @@ def get_project_from_pypi(
     )
     try:
         package = client.get_project_page(project)
+    except pypi_simple.errors.NoSuchProjectError as e:
+        raise resolvelib.resolvers.ResolverException(
+            f"project {project} not found on {sdist_server_url}"
+        ) from e
     except Exception as e:
         logger.debug(
             "failed to fetch package index from %s: %s",
@@ -1330,12 +1328,14 @@ class VersionMapProvider(BaseProvider):
     def __init__(
         self,
         version_map: VersionMap,
-        package_name: str,
+        package_name: str | None,
         constraints: Constraints | None = None,
         *,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
     ) -> None:
+        if package_name is None:
+            use_resolver_cache = False
         super().__init__(
             constraints=constraints,
             req_type=req_type,
@@ -1346,6 +1346,8 @@ class VersionMapProvider(BaseProvider):
 
     @property
     def cache_key(self) -> str:
+        if self.package_name is None:
+            raise ValueError("Cannot cache VersionMapProvider without package name")
         return f"versionmap:{self.package_name}"
 
     def find_candidates(self, identifier: str) -> Candidates:
