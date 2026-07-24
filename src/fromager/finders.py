@@ -162,30 +162,27 @@ def find_wheel(
     """
     filename_prefix = _dist_name_to_filename(req.name)
     canonical_name = canonicalize_name(req.name)
-    # if build tag is 0 then we can ignore to handle non tagged wheels for backward compatibility
-    candidate_bases_build_tag = f"{build_tag[0]}{build_tag[1]}-" if build_tag else ""
 
-    candidate_bases = set(
-        [
-            # First check if the file is there using the canonically
-            # transformed name.
-            f"{filename_prefix}-{dist_version}-{candidate_bases_build_tag}",
-            # If that didn't work, try the canonical dist name. That's not
-            # "correct" but we do see it. (charset-normalizer-3.3.2-
-            # and setuptools-scm-8.0.4-) for example
-            f"{canonical_name}-{dist_version}-{candidate_bases_build_tag}",
-            # If *that* didn't work, try the dist name we've been
-            # given as a dependency. That's not "correct", either but we do
-            # see it. (oslo.messaging-14.7.0-) for example
-            f"{req.name}-{dist_version}-{candidate_bases_build_tag}",
-            # Sometimes the sdist uses '.' instead of '-' in the
-            # package name portion.
-            f"{req.name.replace('-', '.')}-{dist_version}-{candidate_bases_build_tag}",
-        ]
-    )
-    # Case-insensitive globbing was added to Python 3.12, but we
-    # have to run with older versions, too, so do our own name
-    # comparison.
+    build_tag_prefixes: list[str] = []
+    if build_tag:
+        build_tag_prefixes.append(f"{build_tag[0]}{build_tag[1]}-")
+        if not build_tag[1]:
+            build_tag_prefixes.append(f"{build_tag[0]}_")
+    else:
+        build_tag_prefixes.append("")
+
+    name_variants = [
+        filename_prefix,
+        canonical_name,
+        req.name,
+        req.name.replace("-", "."),
+    ]
+
+    candidate_bases: list[str] = []
+    for name in name_variants:
+        for btp in build_tag_prefixes:
+            candidate_bases.append(f"{name}-{dist_version}-{btp}")
+
     for base in candidate_bases:
         logger.debug('looking for wheel as "%s"', base)
         for filename in downloads_dir.glob("*.whl"):
