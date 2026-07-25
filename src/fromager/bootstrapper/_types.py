@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import logging
 import pathlib
 import typing
 from enum import StrEnum
@@ -10,8 +9,6 @@ from packaging.utils import NormalizedName
 
 from .. import build_environment
 from ..requirements_file import SourceType
-
-logger = logging.getLogger(__name__)
 
 # package name, extras, version, sdist/wheel
 SeenKey = tuple[NormalizedName, tuple[str, ...], str, typing.Literal["sdist", "wheel"]]
