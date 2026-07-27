@@ -1,0 +1,5 @@
+dependencies:
+  - test-circular-b
+changelog:
+  "1.0.0":
+    - "Package A"
