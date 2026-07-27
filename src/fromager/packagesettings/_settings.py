@@ -13,7 +13,7 @@ from packaging.utils import canonicalize_name
 from pydantic import Field
 
 from .. import overrides
-from ._models import PackageSettings, SbomSettings
+from ._models import ExternalCommands, PackageSettings, SbomSettings
 from ._pbi import PackageBuildInfo
 from ._typedefs import MODEL_CONFIG, GlobalChangelog, Package, Variant
 
@@ -43,6 +43,16 @@ class SettingsFile(pydantic.BaseModel):
     When set, Fromager generates SPDX 2.3 SBOM documents and embeds
     them in built wheels per PEP 770. When absent (default), no SBOMs
     are generated.
+    """
+
+    external_commands: ExternalCommands = Field(default_factory=ExternalCommands)
+    """Environment variable filtering for subprocesses
+
+    Controls which environment variables are passed to child processes
+    using ``keep_env`` / ``delete_env`` patterns.  Defaults to no
+    filtering.
+
+    .. versionadded:: 0.92.0
     """
 
     @classmethod
@@ -174,6 +184,14 @@ class Settings:
     def sbom_settings(self) -> SbomSettings | None:
         """Get global SBOM settings, or None if SBOM generation is disabled."""
         return self._settings.sbom
+
+    @property
+    def external_commands(self) -> ExternalCommands:
+        """Get external commands settings.
+
+        .. versionadded:: 0.92.0
+        """
+        return self._settings.external_commands
 
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""

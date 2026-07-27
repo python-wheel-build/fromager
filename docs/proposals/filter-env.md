@@ -68,20 +68,30 @@ validation error.
 
 ### Evaluation order
 
-`keep_env` is evaluated before `delete_env`. All checks are case-insensitive
-and short-circuit. If a variable matches the hard-coded always-keep set or
-an entry in `keep_env`, then the variable is kept.
+`keep_env` is evaluated before `delete_env`. If a variable matches the
+hard-coded always-keep set or an entry in `keep_env`, then the variable
+is kept.
+
+`delete_env` matching is **case-insensitive** for maximum convenience
+and security -- a pattern `aws_*` removes `AWS_SECRET_ACCESS_KEY`
+regardless of casing, so credentials cannot slip through due to
+unexpected capitalisation. `keep_env` and the always-keep set are
+case-sensitive, matching the exact variable names used in practice.
 
 For each variable in `os.environ`:
 
-1. If it is in a hard-coded always-keep set -- **keep**, regardless of
+1. If the key is not a valid POSIX name (`[A-Za-z_][A-Za-z0-9_]*`) --
+   **delete**. This removes keys with dashes, dots, embedded spaces,
+   or bash-exported function definitions (`BASH_FUNC_*%%`) that no
+   build script should need.
+2. If it is in a hard-coded always-keep set -- **keep**, regardless of
    configuration. The always-keep set contains variables required for
-   basic subprocess operation and proxy settings: `HOME`, `HOSTNAME`,
-   `LANG`, `LANGUAGE`, `LC_*`, `LOGNAME`, `NO_COLOR`, `PATH`, `SHELL`,
-   `USER`, `http_proxy`, `https_proxy`, `no_proxy`.
-2. If any `keep_env` entry matches -- **keep**.
-3. If any `delete_env` entry matches -- **delete**.
-4. Otherwise -- **keep** (default passthrough).
+   basic subprocess operation: `HOME`, `HOSTNAME`, `LANG`, `LANGUAGE`,
+   `LC_*`, `LOGNAME`, `NO_COLOR`, `PATH`, `SHELL`, `TEMP`, `TERM`,
+   `TMP`, `TMPDIR`, `TZ`, `USER`.
+3. If any `keep_env` entry matches (case-sensitive) -- **keep**.
+4. If any `delete_env` entry matches (case-insensitive) -- **delete**.
+5. Otherwise -- **keep** (default passthrough).
 
 `delete_env: ['*']` can be used to prevent passthrough. It filters all
 variables that neither match the always-keep set nor `keep_env` entries.
