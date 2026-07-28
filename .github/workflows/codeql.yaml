@@ -7,9 +7,19 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '*.rst'
+      - 'LICENSE'
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '*.rst'
+      - 'LICENSE'
   schedule:
     # Run weekly on Monday at 02:00 UTC
     - cron: "0 2 * * 1"
