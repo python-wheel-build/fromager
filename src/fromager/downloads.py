@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
+import stat
 import tarfile
 import tempfile
 import typing
@@ -81,6 +82,14 @@ def download_url(
                 for chunk in r.iter_content(chunk_size=64 * 1024):
                     if chunk:
                         tmp.write(chunk)
+            # NamedTemporaryFile creates files with mode 0o600. Widen to
+            # 0o644 so external wheel servers (e.g. nginx) running as a
+            # different user can read the file.  Using fchmod before
+            # close+rename avoids a window where the final path exists
+            # with overly restrictive permissions.
+            os.fchmod(
+                tmp.fileno(), stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+            )
             tmp.close()
             # Atomic rename on the same filesystem
             os.rename(temp_path, outfile)

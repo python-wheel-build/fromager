@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import io
+import os
 import pathlib
+import stat
 import tarfile
 import typing
 import zipfile
@@ -70,6 +72,16 @@ def test_download_url_creates_parent_dirs(
 ) -> None:
     requests_mock.get(_PKG_URL, content=b"data")
     assert download_url(destination_dir=tmp_path / "a" / "b", url=_PKG_URL).exists()
+
+
+def test_download_url_world_readable(
+    requests_mock: requests_mock.Mocker, tmp_path: pathlib.Path
+) -> None:
+    """Downloaded files must be readable by other users (e.g. nginx)."""
+    requests_mock.get(_PKG_URL, content=b"data")
+    result = download_url(destination_dir=tmp_path, url=_PKG_URL)
+    mode = stat.S_IMODE(os.stat(result).st_mode)
+    assert mode == 0o644, f"expected 0o644, got {oct(mode)}"
 
 
 def test_download_url_cleans_up_on_failure(
