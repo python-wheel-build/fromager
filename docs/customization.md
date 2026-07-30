@@ -15,8 +15,10 @@ places use the normalized, *canonical name*.
 ```python
 import re
 
+
 def canonicalize_name(name: str) -> NormalizedName:
     return re.sub(r"[-_.]+", "-", name).lower()
+
 
 def override_name(name: str | NormalizedName) -> str:
     return canonicalize_name(name).replace("-", "_")
@@ -456,9 +458,7 @@ def prebuilt_wheel(
     dist_version: str,
     wheel_filename: pathlib.Path,
 ):
-    logger.info(
-        f"{req.name}: running prebuilt wheel hook for {wheel_filename}"
-    )
+    logger.info(f"{req.name}: running prebuilt wheel hook for {wheel_filename}")
 ```
 
 ### post_bootstrap
@@ -515,14 +515,14 @@ mycommand = "mypackage.module:mycommand"
 import click
 from fromager import context
 
+
 @click.command()
 @click.argument("example")
 @click.pass_obj
 def mycommand(
     wkctx: context.WorkContext,
     example: str,
-) -> None:
-    ...
+) -> None: ...
 ```
 
 ## See Also
