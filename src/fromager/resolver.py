@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import datetime
+import enum
 import functools
 import logging
 import os
@@ -58,6 +59,14 @@ IGNORE_PLATFORM: str = "ignore"
 SUPPORTED_TAGS_IGNORE_PLATFORM: frozenset[Tag] = frozenset(
     Tag(t.interpreter, t.abi, IGNORE_PLATFORM) for t in SUPPORTED_TAGS
 )
+
+
+class AgeFallback(enum.StrEnum):
+    """Strategy when max-release-age filtering removes all candidates."""
+
+    ALL = "all"
+    NEWEST = "newest"
+    NONE = "none"
 
 
 @functools.lru_cache(maxsize=200)
@@ -237,7 +246,7 @@ def find_all_matching_from_provider(
     provider: BaseProvider,
     req: Requirement,
     max_age_cutoff: datetime.datetime | None = None,
-    fallback_on_empty_age_filter: bool = True,
+    age_fallback: AgeFallback = AgeFallback.ALL,
 ) -> list[tuple[str, Version]]:
     """Find all matching candidates from provider without full dependency resolution.
 
@@ -248,15 +257,15 @@ def find_all_matching_from_provider(
         provider: The provider to query for candidates.
         req: The requirement to match.
         max_age_cutoff: If set, reject candidates published before this time.
-            If all candidates are older than the cutoff, all are kept and
-            a warning is emitted to avoid empty resolution.  Age filtering
-            is skipped entirely for packages that have a constraint in the
-            provider's ``constraints`` object, since constraints represent
-            explicit user intent that should not be overridden by a heuristic.
-        fallback_on_empty_age_filter: If ``True`` (default), keep all
-            candidates when age filtering would produce an empty result.
-            If ``False``, return an empty list instead, allowing the
-            caller to implement its own fallback strategy.
+            Age filtering is skipped for packages that have an exact
+            ``==`` pin in the provider's ``constraints`` object, since
+            a pin represents explicit user intent that should not be
+            overridden by a heuristic.  Range constraints (``>=``,
+            ``<``, etc.) still go through age filtering normally.
+        age_fallback: Strategy when age filtering removes all candidates.
+            ``ALL`` (default) keeps every candidate with a warning.
+            ``NEWEST`` keeps only the single newest candidate.
+            ``NONE`` returns an empty list, letting the caller handle it.
 
     Returns list of (url, version) tuples sorted by version (highest first).
 
@@ -293,57 +302,71 @@ def find_all_matching_from_provider(
     # Materialize candidates so we can iterate more than once if filtering
     candidates_list = list(candidates)
 
-    # Constraints are explicit user intent — they override age filtering.
-    is_constrained = provider.constraints.get_constraint(req.name) is not None
+    if max_age_cutoff is not None:
+        # Exact == pins in constraints are explicit user intent — skip age filtering.
+        constraint = provider.constraints.get_constraint(req.name)
+        is_pinned = constraint is not None and _has_equality_pin(constraint)
 
-    if max_age_cutoff is not None and is_constrained:
-        logger.info(
-            "%s: skipping age filter for constrained package (%d candidate(s))",
-            req.name,
-            len(candidates_list),
-        )
-    elif max_age_cutoff is not None:
-        logger.info(
-            "%s: found %d candidate(s) matching %s",
-            req.name,
-            len(candidates_list),
-            req,
-        )
-        max_age_days = (datetime.datetime.now(datetime.UTC) - max_age_cutoff).days
-        filtered = [
-            c
-            for c in candidates_list
-            if c.upload_time is None or c.upload_time >= max_age_cutoff
-        ]
-        dropped = len(candidates_list) - len(filtered)
-        if dropped:
+        if is_pinned:
             logger.info(
-                "%s: have %d candidate(s) of %s published within %d days",
-                req.name,
-                len(filtered),
-                req,
-                max_age_days,
-            )
-        if filtered:
-            candidates_list = filtered
-        elif fallback_on_empty_age_filter:
-            logger.warning(
-                "%s: all %d candidate(s) of %s are older than %d days, "
-                "keeping all to avoid empty resolution",
+                "%s: skipping age filter for pinned constraint (%d candidate(s))",
                 req.name,
                 len(candidates_list),
-                req,
-                max_age_days,
             )
         else:
             logger.info(
-                "%s: all %d candidate(s) of %s are older than %d days",
+                "%s: found %d candidate(s) matching %s",
                 req.name,
                 len(candidates_list),
                 req,
-                max_age_days,
             )
-            candidates_list = []
+            max_age_days = (datetime.datetime.now(datetime.UTC) - max_age_cutoff).days
+            filtered = [
+                c
+                for c in candidates_list
+                if c.upload_time is None or c.upload_time >= max_age_cutoff
+            ]
+            dropped = len(candidates_list) - len(filtered)
+            if dropped:
+                logger.info(
+                    "%s: have %d candidate(s) of %s published within %d days",
+                    req.name,
+                    len(filtered),
+                    req,
+                    max_age_days,
+                )
+            if filtered:
+                candidates_list = filtered
+            elif age_fallback == AgeFallback.ALL:
+                logger.warning(
+                    "%s: all %d candidate(s) of %s are older than %d days, "
+                    "keeping all to avoid empty resolution",
+                    req.name,
+                    len(candidates_list),
+                    req,
+                    max_age_days,
+                )
+            elif age_fallback == AgeFallback.NEWEST:
+                newest = candidates_list[0]
+                logger.info(
+                    "%s: all %d candidate(s) of %s are older than %d days, "
+                    "falling back to newest version %s",
+                    req.name,
+                    len(candidates_list),
+                    req,
+                    max_age_days,
+                    newest.version,
+                )
+                candidates_list = [newest]
+            else:
+                logger.info(
+                    "%s: all %d candidate(s) of %s are older than %d days",
+                    req.name,
+                    len(candidates_list),
+                    req,
+                    max_age_days,
+                )
+                candidates_list = []
 
     # Convert candidates to list of (url, version) tuples
     # Candidates are sorted by version (highest first) by BaseProvider.find_matches()

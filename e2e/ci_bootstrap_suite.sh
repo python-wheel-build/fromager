@@ -30,6 +30,7 @@ run_test "bootstrap_multiple_versions"
 run_test "bootstrap_multiple_versions_resolve_error"
 run_test "bootstrap_max_release_age"
 run_test "bootstrap_age_constraint_bypass"
+run_test "bootstrap_age_fallback_newest"
 
 test_section "bootstrap test-mode tests"
 run_test "mode_resolution"

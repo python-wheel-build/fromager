@@ -59,8 +59,8 @@ fi
 # Verify the log confirms the constraint bypass
 echo ""
 echo "Checking log for constraint bypass..."
-if grep -q "skipping age filter for constrained package" "$OUTDIR/bootstrap.log"; then
-  echo "✓ Log confirms age filter was bypassed for constrained package"
+if grep -q "skipping age filter for pinned constraint" "$OUTDIR/bootstrap.log"; then
+  echo "✓ Log confirms age filter was bypassed for pinned constraint"
 else
   echo "✗ No constraint bypass message found in log"
   exit 1

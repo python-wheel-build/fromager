@@ -804,10 +804,10 @@ def test_max_release_age_all_too_old_keeps_all(
     assert "keeping all to avoid empty resolution" in caplog.text
 
 
-def test_max_release_age_all_too_old_returns_empty_when_fallback_disabled(
+def test_max_release_age_all_too_old_returns_empty_when_fallback_none(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """When fallback is disabled and all versions are too old, return empty list."""
+    """With AgeFallback.NONE and all versions too old, return empty list."""
     max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
     with requests_mock.Mocker() as r:
         r.get(
@@ -821,10 +821,35 @@ def test_max_release_age_all_too_old_returns_empty_when_fallback_disabled(
                 provider,
                 Requirement("test-pkg"),
                 max_age_cutoff=max_age_cutoff,
-                fallback_on_empty_age_filter=False,
+                age_fallback=resolver.AgeFallback.NONE,
             )
     assert results == []
     assert "all 3 candidate(s)" in caplog.text
+    assert "keeping all to avoid empty resolution" not in caplog.text
+
+
+def test_max_release_age_falls_back_to_newest(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """With AgeFallback.NEWEST and all versions too old, return only the newest."""
+    max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider,
+                Requirement("test-pkg"),
+                max_age_cutoff=max_age_cutoff,
+                age_fallback=resolver.AgeFallback.NEWEST,
+            )
+    versions = [str(v) for _, v in results]
+    assert versions == ["2.0.0"]
+    assert "falling back to newest version 2.0.0" in caplog.text
     assert "keeping all to avoid empty resolution" not in caplog.text
 
 
@@ -976,14 +1001,14 @@ def test_resolve_package_cooldown_toplevel_compound_specifier_not_exempt(
 
 
 # ---------------------------------------------------------------------------
-# constraint bypass tests — constrained packages skip age filtering
+# constraint pin bypass tests — exact == pins skip age filtering
 # ---------------------------------------------------------------------------
 
 
-def test_max_release_age_skips_filter_for_constrained_package(
+def test_max_release_age_skips_filter_for_pinned_constraint(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Constrained packages bypass age filtering entirely."""
+    """Exact == pin in constraints bypasses age filtering."""
     # Cutoff in the future so ALL versions are "too old"
     max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
     c = constraints.Constraints()
@@ -1000,15 +1025,69 @@ def test_max_release_age_skips_filter_for_constrained_package(
                 provider,
                 Requirement("test-pkg"),
                 max_age_cutoff=max_age_cutoff,
-                fallback_on_empty_age_filter=False,
+                age_fallback=resolver.AgeFallback.NONE,
             )
 
-    # The constraint restricts candidates to 1.2.2, and age filtering is
+    # The pin restricts candidates to 1.2.2, and age filtering is
     # bypassed — so 1.2.2 must survive even though it's outside the window.
     versions = [str(v) for _, v in results]
     assert "1.2.2" in versions
-    assert "skipping age filter for constrained package" in caplog.text
+    assert "skipping age filter for pinned constraint" in caplog.text
     assert "keeping all to avoid empty resolution" not in caplog.text
+
+
+def test_max_release_age_skips_filter_for_pinned_constraint_with_newest_fallback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Exact == pin bypasses age filtering even with NEWEST fallback."""
+    max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
+    c = constraints.Constraints()
+    c.add_constraint("test-pkg==1.2.2")
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True, constraints=c)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider,
+                Requirement("test-pkg"),
+                max_age_cutoff=max_age_cutoff,
+                age_fallback=resolver.AgeFallback.NEWEST,
+            )
+
+    versions = [str(v) for _, v in results]
+    assert "1.2.2" in versions
+    assert "skipping age filter for pinned constraint" in caplog.text
+    assert "falling back to newest version" not in caplog.text
+
+
+def test_max_release_age_still_filters_range_constrained_package(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Range constraints (not exact pins) are still subject to age filtering."""
+    max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
+    c = constraints.Constraints()
+    c.add_constraint("test-pkg>=1.0")
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True, constraints=c)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider,
+                Requirement("test-pkg"),
+                max_age_cutoff=max_age_cutoff,
+                age_fallback=resolver.AgeFallback.NONE,
+            )
+
+    assert results == []
+    assert "skipping age filter for pinned constraint" not in caplog.text
 
 
 def test_max_release_age_still_filters_unconstrained_package(
@@ -1028,8 +1107,8 @@ def test_max_release_age_still_filters_unconstrained_package(
                 provider,
                 Requirement("test-pkg"),
                 max_age_cutoff=max_age_cutoff,
-                fallback_on_empty_age_filter=False,
+                age_fallback=resolver.AgeFallback.NONE,
             )
 
     assert results == []
-    assert "skipping age filter for constrained package" not in caplog.text
+    assert "skipping age filter for pinned constraint" not in caplog.text

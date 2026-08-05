@@ -199,11 +199,16 @@ class BootstrapRequirementResolver:
                 req_type=req_type,
             )
             max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
+            age_fallback = (
+                resolver.AgeFallback.NEWEST
+                if self.multiple_versions
+                else resolver.AgeFallback.ALL
+            )
             results = resolver.find_all_matching_from_provider(
                 provider,
                 req,
                 max_age_cutoff=max_age_cutoff,
-                fallback_on_empty_age_filter=not self.multiple_versions,
+                age_fallback=age_fallback,
             )
 
             if not results and self.multiple_versions and self.cache_wheel_server_url:
