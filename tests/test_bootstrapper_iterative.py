@@ -19,6 +19,7 @@ Tests cover:
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import pathlib
 import typing
 from unittest.mock import Mock, call, patch
@@ -1507,6 +1508,9 @@ class TestPhasePrepareSource:
         )
 
         with (
+            caplog.at_level(
+                logging.INFO, logger="fromager.bootstrapper._prepare_source"
+            ),
             patch.object(
                 tmp_context.constraints,
                 "get_constraint",
