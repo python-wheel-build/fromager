@@ -29,6 +29,7 @@ run_test "bootstrap_sdist_only"
 run_test "bootstrap_multiple_versions"
 run_test "bootstrap_multiple_versions_resolve_error"
 run_test "bootstrap_max_release_age"
+run_test "bootstrap_age_constraint_bypass"
 
 test_section "bootstrap test-mode tests"
 run_test "mode_resolution"

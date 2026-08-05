@@ -249,7 +249,10 @@ def find_all_matching_from_provider(
         req: The requirement to match.
         max_age_cutoff: If set, reject candidates published before this time.
             If all candidates are older than the cutoff, all are kept and
-            a warning is emitted to avoid empty resolution.
+            a warning is emitted to avoid empty resolution.  Age filtering
+            is skipped entirely for packages that have a constraint in the
+            provider's ``constraints`` object, since constraints represent
+            explicit user intent that should not be overridden by a heuristic.
         fallback_on_empty_age_filter: If ``True`` (default), keep all
             candidates when age filtering would produce an empty result.
             If ``False``, return an empty list instead, allowing the
@@ -290,7 +293,16 @@ def find_all_matching_from_provider(
     # Materialize candidates so we can iterate more than once if filtering
     candidates_list = list(candidates)
 
-    if max_age_cutoff is not None:
+    # Constraints are explicit user intent — they override age filtering.
+    is_constrained = provider.constraints.get_constraint(req.name) is not None
+
+    if max_age_cutoff is not None and is_constrained:
+        logger.info(
+            "%s: skipping age filter for constrained package (%d candidate(s))",
+            req.name,
+            len(candidates_list),
+        )
+    elif max_age_cutoff is not None:
         logger.info(
             "%s: found %d candidate(s) matching %s",
             req.name,

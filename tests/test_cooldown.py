@@ -18,7 +18,15 @@ import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import candidate, context, packagesettings, resolver, sources, wheels
+from fromager import (
+    candidate,
+    constraints,
+    context,
+    packagesettings,
+    resolver,
+    sources,
+    wheels,
+)
 from fromager.requirements_file import RequirementType
 
 _BOOTSTRAP_TIME = datetime.datetime(2026, 3, 26, 0, 0, 0, tzinfo=datetime.UTC)
@@ -965,3 +973,63 @@ def test_resolve_package_cooldown_toplevel_compound_specifier_not_exempt(
         ctx, Requirement("test-pkg==1.0,>0.9"), req_type=RequirementType.TOP_LEVEL
     )
     assert result is _COOLDOWN
+
+
+# ---------------------------------------------------------------------------
+# constraint bypass tests — constrained packages skip age filtering
+# ---------------------------------------------------------------------------
+
+
+def test_max_release_age_skips_filter_for_constrained_package(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Constrained packages bypass age filtering entirely."""
+    # Cutoff in the future so ALL versions are "too old"
+    max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
+    c = constraints.Constraints()
+    c.add_constraint("test-pkg==1.2.2")
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True, constraints=c)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider,
+                Requirement("test-pkg"),
+                max_age_cutoff=max_age_cutoff,
+                fallback_on_empty_age_filter=False,
+            )
+
+    # The constraint restricts candidates to 1.2.2, and age filtering is
+    # bypassed — so 1.2.2 must survive even though it's outside the window.
+    versions = [str(v) for _, v in results]
+    assert "1.2.2" in versions
+    assert "skipping age filter for constrained package" in caplog.text
+    assert "keeping all to avoid empty resolution" not in caplog.text
+
+
+def test_max_release_age_still_filters_unconstrained_package(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Unconstrained packages are still subject to age filtering."""
+    max_age_cutoff = _BOOTSTRAP_TIME + datetime.timedelta(days=1)
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        provider = resolver.PyPIProvider(include_sdists=True)
+        with caplog.at_level(logging.INFO, logger="fromager.resolver"):
+            results = resolver.find_all_matching_from_provider(
+                provider,
+                Requirement("test-pkg"),
+                max_age_cutoff=max_age_cutoff,
+                fallback_on_empty_age_filter=False,
+            )
+
+    assert results == []
+    assert "skipping age filter for constrained package" not in caplog.text
