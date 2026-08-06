@@ -128,7 +128,7 @@ def test_cooldown_disabled_selects_latest() -> None:
             json=_cooldown_json_response,
             headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
         )
-        provider = resolver.PyPIProvider(include_sdists=True, cooldown=None)
+        provider = resolver.PyPIProvider(include_sdists=True)
         rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
         result = rslvr.resolve([Requirement("test-pkg")])
 
@@ -351,7 +351,7 @@ def test_non_pypi_index_allows_without_upload_time(
 def _make_ctx(
     tmp_path: pathlib.Path,
     *,
-    cooldown: candidate.Cooldown | None,
+    cooldown: candidate.Cooldown | None = None,
     min_release_age: int | None = None,
 ) -> context.WorkContext:
     """Build a WorkContext with an optional per-package min_release_age setting."""
@@ -378,31 +378,34 @@ def _make_ctx(
 
 
 def test_resolve_package_cooldown_inherits_global(tmp_path: pathlib.Path) -> None:
-    """No per-package override returns the global cooldown unchanged."""
+    """No per-package override returns a cooldown equal to the global one."""
     ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is _COOLDOWN
+    assert result.min_age
+    assert result.min_age == _COOLDOWN.min_age
+    assert result.bootstrap_time == _COOLDOWN.bootstrap_time
+    assert result.exempt_versions == frozenset()
 
 
 def test_resolve_package_cooldown_disabled_per_package(tmp_path: pathlib.Path) -> None:
     """min_release_age=0 disables the cooldown for the package even when global is set."""
     ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN, min_release_age=0)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is None
+    assert not result.min_age
 
 
 def test_resolve_package_cooldown_disabled_no_global(tmp_path: pathlib.Path) -> None:
-    """min_release_age=0 with no global cooldown still returns None."""
-    ctx = _make_ctx(tmp_path, cooldown=None, min_release_age=0)
+    """min_release_age=0 with no global cooldown returns a disabled cooldown."""
+    ctx = _make_ctx(tmp_path, min_release_age=0)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is None
+    assert not result.min_age
 
 
 def test_resolve_package_cooldown_override_days(tmp_path: pathlib.Path) -> None:
     """Positive per-package override creates a new Cooldown with the given days."""
     ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN, min_release_age=30)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is not None
+    assert result.min_age
     assert result.min_age.days == 30
     # bootstrap_time is inherited from the global cooldown for a consistent cutoff.
     assert result.bootstrap_time == _COOLDOWN.bootstrap_time
@@ -410,9 +413,9 @@ def test_resolve_package_cooldown_override_days(tmp_path: pathlib.Path) -> None:
 
 def test_resolve_package_cooldown_override_no_global(tmp_path: pathlib.Path) -> None:
     """Positive per-package override works even without a global cooldown."""
-    ctx = _make_ctx(tmp_path, cooldown=None, min_release_age=14)
+    ctx = _make_ctx(tmp_path, min_release_age=14)
     result = resolver.resolve_package_cooldown(ctx, Requirement("test-pkg"))
-    assert result is not None
+    assert result.min_age
     assert result.min_age.days == 14
 
 
@@ -530,7 +533,7 @@ _gitlab_tags_response = """
 
 
 def _make_gitlab_provider(
-    cooldown: candidate.Cooldown | None,
+    cooldown: candidate.Cooldown | None = None,
 ) -> resolver.GitLabTagProvider:
     return resolver.GitLabTagProvider(
         project_path="test/pkg",
@@ -565,7 +568,7 @@ def test_gitlab_cooldown_disabled_selects_latest() -> None:
     """Without a cooldown, GitLabTagProvider selects the latest tag."""
     with requests_mock.Mocker() as r:
         r.get(_GITLAB_API_URL, text=_gitlab_tags_response)
-        provider = _make_gitlab_provider(cooldown=None)
+        provider = _make_gitlab_provider()
         rslvr = resolvelib.Resolver(provider, resolvelib.BaseReporter())
         result = rslvr.resolve([Requirement("test-pkg")])
         assert str(result.mapping["test-pkg"].version) == "0.0.3"
@@ -884,8 +887,8 @@ def test_compute_max_age_cutoff_with_cooldown(
 def test_compute_max_age_cutoff_without_cooldown(
     tmp_context: context.WorkContext,
 ) -> None:
-    """_compute_max_age_cutoff uses current time when no cooldown is set."""
-    tmp_context.cooldown = None
+    """_compute_max_age_cutoff uses disabled cooldown's bootstrap_time."""
+    tmp_context.cooldown = candidate.Cooldown.disabled()
     tmp_context.set_max_release_age(30)
     cutoff = resolver._compute_max_age_cutoff(tmp_context)
     assert cutoff is not None
@@ -909,7 +912,7 @@ def test_resolve_package_cooldown_exempt_toplevel_equality_pin(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.3.2"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is None
+    assert not result.min_age
 
 
 def test_resolve_package_cooldown_enforced_transitive_equality_pin(
@@ -920,7 +923,10 @@ def test_resolve_package_cooldown_enforced_transitive_equality_pin(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.3.2"), req_type=RequirementType.INSTALL
     )
-    assert result is _COOLDOWN
+    assert result.min_age
+    assert result.min_age == _COOLDOWN.min_age
+    assert result.bootstrap_time == _COOLDOWN.bootstrap_time
+    assert result.exempt_versions == frozenset()
 
 
 def test_resolve_package_cooldown_enforced_toplevel_no_pin(
@@ -931,7 +937,10 @@ def test_resolve_package_cooldown_enforced_toplevel_no_pin(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is _COOLDOWN
+    assert result.min_age
+    assert result.min_age == _COOLDOWN.min_age
+    assert result.bootstrap_time == _COOLDOWN.bootstrap_time
+    assert result.exempt_versions == frozenset()
 
 
 def test_resolve_package_cooldown_none_req_type_not_exempt(
@@ -942,7 +951,10 @@ def test_resolve_package_cooldown_none_req_type_not_exempt(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.3.2"), req_type=None
     )
-    assert result is _COOLDOWN
+    assert result.min_age
+    assert result.min_age == _COOLDOWN.min_age
+    assert result.bootstrap_time == _COOLDOWN.bootstrap_time
+    assert result.exempt_versions == frozenset()
 
 
 def test_resolve_package_cooldown_toplevel_wildcard_equality_not_exempt(
@@ -953,7 +965,10 @@ def test_resolve_package_cooldown_toplevel_wildcard_equality_not_exempt(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.*"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is _COOLDOWN
+    assert result.min_age
+    assert result.min_age == _COOLDOWN.min_age
+    assert result.bootstrap_time == _COOLDOWN.bootstrap_time
+    assert result.exempt_versions == frozenset()
 
 
 def test_resolve_package_cooldown_toplevel_compound_specifier_not_exempt(
@@ -964,4 +979,464 @@ def test_resolve_package_cooldown_toplevel_compound_specifier_not_exempt(
     result = resolver.resolve_package_cooldown(
         ctx, Requirement("test-pkg==1.0,>0.9"), req_type=RequirementType.TOP_LEVEL
     )
-    assert result is _COOLDOWN
+    assert result.min_age
+    assert result.min_age == _COOLDOWN.min_age
+    assert result.bootstrap_time == _COOLDOWN.bootstrap_time
+    assert result.exempt_versions == frozenset()
+
+
+def test_get_toplevel_pinned_versions_empty(tmp_path: pathlib.Path) -> None:
+    """No top-level pin in the graph returns an empty frozenset."""
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+    result = resolver._get_toplevel_pinned_versions(ctx, Requirement("test-pkg"))
+    assert result == frozenset()
+
+
+def test_get_toplevel_pinned_versions_ignores_wildcard_pin(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A top-level wildcard pin (==1.*) is not an exact pin and must be excluded."""
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==1.*"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+    result = resolver._get_toplevel_pinned_versions(ctx, Requirement("test-pkg"))
+    assert result == frozenset()
+
+
+def test_non_exact_toplevel_entry_does_not_exempt(tmp_path: pathlib.Path) -> None:
+    """A top-level >= entry is not an exact pin — no version is exempted."""
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg>=1.0"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+    result = resolver.resolve_package_cooldown(
+        ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
+    )
+    assert result.min_age
+    assert result.exempt_versions == frozenset()
+
+
+def test_wildcard_toplevel_pin_does_not_exempt(tmp_path: pathlib.Path) -> None:
+    """A top-level ==1.* entry is not a true exact pin — no version is exempted."""
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==1.*"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+    result = resolver.resolve_package_cooldown(
+        ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
+    )
+    assert result.min_age
+    assert result.exempt_versions == frozenset()
+
+
+def test_name_normalization_across_requirement_and_graph(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Exemption works even when requirement and graph use different name forms.
+
+    The transitive requirement uses ``Test_Pkg`` while the graph entry uses
+    the canonical ``test-pkg``. Name normalization in ``get_outgoing_edges``
+    must handle this transparently.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==1.3.2"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+    result = resolver.resolve_package_cooldown(
+        ctx, Requirement("Test_Pkg>=1.0"), req_type=RequirementType.INSTALL
+    )
+    assert result.min_age
+    assert result.exempt_versions == frozenset({Version("1.3.2")})
+
+
+def test_toplevel_pin_takes_precedence_over_per_package_override(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Top-level == pin bypasses cooldown even with a per-package min_release_age.
+
+    The per-package setting (30 days) is a weaker signal than an explicit
+    top-level pin. The pin should win and disable cooldown entirely.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN, min_release_age=30)
+    result = resolver.resolve_package_cooldown(
+        ctx, Requirement("test-pkg==1.3.2"), req_type=RequirementType.TOP_LEVEL
+    )
+    assert not result.min_age
+
+
+def test_transitive_dep_cooldown_blocks_non_pinned_version(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Cooldown must block non-pinned versions even when a top-level pin exists.
+
+    Pin test-pkg==1.3.2 top-level. A transitive dep asks for test-pkg>=1.0.
+    Version 2.0.0 (2 days old) is within the 7-day cooldown window and is NOT
+    the pinned version, so cooldown must block it. The resolver should select
+    1.3.2 (the pinned version, 11 days old, outside cooldown).
+
+    This is the scenario where PR #1154's blanket bypass was too broad — it
+    disabled cooldown for all versions of the package instead of only the
+    pinned version.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==1.3.2"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+
+        _, version = resolver.resolve(
+            ctx=ctx,
+            req=Requirement("test-pkg>=1.0"),
+            sdist_server_url="https://pypi.org/simple/",
+            include_sdists=True,
+            include_wheels=True,
+            req_type=RequirementType.INSTALL,
+        )
+        assert str(version) == "1.3.2"
+
+
+def test_transitive_dep_cooldown_not_bypassed_for_all_versions(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Cooldown for transitive deps must not be fully bypassed by a top-level pin.
+
+    When a top-level pin exists, `resolve_package_cooldown` should still return
+    a cooldown (not None) for transitive deps so that non-pinned versions
+    remain subject to cooldown filtering.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==2.0.0"),
+        req_version=Version("2.0.0"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-2.0.0-py3-none-any.whl",
+        pre_built=False,
+    )
+
+    result = resolver.resolve_package_cooldown(
+        ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
+    )
+    assert result.min_age
+    assert result.min_age == _COOLDOWN.min_age
+    assert result.bootstrap_time == _COOLDOWN.bootstrap_time
+    assert result.exempt_versions == frozenset({Version("2.0.0")})
+
+
+def test_transitive_dep_cooldown_unpinned_transitive_spec(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Transitive dep with no version spec still respects cooldown.
+
+    Top-level pins test-pkg==1.3.2. A transitive dep asks for bare
+    ``test-pkg`` (no specifier). Version 2.0.0 (within cooldown) must be
+    blocked; 1.3.2 (outside cooldown) should be selected.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==1.3.2"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+
+        _, version = resolver.resolve(
+            ctx=ctx,
+            req=Requirement("test-pkg"),
+            sdist_server_url="https://pypi.org/simple/",
+            include_sdists=True,
+            include_wheels=True,
+            req_type=RequirementType.INSTALL,
+        )
+        assert str(version) == "1.3.2"
+
+
+def test_transitive_dep_cooldown_lower_bound_matches_pin(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Transitive dep whose lower bound matches the pin still respects cooldown.
+
+    Top-level pins test-pkg==1.3.2. A transitive dep asks for
+    test-pkg>=1.3.2. Version 2.0.0 (within cooldown) must be blocked;
+    1.3.2 (outside cooldown, matches the pin) should be selected.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==1.3.2"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+
+        _, version = resolver.resolve(
+            ctx=ctx,
+            req=Requirement("test-pkg>=1.3.2"),
+            sdist_server_url="https://pypi.org/simple/",
+            include_sdists=True,
+            include_wheels=True,
+            req_type=RequirementType.INSTALL,
+        )
+        assert str(version) == "1.3.2"
+
+
+def test_transitive_dep_cooldown_conflict_with_pin(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Transitive dep that conflicts with the pin fails regardless of cooldown.
+
+    Top-level pins test-pkg==1.3.2. A transitive dep asks for
+    test-pkg>=2.0. No version satisfies both — 2.0.0 is blocked by cooldown
+    and nothing else matches >=2.0. Resolution should fail.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==1.3.2"),
+        req_version=Version("1.3.2"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-1.3.2-py3-none-any.whl",
+        pre_built=False,
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+
+        with pytest.raises(resolvelib.resolvers.ResolverException):
+            resolver.resolve(
+                ctx=ctx,
+                req=Requirement("test-pkg>=2.0"),
+                sdist_server_url="https://pypi.org/simple/",
+                include_sdists=True,
+                include_wheels=True,
+                req_type=RequirementType.INSTALL,
+            )
+
+
+def test_transitive_dep_exempts_pinned_version_from_cooldown(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Transitive dep should exempt only the pinned version from cooldown.
+
+    If a requirements file pins test-pkg==2.0.0 (top-level) and another
+    top-level package depends on test-pkg>=1.0 (transitive), cooldown should
+    remain active but exempt version 2.0.0 — the user already explicitly
+    approved that version via the pin.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==2.0.0"),
+        req_version=Version("2.0.0"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-2.0.0-py3-none-any.whl",
+        pre_built=False,
+    )
+
+    result = resolver.resolve_package_cooldown(
+        ctx, Requirement("test-pkg>=1.0"), req_type=RequirementType.INSTALL
+    )
+    assert result.min_age
+    assert result.exempt_versions == frozenset({Version("2.0.0")})
+
+
+def test_transitive_dep_resolves_to_toplevel_pinned_version(
+    tmp_path: pathlib.Path,
+) -> None:
+    """End-to-end: transitive dep selects the top-level pinned version, not an older one.
+
+    With cooldown active, test-pkg 2.0.0 (2 days old) is within the cooldown
+    window. A top-level pin test-pkg==2.0.0 exempts 2.0.0 from cooldown.
+    When the same package appears as a transitive dependency (test-pkg>=1.0),
+    it should resolve to 2.0.0 — not fall back to 1.3.2.
+    """
+    ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=Requirement("test-pkg==2.0.0"),
+        req_version=Version("2.0.0"),
+        download_url="https://files.pythonhosted.org/packages/test_pkg-2.0.0-py3-none-any.whl",
+        pre_built=False,
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/test-pkg/",
+            json=_cooldown_json_response,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+
+        _, version = resolver.resolve(
+            ctx=ctx,
+            req=Requirement("test-pkg>=1.0"),
+            sdist_server_url="https://pypi.org/simple/",
+            include_sdists=True,
+            include_wheels=True,
+            req_type=RequirementType.INSTALL,
+        )
+        assert str(version) == "2.0.0"
+
+
+def _add_toplevel_equality_pin(
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+) -> None:
+    """Record a top-level == pin in the graph (simulates phase-1 pre-resolution)."""
+    ctx.dependency_graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=req,
+        req_version=version,
+        download_url=f"https://files.test/{req.name}-{version}.whl",
+        pre_built=False,
+    )
+
+
+class TestTopLevelPinCooldownScenarios:
+    """Regression coverage for top-level == pin interactions with cooldown (#1153, #1187).
+
+    Three failure modes were identified during analysis:
+
+    1. **#1153** — Top-level ``==`` pin pre-resolved; transitive loose spec blocked.
+       Fixed by ``Cooldown.exempt_versions`` from the dependency graph.
+    2. **#1187 (different specifiers)** — ``A==2.0.0`` vs ``A>=1.0`` use different
+       session-cache keys; transitive resolution uses ``exempt_versions``.
+    3. **#1187 (session cache)** — Same requirement string with different top-level
+       vs non-top-level context must not share a cache entry (#1188). Covered in
+       ``tests/test_bootstrap_requirement_resolver.py``.
+    """
+
+    def test_issue_1153_transitive_loose_spec_honours_toplevel_pin(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """#1153: ``bar`` depends on ``foo>=0.9``; ``foo==2.0.0`` pinned within cooldown."""
+        ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+        _add_toplevel_equality_pin(
+            ctx, Requirement("test-pkg==2.0.0"), Version("2.0.0")
+        )
+
+        with requests_mock.Mocker() as r:
+            r.get(
+                "https://pypi.org/simple/test-pkg/",
+                json=_cooldown_json_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+
+            _, version = resolver.resolve(
+                ctx=ctx,
+                req=Requirement("test-pkg>=0.9"),
+                sdist_server_url="https://pypi.org/simple/",
+                include_sdists=True,
+                include_wheels=True,
+                req_type=RequirementType.INSTALL,
+            )
+
+        assert str(version) == "2.0.0"
+
+    def test_issue_1187_different_specifiers_use_exempt_versions(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """#1187: ``A>=1.0`` and ``A==2.0.0`` differ in cache key; exempt_versions applies."""
+        top_level_req = Requirement("test-pkg==2.0.0")
+        transitive_req = Requirement("test-pkg>=1.0")
+        assert str(top_level_req) != str(transitive_req)
+
+        ctx = _make_ctx(tmp_path, cooldown=_COOLDOWN)
+        _add_toplevel_equality_pin(ctx, top_level_req, Version("2.0.0"))
+
+        cooldown = resolver.resolve_package_cooldown(
+            ctx, transitive_req, req_type=RequirementType.INSTALL
+        )
+        assert cooldown.exempt_versions == frozenset({Version("2.0.0")})
+
+        with requests_mock.Mocker() as r:
+            r.get(
+                "https://pypi.org/simple/test-pkg/",
+                json=_cooldown_json_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+
+            _, version = resolver.resolve(
+                ctx=ctx,
+                req=transitive_req,
+                sdist_server_url="https://pypi.org/simple/",
+                include_sdists=True,
+                include_wheels=True,
+                req_type=RequirementType.INSTALL,
+            )
+
+        assert str(version) == "2.0.0"

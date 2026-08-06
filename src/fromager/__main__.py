@@ -283,11 +283,7 @@ def main(
         network_isolation=network_isolation,
         max_jobs=jobs,
         settings_dir=settings_dir,
-        cooldown=(
-            candidate.Cooldown(min_age=datetime.timedelta(days=min_release_age))
-            if min_release_age > 0
-            else None
-        ),
+        cooldown=candidate.Cooldown(min_age=datetime.timedelta(days=min_release_age)),
     )
     wkctx.setup()
     ctx.obj = wkctx

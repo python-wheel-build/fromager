@@ -61,7 +61,6 @@ class PyPICacheProvider(resolver.PyPIProvider):
             ignore_platform=False,
             use_resolver_cache=use_resolver_cache,
             override_download_url=None,
-            cooldown=None,
             supports_upload_time=False,
         )
 
