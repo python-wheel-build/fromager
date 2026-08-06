@@ -40,60 +40,62 @@ def test_constraint_not_is_satisfied_by() -> None:
     assert not c.is_satisfied_by("bar", Version("1.0"))
 
 
-@mock.patch("platform.machine", mock.Mock(return_value="atari"))
 def test_add_constraint_conflict() -> None:
-    assert markers.default_environment()["platform_machine"] == "atari"
+    fake_env = {**markers.default_environment(), "platform_machine": "atari"}
 
-    c = Constraints()
-    c.add_constraint("foo<=1.1")
-    c.add_constraint("flit_core==2.0rc3")
+    with mock.patch.object(markers, "default_environment", return_value=fake_env):
+        assert markers.default_environment()["platform_machine"] == "atari"
 
-    # Conflicting version, same marker (no marker) should raise error
-    with pytest.raises(InvalidConstraintError):
-        c.add_constraint("foo>1.1")
+        c = Constraints()
+        c.add_constraint("foo<=1.1")
+        c.add_constraint("flit_core==2.0rc3")
 
-    # Conflicting version for flit_core should raise error
-    with pytest.raises(InvalidConstraintError):
-        c.add_constraint("flit_core>2.0.0")
+        # Conflicting version, same marker (no marker) should raise error
+        with pytest.raises(InvalidConstraintError):
+            c.add_constraint("foo>1.1")
 
-    # Normalized name conflict should raise error
-    with pytest.raises(InvalidConstraintError):
-        c.add_constraint("flit-core>2.0.0")
+        # Conflicting version for flit_core should raise error
+        with pytest.raises(InvalidConstraintError):
+            c.add_constraint("flit_core>2.0.0")
 
-    # Constraints for other platforms are ignored
-    c.add_constraint(
-        "bar==1.0; python_version >= '3.11' and platform_machine == 'amiga'"
-    )
-    assert c.get_constraint("bar") is None
+        # Normalized name conflict should raise error
+        with pytest.raises(InvalidConstraintError):
+            c.add_constraint("flit-core>2.0.0")
 
-    c.add_constraint(
-        "bar==1.0; python_version >= '3.11' and platform_machine == 'atari'"
-    )
-    # Make sure correct constraint is added
-    constraint = c.get_constraint("bar")
-    assert constraint
-    assert constraint.name == "bar"
-    assert constraint.specifier == "==1.0"
-    assert constraint.marker == markers.Marker(
-        'python_version >= "3.11" and platform_machine == "atari"'
-    )
-
-    # Different, but equivalent markers should raise error
-    with pytest.raises(InvalidConstraintError):
+        # Constraints for other platforms are ignored
         c.add_constraint(
-            "bar==1.1; platform_machine == 'atari' and python_version >= '3.11'"
+            "bar==1.0; python_version >= '3.11' and platform_machine == 'amiga'"
+        )
+        assert c.get_constraint("bar") is None
+
+        c.add_constraint(
+            "bar==1.0; python_version >= '3.11' and platform_machine == 'atari'"
+        )
+        # Make sure correct constraint is added
+        constraint = c.get_constraint("bar")
+        assert constraint
+        assert constraint.name == "bar"
+        assert constraint.specifier == "==1.0"
+        assert constraint.marker == markers.Marker(
+            'python_version >= "3.11" and platform_machine == "atari"'
         )
 
-    # Same package with different markers should NOT raise error
-    c.add_constraint("baz==1.0; platform_machine != 'amiga'")
-    c.add_constraint("baz==1.1; platform_machine == 'amiga'")
+        # Different, but equivalent markers should raise error
+        with pytest.raises(InvalidConstraintError):
+            c.add_constraint(
+                "bar==1.1; platform_machine == 'atari' and python_version >= '3.11'"
+            )
 
-    # But same package with same marker should raise error
-    with pytest.raises(InvalidConstraintError):
-        c.add_constraint("foo==1.2; platform_machine != 'amiga'")
+        # Same package with different markers should NOT raise error
+        c.add_constraint("baz==1.0; platform_machine != 'amiga'")
+        c.add_constraint("baz==1.1; platform_machine == 'amiga'")
 
-    # Verify multiple constraints for same package are stored
-    assert len(c) == 4  # flit_core, foo, bar, and baz
+        # But same package with same marker should raise error
+        with pytest.raises(InvalidConstraintError):
+            c.add_constraint("foo==1.2; platform_machine != 'amiga'")
+
+        # Verify multiple constraints for same package are stored
+        assert len(c) == 4  # flit_core, foo, bar, and baz
 
 
 def test_dump_constraints() -> None:
