@@ -6,6 +6,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
 
+from fromager import resolver
 from fromager.bootstrap_requirement_resolver import BootstrapRequirementResolver
 from fromager.context import WorkContext
 from fromager.dependency_graph import DependencyGraph
@@ -824,3 +825,69 @@ class TestResolveFromCacheServer:
             )
 
         mock_cache.assert_not_called()
+
+    def test_multi_version_passes_newest_age_fallback(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Multi-version mode passes AgeFallback.NEWEST to the resolver."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=True,
+            cache_wheel_server_url="http://cache.test/simple",
+        )
+        req = Requirement("testpkg")
+
+        with (
+            patch.object(brr, "_resolve_from_graph", return_value=None),
+            patch(
+                "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            ),
+            patch(
+                "fromager.bootstrap_requirement_resolver.resolver"
+                ".find_all_matching_from_provider",
+                return_value=[("url", Version("1.0"))],
+            ) as mock_find,
+        ):
+            brr.resolve(
+                req,
+                RequirementType.INSTALL,
+                parent_req=None,
+                pre_built=False,
+                return_all_versions=True,
+            )
+
+        mock_find.assert_called_once()
+        call_kwargs = mock_find.call_args.kwargs
+        assert call_kwargs["age_fallback"] == resolver.AgeFallback.NEWEST
+
+    def test_single_version_passes_all_age_fallback(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Single-version mode passes AgeFallback.ALL to the resolver."""
+        brr = BootstrapRequirementResolver(
+            tmp_context,
+            multiple_versions=False,
+        )
+        req = Requirement("testpkg")
+
+        with (
+            patch.object(brr, "_resolve_from_graph", return_value=None),
+            patch(
+                "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            ),
+            patch(
+                "fromager.bootstrap_requirement_resolver.resolver"
+                ".find_all_matching_from_provider",
+                return_value=[("url", Version("1.0"))],
+            ) as mock_find,
+        ):
+            brr.resolve(
+                req,
+                RequirementType.INSTALL,
+                parent_req=None,
+                pre_built=False,
+            )
+
+        mock_find.assert_called_once()
+        call_kwargs = mock_find.call_args.kwargs
+        assert call_kwargs["age_fallback"] == resolver.AgeFallback.ALL
