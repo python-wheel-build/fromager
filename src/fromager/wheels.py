@@ -24,6 +24,7 @@ from . import (
     dependencies,
     downloads,
     external_commands,
+    finders,
     metrics,
     overrides,
     packagesettings,
@@ -508,6 +509,25 @@ def get_prebuilt_wheel_provider(
     )
 
 
+def resolve_cached_wheel(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    cache_server_url: str,
+) -> tuple[str, Version]:
+    """Resolve a wheel from a trusted cache server (local or remote).
+
+    Uses ``PyPICacheProvider`` -- no cooldown, no hooks, no upload-time checks.
+    """
+    provider = finders.PyPICacheProvider(
+        cache_server_url=cache_server_url,
+        constraints=ctx.constraints,
+    )
+    results = resolver.find_all_matching_from_provider(provider, req)
+    wheel_url, version = results[0]
+    return str(wheel_url), version
+
+
 def resolve_all_prebuilt_wheels(
     *,
     ctx: context.WorkContext,
@@ -532,11 +552,6 @@ def resolve_all_prebuilt_wheels(
             provider.cooldown = resolver.resolve_package_cooldown(
                 ctx, req, req_type=req_type
             )
-            # The local fromager wheel server is PEP 503-only and serves
-            # packages that were already resolved and vetted earlier in the
-            # same run. Don't fail-closed on missing upload_time there.
-            if ctx.wheel_server_url and url == ctx.wheel_server_url:
-                provider.supports_upload_time = False
 
             # Get all matching candidates from provider
             results = resolver.find_all_matching_from_provider(provider, req)
@@ -559,10 +574,10 @@ def resolve_prebuilt_wheel(
     wheel_server_urls: list[str],
     req_type: requirements_file.RequirementType | None = None,
 ) -> tuple[str, Version]:
-    """Return (URL, version) for the best matching wheel version.
+    """Return (URL, version) for the best matching pre-built wheel.
 
-    Tries wheel servers in order and returns result from the first that succeeds.
-    Returns the highest matching version.
+    Tries wheel servers in order and returns the highest matching version
+    from the first server that succeeds.
     """
     results = resolve_all_prebuilt_wheels(
         ctx=ctx, req=req, wheel_server_urls=wheel_server_urls, req_type=req_type
