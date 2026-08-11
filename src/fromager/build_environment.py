@@ -206,10 +206,7 @@ class BuildEnvironment:
             "--no-project",
             str(self.path),
         ]
-        external_commands.run(
-            cmd,
-            network_isolation=self._ctx.network_isolation,
-        )
+        self.run(cmd)
         logger.info("created build environment in %s", self.path)
 
     def install(self, reqs: typing.Iterable[Requirement]) -> None:
