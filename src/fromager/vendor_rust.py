@@ -115,18 +115,6 @@ def _detect_rust_build_backend(
     return None
 
 
-def has_rust_build_backend(req: Requirement, project_dir: pathlib.Path) -> bool:
-    """Return ``True`` if the project uses a Rust build backend.
-
-    Checks whether the project's ``pyproject.toml`` declares ``maturin``
-    or ``setuptools-rust`` as its build backend.
-    """
-    pyproject_toml = dependencies.get_pyproject_contents(project_dir)
-    if not pyproject_toml:
-        return False
-    return _detect_rust_build_backend(req, pyproject_toml) is not None
-
-
 def vendor_generic_rust_package(
     req: Requirement,
     manifests: list[pathlib.Path],

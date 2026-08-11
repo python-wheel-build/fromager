@@ -30,7 +30,6 @@ from . import (
     requirements_file,
     resolver,
     sbom,
-    vendor_rust,
 )
 from .pkgmetadata.pep376 import verbatim_dist_name
 
@@ -334,12 +333,6 @@ def build_wheel(
         version=version,
         build_env=build_env,
     )
-
-    # Isolate Rust build artifacts per package to prevent CARGO_TARGET_DIR
-    # collisions during parallel builds and EXDEV (cross-device rename)
-    # failures.
-    if vendor_rust.has_rust_build_backend(req, sdist_root_dir):
-        extra_environ.setdefault("CARGO_TARGET_DIR", str(sdist_root_dir / "target"))
 
     if pbi.build_ext_parallel:
         logger.warning(
