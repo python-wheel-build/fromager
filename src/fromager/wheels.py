@@ -282,6 +282,7 @@ def add_extra_metadata_to_wheels(
             cmd,
             cwd=dir_name,
             network_isolation=ctx.network_isolation,
+            env_filter=ctx.settings.external_commands,
         )
 
     wheel_file.unlink(missing_ok=True)

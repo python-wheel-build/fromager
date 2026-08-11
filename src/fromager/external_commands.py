@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import pathlib
@@ -8,6 +10,9 @@ import typing
 from io import TextIOWrapper
 
 from . import log
+
+if typing.TYPE_CHECKING:
+    from . import packagesettings
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,7 @@ def run(
     cwd: str | None = None,
     extra_environ: dict[str, typing.Any] | None = None,
     network_isolation: bool = False,
+    env_filter: packagesettings.ExternalCommands | None = None,
     log_filename: str | None = None,
     stdin: TextIOWrapper | None = None,
 ) -> str:
@@ -64,10 +70,16 @@ def run(
     line with the current package name for easier searching. Raises
     ``NetworkIsolationError`` instead of ``CalledProcessError`` when the
     failure output indicates a network access problem.
+
+    When *env_filter* is not ``None``, ``os.environ`` is filtered through
+    ``ExternalCommands.filter_env()`` before *extra_environ* is applied.
+    Variables injected via *extra_environ* are never filtered.
     """
     if extra_environ is None:
         extra_environ = {}
     env = os.environ.copy()
+    if env_filter is not None:
+        env = dict(env_filter.filter_env(env))
     env.update(extra_environ)
 
     if network_isolation:
