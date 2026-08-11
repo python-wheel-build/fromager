@@ -920,6 +920,64 @@ def test_resolve_versionmap_no_match() -> None:
         rslvr.resolve([Requirement("testpkg>=2.0")])
 
 
+def test_resolve_versionmap_git() -> None:
+    from fromager.versionmap import VersionMap
+
+    clone_url = "https://git.test/project/repo.git"
+    version_map = VersionMap(
+        {
+            "1.0": f"git+{clone_url}@abad1dea",
+            "1.1": f"git+{clone_url}@refs/tags/1.1",
+            "1.2": f"git+{clone_url}@d3adb33f",
+        }
+    )
+
+    provider = resolver.VersionMapProvider(
+        version_map=version_map,
+        package_name="testpkg",
+    )
+    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+    rslvr = resolvelib.Resolver(provider, reporter)
+
+    result = rslvr.resolve([Requirement("testpkg")])
+    assert "testpkg" in result.mapping
+
+    candidate = result.mapping["testpkg"]
+    assert str(candidate.version) == "1.2"
+    assert candidate.url == f"git+{clone_url}@d3adb33f"
+
+
+def test_resolve_versionmap_git_with_constraint() -> None:
+    from fromager.versionmap import VersionMap
+
+    clone_url = "https://git.test/project/repo.git"
+    version_map = VersionMap(
+        {
+            "1.0": f"git+{clone_url}@abad1dea",
+            "1.1": f"git+{clone_url}@refs/tags/1.1",
+            "1.2": f"git+{clone_url}@d3adb33f",
+        }
+    )
+
+    c = constraints.Constraints()
+    c.add_constraint("testpkg<1.2")
+
+    provider = resolver.VersionMapProvider(
+        version_map=version_map,
+        package_name="testpkg",
+        constraints=c,
+    )
+    reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+    rslvr = resolvelib.Resolver(provider, reporter)
+
+    result = rslvr.resolve([Requirement("testpkg")])
+    assert "testpkg" in result.mapping
+
+    candidate = result.mapping["testpkg"]
+    assert str(candidate.version) == "1.1"
+    assert candidate.url == f"git+{clone_url}@refs/tags/1.1"
+
+
 _gitlab_submodlib_repo_response = """
 [
   {

@@ -45,6 +45,8 @@ Source Resolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
    :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
+.. autopydantic_model:: VersionMapGitResolver
+
 .. autopydantic_model:: GitHubTagDownloadResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
    :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
