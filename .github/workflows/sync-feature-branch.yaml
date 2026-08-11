@@ -1,0 +1,126 @@
+name: Sync feature branch with main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Feature branch to sync with main"
+        required: true
+        default: "new-resolver-config"
+
+permissions:
+  contents: read
+
+jobs:
+  sync-branch:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'python-wheel-build' }}
+    concurrency:
+      group: sync-${{ inputs.target_branch || 'new-resolver-config' }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+    env:
+      TARGET_BRANCH: ${{ inputs.target_branch || 'new-resolver-config' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
+
+      - name: Merge main into feature branch
+        id: merge
+        run: |
+          git fetch origin main
+          BEFORE=$(git rev-parse HEAD)
+          if git merge origin/main --no-edit; then
+            AFTER=$(git rev-parse HEAD)
+            if [ "$BEFORE" = "$AFTER" ]; then
+              echo "result=up-to-date" >> "$GITHUB_OUTPUT"
+            else
+              echo "result=merged" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+            echo "conflicts<<DELIM" >> "$GITHUB_OUTPUT"
+            echo "$CONFLICTS" >> "$GITHUB_OUTPUT"
+            echo "DELIM" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push merged changes
+        if: steps.merge.outputs.result == 'merged'
+        run: git push origin "HEAD:${TARGET_BRANCH}"
+
+      - name: Close resolved sync-conflict issues
+        if: steps.merge.outputs.result == 'merged' || steps.merge.outputs.result == 'up-to-date'
+        run: |
+          EXPECTED_TITLE="Sync conflict: ${TARGET_BRANCH} cannot merge main"
+          gh issue list --label "sync-conflict" --state open --json number,title \
+            | jq -r --arg t "$EXPECTED_TITLE" '.[] | select(.title == $t) | .number' \
+            | xargs -rI{} gh issue close {} --comment "Resolved by automated sync."
+
+      - name: Report up-to-date
+        if: steps.merge.outputs.result == 'up-to-date'
+        run: echo "Branch ${TARGET_BRANCH} is already up to date with main."
+
+      - name: Open issue on conflict
+        if: steps.merge.outputs.result == 'conflict'
+        run: |
+          EXPECTED_TITLE="Sync conflict: ${TARGET_BRANCH} cannot merge main"
+
+          EXISTING=$(gh issue list \
+            --label "sync-conflict" \
+            --state open \
+            --json title \
+            | jq --arg expected "$EXPECTED_TITLE" \
+                '[.[] | select(.title == $expected)] | length')
+
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "An open sync-conflict issue for ${TARGET_BRANCH} already exists, skipping."
+            exit 0
+          fi
+
+          gh label create "sync-conflict" \
+            --description "Automated sync with main hit merge conflicts" \
+            --color "D93F0B" \
+            --force
+
+          gh issue create \
+            --title "$EXPECTED_TITLE" \
+            --label "sync-conflict" \
+            --body "$(cat <<EOF
+          The automated sync workflow failed to merge \`main\` into \`${TARGET_BRANCH}\` due to merge conflicts.
+
+          **Conflicting files:**
+          \`\`\`
+          ${{ steps.merge.outputs.conflicts }}
+          \`\`\`
+
+          **Manual resolution required.** To fix:
+
+          \`\`\`bash
+          git checkout ${TARGET_BRANCH}
+          git fetch origin
+          git merge origin/main
+          # resolve conflicts
+          git commit
+          git push
+          \`\`\`
+
+          **Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+          )"
