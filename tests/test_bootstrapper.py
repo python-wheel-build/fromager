@@ -1023,7 +1023,7 @@ def test_bg_prepare_prebuilt_log_prefix_includes_version(
                 "fromager.wheels.download_wheel",
                 return_value=pathlib.Path("mypkg-1.2.3-py3-none-any.whl"),
             ),
-            patch("fromager.server.update_wheel_mirror"),
+            patch("fromager.server.index_wheel"),
             log.req_ctxvar_context(req, version),
         ):
             bg_prepare_prebuilt(
@@ -1134,6 +1134,40 @@ def test_build_item_build_wheel(tmp_context: WorkContext) -> None:
     mock_update_mirror.assert_called_once_with(tmp_context)
     assert wheel_filename == tmp_context.wheels_downloads / built_wheel.name
     assert sdist_filename == built_sdist
+
+
+def test_build_item_build_wheel_registers_with_cache_manager(
+    tmp_context: WorkContext,
+) -> None:
+    """When CacheManager is active, builds are registered for same-run lookups."""
+    sdist_root = tmp_context.work_dir / "testpkg-1.0" / "testpkg-1.0"
+    sdist_root.mkdir(parents=True, exist_ok=True)
+    wi = WorkItem(
+        req=Requirement("testpkg"),
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        resolved_version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+        build_env=Mock(),
+    )
+    item = Build(wi)
+    built_wheel = tmp_context.wheels_build / "testpkg-1.0-py3-none-any.whl"
+    built_sdist = tmp_context.sdists_builds / "testpkg-1.0.tar.gz"
+    cache = Mock()
+    tmp_context.cache = cache
+
+    with (
+        patch.object(item, "_build_sdist", return_value=built_sdist),
+        patch("fromager.wheels.build_wheel", return_value=built_wheel),
+        patch("fromager.server.update_wheel_mirror"),
+    ):
+        wheel_filename, _sdist_filename = item._build_wheel(tmp_context)
+
+    cache.store_wheel.assert_called_once()
+    args = cache.store_wheel.call_args.args
+    assert args[0] == wi.req
+    assert args[1] == Version("1.0")
+    assert args[3] == wheel_filename
 
 
 def test_build_item_do_build_returns_cached_wheel(

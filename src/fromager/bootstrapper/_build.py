@@ -130,6 +130,15 @@ class Build(Phase):
         server.update_wheel_mirror(ctx)
         # When we update the mirror, the built file moves to the downloads directory.
         wheel_filename = ctx.wheels_downloads / built_filename.name
+        # Keep the CacheManager index in sync for same-run lookups (e.g.
+        # --multiple-versions). Without this, initialize()-time scans miss
+        # wheels produced later in the bootstrap.
+        if ctx.cache is not None:
+            pbi = ctx.package_build_info(wi.req)
+            build_tag = pbi.build_tag(wi.resolved_version)
+            ctx.cache.store_wheel(
+                wi.req, wi.resolved_version, build_tag, wheel_filename
+            )
         logger.info(f"built wheel for version {wi.resolved_version}: {wheel_filename}")
         return wheel_filename, sdist_filename
 

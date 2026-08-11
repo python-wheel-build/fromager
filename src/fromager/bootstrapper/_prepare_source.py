@@ -6,7 +6,7 @@ import typing
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from .. import build_environment, dependencies, sources
+from .. import build_environment, dependencies, server, sources
 from ..log import req_ctxvar_context
 from ..requirements_file import RequirementType, SourceType
 from . import _cache
@@ -40,7 +40,7 @@ def _bg_prepare_source(
     )
     if unpacked is not None:
         return PreparedSourceData(
-            sdist_root_dir=unpacked / unpacked.stem,
+            sdist_root_dir=unpacked / unpacked.name,
             cached_wheel_filename=cached_wheel,
         )
     source_filename = sources.download_source(
@@ -145,6 +145,35 @@ class PrepareSource(Phase):
         assert prepared.sdist_root_dir is not None
         sdist_root_dir = prepared.sdist_root_dir
         wi.cached_wheel_filename = prepared.cached_wheel_filename
+
+        # Short-circuit: when CacheManager provides a hit, skip build env
+        # creation and build-dep resolution. Install deps come from the wheel.
+        if prepared.cached_wheel_filename is not None and bt.ctx.cache is not None:
+            pbi = bt.ctx.package_build_info(wi.req)
+            build_tag = pbi.build_tag(wi.resolved_version)
+            bt.ctx.cache.store_wheel(
+                wi.req,
+                wi.resolved_version,
+                build_tag,
+                prepared.cached_wheel_filename,
+            )
+            # Wheel is already in downloads; index it without sweeping wheels_build.
+            server.index_wheel(bt.ctx, prepared.cached_wheel_filename)
+            # Prefer the unpack dir produced by find_cached_wheel (work_dir/<pkg>-<ver>).
+            unpack_dir = prepared.sdist_root_dir.parent
+            if unpack_dir.parent != bt.ctx.work_dir:
+                unpack_dir = _cache._create_unpack_dir(
+                    bt.ctx.work_dir, wi.req, wi.resolved_version
+                )
+            wi.build_result = SourceBuildResult(
+                wheel_filename=prepared.cached_wheel_filename,
+                sdist_filename=None,
+                unpack_dir=unpack_dir,
+                sdist_root_dir=None,
+                build_env=None,
+                source_type=SourceType.CACHED,
+            )
+            return [ProcessInstallDeps(wi)]
 
         assert sdist_root_dir is not None
 

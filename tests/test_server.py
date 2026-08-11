@@ -60,6 +60,39 @@ def test_update_wheel_mirror_moves_to_downloads(
     assert tmp_context.wheels_downloads.joinpath("foo-1.0-py3-none-any.whl").exists()
 
 
+def test_index_wheel_links_without_touching_build_dir(
+    tmp_context: context.WorkContext,
+) -> None:
+    """index_wheel must not move unrelated in-progress build wheels."""
+    in_progress = _create_fake_wheel(
+        tmp_context.wheels_build, "other-1.0-py3-none-any.whl"
+    )
+    cached = _create_fake_wheel(
+        tmp_context.wheels_downloads, "foo-1.0-py3-none-any.whl"
+    )
+
+    server.index_wheel(tmp_context, cached)
+
+    assert in_progress.exists()
+    symlink = tmp_context.wheel_server_dir.joinpath("foo", "foo-1.0-py3-none-any.whl")
+    assert symlink.is_symlink()
+    assert symlink.is_file()
+
+
+def test_index_wheel_idempotent_when_symlink_exists(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Re-indexing an already-linked wheel must not raise FileExistsError."""
+    cached = _create_fake_wheel(
+        tmp_context.wheels_downloads, "foo-1.0-py3-none-any.whl"
+    )
+    server.index_wheel(tmp_context, cached)
+    server.index_wheel(tmp_context, cached)
+    symlink = tmp_context.wheel_server_dir.joinpath("foo", "foo-1.0-py3-none-any.whl")
+    assert symlink.is_symlink()
+    assert symlink.is_file()
+
+
 def test_update_wheel_mirror_creates_symlink(
     tmp_context: context.WorkContext,
 ) -> None:

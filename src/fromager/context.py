@@ -22,7 +22,7 @@ from . import (
 )
 
 if typing.TYPE_CHECKING:
-    from . import build_environment, candidate
+    from . import build_environment, cache, candidate
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ class WorkContext:
 
         self.cooldown: candidate.Cooldown | None = cooldown
         self._max_release_age: datetime.timedelta | None = max_release_age
+        self._cache: cache.CacheManager | None = None
 
     @property
     def max_release_age(self) -> datetime.timedelta | None:
@@ -107,6 +108,15 @@ class WorkContext:
         if days < 1:
             raise ValueError(f"max_release_age must be positive, got {days}")
         self._max_release_age = datetime.timedelta(days=days)
+
+    @property
+    def cache(self) -> cache.CacheManager | None:
+        """The unified cache manager, if configured."""
+        return self._cache
+
+    @cache.setter
+    def cache(self, value: cache.CacheManager | None) -> None:
+        self._cache = value
 
     def enable_parallel_builds(self) -> None:
         self._parallel_builds = True
