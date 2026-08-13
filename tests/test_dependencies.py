@@ -515,3 +515,104 @@ def test_get_metadata_from_wheel_validation_disabled(tmp_path: pathlib.Path) -> 
     # Assert: Should still parse the basic fields
     assert metadata.name == "testpkg"
     assert str(metadata.version) == "1.0.0"
+
+
+def _sample_build_system_deps_hook(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    build_dir: pathlib.Path,
+    requirements: list[str],
+) -> list[str]:
+    return requirements + ["extra-dep>=1.0"]
+
+
+@patch("fromager.dependencies._write_requirements_file")
+@_clean_build_artifacts
+def test_get_build_system_dependencies_with_hook(
+    _: Mock, tmp_path: pathlib.Path
+) -> None:
+    from fromager import packagesettings
+
+    settings = packagesettings.Settings(
+        settings=packagesettings.SettingsFile(
+            build_system_dependencies_hook=_sample_build_system_deps_hook,
+        ),
+        package_settings=[],
+        variant="cpu",
+        patches_dir=tmp_path / "patches",
+        max_jobs=None,
+    )
+    ctx = context.WorkContext(
+        active_settings=settings,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        variant="cpu",
+    )
+    ctx.setup()
+
+    pyproject_file = _fromager_root / "pyproject.toml"
+    shutil.copyfile(pyproject_file, tmp_path / "pyproject.toml")
+
+    results = dependencies.get_build_system_dependencies(
+        ctx=ctx,
+        req=Requirement("fromager"),
+        version=Version("1.0.0"),
+        sdist_root_dir=tmp_path,
+    )
+    names = set(r.name for r in results)
+    assert "extra-dep" in names
+    assert "hatchling" in names
+
+
+@patch("fromager.dependencies._write_requirements_file")
+@_clean_build_artifacts
+def test_get_build_system_dependencies_without_hook(
+    _: Mock, tmp_context: context.WorkContext, tmp_path: pathlib.Path
+) -> None:
+    pyproject_file = _fromager_root / "pyproject.toml"
+    shutil.copyfile(pyproject_file, tmp_path / "pyproject.toml")
+
+    results = dependencies.get_build_system_dependencies(
+        ctx=tmp_context,
+        req=Requirement("fromager"),
+        version=Version("1.0.0"),
+        sdist_root_dir=tmp_path,
+    )
+    names = set(r.name for r in results)
+    assert "extra-dep" not in names
+    assert "hatchling" in names
+
+
+def test_settings_file_build_system_dependencies_hook_default() -> None:
+    from fromager import packagesettings
+
+    sf = packagesettings.SettingsFile()
+    assert sf.build_system_dependencies_hook is None
+
+
+def test_settings_file_build_system_dependencies_hook_callable() -> None:
+    from fromager import packagesettings
+
+    sf = packagesettings.SettingsFile(
+        build_system_dependencies_hook=_sample_build_system_deps_hook,
+    )
+    assert sf.build_system_dependencies_hook is _sample_build_system_deps_hook
+
+
+def test_settings_build_system_dependencies_hook_property() -> None:
+    from fromager import packagesettings
+
+    settings = packagesettings.Settings(
+        settings=packagesettings.SettingsFile(
+            build_system_dependencies_hook=_sample_build_system_deps_hook,
+        ),
+        package_settings=[],
+        variant="cpu",
+        patches_dir=pathlib.Path("/tmp/patches"),
+        max_jobs=None,
+    )
+    assert settings.build_system_dependencies_hook is _sample_build_system_deps_hook

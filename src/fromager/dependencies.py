@@ -65,6 +65,15 @@ def get_build_system_dependencies(
         sdist_root_dir=sdist_root_dir,
         build_dir=pbi.build_dir(sdist_root_dir),
     )
+    hook = ctx.settings.build_system_dependencies_hook
+    if hook is not None:
+        orig_deps = hook(
+            ctx=ctx,
+            req=req,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=pbi.build_dir(sdist_root_dir),
+            requirements=list(orig_deps),
+        )
     deps = _filter_requirements(req, orig_deps)
 
     _write_requirements_file(
