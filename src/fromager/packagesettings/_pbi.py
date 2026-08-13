@@ -26,6 +26,7 @@ from ._typedefs import Annotations, PackageVersion, PatchMap, Template, Variant
 
 if typing.TYPE_CHECKING:
     from .. import build_environment
+    from ._resolver import SourceResolver
     from ._settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,19 @@ class PackageBuildInfo:
         if vi is not None and vi.wheel_server_url is not None:
             return str(vi.wheel_server_url)
         return None
+
+    @property
+    def source_resolver(self) -> SourceResolver | None:
+        """Source resolver for the package variant.
+
+        Returns the variant-level source resolver if configured,
+        otherwise falls back to the package-level source resolver,
+        or ``None`` if neither is set.
+        """
+        vi = self._ps.variants.get(self.variant)
+        if vi is not None and vi.source is not None:
+            return vi.source
+        return self._ps.source
 
     @property
     def override_module_name(self) -> str:
