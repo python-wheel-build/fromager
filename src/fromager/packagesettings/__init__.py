@@ -28,6 +28,7 @@ from ._resolver import (
     PyPIGitResolver,
     PyPIPrebuiltResolver,
     PyPISDistResolver,
+    SourceResolver,
     pep440_tag_matcher,
 )
 from ._settings import Settings, SettingsFile
@@ -84,6 +85,7 @@ __all__ = (
     "SbomSettings",
     "Settings",
     "SettingsFile",
+    "SourceResolver",
     "Template",
     "Variant",
     "VariantChangelog",

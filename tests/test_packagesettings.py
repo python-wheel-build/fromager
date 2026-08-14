@@ -18,9 +18,12 @@ from fromager.packagesettings import (
     Package,
     PackageBuildInfo,
     PackageSettings,
+    PyPIPrebuiltResolver,
+    PyPISDistResolver,
     ResolverDist,
     Settings,
     SettingsFile,
+    SourceResolver,
     Variant,
     substitute_template,
 )
@@ -90,6 +93,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": True,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": {
@@ -98,6 +102,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
+            "source": None,
         },
         "rocm": {
             "annotations": {
@@ -106,12 +111,14 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"SPAM": ""},
             "wheel_server_url": None,
             "pre_built": True,
+            "source": None,
         },
         "cuda": {
             "annotations": None,
             "env": {},
             "wheel_server_url": None,
             "pre_built": False,
+            "source": None,
         },
     },
 }
@@ -152,6 +159,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": None,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {},
 }
 
@@ -193,11 +201,13 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": None,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": None,
             "env": {},
             "pre_built": True,
+            "source": None,
             "wheel_server_url": None,
         },
     },
@@ -1152,3 +1162,93 @@ def test_filter_env(
 ) -> None:
     ec = ExternalCommands(keep_env=keep, delete_env=delete)
     assert ec.filter_env(env) == expected
+
+
+# -- source field and source_resolver PBI property ----------------------------
+
+
+def test_source_resolver_importable() -> None:
+    """``SourceResolver`` is importable from ``fromager.packagesettings``."""
+    args = typing.get_args(SourceResolver)
+    assert len(args) == 2
+    union_members = typing.get_args(args[0])
+    assert PyPISDistResolver in union_members
+    assert PyPIPrebuiltResolver in union_members
+
+
+def test_package_settings_with_source() -> None:
+    """``PackageSettings`` loads YAML with ``source:`` correctly."""
+    yaml_str = "source:\n  provider: pypi-sdist\n"
+    ps = PackageSettings.from_string("test-source-pkg", yaml_str)
+    assert ps.source is not None
+    assert isinstance(ps.source, PyPISDistResolver)
+    assert ps.source.provider == "pypi-sdist"
+
+
+def test_variant_info_with_source() -> None:
+    """``VariantInfo`` with ``source:`` works."""
+    yaml_str = "variants:\n  cpu:\n    source:\n      provider: pypi-prebuilt\n"
+    ps = PackageSettings.from_string("test-variant-source-pkg", yaml_str)
+    vi = ps.variants[Variant("cpu")]
+    assert vi.source is not None
+    assert isinstance(vi.source, PyPIPrebuiltResolver)
+
+
+def test_package_settings_without_source() -> None:
+    """``PackageSettings`` without ``source:`` has ``source=None``."""
+    ps = PackageSettings.from_default("test-pkg")
+    assert ps.source is None
+
+
+def test_pbi_source_resolver_none(tmp_path: pathlib.Path) -> None:
+    """``pbi.source_resolver`` returns ``None`` when no source configured."""
+    ps = PackageSettings.from_default("test-pkg")
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert pbi.source_resolver is None
+
+
+def test_pbi_source_resolver_package_level(tmp_path: pathlib.Path) -> None:
+    """``pbi.source_resolver`` returns package-level source."""
+    yaml_str = "source:\n  provider: pypi-sdist\n"
+    ps = PackageSettings.from_string("test-pkg", yaml_str)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert pbi.source_resolver is not None
+    assert isinstance(pbi.source_resolver, PyPISDistResolver)
+
+
+def test_pbi_source_resolver_variant_overrides_package(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``pbi.source_resolver`` returns variant source over package source."""
+    yaml_str = (
+        "source:\n"
+        "  provider: pypi-sdist\n"
+        "variants:\n"
+        "  cpu:\n"
+        "    source:\n"
+        "      provider: pypi-prebuilt\n"
+    )
+    ps = PackageSettings.from_string("test-pkg", yaml_str)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert isinstance(pbi.source_resolver, PyPIPrebuiltResolver)
