@@ -1,14 +1,16 @@
 import pathlib
+import typing
 import zipfile
 from unittest.mock import Mock, patch
 
 import pytest
 from conftest import make_sbom_ctx
 from packaging.requirements import Requirement
+from packaging.tags import Tag
 from packaging.version import Version
 
 from fromager import build_environment, context, downloads, wheels
-from fromager.packagesettings import SbomSettings
+from fromager.packagesettings import SbomSettings, Settings, SettingsFile, WheelSettings
 
 
 @patch("pyproject_hooks.BuildBackendHookCaller.build_wheel")
@@ -337,3 +339,197 @@ def test_validate_wheel_file(
     else:
         with pytest.raises(ValueError):
             wheels.validate_wheel_filename(req, version, wheel_file)
+
+
+def _ctx_with_hook(
+    tmp_path: pathlib.Path,
+    hook: typing.Callable[..., typing.Any] | None = None,
+) -> context.WorkContext:
+    """Create a WorkContext with an optional build_tag_hook."""
+    sf = SettingsFile.from_string("")
+    if hook is not None:
+        sf = sf.model_copy(update={"wheels": WheelSettings(build_tag_hook=hook)})
+    settings = Settings(
+        settings=sf,
+        package_settings=[],
+        variant="cpu",
+        patches_dir=tmp_path / "patches",
+        max_jobs=None,
+    )
+    ctx = context.WorkContext(
+        active_settings=settings,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        variant="cpu",
+    )
+    ctx.setup()
+    return ctx
+
+
+class TestGetBuildTag:
+    """Tests for ``wheels.get_build_tag()``."""
+
+    def test_no_hook_returns_base_tag(self, tmp_path: pathlib.Path) -> None:
+        """Without a hook, get_build_tag returns pbi.build_tag() unchanged."""
+        ctx = _ctx_with_hook(tmp_path)
+        req = Requirement("mypkg")
+        version = Version("1.0")
+        tags = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+        result = wheels.get_build_tag(
+            ctx=ctx, req=req, version=version, wheel_tags=tags
+        )
+        pbi = ctx.package_build_info(req)
+        assert result == pbi.build_tag(version)
+
+    def test_hook_appends_suffix_segments(
+        self, testdata_context: context.WorkContext
+    ) -> None:
+        """Hook-provided segments are joined and appended to the base tag."""
+
+        def hook(**kwargs: object) -> list[str]:
+            return ["el9.6", "rocm7.1"]
+
+        testdata_context.settings._settings = (
+            testdata_context.settings._settings.model_copy(
+                update={"wheels": WheelSettings(build_tag_hook=hook)}
+            )
+        )
+        req = Requirement("test-pkg")
+        version = Version("1.0.1")
+        tags = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+        pbi = testdata_context.package_build_info(req)
+        base = pbi.build_tag(version)
+        assert base, "test-pkg must have a changelog entry for 1.0.1"
+        result = wheels.get_build_tag(
+            ctx=testdata_context, req=req, version=version, wheel_tags=tags
+        )
+        assert len(result) == 2
+        assert result[0] == base[0]
+        assert result[1] == base[1] + "_el9.6_rocm7.1"
+
+    def test_hook_empty_segments_returns_base(
+        self, testdata_context: context.WorkContext
+    ) -> None:
+        """When hook returns empty list, base tag is returned."""
+
+        def hook(**kwargs: object) -> list[str]:
+            return []
+
+        testdata_context.settings._settings = (
+            testdata_context.settings._settings.model_copy(
+                update={"wheels": WheelSettings(build_tag_hook=hook)}
+            )
+        )
+        req = Requirement("test-pkg")
+        version = Version("1.0.1")
+        tags = frozenset({Tag("py3", "none", "any")})
+        pbi = testdata_context.package_build_info(req)
+        base = pbi.build_tag(version)
+        result = wheels.get_build_tag(
+            ctx=testdata_context, req=req, version=version, wheel_tags=tags
+        )
+        assert result == base
+
+    def test_hook_returning_string_raises(
+        self, testdata_context: context.WorkContext
+    ) -> None:
+        """Single string return is rejected (would be iterated as chars)."""
+
+        def hook(**kwargs: object) -> str:
+            return "el9.6"
+
+        testdata_context.settings._settings = (
+            testdata_context.settings._settings.model_copy(
+                update={"wheels": WheelSettings(build_tag_hook=hook)}
+            )
+        )
+        req = Requirement("test-pkg")
+        version = Version("1.0.1")
+        tags = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+        with pytest.raises(ValueError, match="sequence of strings"):
+            wheels.get_build_tag(
+                ctx=testdata_context, req=req, version=version, wheel_tags=tags
+            )
+
+    def test_hook_invalid_segment_chars_raises(
+        self, testdata_context: context.WorkContext
+    ) -> None:
+        """Segments with invalid characters are rejected."""
+
+        def hook(**kwargs: object) -> list[str]:
+            return ["el9.6", "bad-char"]
+
+        testdata_context.settings._settings = (
+            testdata_context.settings._settings.model_copy(
+                update={"wheels": WheelSettings(build_tag_hook=hook)}
+            )
+        )
+        req = Requirement("test-pkg")
+        version = Version("1.0.1")
+        tags = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+        with pytest.raises(ValueError, match="invalid segment"):
+            wheels.get_build_tag(
+                ctx=testdata_context, req=req, version=version, wheel_tags=tags
+            )
+
+    def test_hook_returning_bytes_raises(
+        self, testdata_context: context.WorkContext
+    ) -> None:
+        """Bytes return is rejected the same way as str."""
+
+        def hook(**kwargs: object) -> bytes:
+            return b"el9.6"
+
+        testdata_context.settings._settings = (
+            testdata_context.settings._settings.model_copy(
+                update={"wheels": WheelSettings(build_tag_hook=hook)}
+            )
+        )
+        req = Requirement("test-pkg")
+        version = Version("1.0.1")
+        tags = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+        with pytest.raises(ValueError, match="sequence of strings"):
+            wheels.get_build_tag(
+                ctx=testdata_context, req=req, version=version, wheel_tags=tags
+            )
+
+    def test_hook_exception_propagates(
+        self, testdata_context: context.WorkContext
+    ) -> None:
+        """Hook exceptions propagate to the caller."""
+
+        def hook(**kwargs: object) -> list[str]:
+            raise RuntimeError("hook failure")
+
+        testdata_context.settings._settings = (
+            testdata_context.settings._settings.model_copy(
+                update={"wheels": WheelSettings(build_tag_hook=hook)}
+            )
+        )
+        req = Requirement("test-pkg")
+        version = Version("1.0.1")
+        tags = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+        with pytest.raises(RuntimeError, match="hook failure"):
+            wheels.get_build_tag(
+                ctx=testdata_context, req=req, version=version, wheel_tags=tags
+            )
+
+    def test_hook_not_called_without_base_tag(self, tmp_path: pathlib.Path) -> None:
+        """Hook is skipped when the package has no changelog build tag."""
+        calls: list[dict[str, object]] = []
+
+        def hook(**kwargs: object) -> list[str]:
+            calls.append(kwargs)
+            return ["el9.6"]
+
+        ctx = _ctx_with_hook(tmp_path, hook=hook)
+        req = Requirement("mypkg")
+        version = Version("1.0")
+        tags = frozenset({Tag("cp312", "cp312", "linux_x86_64")})
+        result = wheels.get_build_tag(
+            ctx=ctx, req=req, version=version, wheel_tags=tags
+        )
+        assert result == ()
+        assert calls == []
