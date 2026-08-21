@@ -483,6 +483,21 @@ class VariantInfo(pydantic.BaseModel):
     source: SourceResolver | None = None
     """Source resolver and downloader"""
 
+    @pydantic.model_validator(mode="after")
+    def validate_source_exclusivity(self) -> typing.Self:
+        """Validate that ``source`` is mutually exclusive with legacy fields."""
+        if self.source is None:
+            return self
+        legacy_fields = {"wheel_server_url", "pre_built"}
+        conflicts = legacy_fields & self.model_fields_set
+        if conflicts:
+            raise ValueError(
+                f"'source' is mutually exclusive with legacy settings: "
+                f"{sorted(conflicts)}. Use 'source' alone or remove it "
+                f"and use the legacy settings."
+            )
+        return self
+
 
 class GitOptions(pydantic.BaseModel):
     """Git repository cloning options
@@ -623,6 +638,21 @@ class PackageSettings(pydantic.BaseModel):
         if v is None:
             v = {}
         return v
+
+    @pydantic.model_validator(mode="after")
+    def validate_source_exclusivity(self) -> typing.Self:
+        """Validate that ``source`` is mutually exclusive with legacy fields."""
+        if self.source is None:
+            return self
+        legacy_fields = {"download_source", "resolver_dist"}
+        conflicts = legacy_fields & self.model_fields_set
+        if conflicts:
+            raise ValueError(
+                f"'source' is mutually exclusive with legacy settings: "
+                f"{sorted(conflicts)}. Use 'source' alone or remove it "
+                f"and use the legacy settings."
+            )
+        return self
 
     @classmethod
     def from_mapping(
