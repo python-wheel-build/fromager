@@ -1252,3 +1252,100 @@ def test_pbi_source_resolver_variant_overrides_package(
     )
     pbi = settings.package_build_info("test-pkg")
     assert isinstance(pbi.source_resolver, PyPIPrebuiltResolver)
+
+
+# -- source vs legacy mutual exclusivity validation --------------------------
+
+
+@pytest.mark.parametrize(
+    "yaml_str",
+    [
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "download_source:\n  url: https://egg.test/pkg-${version}.tar.gz\n",
+            id="source-with-download-source",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n",
+            id="source-with-resolver-dist",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "download_source:\n  url: https://egg.test/pkg.tar.gz\n"
+            "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n",
+            id="source-with-both-legacy-fields",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\ndownload_source:\n",
+            id="source-with-empty-download-source",
+        ),
+    ],
+)
+def test_package_source_exclusivity_invalid(yaml_str: str) -> None:
+    """Setting ``source`` alongside legacy package fields raises."""
+    with pytest.raises(RuntimeError, match="mutually exclusive"):
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+
+
+@pytest.mark.parametrize(
+    "yaml_str",
+    [
+        pytest.param(
+            "variants:\n  cpu:\n    source:\n      provider: pypi-prebuilt\n"
+            "    wheel_server_url: https://wheel.test/simple\n",
+            id="source-with-wheel-server-url",
+        ),
+        pytest.param(
+            "variants:\n  cpu:\n    source:\n      provider: pypi-prebuilt\n"
+            "    pre_built: true\n",
+            id="source-with-pre-built",
+        ),
+    ],
+)
+def test_variant_source_exclusivity_invalid(yaml_str: str) -> None:
+    """Setting ``source`` alongside legacy variant fields raises."""
+    with pytest.raises(RuntimeError, match="mutually exclusive"):
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+
+
+def test_legacy_only_config_valid() -> None:
+    """Legacy-only config loads without error."""
+    yaml_str = (
+        "download_source:\n  url: https://egg.test/pkg-${version}.tar.gz\n"
+        "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n"
+    )
+    ps = PackageSettings.from_string("legacy-pkg", yaml_str)
+    assert ps.source is None
+    assert ps.download_source.url is not None
+
+
+def test_source_only_config_valid() -> None:
+    """Source-only config loads without error."""
+    yaml_str = "source:\n  provider: pypi-sdist\n"
+    ps = PackageSettings.from_string("new-pkg", yaml_str)
+    assert ps.source is not None
+    assert ps.download_source.url is None
+
+
+def test_variant_legacy_only_valid() -> None:
+    """Variant with only legacy fields loads without error."""
+    yaml_str = "variants:\n  cpu:\n    pre_built: true\n    wheel_server_url: https://wheel.test/simple\n"
+    ps = PackageSettings.from_string("legacy-variant-pkg", yaml_str)
+    vi = ps.variants[Variant("cpu")]
+    assert vi.source is None
+    assert vi.pre_built is True
+
+
+def test_source_exclusivity_error_lists_fields() -> None:
+    """Error message includes the specific conflicting field names."""
+    yaml_str = (
+        "source:\n  provider: pypi-sdist\n"
+        "download_source:\n  url: https://egg.test/a.tar.gz\n"
+        "resolver_dist:\n  sdist_server_url: https://sdist.test\n"
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+    error_str = str(exc_info.value)
+    assert "download_source" in error_str
+    assert "resolver_dist" in error_str
