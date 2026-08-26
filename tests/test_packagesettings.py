@@ -89,6 +89,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "ignore_platform": True,
         "use_pypi_org_metadata": True,
         "min_release_age": None,
+        "skip_pypi_quarantine": False,
     },
     "variants": {
         "cpu": {
@@ -151,6 +152,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
         "min_release_age": None,
+        "skip_pypi_quarantine": False,
     },
     "variants": {},
 }
@@ -192,6 +194,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "ignore_platform": False,
         "use_pypi_org_metadata": None,
         "min_release_age": None,
+        "skip_pypi_quarantine": False,
     },
     "variants": {
         "cpu": {
