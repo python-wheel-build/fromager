@@ -34,6 +34,8 @@ repos:
     rev: 1.0.0
     hooks:
       - id: mdformat
+        # mdformat treats Agent Skill YAML frontmatter as Markdown content.
+        exclude: ^\.agents/skills/.*/SKILL\.md$
         additional_dependencies:
           - mdformat-gfm  # GitHub Flavored Markdown support (tables, autolinks, etc.)
           - mdformat-simple-breaks  # Use --- for thematic breaks instead of 70 underscores
