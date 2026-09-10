@@ -116,8 +116,25 @@ def get_source_provider(
 
     Returns a provider configured according to the package's resolver settings
     (sdist/wheel inclusion, platform matching, server URL override).
+
+    Packages with a ``source:`` resolver use that resolver's provider
+    configuration. Packages without one retain the legacy override-hook and
+    ``resolver_dist`` behavior.
     """
     pbi = ctx.package_build_info(req)
+
+    source_resolver = pbi.source_resolver
+    if source_resolver is not None:
+        provider = source_resolver.resolver_provider(ctx, req, req_type)
+        if req_type == RequirementType.TOP_LEVEL and resolver._has_equality_pin(req):
+            provider.cooldown = None
+        else:
+            per_package_days = getattr(source_resolver, "min_release_age", None)
+            provider.cooldown = resolver._effective_cooldown(
+                ctx.cooldown, per_package_days
+            )
+        return provider
+
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
     provider = typing.cast(

@@ -1,14 +1,193 @@
+import datetime
 import pathlib
 import sys
 import tarfile
 import zipfile
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, PropertyMock, patch
 
+import pydantic
 import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import context, packagesettings, resolver, sources
+from fromager.candidate import Cooldown
+from fromager.requirements_file import RequirementType
+
+
+def test_get_source_provider_uses_configured_source_resolver(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Use the configured source resolver instead of legacy hooks."""
+    req = Requirement("test-pkg")
+    provider = Mock(spec=resolver.BaseProvider)
+    source_resolver = Mock()
+    source_resolver.resolver_provider.return_value = provider
+    source_resolver.min_release_age = None
+
+    with (
+        patch.object(
+            packagesettings.PackageBuildInfo,
+            "source_resolver",
+            new_callable=PropertyMock,
+            return_value=source_resolver,
+        ),
+        patch("fromager.sources.overrides.find_and_invoke") as find_and_invoke,
+    ):
+        result = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+        )
+
+    assert result is provider
+    source_resolver.resolver_provider.assert_called_once_with(tmp_context, req, None)
+    find_and_invoke.assert_not_called()
+
+
+def test_get_source_provider_uses_pypi_sdist_source_resolver(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Configure a PyPI sdist provider from the source resolver settings."""
+    req = Requirement("test-pkg")
+    source_resolver = packagesettings.PyPISDistResolver(
+        provider="pypi-sdist",
+        index_url=pydantic.HttpUrl("https://pypi.test/simple"),
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        provider = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+        )
+
+    assert isinstance(provider, resolver.PyPIProvider)
+    assert provider.include_sdists is True
+    assert provider.include_wheels is False
+    assert provider.sdist_server_url == "https://pypi.test/simple"
+
+
+def test_get_source_provider_forwards_req_type_to_source_resolver(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Forward req_type to the source resolver provider."""
+    req = Requirement("test-pkg")
+    source_resolver = packagesettings.PyPISDistResolver(
+        provider="pypi-sdist",
+        index_url=pydantic.HttpUrl("https://pypi.test/simple"),
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        provider = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+            req_type=RequirementType.INSTALL,
+        )
+
+    assert isinstance(provider, resolver.PyPIProvider)
+    assert provider.req_type is RequirementType.INSTALL
+
+
+def test_get_source_provider_source_resolver_inherits_global_cooldown(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Source resolver with no per-package cooldown inherits the global one."""
+    req = Requirement("test-pkg")
+    global_cooldown = Cooldown(min_age=datetime.timedelta(days=7))
+    tmp_context.cooldown = global_cooldown
+
+    source_resolver = packagesettings.PyPISDistResolver(
+        provider="pypi-sdist",
+        index_url=pydantic.HttpUrl("https://pypi.test/simple"),
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        provider = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+        )
+
+    assert provider.cooldown is global_cooldown
+
+
+def test_get_source_provider_source_resolver_toplevel_pin_bypasses_cooldown(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Top-level == pin disables cooldown even with a source resolver."""
+    req = Requirement("test-pkg==1.0")
+    tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
+
+    source_resolver = packagesettings.PyPISDistResolver(
+        provider="pypi-sdist",
+        index_url=pydantic.HttpUrl("https://pypi.test/simple"),
+        min_release_age=14,
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        provider = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+            req_type=RequirementType.TOP_LEVEL,
+        )
+
+    assert provider.cooldown is None
+
+
+@patch("fromager.resolver.find_all_matching_from_provider")
+def test_resolve_source_uses_configured_source_resolver(
+    find_all_matching_from_provider: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Resolve versions through a configured source resolver provider."""
+    req = Requirement("test-pkg>=1.0")
+    provider = Mock(spec=resolver.BaseProvider)
+    source_resolver = Mock()
+    source_resolver.resolver_provider.return_value = provider
+    source_resolver.min_release_age = None
+    find_all_matching_from_provider.return_value = [("url", Version("1.0"))]
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        url, version = sources.resolve_source(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+        )
+
+    assert (url, version) == ("url", Version("1.0"))
+    find_all_matching_from_provider.assert_called_once_with(
+        provider,
+        req,
+        max_age_cutoff=None,
+    )
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")

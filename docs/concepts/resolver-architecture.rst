@@ -90,10 +90,16 @@ CLI commands interact with providers through a common
        Used when versions are already known, e.g. from a prior
        resolution or a settings-provided URL template.
 
+.. versionchanged:: 0.95.0
+   Packages with ``source:`` configuration now select their provider through
+   the configured source resolver.
+
 Per-package settings in YAML can select which provider to use and
-configure its parameters (index URL, tag pattern, etc.).  Override
-plugins can replace the provider entirely for a specific package via
-the ``get_resolver_provider`` hook.
+configure its parameters (index URL, tag pattern, etc.).  When a package
+has a ``source:`` resolver configured, that resolver creates the provider.
+Otherwise, override plugins can replace the provider for a specific package
+via the ``get_resolver_provider`` hook, after which the legacy resolver
+settings are used.
 
 Version Filtering Window
 -------------------------

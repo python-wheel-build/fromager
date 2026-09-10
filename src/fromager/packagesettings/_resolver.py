@@ -67,7 +67,7 @@ class AbstractResolver(pydantic.BaseModel):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.BaseProvider:
         """Return a resolver provider for the given requirement."""
         raise NotImplementedError
@@ -198,7 +198,7 @@ class PyPISDistResolver(AbstractPyPIResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -249,7 +249,7 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=False,
@@ -322,7 +322,7 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -404,7 +404,7 @@ class PyPIGitResolver(AbstractPyPIResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.PyPIProvider:
         download_url = f"git+{self.clone_url}@refs/tags/{self.tag}"
         return resolver.PyPIProvider(
@@ -510,7 +510,7 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
         self,
         *,
         ctx: context.WorkContext,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
         override_download_url: str | None = None,
     ) -> resolver.GitHubTagProvider:
         if self.project_url.host != "github.com":
@@ -534,7 +534,7 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
         self,
         *,
         ctx: context.WorkContext,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
         override_download_url: str | None = None,
     ) -> resolver.GitLabTagProvider:
         if not self.project_url.path:
@@ -571,7 +571,7 @@ class GitHubTagDownloadResolver(AbstractGitSourceResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -612,7 +612,7 @@ class GitHubTagCloneResolver(AbstractGitSourceResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -651,7 +651,7 @@ class GitLabTagDownloadResolver(AbstractGitSourceResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -692,7 +692,7 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -719,7 +719,7 @@ class NotAvailableResolver(AbstractResolver):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.BaseProvider:
         raise ValueError(f"package {req.name} is not available")
 
@@ -743,7 +743,7 @@ class AbstractHookResolver(AbstractResolver, CooldownMixin):
         self,
         ctx: context.WorkContext,
         req: Requirement,
-        req_type: requirements_file.RequirementType,
+        req_type: requirements_file.RequirementType | None,
     ) -> resolver.BaseProvider:
         # TODO
         raise NotImplementedError("Hook resolver needs a hook")
