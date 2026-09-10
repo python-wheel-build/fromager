@@ -6,6 +6,7 @@ embedding in the ``.dist-info/sboms/`` directory of built wheels.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import json
 import logging
@@ -16,7 +17,7 @@ from datetime import UTC, datetime
 from packageurl import PackageURL
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -179,6 +180,404 @@ def generate_sbom(
         ],
     }
     return doc
+
+
+_CYCLONEDX_HASH_TO_SPDX = {
+    "SHA-1": "SHA1",
+    "SHA-224": "SHA224",
+    "SHA-256": "SHA256",
+    "SHA-384": "SHA384",
+    "SHA-512": "SHA512",
+    "SHA3-224": "SHA3-224",
+    "SHA3-256": "SHA3-256",
+    "SHA3-384": "SHA3-384",
+    "SHA3-512": "SHA3-512",
+    "BLAKE2B-256": "BLAKE2b-256",
+    "BLAKE2B-384": "BLAKE2b-384",
+    "BLAKE2B-512": "BLAKE2b-512",
+}
+
+
+def _cyclonedx_string(value: typing.Any) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _cyclonedx_component_purl(component: dict[str, typing.Any]) -> str | None:
+    return _cyclonedx_string(component.get("purl"))
+
+
+def _cyclonedx_spdx_purl(component: dict[str, typing.Any]) -> str | None:
+    purl = _cyclonedx_component_purl(component)
+    if purl is None:
+        return None
+    try:
+        parsed_purl = PackageURL.from_string(purl)
+    except ValueError:
+        return purl
+
+    qualifiers = dict(parsed_purl.qualifiers or {})
+    download_url = qualifiers.get("download_url")
+    if download_url is None or not download_url.startswith("file://"):
+        return purl
+    del qualifiers["download_url"]
+    return PackageURL(
+        type=parsed_purl.type,
+        namespace=parsed_purl.namespace,
+        name=parsed_purl.name,
+        version=parsed_purl.version,
+        qualifiers=qualifiers or None,
+        subpath=parsed_purl.subpath,
+    ).to_string()
+
+
+def _iter_cyclonedx_components(
+    component: dict[str, typing.Any],
+) -> typing.Iterator[dict[str, typing.Any]]:
+    yield component
+    nested_components = component.get("components")
+    if not isinstance(nested_components, list):
+        return
+    for nested_component in nested_components:
+        if isinstance(nested_component, dict):
+            yield from _iter_cyclonedx_components(nested_component)
+
+
+def _versions_match(left: str, right: str) -> bool:
+    try:
+        return Version(left) == Version(right)
+    except InvalidVersion:
+        return left == right
+
+
+def _is_python_wheel_root(
+    component: dict[str, typing.Any],
+    sbom: dict[str, typing.Any],
+) -> bool:
+    purl = _cyclonedx_component_purl(component)
+    if purl is None:
+        return False
+    try:
+        parsed_purl = PackageURL.from_string(purl)
+    except ValueError:
+        return False
+    if (
+        parsed_purl.type != "pypi"
+        or parsed_purl.name is None
+        or parsed_purl.version is None
+    ):
+        return False
+
+    component_name = _cyclonedx_string(component.get("name"))
+    component_version = _cyclonedx_string(component.get("version"))
+    if component_name is None or component_version is None:
+        return False
+
+    packages = sbom.get("packages")
+    if not isinstance(packages, list):
+        return False
+    wheel = next(
+        (
+            package
+            for package in packages
+            if isinstance(package, dict) and package.get("SPDXID") == "SPDXRef-wheel"
+        ),
+        None,
+    )
+    if wheel is None:
+        return False
+
+    wheel_name = _cyclonedx_string(wheel.get("name"))
+    wheel_version = _cyclonedx_string(wheel.get("versionInfo"))
+    if wheel_name is None or wheel_version is None:
+        return False
+    return (
+        canonicalize_name(parsed_purl.name) == canonicalize_name(wheel_name)
+        and _versions_match(parsed_purl.version, wheel_version)
+        and canonicalize_name(component_name) == canonicalize_name(wheel_name)
+        and _versions_match(component_version, wheel_version)
+    )
+
+
+def _cyclonedx_component_identity(component: dict[str, typing.Any]) -> str:
+    purl = _cyclonedx_spdx_purl(component)
+    if purl:
+        return f"purl:{purl}"
+
+    return "component:" + "\x00".join(
+        [
+            _cyclonedx_string(component.get("type")) or "",
+            _cyclonedx_string(component.get("group")) or "",
+            _cyclonedx_string(component.get("name")) or "",
+            _cyclonedx_string(component.get("version")) or "",
+        ]
+    )
+
+
+def _cyclonedx_spdx_id(component: dict[str, typing.Any]) -> str:
+    identity = _cyclonedx_component_identity(component)
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
+    return f"SPDXRef-cyclonedx-{digest}"
+
+
+def _cyclonedx_license_expression(
+    component: dict[str, typing.Any],
+) -> str | None:
+    licenses = component.get("licenses")
+    if not isinstance(licenses, list):
+        return None
+
+    expressions: list[str] = []
+    for license_choice in licenses:
+        if not isinstance(license_choice, dict):
+            continue
+        expression = _cyclonedx_string(license_choice.get("expression"))
+        if expression:
+            expressions.append(expression)
+            continue
+        license_info = license_choice.get("license")
+        if isinstance(license_info, dict):
+            identifier = _cyclonedx_string(license_info.get("id"))
+            if identifier:
+                expressions.append(identifier)
+
+    if not expressions:
+        return None
+    return " AND ".join(expressions)
+
+
+def _cyclonedx_checksums(
+    component: dict[str, typing.Any],
+) -> list[dict[str, str]]:
+    hashes = component.get("hashes")
+    if not isinstance(hashes, list):
+        return []
+
+    checksums: list[dict[str, str]] = []
+    for hash_info in hashes:
+        if not isinstance(hash_info, dict):
+            continue
+        algorithm = _cyclonedx_string(hash_info.get("alg"))
+        content = _cyclonedx_string(hash_info.get("content"))
+        if not algorithm or not content:
+            continue
+        normalized_algorithm = _CYCLONEDX_HASH_TO_SPDX.get(algorithm.upper())
+        if normalized_algorithm is None:
+            continue
+        checksums.append({"algorithm": normalized_algorithm, "checksumValue": content})
+    return checksums
+
+
+def _cyclonedx_package(
+    component: dict[str, typing.Any],
+    spdx_id: str,
+) -> dict[str, typing.Any]:
+    purl = _cyclonedx_spdx_purl(component)
+    name = (
+        _cyclonedx_string(component.get("name"))
+        or purl
+        or _cyclonedx_string(component.get("bom-ref"))
+        or "unknown"
+    )
+    version = _cyclonedx_string(component.get("version")) or "NOASSERTION"
+    package: dict[str, typing.Any] = {
+        "SPDXID": spdx_id,
+        "name": name,
+        "versionInfo": version,
+        "downloadLocation": "NOASSERTION",
+        "supplier": "NOASSERTION",
+    }
+
+    if purl:
+        package["externalRefs"] = [
+            {
+                "referenceCategory": "PACKAGE-MANAGER",
+                "referenceType": "purl",
+                "referenceLocator": purl,
+            }
+        ]
+
+    checksums = _cyclonedx_checksums(component)
+    if checksums:
+        package["checksums"] = checksums
+
+    license_expression = _cyclonedx_license_expression(component)
+    if license_expression:
+        package["licenseDeclared"] = license_expression
+
+    scope = _cyclonedx_string(component.get("scope"))
+    if scope and scope != "required":
+        package["comment"] = f"CycloneDX scope: {scope}"
+
+    return package
+
+
+def _merge_cyclonedx_package(
+    package: dict[str, typing.Any],
+    component: dict[str, typing.Any],
+) -> None:
+    """Add non-conflicting metadata from a duplicate CycloneDX component."""
+    component_checksums = _cyclonedx_checksums(component)
+    if component_checksums:
+        checksums = package.setdefault("checksums", [])
+        if isinstance(checksums, list):
+            existing_checksums = {
+                (item.get("algorithm"), item.get("checksumValue"))
+                for item in checksums
+                if isinstance(item, dict)
+            }
+            for checksum in component_checksums:
+                key = (checksum["algorithm"], checksum["checksumValue"])
+                if key not in existing_checksums:
+                    checksums.append(checksum)
+                    existing_checksums.add(key)
+
+    license_expression = _cyclonedx_license_expression(component)
+    if license_expression and "licenseDeclared" not in package:
+        package["licenseDeclared"] = license_expression
+
+    scope = _cyclonedx_string(component.get("scope"))
+    if scope and scope != "required" and "comment" not in package:
+        package["comment"] = f"CycloneDX scope: {scope}"
+
+
+def _purl_to_spdx_id(sbom: dict[str, typing.Any]) -> dict[str, str]:
+    purls: dict[str, str] = {}
+    packages = sbom.get("packages")
+    if not isinstance(packages, list):
+        return purls
+
+    for package in packages:
+        if not isinstance(package, dict):
+            continue
+        spdx_id = _cyclonedx_string(package.get("SPDXID"))
+        external_refs = package.get("externalRefs")
+        if not spdx_id or not isinstance(external_refs, list):
+            continue
+        for external_ref in external_refs:
+            if not isinstance(external_ref, dict):
+                continue
+            if external_ref.get("referenceType") != "purl":
+                continue
+            purl = _cyclonedx_string(external_ref.get("referenceLocator"))
+            if purl:
+                purls[purl] = spdx_id
+    return purls
+
+
+def _add_spdx_relationship(
+    sbom: dict[str, typing.Any],
+    relationship: tuple[str, str, str],
+) -> None:
+    relationships = sbom.setdefault("relationships", [])
+    if not isinstance(relationships, list):
+        return
+    existing = {
+        (
+            item.get("spdxElementId"),
+            item.get("relationshipType"),
+            item.get("relatedSpdxElement"),
+        )
+        for item in relationships
+        if isinstance(item, dict)
+    }
+    if relationship not in existing:
+        relationships.append(
+            {
+                "spdxElementId": relationship[0],
+                "relationshipType": relationship[1],
+                "relatedSpdxElement": relationship[2],
+            }
+        )
+
+
+def merge_cyclonedx_sboms(
+    *,
+    sbom: dict[str, typing.Any],
+    sboms_dir: pathlib.Path,
+) -> None:
+    """Merge CycloneDX components into a Fromager SPDX document.
+
+    Imported components are related to the wheel with ``CONTAINS``. Local file
+    download qualifiers are removed from their PURLs. The original CycloneDX
+    files are only read and remain alongside ``fromager.spdx.json``.
+    """
+    if not sboms_dir.is_dir():
+        return
+
+    purl_to_spdx_id = _purl_to_spdx_id(sbom)
+    identity_to_spdx_id: dict[str, str] = {}
+    packages = sbom.setdefault("packages", [])
+    if not isinstance(packages, list):
+        return
+
+    for sbom_path in sorted(sboms_dir.iterdir()):
+        if not sbom_path.is_file() or sbom_path.name == SBOM_FILENAME:
+            continue
+        try:
+            with sbom_path.open(encoding="utf-8") as sbom_file:
+                cyclonedx = json.load(sbom_file)
+        except (OSError, json.JSONDecodeError) as err:
+            logger.warning("could not read SBOM file %s: %s", sbom_path, err)
+            continue
+
+        if not isinstance(cyclonedx, dict) or cyclonedx.get("bomFormat") != "CycloneDX":
+            continue
+
+        metadata = cyclonedx.get("metadata")
+        root = metadata.get("component") if isinstance(metadata, dict) else None
+        components: list[tuple[dict[str, typing.Any], bool]] = []
+        if isinstance(root, dict):
+            components.extend(
+                (component, component is root)
+                for component in _iter_cyclonedx_components(root)
+            )
+        raw_components = cyclonedx.get("components")
+        if isinstance(raw_components, list):
+            for component in raw_components:
+                if isinstance(component, dict):
+                    components.extend(
+                        (nested_component, False)
+                        for nested_component in _iter_cyclonedx_components(component)
+                    )
+
+        for component, is_root in components:
+            if _cyclonedx_string(component.get("scope")) == "excluded":
+                continue
+
+            identity = _cyclonedx_component_identity(component)
+            purl = _cyclonedx_spdx_purl(component)
+            spdx_id: str | None
+            if is_root and _is_python_wheel_root(component, sbom):
+                spdx_id = "SPDXRef-wheel"
+                if purl:
+                    purl_to_spdx_id[purl] = spdx_id
+            else:
+                spdx_id = identity_to_spdx_id.get(identity)
+                if purl:
+                    mapped_spdx_id = purl_to_spdx_id.get(purl)
+                    if mapped_spdx_id is not None:
+                        spdx_id = mapped_spdx_id
+                if spdx_id is None:
+                    spdx_id = _cyclonedx_spdx_id(component)
+                    packages.append(_cyclonedx_package(component, spdx_id))
+                    if purl:
+                        purl_to_spdx_id[purl] = spdx_id
+                else:
+                    package = next(
+                        package
+                        for package in packages
+                        if package.get("SPDXID") == spdx_id
+                    )
+                    _merge_cyclonedx_package(package, component)
+
+            identity_to_spdx_id[identity] = spdx_id
+            if spdx_id != "SPDXRef-wheel":
+                _add_spdx_relationship(
+                    sbom,
+                    ("SPDXRef-wheel", "CONTAINS", spdx_id),
+                )
 
 
 def write_sbom(
