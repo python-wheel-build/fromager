@@ -138,10 +138,28 @@ Resolver hooks
     The arguments are the ``WorkContext``, the ``Requirement`` being
     evaluated, a boolean indicating whether source distributions should be
     included, a boolean indicating whether built wheels should be
-    included, and the URL for the sdist server.
+    included, and the URL for the sdist server. The hook also receives
+    ``req_type`` and ``ignore_platform`` when those parameters are supported
+    by its signature.
 
-    The return value must be an instance of a class that implements the
-    ``resolvelib.providers.AbstractProvider`` API.
+    The ``hook-sdist`` and ``hook-prebuilt`` source profiles require this hook.
+    They pass the following keyword arguments:
+
+    * ``ctx``
+    * ``req``
+    * ``include_sdists``
+    * ``include_wheels``
+    * ``sdist_server_url``
+    * ``req_type``
+    * ``ignore_platform``
+
+    Older hooks may omit newer arguments; unsupported keyword arguments are
+    filtered for compatibility. A missing hook or a return value that is not a
+    :class:`~fromager.resolver.BaseProvider` is an error. Hook profiles never
+    fall back to the default PyPI provider.
+
+    The return value must be an instance of
+    :class:`~fromager.resolver.BaseProvider`.
 
     The expectation is that it acts as an engine for any sort of package resolution
     whether it is for wheels or sources. The provider can
@@ -169,7 +187,10 @@ Resolver hooks
             return VERSIONS.items()
 
 
-        def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
+        def get_resolver_provider(
+                ctx, req, include_sdists, include_wheels, sdist_server_url,
+                req_type=None, ignore_platform=False,
+            ):
             return resolver.GenericProvider(version_source=_version_source, constraints=ctx.constraints)
 
     ``GenericProvider``, ``GitHubTagProvider``, and ``GitLabTagProvider`` take
