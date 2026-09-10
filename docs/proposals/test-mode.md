@@ -89,7 +89,7 @@ graph node `pre_built` reflects settings only (not updated after fallback).
 | -- | -- | -- |
 | Purpose | Source-build gap analysis | All matching versions |
 | On build failure | Pre-built fallback, keep traversing | Remove version from graph |
-| Output | `test-mode-failures-*.json` | Logs only |
+| Output | `test-mode-failures-*.json` | `partial-failures.json` |
 
 ## Usage
 
@@ -97,7 +97,9 @@ graph node `pre_built` reflects settings only (not updated after fallback).
 fromager bootstrap --test-mode -r requirements.txt
 ```
 
-Review `test-mode-failures-*.json`, `build-order.json` (`source_url_type: "prebuilt"`), and `graph.json`. Tests: `tests/test_bootstrap_test_mode.py`,
+Review `test-mode-failures-*.json`, `partial-failures.json` for failed
+multi-version builds, `build-order.json` (`source_url_type: "prebuilt"`), and
+`graph.json`. Tests: `tests/test_bootstrap_test_mode.py`,
 `e2e/test_mode_*.sh`.
 
 ## Limitations

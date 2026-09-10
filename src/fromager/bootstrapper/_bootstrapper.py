@@ -124,7 +124,8 @@ class Bootstrapper:
         self.failed_packages: list[FailureRecord] = []
 
         # Track failed versions in multiple_versions mode
-        self._failed_versions: dict[tuple[str, str], Exception] = {}
+        # Maps (package_name, version) -> (exception, detail)
+        self._failed_versions: dict[tuple[str, str], tuple[Exception, str]] = {}
 
     @property
     def resolver(self) -> bootstrap_requirement_resolver.BootstrapRequirementResolver:
@@ -1001,6 +1002,13 @@ class Bootstrapper:
             self.record_test_mode_failure(
                 wi.req, str(wi.resolved_version), err, "bootstrap"
             )
+            if self.multiple_versions:
+                self._record_failed_version(
+                    wi.req,
+                    str(wi.resolved_version),
+                    err,
+                    f"failed during {type(item).phase} phase",
+                )
             return []
 
         # Multiple versions mode: record failure, remove from graph, continue
@@ -1035,7 +1043,7 @@ class Bootstrapper:
     ) -> None:
         """Record a version failure in multiple versions mode."""
         pkg_name = canonicalize_name(req.name)
-        self._failed_versions[(pkg_name, version)] = err
+        self._failed_versions[(pkg_name, version)] = (err, detail)
         logger.warning(
             "%s==%s: %s: %s: %s",
             req.name,
@@ -1048,8 +1056,38 @@ class Bootstrapper:
     def _log_failed_versions_table(self) -> None:
         """Log a summary table of all failed versions."""
         logger.warning("%d version(s) failed to bootstrap:", len(self._failed_versions))
-        for (name, ver), exc in self._failed_versions.items():
+        for (name, ver), (exc, _detail) in self._failed_versions.items():
             logger.warning("  %s==%s: %s: %s", name, ver, type(exc).__name__, exc)
+
+    def _write_partial_failures_report(self) -> None:
+        """Write a JSON report of multi-version bootstrap failures.
+
+        Produces a ``partial-failures.json`` file in the work directory
+        so that downstream analysis tools can detect soft failures in
+        jobs that exited successfully.
+        """
+        failures_file = self.ctx.work_dir / "partial-failures.json"
+        failures = sorted(
+            [
+                {
+                    "name": name if ver == "unresolved" else f"{name}=={ver}",
+                    "version": None if ver == "unresolved" else ver,
+                    "phase": detail,
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                }
+                for (name, ver), (exc, detail) in self._failed_versions.items()
+            ],
+            key=lambda f: f["name"] or "",
+        )
+        with open(failures_file, "w") as f:
+            json.dump({"failures": failures}, f, indent=2)
+            f.write("\n")
+        logger.info(
+            "multi-version: wrote %d failure(s) to %s",
+            len(failures),
+            failures_file,
+        )
 
     def finalize(self) -> int:
         """Finalize bootstrap and return exit code.
@@ -1089,6 +1127,9 @@ class Bootstrapper:
 
         if self.multiple_versions and self._failed_versions:
             self._log_failed_versions_table()
+            self._write_partial_failures_report()
+        else:
+            (self.ctx.work_dir / "partial-failures.json").unlink(missing_ok=True)
 
         if not self.test_mode:
             return 0

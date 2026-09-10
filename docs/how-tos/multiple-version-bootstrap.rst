@@ -80,10 +80,37 @@ Output Files
 
 When ``--multiple-versions`` is active:
 
+.. versionchanged:: 0.95.0
+   Failed versions are recorded in ``partial-failures.json``. The file is
+   removed when a subsequent run has no reportable failures.
+
 - ``build-order.json`` --- created normally, listing every version built
 - ``graph.json`` --- created normally, containing all versions in the
   dependency graph
+- ``partial-failures.json`` --- created when one or more versions fail. Each
+  failure includes the package name, version, phase, exception type, and
+  message.
 - ``constraints.txt`` --- **not generated**
+
+The report contains a top-level ``failures`` list. For a resolved version,
+``name`` includes the package version (for example, ``requests==2.28.0``),
+and ``version`` contains the version separately. For an unresolved
+requirement, ``version`` is ``null`` and ``name`` contains only the package
+name.
+
+.. code-block:: json
+
+   {
+     "failures": [
+       {
+         "name": "requests==2.28.0",
+         "version": "2.28.0",
+         "phase": "failed during build phase",
+         "error_type": "CalledProcessError",
+         "message": "build command failed"
+       }
+     ]
+   }
 
 Combining with Other Flags
 --------------------------
@@ -91,7 +118,9 @@ Combining with Other Flags
 ``--test-mode``
   Supported with serial ``bootstrap`` only. Failures are collected and
   reported at the end rather than aborting early (same behavior as without
-  ``--multiple-versions``).
+  ``--multiple-versions``). When combined with ``--multiple-versions``,
+  failed versions are also included in ``partial-failures.json`` and test
+  mode retains its non-zero exit code for recorded failures.
 
 ``--skip-constraints``
   Redundant when ``--multiple-versions`` is set. Fromager automatically

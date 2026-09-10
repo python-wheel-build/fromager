@@ -489,8 +489,9 @@ class TestPhaseResolve:
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
 
-        bt._failed_versions[(canonicalize_name("testpkg"), "2.0")] = RuntimeError(
-            "boom"
+        bt._failed_versions[(canonicalize_name("testpkg"), "2.0")] = (
+            RuntimeError("boom"),
+            "failed during build phase",
         )
         item.bg_future = _make_resolved_future(
             [
@@ -515,8 +516,9 @@ class TestPhaseResolve:
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=False)
         item = _make_resolve_item()
 
-        bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = RuntimeError(
-            "boom"
+        bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = (
+            RuntimeError("boom"),
+            "failed during build phase",
         )
         item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
@@ -532,8 +534,9 @@ class TestPhaseResolve:
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
         item = _make_resolve_item()
 
-        bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = RuntimeError(
-            "boom"
+        bt._failed_versions[(canonicalize_name("testpkg"), "1.0")] = (
+            RuntimeError("boom"),
+            "failed during build phase",
         )
         item.bg_future = _make_resolved_future([("url-1.0", Version("1.0"))])
 
@@ -880,7 +883,7 @@ class TestHandlePhaseError:
         assert len(bt._failed_versions) == 1
         key = (canonicalize_name("testpkg"), "unresolved")
         assert key in bt._failed_versions
-        assert bt._failed_versions[key] is err
+        assert bt._failed_versions[key][0] is err
 
     def test_resolve_error_enriched_before_test_mode_record(
         self, tmp_context: WorkContext
@@ -926,7 +929,7 @@ class TestHandlePhaseError:
         bt._handle_phase_error(item, err)
 
         key = (canonicalize_name("flashinfer-python"), "unresolved")
-        assert "dependency chain: its-hub==1.0" in str(bt._failed_versions[key])
+        assert "dependency chain: its-hub==1.0" in str(bt._failed_versions[key][0])
 
     def test_resolve_error_enriched_before_normal_mode_raise(
         self, tmp_context: WorkContext

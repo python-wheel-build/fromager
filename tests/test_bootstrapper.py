@@ -426,9 +426,10 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
                 pkg_name = canonicalize_name("testpkg")
                 version_str = "1.5"
                 assert (pkg_name, version_str) in bt._failed_versions
-                exc = bt._failed_versions[(pkg_name, version_str)]
+                exc, detail = bt._failed_versions[(pkg_name, version_str)]
                 assert isinstance(exc, ValueError)
                 assert str(exc) == "Simulated failure for version 1.5"
+                assert "failed during" in detail
 
         # Verify that failed version 1.5 is NOT in the dependency graph
         failed_key = f"{canonicalize_name('testpkg')}==1.5"
@@ -1231,3 +1232,95 @@ def test_resolve_versions_rejects_url_requirement(
     bs = bootstrapper.Bootstrapper(tmp_context)
     with pytest.raises(ValueError, match="no longer supported"):
         bs.resolve_versions(req=req, req_type=RequirementType.TOP_LEVEL)
+
+
+class TestPartialFailuresReport:
+    """Test partial-failures.json generation for multi-version mode."""
+
+    def test_finalize_writes_partial_failures(self, tmp_context: WorkContext) -> None:
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        bt._failed_versions = {
+            ("pkg-a", "1.0"): (ValueError("build failed"), "failed during build phase"),
+            ("pkg-b", "2.0"): (RuntimeError("timeout"), "failed to resolve"),
+        }
+
+        assert bt.finalize() == 0
+
+        report = tmp_context.work_dir / "partial-failures.json"
+        assert report.exists()
+        data = json.loads(report.read_text())
+        assert len(data["failures"]) == 2
+        assert data["failures"][0] == {
+            "name": "pkg-a==1.0",
+            "version": "1.0",
+            "phase": "failed during build phase",
+            "error_type": "ValueError",
+            "message": "build failed",
+        }
+        assert data["failures"][1] == {
+            "name": "pkg-b==2.0",
+            "version": "2.0",
+            "phase": "failed to resolve",
+            "error_type": "RuntimeError",
+            "message": "timeout",
+        }
+
+    def test_finalize_includes_unresolved_failures(
+        self, tmp_context: WorkContext
+    ) -> None:
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        bt._failed_versions = {
+            ("somepkg", "unresolved"): (
+                RuntimeError("no versions found for somepkg"),
+                "failed to resolve",
+            ),
+        }
+
+        assert bt.finalize() == 0
+
+        report = tmp_context.work_dir / "partial-failures.json"
+        assert report.exists()
+        data = json.loads(report.read_text())
+        assert len(data["failures"]) == 1
+        assert data["failures"][0] == {
+            "name": "somepkg",
+            "version": None,
+            "phase": "failed to resolve",
+            "error_type": "RuntimeError",
+            "message": "no versions found for somepkg",
+        }
+
+    def test_finalize_no_report_when_no_failures(
+        self, tmp_context: WorkContext
+    ) -> None:
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+
+        bt.finalize()
+
+        report = tmp_context.work_dir / "partial-failures.json"
+        assert not report.exists()
+
+    def test_finalize_removes_stale_report(self, tmp_context: WorkContext) -> None:
+        """A clean run removes a partial-failures.json left by a previous run."""
+        report = tmp_context.work_dir / "partial-failures.json"
+        report.write_text('{"failures": [{"name": "old==1.0"}]}')
+
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        bt.finalize()
+
+        assert not report.exists()
+
+    def test_finalize_no_report_without_multiple_versions(
+        self, tmp_context: WorkContext
+    ) -> None:
+        report = tmp_context.work_dir / "partial-failures.json"
+        report.write_text('{"failures": [{"name": "stale==1.0"}]}')
+
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=False)
+        bt._failed_versions = {
+            ("pkg-a", "1.0"): (ValueError("build failed"), "failed during build phase"),
+        }
+
+        bt.finalize()
+
+        assert not report.exists()

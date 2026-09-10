@@ -1181,7 +1181,7 @@ class GitHubTagProvider(GenericProvider):
         identifier: str,
     ) -> Iterable[Candidate]:
         headers = {"accept": "application/vnd.github+json"}
-        nexturl = self.api_url.format(self=self)
+        nexturl: str | None = self.api_url.format(self=self)
         while nexturl:
             resp = session.get(nexturl, headers=headers)
             resp.raise_for_status()
@@ -1288,7 +1288,7 @@ class GitLabTagProvider(GenericProvider):
         self,
         identifier: str,
     ) -> Iterable[Candidate]:
-        nexturl: str = self.api_url
+        nexturl: str | None = self.api_url
         created_at: datetime.datetime | None
         project_name = self.project_path.split("/")[-1]
         if self.override_download_url is None:
