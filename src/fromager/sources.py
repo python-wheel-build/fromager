@@ -125,7 +125,15 @@ def get_source_provider(
 
     source_resolver = pbi.source_resolver
     if source_resolver is not None:
-        return source_resolver.resolver_provider(ctx, req, req_type)
+        provider = source_resolver.resolver_provider(ctx, req, req_type)
+        if req_type == RequirementType.TOP_LEVEL and resolver._has_equality_pin(req):
+            provider.cooldown = None
+        else:
+            per_package_days = getattr(source_resolver, "min_release_age", None)
+            provider.cooldown = resolver._effective_cooldown(
+                ctx.cooldown, per_package_days
+            )
+        return provider
 
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 

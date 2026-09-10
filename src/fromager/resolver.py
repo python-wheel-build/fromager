@@ -157,6 +157,36 @@ def _has_equality_pin(req: Requirement) -> bool:
     return len(specs) == 1 and specs[0].operator == "==" and "*" not in specs[0].version
 
 
+def _effective_cooldown(
+    global_cooldown: Cooldown | None,
+    per_package_days: int | None,
+) -> Cooldown | None:
+    """Merge a per-package cooldown override with the global cooldown.
+
+    Args:
+        global_cooldown: The global cooldown from ``ctx.cooldown``.
+        per_package_days: Per-package override in days — ``None`` inherits
+            the global value, ``0`` disables cooldown, a positive integer
+            overrides it.
+
+    Returns:
+        The effective cooldown, or ``None`` if disabled.
+    """
+    if per_package_days is None:
+        return global_cooldown
+    if per_package_days == 0:
+        return None
+    bootstrap_time = (
+        global_cooldown.bootstrap_time
+        if global_cooldown is not None
+        else datetime.datetime.now(datetime.UTC)
+    )
+    return Cooldown(
+        min_age=datetime.timedelta(days=per_package_days),
+        bootstrap_time=bootstrap_time,
+    )
+
+
 def resolve_package_cooldown(
     ctx: context.WorkContext,
     req: Requirement,
@@ -178,22 +208,7 @@ def resolve_package_cooldown(
         return None
 
     per_package_days = ctx.package_build_info(req).resolver_min_release_age
-    global_cooldown = ctx.cooldown
-    if per_package_days is None:
-        return global_cooldown
-    if per_package_days == 0:
-        return None
-    # Per-package positive override: inherit bootstrap_time from global so all
-    # resolutions in a single run share the same fixed cutoff point.
-    bootstrap_time = (
-        global_cooldown.bootstrap_time
-        if global_cooldown is not None
-        else datetime.datetime.now(datetime.UTC)
-    )
-    return Cooldown(
-        min_age=datetime.timedelta(days=per_package_days),
-        bootstrap_time=bootstrap_time,
-    )
+    return _effective_cooldown(ctx.cooldown, per_package_days)
 
 
 def _compute_max_age_cutoff(
