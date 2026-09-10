@@ -494,7 +494,7 @@ def test_resolve_auto_routes_to_source(
     mock_pbi.resolver_min_release_age = None
 
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
-        resolver = BootstrapRequirementResolver(tmp_context)
+        brr = BootstrapRequirementResolver(tmp_context)
 
         # Mock source resolution to return expected result (as list)
         mock_resolve.return_value = [
@@ -502,15 +502,24 @@ def test_resolve_auto_routes_to_source(
         ]
 
         # Call resolve with pre_built=None (should auto-detect)
-        results = resolver.resolve(
-            req=req,
-            req_type=RequirementType.INSTALL,
-            parent_req=None,
-            pre_built=None,
-        )
+        with patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider"
+        ) as get_source_provider:
+            results = brr.resolve(
+                req=req,
+                req_type=RequirementType.INSTALL,
+                parent_req=None,
+                pre_built=None,
+            )
 
         # Verify resolution was called
         mock_resolve.assert_called_once()
+        get_source_provider.assert_called_once_with(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url="https://pypi.org/simple",
+            req_type=RequirementType.INSTALL,
+        )
         assert len(results) == 1
         url, version = results[0]
         assert url == "https://files.pythonhosted.org/mypackage-2.0.tar.gz"
