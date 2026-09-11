@@ -679,10 +679,55 @@ class TestHookSDistResolver:
             {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
         )
 
-    def test_resolver_provider(self, tmp_context: WorkContext) -> None:
+    @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+    def test_resolver_provider(
+        self,
+        find_override_method: mock.Mock,
+        tmp_context: WorkContext,
+    ) -> None:
         r = _parse(self.YAML)
-        with pytest.raises(NotImplementedError):
-            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+        provider = resolver.GenericProvider(version_source=lambda identifier: [])
+        captured: dict[str, object] = {}
+
+        def hook(
+            ctx: WorkContext,
+            req: Requirement,
+            include_sdists: bool,
+            include_wheels: bool,
+            sdist_server_url: str,
+            req_type: RequirementType | None = None,
+            ignore_platform: bool = False,
+        ) -> resolver.BaseProvider:
+            captured.update(
+                ctx=ctx,
+                req=req,
+                include_sdists=include_sdists,
+                include_wheels=include_wheels,
+                sdist_server_url=sdist_server_url,
+                req_type=req_type,
+                ignore_platform=ignore_platform,
+            )
+            return provider
+
+        find_override_method.return_value = hook
+
+        result = r.resolver_provider(
+            tmp_context,
+            _REQ,
+            _REQ_TYPE,
+            sdist_server_url="https://index.test/simple",
+        )
+
+        assert result is provider
+        assert captured == {
+            "ctx": tmp_context,
+            "req": _REQ,
+            "include_sdists": True,
+            "include_wheels": False,
+            "sdist_server_url": "https://index.test/simple",
+            "req_type": _REQ_TYPE,
+            "ignore_platform": False,
+        }
 
     def test_download(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
@@ -704,15 +749,149 @@ class TestHookPrebuiltResolver:
         assert r.resolves_prebuilt_wheel is True
         assert r.download_kinds == frozenset({DownloadKind.prebuilt_wheel})
 
-    def test_resolver_provider(self, tmp_context: WorkContext) -> None:
+    @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+    def test_resolver_provider(
+        self,
+        find_override_method: mock.Mock,
+        tmp_context: WorkContext,
+    ) -> None:
         r = _parse(self.YAML)
-        with pytest.raises(NotImplementedError):
-            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+        provider = resolver.GenericProvider(version_source=lambda identifier: [])
+
+        def hook(
+            ctx: WorkContext,
+            req: Requirement,
+            include_sdists: bool,
+            include_wheels: bool,
+            sdist_server_url: str,
+            req_type: RequirementType | None = None,
+            ignore_platform: bool = False,
+        ) -> resolver.BaseProvider:
+            return provider
+
+        find_override_method.return_value = hook
+
+        result = r.resolver_provider(
+            tmp_context,
+            _REQ,
+            _REQ_TYPE,
+            sdist_server_url="https://index.test/simple",
+        )
+
+        assert result is provider
+        find_override_method.assert_called_once_with(
+            _REQ.name,
+            "get_resolver_provider",
+        )
 
     def test_download(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
         with pytest.raises(NotImplementedError, match="hook"):
             r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
+
+
+@mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_hook_resolver_supports_legacy_hook_signature(
+    find_override_method: mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """Legacy five-argument resolver hooks remain compatible."""
+    provider = resolver.GenericProvider(version_source=lambda identifier: [])
+
+    def legacy_hook(
+        ctx: WorkContext,
+        req: Requirement,
+        include_sdists: bool,
+        include_wheels: bool,
+        sdist_server_url: str,
+    ) -> resolver.BaseProvider:
+        return provider
+
+    find_override_method.return_value = legacy_hook
+    resolver_model = HookSDistResolver(provider="hook-sdist")
+
+    result = resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    assert result is provider
+
+
+@mock.patch("fromager.packagesettings._resolver.resolver.default_resolver_provider")
+@mock.patch(
+    "fromager.packagesettings._resolver.overrides.find_override_method",
+    return_value=None,
+)
+def test_hook_resolver_does_not_fall_back_when_hook_is_missing(
+    find_override_method: mock.Mock,
+    default_resolver_provider: mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """A missing hook fails instead of selecting the default PyPI provider."""
+    resolver_model = HookSDistResolver(provider="hook-sdist")
+
+    with pytest.raises(ValueError, match="requires a get_resolver_provider"):
+        resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    find_override_method.assert_called_once_with(
+        _REQ.name,
+        "get_resolver_provider",
+    )
+    default_resolver_provider.assert_not_called()
+
+
+@mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_hook_resolver_rejects_invalid_provider(
+    find_override_method: mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """Reject values that are not Fromager resolver providers."""
+
+    def hook(
+        ctx: WorkContext,
+        req: Requirement,
+        include_sdists: bool,
+        include_wheels: bool,
+        sdist_server_url: str,
+        req_type: RequirementType | None = None,
+        ignore_platform: bool = False,
+    ) -> object:
+        return object()
+
+    find_override_method.return_value = hook
+    resolver_model = HookPrebuiltResolver(provider="hook-prebuilt")
+
+    with pytest.raises(
+        TypeError,
+        match=r"expected fromager\.resolver\.BaseProvider",
+    ):
+        resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+
+@mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_hook_resolver_chains_hook_exception(
+    find_override_method: mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """Add resolver context while preserving the hook exception as the cause."""
+
+    def hook(
+        ctx: WorkContext,
+        req: Requirement,
+        include_sdists: bool,
+        include_wheels: bool,
+        sdist_server_url: str,
+        req_type: RequirementType | None = None,
+        ignore_platform: bool = False,
+    ) -> resolver.BaseProvider:
+        raise ValueError("hook failure")
+
+    find_override_method.return_value = hook
+    resolver_model = HookSDistResolver(provider="hook-sdist")
+
+    with pytest.raises(RuntimeError, match="hook-sdist") as exc_info:
+        resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert str(exc_info.value.__cause__) == "hook failure"
 
 
 # -- Discriminated union validation -------------------------------------------

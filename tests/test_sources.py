@@ -37,11 +37,16 @@ def test_get_source_provider_uses_configured_source_resolver(
         result = sources.get_source_provider(
             ctx=tmp_context,
             req=req,
-            sdist_server_url=resolver.PYPI_SERVER_URL,
+            sdist_server_url="https://caller.test/simple",
         )
 
     assert result is provider
-    source_resolver.resolver_provider.assert_called_once_with(tmp_context, req, None)
+    source_resolver.resolver_provider.assert_called_once_with(
+        tmp_context,
+        req,
+        None,
+        sdist_server_url="https://caller.test/simple",
+    )
     find_and_invoke.assert_not_called()
 
 
@@ -64,13 +69,82 @@ def test_get_source_provider_uses_pypi_sdist_source_resolver(
         provider = sources.get_source_provider(
             ctx=tmp_context,
             req=req,
-            sdist_server_url=resolver.PYPI_SERVER_URL,
+            sdist_server_url="https://caller.test/simple",
         )
 
     assert isinstance(provider, resolver.PyPIProvider)
     assert provider.include_sdists is True
     assert provider.include_wheels is False
     assert provider.sdist_server_url == "https://pypi.test/simple"
+
+
+@patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_get_source_provider_hook_forwards_url_and_applies_cooldown(
+    find_override_method: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Hook providers receive the runtime URL and centralized cooldown."""
+    req = Requirement("test-pkg")
+    initial_cooldown = Cooldown(min_age=datetime.timedelta(days=1))
+    provider = resolver.GenericProvider(
+        version_source=lambda identifier: [],
+        cooldown=initial_cooldown,
+    )
+    captured: dict[str, object] = {}
+
+    def hook(
+        ctx: context.WorkContext,
+        req: Requirement,
+        include_sdists: bool,
+        include_wheels: bool,
+        sdist_server_url: str,
+        req_type: RequirementType | None = None,
+        ignore_platform: bool = False,
+    ) -> resolver.BaseProvider:
+        captured.update(
+            ctx=ctx,
+            req=req,
+            include_sdists=include_sdists,
+            include_wheels=include_wheels,
+            sdist_server_url=sdist_server_url,
+            req_type=req_type,
+            ignore_platform=ignore_platform,
+        )
+        return provider
+
+    find_override_method.return_value = hook
+    tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
+    source_resolver = packagesettings.HookSDistResolver(
+        provider="hook-sdist",
+        min_release_age=14,
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        result = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url="https://caller.test/simple",
+            req_type=RequirementType.INSTALL,
+        )
+
+    assert result is provider
+    assert captured == {
+        "ctx": tmp_context,
+        "req": req,
+        "include_sdists": True,
+        "include_wheels": False,
+        "sdist_server_url": "https://caller.test/simple",
+        "req_type": RequirementType.INSTALL,
+        "ignore_platform": False,
+    }
+    assert result.cooldown is not initial_cooldown
+    assert result.cooldown is not None
+    assert result.cooldown.min_age == datetime.timedelta(days=14)
 
 
 def test_get_source_provider_forwards_req_type_to_source_resolver(

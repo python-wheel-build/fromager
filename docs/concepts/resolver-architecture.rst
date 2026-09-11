@@ -94,9 +94,17 @@ CLI commands interact with providers through a common
    Packages with ``source:`` configuration now select their provider through
    the configured source resolver.
 
+.. versionchanged:: 0.96.0
+   The ``hook-sdist`` and ``hook-prebuilt`` profiles create providers through
+   the required ``get_resolver_provider`` override hook. They do not fall back
+   to PyPI, and hook-backed artifact downloading remains a separate feature.
+
 Per-package settings in YAML can select which provider to use and
 configure its parameters (index URL, tag pattern, etc.).  When a package
 has a ``source:`` resolver configured, that resolver creates the provider.
+The ``hook-sdist`` and ``hook-prebuilt`` profiles delegate provider creation
+to the package's required ``get_resolver_provider`` hook and validate that it
+returns a :class:`~fromager.resolver.BaseProvider`.
 Otherwise, override plugins can replace the provider for a specific package
 via the ``get_resolver_provider`` hook, after which the legacy resolver
 settings are used.

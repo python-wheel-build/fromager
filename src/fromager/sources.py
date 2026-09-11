@@ -125,7 +125,12 @@ def get_source_provider(
 
     source_resolver = pbi.source_resolver
     if source_resolver is not None:
-        provider = source_resolver.resolver_provider(ctx, req, req_type)
+        provider = source_resolver.resolver_provider(
+            ctx,
+            req,
+            req_type,
+            sdist_server_url=sdist_server_url,
+        )
         if req_type == RequirementType.TOP_LEVEL and resolver._has_equality_pin(req):
             provider.cooldown = None
         else:

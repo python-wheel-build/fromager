@@ -10,7 +10,7 @@ import typing
 
 import pydantic
 
-from .. import downloads, resolver
+from .. import downloads, overrides, resolver
 from ..candidate import Cooldown
 from ._typedefs import MODEL_CONFIG
 
@@ -68,6 +68,8 @@ class AbstractResolver(pydantic.BaseModel):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
         """Return a resolver provider for the given requirement."""
         raise NotImplementedError
@@ -199,6 +201,8 @@ class PyPISDistResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -250,6 +254,8 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=False,
@@ -323,6 +329,8 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -405,6 +413,8 @@ class PyPIGitResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         download_url = f"git+{self.clone_url}@refs/tags/{self.tag}"
         return resolver.PyPIProvider(
@@ -572,6 +582,8 @@ class GitHubTagDownloadResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -613,6 +625,8 @@ class GitHubTagCloneResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -652,6 +666,8 @@ class GitLabTagDownloadResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -693,6 +709,8 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -720,6 +738,8 @@ class NotAvailableResolver(AbstractResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
         raise ValueError(f"package {req.name} is not available")
 
@@ -739,14 +759,58 @@ class AbstractHookResolver(AbstractResolver, CooldownMixin):
     supports_override_hooks: typing.ClassVar[bool] = True
     """Hook resolvers support override hooks."""
 
+    def _resolver_provider_from_hook(
+        self,
+        *,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType | None,
+        sdist_server_url: str,
+        include_sdists: bool,
+        include_wheels: bool,
+        ignore_platform: bool,
+    ) -> resolver.BaseProvider:
+        """Invoke the required package resolver hook and validate its result."""
+        hook = overrides.find_override_method(req.name, "get_resolver_provider")
+        if hook is None:
+            raise ValueError(
+                f"{req.name}: source resolver {self.provider!r} requires a "
+                "get_resolver_provider override hook"
+            )
+
+        try:
+            provider = overrides.invoke(
+                hook,
+                ctx=ctx,
+                req=req,
+                include_sdists=include_sdists,
+                include_wheels=include_wheels,
+                sdist_server_url=sdist_server_url,
+                req_type=req_type,
+                ignore_platform=ignore_platform,
+            )
+        except Exception as err:
+            raise RuntimeError(
+                f"{req.name}: {self.provider!r} get_resolver_provider hook failed"
+            ) from err
+
+        if not isinstance(provider, resolver.BaseProvider):
+            raise TypeError(
+                f"{req.name}: {self.provider!r} get_resolver_provider hook "
+                f"returned {type(provider).__name__}, expected "
+                "fromager.resolver.BaseProvider"
+            )
+        return provider
+
     def resolver_provider(
         self,
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
-        # TODO
-        raise NotImplementedError("Hook resolver needs a hook")
+        raise NotImplementedError
 
     def download(
         self,
@@ -776,6 +840,25 @@ class HookSDistResolver(AbstractHookResolver):
         {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
     )
 
+    def resolver_provider(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
+    ) -> resolver.BaseProvider:
+        """Return a source provider from the package resolver hook."""
+        return self._resolver_provider_from_hook(
+            ctx=ctx,
+            req=req,
+            req_type=req_type,
+            sdist_server_url=sdist_server_url,
+            include_sdists=True,
+            include_wheels=False,
+            ignore_platform=False,
+        )
+
 
 class HookPrebuiltResolver(AbstractHookResolver):
     """Call resolver_provider and download_source hook, use pre-built wheel
@@ -794,6 +877,25 @@ class HookPrebuiltResolver(AbstractHookResolver):
         {DownloadKind.prebuilt_wheel}
     )
     resolves_prebuilt_wheel: typing.ClassVar[bool] = True
+
+    def resolver_provider(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType | None,
+        *,
+        sdist_server_url: str = resolver.PYPI_SERVER_URL,
+    ) -> resolver.BaseProvider:
+        """Return a pre-built wheel provider from the package resolver hook."""
+        return self._resolver_provider_from_hook(
+            ctx=ctx,
+            req=req,
+            req_type=req_type,
+            sdist_server_url=sdist_server_url,
+            include_sdists=False,
+            include_wheels=True,
+            ignore_platform=False,
+        )
 
 
 SourceResolver = typing.Annotated[
