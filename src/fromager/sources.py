@@ -13,6 +13,7 @@ import zipfile
 import resolvelib
 from packaging.requirements import Requirement
 from packaging.utils import (
+    canonicalize_name,
     parse_sdist_filename,
 )
 from packaging.version import Version
@@ -533,7 +534,7 @@ def default_build_sdist(
     #
     # For cases where the PEP 517 approach works, use
     # pep517_build_sdist().
-    sdist_filename = ctx.sdists_builds / f"{req.name}-{version}.tar.gz"
+    sdist_filename = ctx.sdists_builds / f"{canonicalize_name(req.name).replace('-', '_')}-{version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()
     ensure_pkg_info(
