@@ -574,7 +574,7 @@ def _write_requirements_file(
     filename: pathlib.Path,
 ) -> None:
     with open(filename, "w") as f:
-        for r in requirements:
+        for r in sorted(requirements, key=str):
             f.write(f"{r}\n")
 
 

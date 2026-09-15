@@ -179,6 +179,20 @@ def test_get_build_system_dependencies_cached(
     assert results == set([Requirement("foo==1.0")])
 
 
+def test_write_requirements_file_sorted(tmp_path: pathlib.Path) -> None:
+    """Verify the file content does not depend on input or set order."""
+    req_file = tmp_path / "build-system-requirements.txt"
+    requirements = [
+        Requirement("setuptools>=42"),
+        Requirement("setuptools-scm[toml]>=3.4"),
+        Requirement("cython"),
+    ]
+    dependencies._write_requirements_file(requirements, req_file)
+    assert req_file.read_text() == (
+        "cython\nsetuptools-scm[toml]>=3.4\nsetuptools>=42\n"
+    )
+
+
 @patch("fromager.dependencies._write_requirements_file")
 @_clean_build_artifacts
 @pytest.mark.network
