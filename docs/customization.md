@@ -393,6 +393,84 @@ $ tox -e cli -- canonicalize flit-core
 flit_core
 ```
 
+## Global settings
+
+Global settings are configured in the `settings.yaml` file passed via the
+`--settings-file` flag. These settings apply to all packages being built.
+
+### Wheel build tag hook
+
+The `build_tag_hook` is a configuration option that allows you to customize
+wheel filenames by appending environment-specific suffixes to the build tag.
+This is useful for creating unique, deterministic filenames that reflect the
+build environment (e.g., OS version, accelerator stack, dependency ABI).
+
+Configure the hook in your global `settings.yaml`:
+
+```yaml
+wheels:
+  build_tag_hook: "myproject.hooks:build_tag_hook"
+```
+
+The hook function receives keyword-only arguments and returns a sequence of
+suffix segments (strings) to append to the wheel build tag:
+
+```python
+from typing import Sequence
+from packaging.requirements import Requirement
+from packaging.version import Version
+from packaging.tags import Tag
+
+from fromager import context
+
+
+def build_tag_hook(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    wheel_tags: frozenset[Tag],
+) -> Sequence[str]:
+    """Return suffix segments for the wheel build tag.
+    
+    The segments are joined with underscores and appended to the numeric
+    build tag. For example, returning ["el9.6", "rocm7.1"] produces
+    the build tag: {numeric_base}_el9.6_rocm7.1
+    
+    Args:
+        ctx: The build context, containing variant and settings information
+        req: The package requirement being built
+        version: The version being built
+        wheel_tags: Frozenset of wheel tags (use to distinguish platform-specific
+                   wheels from pure-python wheels; don't use for platform decisions)
+    
+    Returns:
+        A sequence of suffix segments (alphanumeric + dots only).
+        Must not return a single string or bytes object.
+    
+    Raises:
+        ValueError: If segments contain invalid characters or types
+    """
+    # Example: Return OS-specific suffix
+    import platform
+    os_name = platform.system().lower()
+    return [os_name]
+```
+
+**Important notes:**
+
+- The hook is only invoked when the package has a non-empty build tag from
+  its changelog entry. Pure-python packages without a build tag skip the hook.
+- Each segment must contain only alphanumeric ASCII characters or dots
+  (`[a-zA-Z0-9.]`). Invalid characters cause a build error.
+- The hook must be deterministic and independent of wheel contents, build
+  environment, or ELF metadata, so that fresh builds and cache lookups
+  produce identical tags.
+- Use `wheel_tags` only to distinguish platform-specific wheels (`platlib`)
+  from pure-python wheels (`py3-none-any`). Don't use it for platform-specific
+  decisions—the hook must return identical results across architectures for
+  the same variant.
+
 ## Process hooks
 
 Fromager supports plugging in Python hooks to be run after build events.
