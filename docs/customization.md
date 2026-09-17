@@ -451,10 +451,8 @@ def build_tag_hook(
     Raises:
         ValueError: If segments contain invalid characters or types
     """
-    # Example: Return OS-specific suffix
-    import platform
-    os_name = platform.system().lower()
-    return [os_name]
+    # Example: Return variant-specific suffix
+    return [ctx.variant]
 ```
 
 **Important notes:**
