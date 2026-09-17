@@ -534,7 +534,8 @@ def default_build_sdist(
     #
     # For cases where the PEP 517 approach works, use
     # pep517_build_sdist().
-    sdist_filename = ctx.sdists_builds / f"{canonicalize_name(req.name).replace('-', '_')}-{version}.tar.gz"
+    normalized_name = canonicalize_name(req.name).replace("-", "_")
+    sdist_filename = ctx.sdists_builds / f"{normalized_name}-{version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()
     ensure_pkg_info(
