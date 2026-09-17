@@ -742,3 +742,47 @@ def test_build_sdist_raises_wrong_directory(
             sdist_root_dir=tmp_path / "src",
             build_env=build_env,
         )
+
+
+@pytest.mark.parametrize(
+    "req_name,expected_filename_part",
+    [
+        ("colpali-engine", "colpali_engine"),  # dashes -> underscores
+        ("Colpali-Engine", "colpali_engine"),  # case-insensitive + normalization
+        ("Cython", "cython"),  # case-insensitive
+        ("oslo.messaging", "oslo_messaging"),  # dots -> underscores
+        ("ruamel-yaml", "ruamel_yaml"),  # dashes -> underscores
+    ],
+)
+def test_default_build_sdist_normalizes_filename(
+    req_name: str,
+    expected_filename_part: str,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Test that default_build_sdist creates normalized PEP 625 filenames."""
+    req = Requirement(f"{req_name}==1.0.0")
+    version = Version("1.0.0")
+    sdist_root_dir = tmp_path / "src"
+    sdist_root_dir.mkdir(parents=True)
+
+    build_env = Mock()
+
+    with patch("fromager.packagesettings.get_extra_environ", return_value={}):
+        with patch("fromager.sources.ensure_pkg_info"):
+            with patch("fromager.sources.tarballs.tar_reproducible"):
+                # Call default_build_sdist
+                sdist_file = sources.default_build_sdist(
+                    ctx=tmp_context,
+                    extra_environ={},
+                    req=req,
+                    version=version,
+                    sdist_root_dir=sdist_root_dir,
+                    build_env=build_env,
+                    build_dir=sdist_root_dir,
+                )
+
+                # Verify the filename is normalized according to PEP 625
+                expected_filename = f"{expected_filename_part}-1.0.0.tar.gz"
+                assert sdist_file.name == expected_filename
+                assert sdist_file.parent == tmp_context.sdists_builds
