@@ -20,12 +20,14 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from .threading_utils import with_thread_lock
-
 if typing.TYPE_CHECKING:
     from . import context
 
 logger = logging.getLogger(__name__)
+
+# Shared by index_wheel() and update_wheel_mirror() so they cannot race on the
+# same symlink path (with_thread_lock() would give each function its own lock).
+_mirror_lock = threading.Lock()
 
 
 def start_wheel_server(ctx: context.WorkContext) -> None:
@@ -58,35 +60,65 @@ def run_wheel_server(
     return server, sock, thread
 
 
-@with_thread_lock()
-def update_wheel_mirror(ctx: context.WorkContext) -> None:
-    for wheel in ctx.wheels_build.glob("*.whl"):
-        logger.info("adding %s to local wheel server", wheel.name)
-        downloads_dest_filename = ctx.wheels_downloads / wheel.name
-        # Always move the file so the code managing the timer for the
-        # wheels does not find more than one wheel in the build
-        # directory.
-        shutil.move(wheel, downloads_dest_filename)
+def _link_wheel_into_index(ctx: context.WorkContext, wheel: pathlib.Path) -> None:
+    """Symlink a single wheel into the local simple index hierarchy.
 
-    wheels: list[pathlib.Path] = []
-    wheels.extend(ctx.wheels_downloads.glob("*.whl"))
-    wheels.extend(ctx.wheels_prebuilt.glob("*.whl"))
+    Must be called while holding ``_mirror_lock``. Treats an existing
+    destination as success so concurrent indexers cannot raise
+    ``FileExistsError``.
+    """
+    (normalized_name, _, _, _) = parse_wheel_filename(wheel.name)
+    simple_dest_filename = ctx.wheel_server_dir / normalized_name / wheel.name
 
-    for wheel in wheels:
-        # Now also symlink the files into the simple hierarchy. We always
-        # process all files to be safe.
-        (normalized_name, _, _, _) = parse_wheel_filename(wheel.name)
-        simple_dest_filename = ctx.wheel_server_dir / normalized_name / wheel.name
+    if simple_dest_filename.is_symlink() and not simple_dest_filename.is_file():
+        logger.debug("remove dangling symlink %s", simple_dest_filename)
+        simple_dest_filename.unlink()
 
-        if simple_dest_filename.is_symlink() and not simple_dest_filename.is_file():
-            logger.debug("remove dangling symlink %s", simple_dest_filename)
-            simple_dest_filename.unlink()
-
-        if not simple_dest_filename.is_file():
-            relpath = os.path.relpath(wheel, simple_dest_filename.parent)
-            logger.debug("linking %s -> %s into local index", wheel.name, relpath)
-            simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
+    if not simple_dest_filename.is_file():
+        relpath = os.path.relpath(wheel, simple_dest_filename.parent)
+        logger.debug("linking %s -> %s into local index", wheel.name, relpath)
+        simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
+        try:
             simple_dest_filename.symlink_to(relpath)
+        except FileExistsError:
+            # Another caller created the link between the is_file() check and
+            # symlink_to(); accept the existing destination.
+            if not simple_dest_filename.is_file():
+                raise
+
+
+def index_wheel(ctx: context.WorkContext, wheel: pathlib.Path) -> None:
+    """Index one existing wheel into the local simple server.
+
+    Unlike :func:`update_wheel_mirror`, this never scans or moves files out of
+    ``wheels_build``. Use it from background cache-hit paths so concurrent
+    builds are not disrupted.
+    """
+    if not wheel.is_file():
+        raise ValueError(f"cannot index missing wheel: {wheel}")
+    logger.info("adding %s to local wheel server", wheel.name)
+    with _mirror_lock:
+        _link_wheel_into_index(ctx, wheel)
+
+
+def update_wheel_mirror(ctx: context.WorkContext) -> None:
+    with _mirror_lock:
+        for wheel in ctx.wheels_build.glob("*.whl"):
+            logger.info("adding %s to local wheel server", wheel.name)
+            downloads_dest_filename = ctx.wheels_downloads / wheel.name
+            # Always move the file so the code managing the timer for the
+            # wheels does not find more than one wheel in the build
+            # directory.
+            shutil.move(wheel, downloads_dest_filename)
+
+        wheels: list[pathlib.Path] = []
+        wheels.extend(ctx.wheels_downloads.glob("*.whl"))
+        wheels.extend(ctx.wheels_prebuilt.glob("*.whl"))
+
+        for wheel in wheels:
+            # Now also symlink the files into the simple hierarchy. We always
+            # process all files to be safe.
+            _link_wheel_into_index(ctx, wheel)
 
 
 class SimpleHTMLIndex:

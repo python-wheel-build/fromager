@@ -138,6 +138,7 @@ KNOWN_COMMANDS: set[str] = {
     "build-order",
     "build-parallel",
     "build-sequence",
+    "cache",
     "canonicalize",
     "download-sequence",
     "find-updates",
