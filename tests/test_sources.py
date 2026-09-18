@@ -11,7 +11,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import context, packagesettings, resolver, sources
-from fromager.candidate import Cooldown
+from fromager.candidate import Candidate, Cooldown
 from fromager.requirements_file import RequirementType
 
 
@@ -861,8 +861,71 @@ def test_download_source_regular_package(
         download_url="https://pkg.test/pkg-1.0.tar.gz",
     )
 
-    assert result == expected
+    assert result == (expected, packagesettings.DownloadKind.sdist)
     mock_invoke.assert_called_once()
+
+
+def test_download_source_uses_configured_source_resolver(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Dispatch configured source downloads with a minimal candidate."""
+    expected = tmp_path / "pkg-1.0.tar.gz"
+    source_resolver = packagesettings.PyPISDistResolver(provider="pypi-sdist")
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    download_url = "https://pkg.test/pkg-1.0.tar.gz"
+    with (
+        patch.object(
+            packagesettings.PyPISDistResolver,
+            "_download",
+            return_value=(expected, packagesettings.DownloadKind.sdist),
+        ) as mock_download,
+        patch.object(
+            packagesettings.PackageBuildInfo,
+            "source_resolver",
+            new_callable=PropertyMock,
+            return_value=source_resolver,
+        ),
+        patch("fromager.sources.overrides.find_and_invoke") as mock_invoke,
+    ):
+        result = sources.download_source(
+            ctx=tmp_context, req=req, version=version, download_url=download_url
+        )
+
+    expected_candidate = Candidate(name=req.name, version=version, url=download_url)
+    assert result == (expected, packagesettings.DownloadKind.sdist)
+    mock_download.assert_called_once_with(
+        tmp_context,
+        req,
+        expected_candidate,
+        packagesettings.DownloadKind.sdist,
+    )
+    mock_invoke.assert_not_called()
+
+
+def test_download_source_returns_configured_result_without_validation(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Leave configured resolver result validation to the follow-up phase."""
+    configured_result = "resolver-owned-result"
+    source_resolver = Mock()
+    source_resolver.download.return_value = configured_result
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        result = sources.download_source(
+            ctx=tmp_context,
+            req=Requirement("pkg==1.0"),
+            version=Version("1.0"),
+            download_url="https://pkg.test/pkg-1.0.tar.gz",
+        )
+
+    assert result == configured_result
 
 
 @patch("fromager.overrides.find_and_invoke", return_value="not-a-path")
