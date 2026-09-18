@@ -39,6 +39,33 @@ _hydra_core_simple_response = """
 <!--SERIAL 22812307-->
 """
 
+_wheel_only_simple_response = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="pypi:repository-version" content="1.1">
+<title>Links for testpkg</title>
+</head>
+<body>
+<h1>Links for testpkg</h1>
+<a href="https://files.pythonhosted.org/packages/testpkg-1.0.0.tar.gz">testpkg-1.0.0.tar.gz</a>
+<br/>
+<a href="https://files.pythonhosted.org/packages/testpkg-1.0.0-py3-none-any.whl">testpkg-1.0.0-py3-none-any.whl</a>
+<br/>
+<a href="https://files.pythonhosted.org/packages/testpkg-1.0.1.tar.gz">testpkg-1.0.1.tar.gz</a>
+<br/>
+<a href="https://files.pythonhosted.org/packages/testpkg-1.0.1-py3-none-any.whl">testpkg-1.0.1-py3-none-any.whl</a>
+<br/>
+<a href="https://files.pythonhosted.org/packages/testpkg-1.0.2-py3-none-any.whl">testpkg-1.0.2-py3-none-any.whl</a>
+<br/>
+<a href="https://files.pythonhosted.org/packages/testpkg-1.0.3.tar.gz">testpkg-1.0.3.tar.gz</a>
+<br/>
+<a href="https://files.pythonhosted.org/packages/testpkg-1.0.3-py3-none-any.whl">testpkg-1.0.3-py3-none-any.whl</a>
+</body>
+</html>
+"""
+
+
 _numpy_simple_response = """
 <!DOCTYPE html>
 <html>
@@ -1278,3 +1305,58 @@ def test_cli_package_resolver(
     assert "- PyPI versions: 1.2.2, 1.3.1+local, 1.3.2, 2.0.0a1" in result.stdout
     assert "- only wheels on PyPI: 1.3.1+local, 2.0.0a1" in result.stdout
     assert "- missing from Fromager: 1.3.1+local, 2.0.0a1" in result.stdout
+
+
+def test_warn_wheel_only_version(caplog: pytest.LogCaptureFixture) -> None:
+    """Warn when a version matching the specifier has no sdist."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/testpkg/",
+            text=_wheel_only_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_wheels=False)
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        result = rslvr.resolve([Requirement("testpkg>=1.0.0")])
+        candidate = result.mapping["testpkg"]
+        assert str(candidate.version) == "1.0.3"
+
+    assert "testpkg==1.0.2: no sdist available, only a wheel (skipped)" in caplog.text
+
+
+def test_no_warn_when_sdist_exists(caplog: pytest.LogCaptureFixture) -> None:
+    """No warning for versions that have both sdist and wheel."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/testpkg/",
+            text=_wheel_only_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_wheels=False)
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        rslvr.resolve([Requirement("testpkg>=1.0.0")])
+
+    assert "testpkg==1.0.0" not in caplog.text
+    assert "testpkg==1.0.1" not in caplog.text
+    assert "testpkg==1.0.3" not in caplog.text
+
+
+def test_no_warn_outside_specifier(caplog: pytest.LogCaptureFixture) -> None:
+    """No warning for wheel-only versions outside the requirement specifier."""
+    with requests_mock.Mocker() as r:
+        r.get(
+            "https://pypi.org/simple/testpkg/",
+            text=_wheel_only_simple_response,
+        )
+
+        provider = resolver.PyPIProvider(include_wheels=False)
+        reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
+        rslvr = resolvelib.Resolver(provider, reporter)
+
+        rslvr.resolve([Requirement("testpkg>=1.0.3")])
+
+    assert "testpkg==1.0.2" not in caplog.text
