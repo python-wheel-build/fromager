@@ -35,6 +35,7 @@ from fromager.bootstrapper._types import (
 )
 from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
+from fromager.dependency_graph import ROOT
 from fromager.requirements_file import RequirementType, SourceType
 
 
@@ -953,6 +954,85 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
         bt.bootstrap([req1, req2])
 
     assert sorted(dispatch_calls) == ["pkg1", "pkg2"]
+
+
+def _bootstrap_and_record_started(
+    bt: bootstrapper.Bootstrapper,
+    requirements: list[Requirement],
+    versions_by_rule: dict[str, list[tuple[str, Version]]],
+) -> set[str]:
+    """Run bootstrap() against a fake index and return the node keys Start saw.
+
+    versions_by_rule maps each top-level rule string to what the index
+    returns for it, which is how the release-age cooldown looks to the
+    bootstrapper: an unpinned rule does not see a version inside the
+    cooldown window, an exact pin does.
+    """
+    started: set[str] = set()
+
+    def fake_lookup(
+        provider: typing.Any, req: Requirement, **kwargs: typing.Any
+    ) -> list[tuple[str, Version]]:
+        return list(versions_by_rule[str(req)])
+
+    def fake_start_run(self: Start, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
+        wi = self.work_item
+        started.add(f"{canonicalize_name(wi.req.name)}=={wi.resolved_version}")
+        return []
+
+    with (
+        patch.object(bt._resolver, "_resolve_from_graph", return_value=None),
+        patch("fromager.bootstrap_requirement_resolver.sources.get_source_provider"),
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            side_effect=fake_lookup,
+        ),
+        patch.object(Start, "run", fake_start_run),
+        patch.object(bt, "_record_stack_state"),
+    ):
+        bt.bootstrap(requirements)
+
+    return started
+
+
+_OLD = ("https://files.test/pkg-0.39.0.tar.gz", Version("0.39.0"))
+_NEW = ("https://files.test/pkg-0.39.1.tar.gz", Version("0.39.1"))
+
+
+def test_bootstrap_toplevel_unpinned_then_pin_leaves_no_stale_node(
+    tmp_context: WorkContext,
+) -> None:
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    requirements = [Requirement("pkg"), Requirement("pkg==0.39.1")]
+
+    started = _bootstrap_and_record_started(
+        bt, requirements, {"pkg": [_OLD], "pkg==0.39.1": [_NEW]}
+    )
+
+    graph_nodes = set(tmp_context.dependency_graph.nodes) - {ROOT}
+    assert started == {"pkg==0.39.1"}
+    assert graph_nodes == started
+    root_edges = tmp_context.dependency_graph.nodes[ROOT].children
+    assert sorted(str(edge.req) for edge in root_edges) == ["pkg", "pkg==0.39.1"]
+    assert {edge.destination_node.key for edge in root_edges} == {"pkg==0.39.1"}
+
+
+def test_bootstrap_toplevel_multiple_versions_graph_matches_started(
+    tmp_context: WorkContext,
+) -> None:
+    bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+    requirements = [Requirement("pkg"), Requirement("pkg==0.39.1")]
+
+    with patch("fromager.bootstrapper._resolve._cache.find_cached_wheel") as cached:
+        cached.return_value = (None, None)
+        started = _bootstrap_and_record_started(
+            bt, requirements, {"pkg": [_OLD], "pkg==0.39.1": [_NEW]}
+        )
+
+    graph_nodes = set(tmp_context.dependency_graph.nodes) - {ROOT}
+    assert started == {"pkg==0.39.0", "pkg==0.39.1"}
+    assert graph_nodes == started
 
 
 def test_bg_prepare_source_log_prefix_includes_version(
