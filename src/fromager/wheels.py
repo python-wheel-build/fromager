@@ -262,6 +262,10 @@ def add_extra_metadata_to_wheels(
                 req=req,
                 version=version,
             )
+            sbom.merge_cyclonedx_sboms(
+                sbom=sbom_doc,
+                sboms_dir=dist_info_dir / "sboms",
+            )
             sbom.write_sbom(sbom=sbom_doc, dist_info_dir=dist_info_dir)
 
         build_tag_from_settings = pbi.build_tag(version)
