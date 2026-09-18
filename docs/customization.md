@@ -432,28 +432,28 @@ def build_tag_hook(
     wheel_tags: frozenset[Tag],
 ) -> Sequence[str]:
     """Return suffix segments for the wheel build tag.
-    
+
     The segments are joined with underscores and appended to the numeric
     build tag. For example, returning ["cpu"] produces the build tag:
     {numeric_base}_cpu, while returning ["gpu", "cuda"] produces
     {numeric_base}_gpu_cuda.
-    
+
     The hook must return identical suffix segments when called with the same
     configuration, ensuring that wheels built on different machines with the
     same build configuration have identical filenames. This allows wheel caches
     to work correctly across builders.
-    
+
     Args:
         ctx: The build context, containing variant and settings information
         req: The package requirement being built
         version: The version being built
         wheel_tags: Frozenset of wheel tags (use to distinguish platform-specific
                    wheels from pure-python wheels; don't use for platform decisions)
-    
+
     Returns:
         A sequence of suffix segments (alphanumeric + dots only).
         Must not return a single string or bytes object.
-    
+
     Raises:
         ValueError: If segments contain invalid characters or types
     """
