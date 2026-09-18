@@ -12,6 +12,7 @@ from ._models import (
     ResolverDist,
     SbomSettings,
     VariantInfo,
+    VersionSpecificSettings,
 )
 from ._pbi import PackageBuildInfo
 from ._resolver import (
@@ -88,6 +89,7 @@ __all__ = (
     "Variant",
     "VariantChangelog",
     "VariantInfo",
+    "VersionSpecificSettings",
     "default_update_extra_environ",
     "get_extra_environ",
     "pep440_tag_matcher",

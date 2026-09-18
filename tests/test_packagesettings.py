@@ -8,7 +8,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName
 from packaging.version import Version
 
-from fromager import build_environment, context
+from fromager import build_environment, context, wheels
 from fromager.packagesettings import (
     Annotations,
     BuildDirectory,
@@ -98,6 +98,16 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
+            "versions": {
+                Version("2.9.0"): {
+                    "wheel_server_url": "https://mirror.test/simple",
+                    "pre_built": True,
+                },
+                Version("2.8.0"): {
+                    "wheel_server_url": None,
+                    "pre_built": False,
+                },
+            },
         },
         "rocm": {
             "annotations": {
@@ -106,12 +116,19 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"SPAM": ""},
             "wheel_server_url": None,
             "pre_built": True,
+            "versions": {
+                Version("1.0.0"): {
+                    "wheel_server_url": None,
+                    "pre_built": False,
+                },
+            },
         },
         "cuda": {
             "annotations": None,
             "env": {},
             "wheel_server_url": None,
             "pre_built": False,
+            "versions": {},
         },
     },
 }
@@ -199,6 +216,7 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
             "env": {},
             "pre_built": True,
             "wheel_server_url": None,
+            "versions": {},
         },
     },
 }
@@ -582,6 +600,105 @@ def test_global_changelog(testdata_context: context.WorkContext) -> None:
     assert pbi.variant == "cpu"
     assert pbi.get_changelog(Version("1.0.1")) == ["onboard"]
     assert pbi.build_tag(Version("1.0.1")) == ()
+
+
+def test_is_pre_built_version_specific(
+    testdata_context: context.WorkContext,
+) -> None:
+    """Version-specific pre_built overrides variant default."""
+    # cpu variant: pre_built=False by default, but 2.9.0 is pre_built=True
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.variant == "cpu"
+    assert pbi.pre_built is False
+    assert pbi.is_pre_built() is False
+    assert pbi.is_pre_built(Version("2.9.0")) is True
+    assert pbi.is_pre_built(Version("2.9.0+cpu")) is True
+    assert pbi.is_pre_built(Version("2.8.0")) is False
+    assert pbi.is_pre_built(Version("2.8.0+local")) is False
+    assert pbi.is_pre_built(Version("3.0.0")) is False
+
+    # rocm variant: pre_built=True by default, but 1.0.0 is pre_built=False
+    testdata_context.settings.variant = Variant("rocm")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.pre_built is True
+    assert pbi.is_pre_built() is True
+    assert pbi.is_pre_built(Version("1.0.0")) is False
+    assert pbi.is_pre_built(Version("2.0.0")) is True
+
+    # cuda variant: no version-specific settings
+    testdata_context.settings.variant = Variant("cuda")
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.is_pre_built() is False
+    assert pbi.is_pre_built(Version("2.9.0")) is False
+
+
+def test_get_wheel_server_url_version_specific(
+    testdata_context: context.WorkContext,
+) -> None:
+    """Version-specific wheel_server_url overrides variant default."""
+    # cpu variant: default wheel_server_url, 2.9.0 has override
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.wheel_server_url == "https://wheel.test/simple"
+    assert pbi.get_wheel_server_url() == "https://wheel.test/simple"
+    assert pbi.get_wheel_server_url(Version("2.9.0")) == "https://mirror.test/simple"
+    assert (
+        pbi.get_wheel_server_url(Version("2.9.0+cpu")) == "https://mirror.test/simple"
+    )
+    assert pbi.get_wheel_server_url(Version("2.8.0")) == "https://wheel.test/simple"
+    assert pbi.get_wheel_server_url(Version("3.0.0")) == "https://wheel.test/simple"
+
+
+def test_build_tag_version_specific_prebuilt(
+    testdata_context: context.WorkContext,
+) -> None:
+    """Pre-built versions return empty build tag even when variant default is source."""
+    pbi = testdata_context.settings.package_build_info(TEST_PKG)
+    assert pbi.variant == "cpu"
+    # 2.9.0 is version-specific pre_built=True, so no build tag
+    assert pbi.build_tag(Version("2.9.0")) == ()
+
+
+def test_get_wheel_server_urls_version_specific(
+    testdata_context: context.WorkContext,
+) -> None:
+    """get_wheel_server_urls uses version-specific URL when version given."""
+    req = Requirement("test-pkg")
+    # cpu variant: default URL is https://wheel.test/simple,
+    # version 2.9.0 overrides to https://mirror.test/simple
+    urls_default = wheels.get_wheel_server_urls(
+        testdata_context, req, cache_wheel_server_url=None
+    )
+    assert urls_default == ["https://wheel.test/simple"]
+
+    urls_versioned = wheels.get_wheel_server_urls(
+        testdata_context, req, cache_wheel_server_url=None, version=Version("2.9.0")
+    )
+    assert urls_versioned == ["https://mirror.test/simple"]
+
+    urls_other = wheels.get_wheel_server_urls(
+        testdata_context, req, cache_wheel_server_url=None, version=Version("3.0.0")
+    )
+    assert urls_other == ["https://wheel.test/simple"]
+
+
+def test_variant_info_versions_none_yaml() -> None:
+    """Bare ``versions:`` key in YAML (parsed as None) produces empty dict."""
+    ps = PackageSettings.from_string(
+        "test-none-versions",
+        "variants:\n  cpu:\n    versions:\n",
+    )
+    vi = ps.variants[Variant("cpu")]
+    assert vi.versions == {}
+
+
+def test_variant_info_versions_omitted() -> None:
+    """Omitting ``versions`` entirely produces empty dict."""
+    ps = PackageSettings.from_string(
+        "test-no-versions",
+        "variants:\n  cpu:\n    pre_built: true\n",
+    )
+    vi = ps.variants[Variant("cpu")]
+    assert vi.versions == {}
 
 
 def test_settings_list(testdata_context: context.WorkContext) -> None:

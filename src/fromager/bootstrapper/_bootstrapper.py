@@ -182,7 +182,7 @@ class Bootstrapper:
                     req=req,
                     req_version=version,
                     download_url=source_url,
-                    pre_built=pbi.pre_built,
+                    pre_built=pbi.is_pre_built(version),
                     constraint=self.ctx.constraints.get_constraint(req.name),
                 )
 
@@ -601,7 +601,7 @@ class Bootstrapper:
             req=req,
             req_version=req_version,
             download_url=download_url,
-            pre_built=pbi.pre_built,
+            pre_built=pbi.is_pre_built(req_version),
             constraint=self.ctx.constraints.get_constraint(req.name),
         )
         self._write_graph_async()
