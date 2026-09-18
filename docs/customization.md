@@ -401,9 +401,9 @@ Global settings are configured in the `settings.yaml` file passed via the
 ### Wheel build tag hook
 
 The `build_tag_hook` is a configuration option that allows you to customize
-wheel filenames by appending environment-specific suffixes to the build tag.
+wheel filenames by appending configuration-specific suffixes to the build tag.
 This is useful for creating unique, deterministic filenames that reflect the
-build environment (e.g., OS version, accelerator stack, dependency ABI).
+build configuration and distinguish wheels built for different variants.
 
 Configure the hook in your global `settings.yaml`:
 
@@ -434,8 +434,14 @@ def build_tag_hook(
     """Return suffix segments for the wheel build tag.
     
     The segments are joined with underscores and appended to the numeric
-    build tag. For example, returning ["el9.6", "rocm7.1"] produces
-    the build tag: {numeric_base}_el9.6_rocm7.1
+    build tag. For example, returning ["cpu"] produces the build tag:
+    {numeric_base}_cpu, while returning ["gpu", "cuda"] produces
+    {numeric_base}_gpu_cuda.
+    
+    The hook must return identical suffix segments when called with the same
+    configuration, ensuring that wheels built on different machines with the
+    same build configuration have identical filenames. This allows wheel caches
+    to work correctly across builders.
     
     Args:
         ctx: The build context, containing variant and settings information
