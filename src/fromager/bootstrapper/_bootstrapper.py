@@ -266,6 +266,25 @@ class Bootstrapper:
         Args:
             requirements: Top-level requirements to resolve and bootstrap.
         """
+        # Warm the resolver cache with every top-level rule before adding any
+        # of them to the graph: a later rule for the same package (e.g. an
+        # exact pin that bypasses the release-age cooldown) changes what an
+        # earlier rule resolves to. Errors are reported by
+        # _resolve_and_add_top_level below.
+        for req in requirements:
+            with req_ctxvar_context(req):
+                try:
+                    self.resolve_versions(
+                        req=req,
+                        req_type=RequirementType.TOP_LEVEL,
+                        parent_req=None,
+                        return_all_versions=self.multiple_versions,
+                    )
+                except Exception as err:
+                    logger.debug(
+                        "deferring resolution error to top-level handling: %s", err
+                    )
+
         # Resolve all top-level reqs and build initial stack.
         # Use the token pattern (no try/finally) so that if resolution raises
         # in normal mode, the context var stays set for the top-level error
