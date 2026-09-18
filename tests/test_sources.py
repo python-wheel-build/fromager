@@ -840,6 +840,8 @@ def test_default_build_sdist_normalizes_name_and_root(
     (build_dir2 / "module.py").write_text("# module\n")
 
     sdist_file2 = tmp_context.sdists_builds / "foo_bar-1.0.tar.gz"
+    if sdist_file2.exists():
+        sdist_file2.unlink()
     with tarfile.open(sdist_file2, "x:gz") as tar:
         from fromager import tarballs
 
