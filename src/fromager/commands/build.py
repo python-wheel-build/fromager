@@ -485,11 +485,25 @@ def _is_wheel_built(
             wheel_server_urls=wheel_server_urls,
         )
         logger.info("found candidate wheel %s", url)
-        pbi = wkctx.package_build_info(req)
-        build_tag_from_settings = pbi.build_tag(resolved_version)
-        build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
         wheel_basename = downloads.extract_filename_from_url(url)
-        _, _, build_tag_from_name, _ = parse_wheel_filename(wheel_basename)
+        _, _, build_tag_from_name, wheel_tags = parse_wheel_filename(wheel_basename)
+    except Exception:
+        logger.debug(
+            "could not locate prebuilt wheel %s-%s on %s",
+            dist_name,
+            resolved_version,
+            wheel_server_urls,
+            exc_info=True,
+        )
+        logger.info("could not locate prebuilt wheel")
+        return None
+    else:
+        # Compute expected build tag in the else clause so hook
+        # validation errors propagate instead of being swallowed.
+        expected_tag = wheels.get_build_tag(
+            ctx=wkctx, req=req, version=resolved_version, wheel_tags=wheel_tags
+        )
+        build_tag = expected_tag if expected_tag else (0, "")
         existing_build_tag = build_tag_from_name if build_tag_from_name else (0, "")
         if (
             existing_build_tag[0] > build_tag[0]
@@ -513,21 +527,20 @@ def _is_wheel_built(
                 wheel_filename = None
 
         if not wheel_filename:
-            # if the found wheel was on an external server, then download it
-            logger.info("downloading wheel from %s", url)
-            wheel_filename = wheels.download_wheel(req, url, wkctx.wheels_downloads)
+            try:
+                logger.info("downloading wheel from %s", url)
+                wheel_filename = wheels.download_wheel(req, url, wkctx.wheels_downloads)
+            except Exception:
+                logger.debug(
+                    "failed to download prebuilt wheel %s-%s",
+                    dist_name,
+                    resolved_version,
+                    exc_info=True,
+                )
+                logger.info("could not download prebuilt wheel")
+                return None
 
         return wheel_filename
-    except Exception:
-        logger.debug(
-            "could not locate prebuilt wheel %s-%s on %s",
-            dist_name,
-            resolved_version,
-            wheel_server_urls,
-            exc_info=True,
-        )
-        logger.info("could not locate prebuilt wheel")
-        return None
 
 
 def _build_parallel(

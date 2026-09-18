@@ -33,6 +33,48 @@ from ._typedefs import (
 logger = logging.getLogger(__name__)
 
 
+class WheelSettings(pydantic.BaseModel):
+    """Global wheel build settings
+
+    ::
+
+      wheels:
+        build_tag_hook: "mypackage.hooks:build_tag_hook"
+
+    .. versionadded:: 0.95.0
+    """
+
+    model_config = MODEL_CONFIG
+
+    build_tag_hook: pydantic.ImportString[typing.Callable[..., typing.Any]] | None = (
+        None
+    )
+    """Callable that returns suffix segments for the wheel build tag.
+
+    The callable receives keyword-only arguments ``ctx``, ``req``,
+    ``version``, and ``wheel_tags`` and returns
+    ``Sequence[str]`` of suffix segments.
+
+    Only invoked when the package already has a non-empty build tag
+    from its changelog entry for the given version; otherwise the hook
+    is skipped and no build tag is added.  The callable must be
+    deterministic and independent of wheel contents, build environment,
+    or ELF metadata so fresh builds and cache lookups compute the same
+    tag.
+
+    .. note::
+
+       The ``wheel_tags`` argument should only be used to distinguish
+       platlib wheels (platform-specific) from purelib wheels
+       (``py3-none-any``), for example to skip environment suffixes on
+       pure-python packages.  Do not use it for platform-specific
+       decisions -- the hook must produce identical results across
+       architectures for the same variant.
+
+    .. versionadded:: 0.95.0
+    """
+
+
 class SbomSettings(pydantic.BaseModel):
     """Global SBOM generation settings
 
