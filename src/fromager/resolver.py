@@ -1019,7 +1019,25 @@ class PyPIProvider(BaseProvider):
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
     ) -> Candidates:
-        return super().find_matches(identifier, requirements, incompatibilities)
+        candidates = super().find_matches(identifier, requirements, incompatibilities)
+        if not self.include_wheels:
+            accepted_versions = {c.version for c in candidates}
+            all_candidates = self._find_cached_candidates(identifier)
+            sdist_versions = {c.version for c in all_candidates if c.is_sdist}
+            reqs = requirements.get(identifier, [])
+            for c in all_candidates:
+                if (
+                    not c.is_sdist
+                    and c.version not in accepted_versions
+                    and c.version not in sdist_versions
+                    and all(c.version in r.specifier for r in reqs)
+                ):
+                    logger.warning(
+                        "%s==%s: no sdist available, only a wheel (skipped)",
+                        c.name,
+                        c.version,
+                    )
+        return candidates
 
 
 class MatchFunction(typing.Protocol):
