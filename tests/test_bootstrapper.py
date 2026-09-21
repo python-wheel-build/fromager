@@ -35,6 +35,7 @@ from fromager.bootstrapper._types import (
 )
 from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
+from fromager.packagesettings import DownloadKind
 from fromager.requirements_file import RequirementType, SourceType
 
 
@@ -964,6 +965,7 @@ def test_bg_prepare_source_log_prefix_includes_version(
     logging.setLogRecordFactory(log.FromagerLogRecord)
     req = Requirement("mypkg==1.2.3")
     version = Version("1.2.3")
+    source_filename = pathlib.Path("mypkg-1.2.3.tar.gz")
 
     messages: list[str] = []
     try:
@@ -975,12 +977,15 @@ def test_bg_prepare_source_log_prefix_includes_version(
             ),
             patch(
                 "fromager.sources.download_source",
-                return_value=pathlib.Path("mypkg-1.2.3.tar.gz"),
+                return_value=(
+                    source_filename,
+                    DownloadKind.sdist,
+                ),
             ),
             patch(
                 "fromager.sources.prepare_source",
                 return_value=pathlib.Path(tmp_context.work_dir / "mypkg-1.2.3"),
-            ),
+            ) as prepare_source,
             log.req_ctxvar_context(req, version),
         ):
             _bg_prepare_source(
@@ -997,6 +1002,12 @@ def test_bg_prepare_source_log_prefix_includes_version(
                 for r in caplog.records
                 if r.name.startswith("fromager.bootstrapper")
             ]
+            prepare_source.assert_called_once_with(
+                ctx=tmp_context,
+                req=req,
+                source_filename=source_filename,
+                version=version,
+            )
     finally:
         logging.setLogRecordFactory(old_factory)
 
@@ -1004,6 +1015,31 @@ def test_bg_prepare_source_log_prefix_includes_version(
         assert msg.startswith("mypkg-1.2.3: "), (
             f"Expected 'mypkg-1.2.3: ' prefix, got: {msg!r}"
         )
+
+
+def test_bootstrapper_download_source_returns_downloaded_path(
+    tmp_context: WorkContext,
+) -> None:
+    """Return only the path from the resolver download result."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+    source_url = "https://pkg.test/mypkg-1.2.3.tar.gz"
+    source_filename = pathlib.Path("mypkg-1.2.3.tar.gz")
+
+    with patch(
+        "fromager.bootstrapper._bootstrapper.sources.download_source",
+        return_value=(source_filename, DownloadKind.sdist),
+    ) as download_source:
+        result = bt._download_source(req, version, source_url)
+
+    assert result == source_filename
+    download_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        version=version,
+        download_url=source_url,
+    )
 
 
 def test_bg_prepare_prebuilt_log_prefix_includes_version(

@@ -31,6 +31,7 @@ from . import (
     tarballs,
     vendor_rust,
 )
+from .candidate import Candidate
 from .requirements_file import RequirementType, SourceType
 
 if typing.TYPE_CHECKING:
@@ -84,8 +85,19 @@ def download_source(
     req: Requirement,
     version: Version,
     download_url: str,
-) -> pathlib.Path:
+) -> tuple[pathlib.Path, packagesettings.DownloadKind]:
+    """Download a resolved source and return its path and artifact kind.
+
+    Configured source resolvers receive a minimal candidate. Legacy downloads
+    are adapted to the sdist kind for compatibility.
+    """
     logger.info(f"downloading source for {req}")
+
+    pbi = ctx.package_build_info(req)
+    source_resolver = pbi.source_resolver
+    if source_resolver is not None:
+        candidate = Candidate(name=req.name, version=version, url=download_url)
+        return source_resolver.download(ctx, req, candidate)
 
     source_path = overrides.find_and_invoke(
         req.name,
@@ -102,7 +114,7 @@ def download_source(
         raise ValueError(
             f"expected a Path back to downloaded source. got {source_path}"
         )
-    return source_path
+    return source_path, packagesettings.DownloadKind.sdist
 
 
 def get_source_provider(
