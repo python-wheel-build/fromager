@@ -1082,7 +1082,7 @@ class TestHandlePhaseError:
             req_type=RequirementType.TOP_LEVEL,
             req=req_a,
             req_version=v1,
-            download_url="https://example.com/a-1.0.tar.gz",
+            download_url="https://pkg.test/a-1.0.tar.gz",
         )
         graph.add_dependency(
             parent_name=canonicalize_name("a"),
@@ -1090,7 +1090,7 @@ class TestHandlePhaseError:
             req_type=RequirementType.BUILD_SYSTEM,
             req=req_b,
             req_version=v1,
-            download_url="https://example.com/b-1.0.tar.gz",
+            download_url="https://pkg.test/b-1.0.tar.gz",
         )
         graph.add_dependency(
             parent_name=canonicalize_name("b"),
@@ -1098,7 +1098,7 @@ class TestHandlePhaseError:
             req_type=RequirementType.BUILD_SYSTEM,
             req=req_backend,
             req_version=v1,
-            download_url="https://example.com/backend-1.0.tar.gz",
+            download_url="https://pkg.test/backend-1.0.tar.gz",
         )
         for req in (req_a, req_b, req_backend):
             bt.mark_as_seen(req, v1)
@@ -1122,7 +1122,7 @@ class TestHandlePhaseError:
             req_type=RequirementType.TOP_LEVEL,
             req=req_c,
             req_version=v1,
-            download_url="https://example.com/c-1.0.tar.gz",
+            download_url="https://pkg.test/c-1.0.tar.gz",
         )
         start_b = Start(
             WorkItem(
@@ -1130,7 +1130,7 @@ class TestHandlePhaseError:
                 req_type=RequirementType.INSTALL,
                 why_snapshot=[],
                 parent=(req_c, v1),
-                source_url="https://example.com/b-1.0.tar.gz",
+                source_url="https://pkg.test/b-1.0.tar.gz",
                 resolved_version=v1,
             )
         )
@@ -1163,7 +1163,7 @@ class TestHandlePhaseError:
                 req_type=RequirementType.BUILD_SYSTEM,
                 why_snapshot=[],
                 parent=(Requirement("b"), v1),
-                source_url="https://example.com/backend-1.0.tar.gz",
+                source_url="https://pkg.test/backend-1.0.tar.gz",
                 resolved_version=v1,
             )
         ).run(bt)
