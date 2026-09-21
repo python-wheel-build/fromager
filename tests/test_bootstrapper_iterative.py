@@ -1066,6 +1066,111 @@ class TestHandlePhaseError:
         assert "prepare-build phase" in caplog.text
         assert "compile error" in caplog.text
 
+    def test_multiple_versions_forgets_cascade_removed_descendants(
+        self, tmp_context: WorkContext
+    ) -> None:
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        bt.why = []
+        graph = tmp_context.dependency_graph
+        req_a = Requirement("a")
+        req_b = Requirement("b[cli]>=1")
+        req_backend = Requirement("backend")
+        v1 = Version("1.0")
+        graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=req_a,
+            req_version=v1,
+            download_url="https://example.com/a-1.0.tar.gz",
+        )
+        graph.add_dependency(
+            parent_name=canonicalize_name("a"),
+            parent_version=v1,
+            req_type=RequirementType.BUILD_SYSTEM,
+            req=req_b,
+            req_version=v1,
+            download_url="https://example.com/b-1.0.tar.gz",
+        )
+        graph.add_dependency(
+            parent_name=canonicalize_name("b"),
+            parent_version=v1,
+            req_type=RequirementType.BUILD_SYSTEM,
+            req=req_backend,
+            req_version=v1,
+            download_url="https://example.com/backend-1.0.tar.gz",
+        )
+        for req in (req_a, req_b, req_backend):
+            bt.mark_as_seen(req, v1)
+
+        item = _make_build_item(req="a", version="1.0", phase=BootstrapPhase.BUILD)
+        bt._handle_phase_error(item, ValueError("build failed"))
+
+        # a and its orphaned descendants are gone from the graph and forgotten
+        assert "b==1.0" not in graph.nodes
+        assert "backend==1.0" not in graph.nodes
+        assert not bt.has_been_seen(Requirement("b"), v1)
+        assert not bt.has_been_seen(req_b, v1)
+        assert not bt.has_been_seen(req_backend, v1)
+        assert not bt.has_failed_version(canonicalize_name("b"), v1)
+
+        # b encountered again is processed, not skipped as already seen
+        req_c = Requirement("c")
+        graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=req_c,
+            req_version=v1,
+            download_url="https://example.com/c-1.0.tar.gz",
+        )
+        start_b = Start(
+            WorkItem(
+                req=Requirement("b"),
+                req_type=RequirementType.INSTALL,
+                why_snapshot=[],
+                parent=(req_c, v1),
+                source_url="https://example.com/b-1.0.tar.gz",
+                resolved_version=v1,
+            )
+        )
+        result = start_b.run(bt)
+        assert len(result) == 1
+        assert isinstance(result[0], PrepareSource)
+
+        # PrepareSource finds the cached wheel and restores the build-system
+        # edge from the requirements file extracted from it, without a rebuild
+        prepare_b = result[0]
+        unpacked = tmp_context.work_dir / "b-1.0"
+        unpacked.mkdir(parents=True)
+        unpacked.joinpath("build-system-requirements.txt").write_text("backend\n")
+        cached_wheel = tmp_context.wheels_build / "b-1.0-py3-none-any.whl"
+        prepare_b.bg_future = _make_resolved_future(
+            PreparedSourceData(
+                sdist_root_dir=unpacked / "b-1.0",
+                cached_wheel_filename=cached_wheel,
+            )
+        )
+        with patch("fromager.build_environment.BuildEnvironment", return_value=Mock()):
+            prepare_result = prepare_b.run(bt)
+        assert prepare_b.work_item.cached_wheel_filename == cached_wheel
+        resolve_items = [it for it in prepare_result if isinstance(it, Resolve)]
+        assert [str(it.work_item.req) for it in resolve_items] == ["backend"]
+        assert resolve_items[0].work_item.req_type == RequirementType.BUILD_SYSTEM
+        Start(
+            WorkItem(
+                req=req_backend,
+                req_type=RequirementType.BUILD_SYSTEM,
+                why_snapshot=[],
+                parent=(Requirement("b"), v1),
+                source_url="https://example.com/backend-1.0.tar.gz",
+                resolved_version=v1,
+            )
+        ).run(bt)
+        assert [n.key for n in graph.nodes["b==1.0"].iter_build_requirements()] == [
+            "backend==1.0"
+        ]
+
     # -- Normal mode errors --
 
     def test_normal_mode_raises(self, tmp_context: WorkContext) -> None:

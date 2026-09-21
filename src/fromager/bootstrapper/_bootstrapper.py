@@ -660,6 +660,16 @@ class Bootstrapper:
             # Mark wheel seen only for wheel build
             self._seen_requirements.add(self._resolved_key(req, version, "wheel"))
 
+    def _forget_seen(self, name: NormalizedName, version: Version) -> None:
+        """Drop every seen-marker for name==version, whatever extras or type."""
+        version_str = str(version)
+        stale = {
+            key
+            for key in self._seen_requirements
+            if key[0] == name and key[2] == version_str
+        }
+        self._seen_requirements.difference_update(stale)
+
     def has_been_seen(
         self,
         req: Requirement,
@@ -1040,13 +1050,15 @@ class Bootstrapper:
                 err,
                 f"failed during {type(item).phase} phase",
             )
-            self.ctx.dependency_graph.remove_dependency(pkg_name, wi.resolved_version)
-            self._seen_requirements.discard(
-                self._resolved_key(wi.req, wi.resolved_version, "sdist")
+            removed_nodes = self.ctx.dependency_graph.remove_dependency(
+                pkg_name, wi.resolved_version
             )
-            self._seen_requirements.discard(
-                self._resolved_key(wi.req, wi.resolved_version, "wheel")
-            )
+            # The failed version may not be in the graph yet. Descendants
+            # removed with it lost their edges; forget them too so a later
+            # encounter goes through PrepareSource again.
+            self._forget_seen(pkg_name, wi.resolved_version)
+            for node in removed_nodes:
+                self._forget_seen(node.canonicalized_name, node.version)
             self._write_graph_async()
             return []
 

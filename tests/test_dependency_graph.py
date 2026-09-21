@@ -702,6 +702,23 @@ def test_remove_dependency_nonexistent() -> None:
     graph = _build_graph(("ROOT", "a", "toplevel"))
     node_count = len(graph.nodes)
 
-    graph.remove_dependency(canonicalize_name("nonexistent"), Version("1.0"))
+    removed = graph.remove_dependency(canonicalize_name("nonexistent"), Version("1.0"))
 
+    assert removed == []
     assert len(graph.nodes) == node_count
+
+
+def test_remove_dependency_returns_removed_nodes() -> None:
+    graph = _build_graph(
+        ("ROOT", "a", "toplevel"),
+        ("ROOT", "d", "toplevel"),
+        ("a", "b", "build-system"),
+        ("b", "c", "build-backend"),
+        ("a", "shared", "install"),
+        ("d", "shared", "install"),
+    )
+
+    removed = graph.remove_dependency(canonicalize_name("a"), Version("1.0"))
+
+    assert [n.key for n in removed] == ["a==1.0", "b==1.0", "c==1.0"]
+    assert "shared==1.0" in graph.nodes
