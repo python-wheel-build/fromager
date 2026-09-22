@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
 PYPI_SERVER_URL = "https://pypi.org/simple"
+_LOCALHOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
 GITHUB_URL = "https://github.com"
 
 # all supported tags
@@ -910,6 +911,20 @@ class PyPIProvider(BaseProvider):
         self.sdist_server_url = sdist_server_url
         self.ignore_platform = ignore_platform
         self.override_download_url = override_download_url
+
+    def is_blocked_by_cooldown(self, candidate: Candidate) -> bool:
+        """Return True if the candidate is rejected by the release-age cooldown.
+
+        Silently skips the cooldown check for localhost indexes, which never
+        provide upload timestamps.
+        """
+        if (
+            self.cooldown is not None
+            and candidate.upload_time is None
+            and urlparse(self.sdist_server_url).hostname in _LOCALHOST_NAMES
+        ):
+            return False
+        return super().is_blocked_by_cooldown(candidate)
 
     @property
     def cache_key(self) -> str:

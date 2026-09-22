@@ -650,12 +650,12 @@ def test_local_wheel_server_allows_without_upload_time(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """resolve_all_prebuilt_wheels() allows candidates from the local wheel server
-    even when upload_time is missing.
+    even when upload_time is missing, without emitting a warning.
 
     The local fromager wheel server is PEP 503-only and serves packages that were
     already resolved and built earlier in the same run. They are trusted and must
     not be fail-closed by the cooldown just because the local server cannot supply
-    upload timestamps.
+    upload timestamps. Localhost indexes silently skip the cooldown check.
     """
     local_server_url = "http://127.0.0.1:9999/simple/"
     ctx = context.WorkContext(
@@ -696,7 +696,7 @@ def test_local_wheel_server_allows_without_upload_time(
     assert len(results) == 1
     _, version = results[0]
     assert str(version) == "1.3.2"
-    assert "cooldown check skipped" in caplog.text
+    assert "cooldown cannot be enforced" not in caplog.text
 
 
 # ---------------------------------------------------------------------------
