@@ -55,7 +55,7 @@ def download_source_archive(
         req=req,
         version=version,
         download_url=source_url,
-    )
+    ).path
     requirement_ctxvar.reset(token)
     print(filename)
 

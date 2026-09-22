@@ -393,7 +393,7 @@ def _build(
             req=req,
             version=resolved_version,
             download_url=source_download_url,
-        )
+        ).path
         logger.debug(
             "saved sdist of version %s from %s to %s",
             resolved_version,
