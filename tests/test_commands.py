@@ -46,7 +46,9 @@ def test_download_source_archive_prints_downloaded_path(
         patch.object(
             step.sources,
             "download_source",
-            return_value=(expected, packagesettings.DownloadKind.sdist),
+            return_value=packagesettings.DownloadedSource(
+                path=expected, kind=packagesettings.DownloadKind.sdist
+            ),
         ),
     ):
         result = cli_runner.invoke(
@@ -83,7 +85,9 @@ def test_build_passes_downloaded_path_to_prepare_source(
         patch.object(
             build.sources,
             "download_source",
-            return_value=(source_filename, packagesettings.DownloadKind.sdist),
+            return_value=packagesettings.DownloadedSource(
+                path=source_filename, kind=packagesettings.DownloadKind.sdist
+            ),
         ),
         patch.object(
             build.sources,

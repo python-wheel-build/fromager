@@ -43,9 +43,9 @@ def _bg_prepare_source(
             sdist_root_dir=unpacked / unpacked.stem,
             cached_wheel_filename=cached_wheel,
         )
-    source_filename, _ = sources.download_source(
+    source_filename = sources.download_source(
         ctx=ctx, req=req, version=resolved_version, download_url=source_url
-    )
+    ).path
     sdist_root_dir = sources.prepare_source(
         ctx=ctx, req=req, source_filename=source_filename, version=resolved_version
     )

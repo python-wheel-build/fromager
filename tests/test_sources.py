@@ -861,7 +861,9 @@ def test_download_source_regular_package(
         download_url="https://pkg.test/pkg-1.0.tar.gz",
     )
 
-    assert result == (expected, packagesettings.DownloadKind.sdist)
+    assert result == packagesettings.DownloadedSource(
+        path=expected, kind=packagesettings.DownloadKind.sdist
+    )
     mock_invoke.assert_called_once()
 
 
@@ -875,11 +877,14 @@ def test_download_source_uses_configured_source_resolver(
     req = Requirement("pkg==1.0")
     version = Version("1.0")
     download_url = "https://pkg.test/pkg-1.0.tar.gz"
+    expected_result = packagesettings.DownloadedSource(
+        path=expected, kind=packagesettings.DownloadKind.sdist
+    )
     with (
         patch.object(
             packagesettings.PyPISDistResolver,
             "_download",
-            return_value=(expected, packagesettings.DownloadKind.sdist),
+            return_value=expected_result,
         ) as mock_download,
         patch.object(
             packagesettings.PackageBuildInfo,
@@ -894,7 +899,7 @@ def test_download_source_uses_configured_source_resolver(
         )
 
     expected_candidate = Candidate(name=req.name, version=version, url=download_url)
-    assert result == (expected, packagesettings.DownloadKind.sdist)
+    assert result == expected_result
     mock_download.assert_called_once_with(
         tmp_context,
         req,
@@ -904,11 +909,15 @@ def test_download_source_uses_configured_source_resolver(
     mock_invoke.assert_not_called()
 
 
-def test_download_source_returns_configured_result_without_validation(
+def test_download_source_passes_configured_result_through(
     tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
 ) -> None:
-    """Leave configured resolver result validation to the follow-up phase."""
-    configured_result = "resolver-owned-result"
+    """Pass the configured resolver result through without modification."""
+    configured_result = packagesettings.DownloadedSource(
+        path=tmp_path / "pkg-1.0.tar.gz",
+        kind=packagesettings.DownloadKind.tarball,
+    )
     source_resolver = Mock()
     source_resolver.download.return_value = configured_result
 
@@ -925,7 +934,49 @@ def test_download_source_returns_configured_result_without_validation(
             download_url="https://pkg.test/pkg-1.0.tar.gz",
         )
 
-    assert result == configured_result
+    assert result is configured_result
+
+
+def test_download_source_preserves_configured_hook_result(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Carry the explicit hook artifact kind through source dispatch."""
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    download_url = "git+https://git.test/pkg.git@v1.0"
+    expected = packagesettings.DownloadedSource(
+        path=tmp_context.work_dir,
+        kind=packagesettings.DownloadKind.git_checkout,
+    )
+
+    def hook(
+        ctx: context.WorkContext,
+        req: Requirement,
+        version: Version,
+        download_url: str,
+        sdists_downloads_dir: pathlib.Path,
+    ) -> packagesettings.DownloadedSource:
+        assert ctx is tmp_context
+        assert req == Requirement("pkg==1.0")
+        assert version == Version("1.0")
+        assert download_url == "git+https://git.test/pkg.git@v1.0"
+        assert sdists_downloads_dir == tmp_context.sdists_downloads
+        return expected
+
+    with (
+        patch.object(
+            packagesettings.PackageBuildInfo,
+            "source_resolver",
+            new_callable=PropertyMock,
+            return_value=packagesettings.HookSDistResolver(provider="hook-sdist"),
+        ),
+        patch("fromager.overrides.find_override_method", return_value=hook),
+    ):
+        result = sources.download_source(
+            ctx=tmp_context, req=req, version=version, download_url=download_url
+        )
+
+    assert result is expected
 
 
 @patch("fromager.overrides.find_and_invoke", return_value="not-a-path")
