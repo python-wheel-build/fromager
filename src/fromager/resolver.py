@@ -857,7 +857,7 @@ class BaseProvider(ExtrasProvider):
             for b in blocked:
                 candidates.remove(b)
             versions = ", ".join(str(b.version) for b in blocked)
-            logger.info(
+            logger.warning(
                 "cooldown blocked %d version(s): %s",
                 len(blocked),
                 versions,
