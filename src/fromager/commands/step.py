@@ -50,12 +50,12 @@ def download_source_archive(
     source_url, version = sources.resolve_source(
         ctx=wkctx, req=req, sdist_server_url=sdist_server_url
     )
-    filename, _ = sources.download_source(
+    filename = sources.download_source(
         ctx=wkctx,
         req=req,
         version=version,
         download_url=source_url,
-    )
+    ).path
     requirement_ctxvar.reset(token)
     print(filename)
 

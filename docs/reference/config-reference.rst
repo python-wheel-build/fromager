@@ -77,6 +77,9 @@ Source Resolver
    .. autoattribute:: pep517
    .. autoattribute:: tarball
 
+.. autoclass:: DownloadedSource
+   :members: path, kind
+
 .. autoclass:: DownloadKind
 
    .. autoattribute:: sdist
@@ -85,6 +88,13 @@ Source Resolver
    .. autoattribute:: git_checkout
    .. autoattribute:: any_source
    .. autoattribute:: not_available
+
+.. versionchanged:: 0.96.0
+
+   Configured hook downloads require a concrete result kind supported by the
+   selected profile. ``any_source`` and ``not_available`` are not accepted as
+   result kinds. See :ref:`download_source_hook` for legacy path defaults and
+   the typed hook contract.
 
 
 Global Settings

@@ -35,7 +35,7 @@ from fromager.bootstrapper._types import (
 )
 from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
-from fromager.packagesettings import DownloadKind
+from fromager.packagesettings import DownloadedSource, DownloadKind
 from fromager.requirements_file import RequirementType, SourceType
 
 
@@ -977,9 +977,9 @@ def test_bg_prepare_source_log_prefix_includes_version(
             ),
             patch(
                 "fromager.sources.download_source",
-                return_value=(
-                    source_filename,
-                    DownloadKind.sdist,
+                return_value=DownloadedSource(
+                    path=source_filename,
+                    kind=DownloadKind.sdist,
                 ),
             ),
             patch(
@@ -1029,7 +1029,7 @@ def test_bootstrapper_download_source_returns_downloaded_path(
 
     with patch(
         "fromager.bootstrapper._bootstrapper.sources.download_source",
-        return_value=(source_filename, DownloadKind.sdist),
+        return_value=DownloadedSource(path=source_filename, kind=DownloadKind.sdist),
     ) as download_source:
         result = bt._download_source(req, version, source_url)
 

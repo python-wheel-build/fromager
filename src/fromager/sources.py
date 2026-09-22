@@ -85,7 +85,7 @@ def download_source(
     req: Requirement,
     version: Version,
     download_url: str,
-) -> tuple[pathlib.Path, packagesettings.DownloadKind]:
+) -> packagesettings.DownloadedSource:
     """Download a resolved source and return its path and artifact kind.
 
     Configured source resolvers receive a minimal candidate. Legacy downloads
@@ -114,7 +114,9 @@ def download_source(
         raise ValueError(
             f"expected a Path back to downloaded source. got {source_path}"
         )
-    return source_path, packagesettings.DownloadKind.sdist
+    return packagesettings.DownloadedSource(
+        path=source_path, kind=packagesettings.DownloadKind.sdist
+    )
 
 
 def get_source_provider(

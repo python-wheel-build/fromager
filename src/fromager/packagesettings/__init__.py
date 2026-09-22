@@ -16,6 +16,7 @@ from ._models import (
 from ._pbi import PackageBuildInfo
 from ._resolver import (
     BuildSDist,
+    DownloadedSource,
     DownloadKind,
     GitHubTagCloneResolver,
     GitHubTagDownloadResolver,
@@ -57,6 +58,7 @@ __all__ = (
     "BuildSDist",
     "DownloadKind",
     "DownloadSource",
+    "DownloadedSource",
     "EnvKey",
     "EnvVars",
     "ExternalCommands",
