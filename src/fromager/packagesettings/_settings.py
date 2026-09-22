@@ -13,7 +13,7 @@ from packaging.utils import canonicalize_name
 from pydantic import Field
 
 from .. import overrides
-from ._models import ExternalCommands, PackageSettings, SbomSettings
+from ._models import ExternalCommands, PackageSettings, SbomSettings, WheelSettings
 from ._pbi import PackageBuildInfo
 from ._typedefs import MODEL_CONFIG, GlobalChangelog, Package, Variant
 
@@ -53,6 +53,14 @@ class SettingsFile(pydantic.BaseModel):
     filtering.
 
     .. versionadded:: 0.92.0
+    """
+
+    wheels: WheelSettings | None = None
+    """Wheel build settings
+
+    Configures wheel build tag hooks and other wheel-specific options.
+
+    .. versionadded:: 0.95.0
     """
 
     @classmethod
@@ -192,6 +200,16 @@ class Settings:
         .. versionadded:: 0.92.0
         """
         return self._settings.external_commands
+
+    @property
+    def build_tag_hook(self) -> typing.Callable[..., typing.Any] | None:
+        """Get the wheel build tag hook callable, or None if not configured.
+
+        .. versionadded:: 0.95.0
+        """
+        if self._settings.wheels is None:
+            return None
+        return self._settings.wheels.build_tag_hook
 
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""
