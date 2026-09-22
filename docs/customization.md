@@ -393,6 +393,72 @@ $ tox -e cli -- canonicalize flit-core
 flit_core
 ```
 
+## Global settings
+
+Global settings are configured in the `settings.yaml` file passed via the
+`--settings-file` flag. These settings apply to all packages being built.
+
+### Wheel build tag hook
+
+The `build_tag_hook` is a configuration option that allows you to customize
+wheel filenames by appending configuration-specific suffixes to the build tag.
+This is useful for creating unique, deterministic filenames that reflect the
+build configuration and distinguish wheels built for different variants.
+
+Unlike the existing process hooks (which use entry-point based plugins),
+the `build_tag_hook` is specified directly in `settings.yaml` because it
+applies globally to all packages rather than per-package.
+
+Configure the hook in your global `settings.yaml`:
+
+```yaml
+wheels:
+  build_tag_hook: "myproject.hooks:build_tag_hook"
+```
+
+The hook function receives keyword-only arguments and returns a sequence of
+suffix segments (strings) to append to the wheel build tag:
+
+```python
+from typing import Sequence
+from packaging.requirements import Requirement
+from packaging.version import Version
+from packaging.tags import Tag
+
+from fromager import context
+
+
+def build_tag_hook(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    wheel_tags: frozenset[Tag],
+) -> Sequence[str]:
+    """Return suffix segments for the wheel build tag.
+
+    Segments are joined with underscores and appended to the numeric base.
+    The hook must be deterministic (same input → same output) so wheel
+    caches work correctly across builders.
+    """
+    # Example: Return variant-specific suffix
+    return [ctx.variant]
+```
+
+**Important notes:**
+
+- The hook is only invoked when the package has a non-empty build tag from
+  its changelog entry. Pure-python packages without a build tag skip the hook.
+- Each segment must contain only alphanumeric ASCII characters or dots
+  (`[a-zA-Z0-9.]`). Invalid characters cause a build error.
+- The hook must be deterministic and independent of wheel contents, build
+  environment, or ELF metadata, so that fresh builds and cache lookups
+  produce identical tags.
+- Use `wheel_tags` only to distinguish platform-specific wheels (`platlib`)
+  from pure-python wheels (`py3-none-any`). Don't use it for platform-specific
+  decisions—the hook must return identical results across architectures for
+  the same variant.
+
 ## Process hooks
 
 Fromager supports plugging in Python hooks to be run after build events.

@@ -96,3 +96,5 @@ If you prefer managing a single settings file, per-package settings can also be
 kept in this file.
 
 .. autopydantic_model:: fromager.packagesettings.SettingsFile
+
+.. autopydantic_model:: fromager.packagesettings.WheelSettings
