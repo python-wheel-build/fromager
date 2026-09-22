@@ -459,13 +459,25 @@ def download_wheel(
 
 
 def get_wheel_server_urls(
-    ctx: context.WorkContext, req: Requirement, *, cache_wheel_server_url: str | None
+    ctx: context.WorkContext,
+    req: Requirement,
+    *,
+    cache_wheel_server_url: str | None,
+    version: Version | None = None,
 ) -> list[str]:
+    """Build ordered list of wheel server URLs for a package.
+
+    When *version* is given, version-specific ``wheel_server_url``
+    overrides are checked first.
+
+    .. versionchanged:: 0.95.0
+       Added *version* parameter for version-specific URL lookup.
+    """
     pbi = ctx.package_build_info(req)
+    url = pbi.get_wheel_server_url(version)
     wheel_server_urls: list[str] = []
-    if pbi.wheel_server_url:
-        # use only the wheel server from settings if it is defined. Do not fallback to other URLs
-        wheel_server_urls.append(pbi.wheel_server_url)
+    if url:
+        wheel_server_urls.append(url)
     else:
         if ctx.wheel_server_url:
             # local wheel server

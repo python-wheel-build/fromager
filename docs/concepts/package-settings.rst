@@ -78,6 +78,9 @@ layers override earlier ones:
    │  4. Variant overrides (within package YAML)      │
    │     (env vars, pre_built, wheel_server_url)      │
    │                                                  │
+   │  4a. Version-specific variant overrides          │
+   │     (per-version pre_built, wheel_server_url)    │
+   │                                                  │
    │  5. Version-specific patches and changelog       │
    │     (patches/<pkg>-<version>/, changelog entries)│
    │                                                  │

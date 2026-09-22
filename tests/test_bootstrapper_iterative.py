@@ -38,7 +38,7 @@ from fromager.bootstrapper._prepare_build import PrepareBuild
 from fromager.bootstrapper._prepare_source import PrepareSource
 from fromager.bootstrapper._process_install_deps import ProcessInstallDeps
 from fromager.bootstrapper._resolve import Resolve
-from fromager.bootstrapper._start import Start
+from fromager.bootstrapper._start import Start, _re_resolve_url
 from fromager.bootstrapper._types import (
     BootstrapPhase,
     PreparedSourceData,
@@ -605,6 +605,52 @@ class TestPhaseStart:
         key = f"{canonicalize_name('testpkg')}==1.0"
         assert key not in tmp_context.dependency_graph.nodes
 
+    def test_graph_edge_recorded_for_already_seen_package(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Graph edge is recorded even when the package was already processed."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        bt.why = []
+
+        parent_a = (Requirement("parent-a"), Version("1.0"))
+        parent_b = (Requirement("parent-b"), Version("2.0"))
+
+        # Add parent nodes so add_dependency can attach edges
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=parent_a[0],
+            req_version=parent_a[1],
+        )
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=parent_b[0],
+            req_version=parent_b[1],
+        )
+
+        item1 = _make_start_item(req_type=RequirementType.INSTALL, parent=parent_a)
+        item2 = _make_start_item(req_type=RequirementType.INSTALL, parent=parent_b)
+
+        result1 = item1.run(bt)
+        assert len(result1) == 1
+
+        result2 = item2.run(bt)
+        assert result2 == []
+
+        # Both parent edges should be in the graph
+        dep_key = f"{canonicalize_name('testpkg')}==1.0"
+        parent_a_key = f"{canonicalize_name('parent-a')}==1.0"
+        parent_b_key = f"{canonicalize_name('parent-b')}==2.0"
+        assert dep_key in tmp_context.dependency_graph.nodes
+        dep_node = tmp_context.dependency_graph.nodes[dep_key]
+        parent_a_node = tmp_context.dependency_graph.nodes[parent_a_key]
+        parent_b_node = tmp_context.dependency_graph.nodes[parent_b_key]
+        assert dep_node in [e.destination_node for e in parent_a_node.children]
+        assert dep_node in [e.destination_node for e in parent_b_node.children]
+
     def test_sdist_only_set_for_non_build_requirement(
         self, tmp_context: WorkContext
     ) -> None:
@@ -649,13 +695,214 @@ class TestPhaseStart:
         with patch.object(
             tmp_context,
             "package_build_info",
-            return_value=Mock(pre_built=True),
+            return_value=Mock(
+                pre_built=True,
+                is_pre_built=Mock(return_value=True),
+                wheel_server_url=None,
+                get_wheel_server_url=Mock(return_value=None),
+            ),
         ):
             result = item.run(bt)
 
         assert len(result) == 1
         assert isinstance(result[0], PrepareSource)
         assert result[0].work_item.pbi_pre_built is True
+
+
+class TestReResolveUrl:
+    """Tests for _re_resolve_url used by Start.run for version-specific overrides."""
+
+    def test_prebuilt_returns_resolved_url(self, tmp_context: WorkContext) -> None:
+        """Pre-built path returns URL from resolve_prebuilt_wheel."""
+        req = Requirement("testpkg==1.0")
+        with (
+            patch(
+                "fromager.bootstrapper._start.wheels.get_wheel_server_urls",
+                return_value=["https://wheels.test/simple/"],
+            ),
+            patch(
+                "fromager.bootstrapper._start.wheels.resolve_prebuilt_wheel",
+                return_value=(
+                    "https://wheels.test/testpkg-1.0-py3-none-any.whl",
+                    Version("1.0"),
+                ),
+            ),
+        ):
+            result = _re_resolve_url(
+                tmp_context,
+                req,
+                RequirementType.INSTALL,
+                Version("1.0"),
+                pre_built=True,
+                cache_wheel_server_url=None,
+            )
+
+        assert result == "https://wheels.test/testpkg-1.0-py3-none-any.whl"
+
+    def test_source_returns_resolved_url(self, tmp_context: WorkContext) -> None:
+        """Source path returns URL from find_all_matching_from_provider."""
+        req = Requirement("testpkg==1.0")
+        with (
+            patch(
+                "fromager.bootstrapper._start.sources.get_source_provider",
+            ) as mock_provider,
+            patch(
+                "fromager.bootstrapper._start.resolver.find_all_matching_from_provider",
+                return_value=[("https://pypi.test/testpkg-1.0.tar.gz", Version("1.0"))],
+            ),
+        ):
+            mock_provider.return_value = Mock()
+            result = _re_resolve_url(
+                tmp_context,
+                req,
+                RequirementType.INSTALL,
+                Version("1.0"),
+                pre_built=False,
+                cache_wheel_server_url=None,
+            )
+
+        assert result == "https://pypi.test/testpkg-1.0.tar.gz"
+
+    def test_prebuilt_returns_none_on_exception_group(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Pre-built path returns None when no wheel found (ExceptionGroup)."""
+        req = Requirement("testpkg==1.0")
+        with (
+            patch(
+                "fromager.bootstrapper._start.wheels.get_wheel_server_urls",
+                return_value=["https://wheels.test/simple/"],
+            ),
+            patch(
+                "fromager.bootstrapper._start.wheels.resolve_prebuilt_wheel",
+                side_effect=ExceptionGroup(
+                    "no wheel found",
+                    [Exception("server 1 failed")],
+                ),
+            ),
+        ):
+            result = _re_resolve_url(
+                tmp_context,
+                req,
+                RequirementType.INSTALL,
+                Version("1.0"),
+                pre_built=True,
+                cache_wheel_server_url=None,
+            )
+
+        assert result is None
+
+    def test_source_returns_none_when_no_match(self, tmp_context: WorkContext) -> None:
+        """Source path returns None when find_all_matching returns empty."""
+        req = Requirement("testpkg==1.0")
+        with (
+            patch(
+                "fromager.bootstrapper._start.sources.get_source_provider",
+            ) as mock_provider,
+            patch(
+                "fromager.bootstrapper._start.resolver.find_all_matching_from_provider",
+                return_value=[],
+            ),
+        ):
+            mock_provider.return_value = Mock()
+            result = _re_resolve_url(
+                tmp_context,
+                req,
+                RequirementType.INSTALL,
+                Version("1.0"),
+                pre_built=False,
+                cache_wheel_server_url=None,
+            )
+
+        assert result is None
+
+    def test_wheel_server_url_differs_triggers_re_resolve(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Start.run re-resolves when wheel_server_url differs but pre_built matches."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        bt.why = []
+        item = _make_start_item()
+
+        mock_pbi = Mock(
+            pre_built=True,
+            is_pre_built=Mock(return_value=True),
+            exclusive_build=False,
+            wheel_server_url="https://default.test/simple/",
+            get_wheel_server_url=Mock(return_value="https://version.test/simple/"),
+        )
+
+        with (
+            patch.object(tmp_context, "package_build_info", return_value=mock_pbi),
+            patch(
+                "fromager.bootstrapper._start._re_resolve_url",
+                return_value="https://version.test/testpkg-1.0-py3-none-any.whl",
+            ) as mock_re_resolve,
+        ):
+            item.run(bt)
+
+        mock_re_resolve.assert_called_once()
+        assert (
+            item.work_item.source_url
+            == "https://version.test/testpkg-1.0-py3-none-any.whl"
+        )
+
+    def test_no_re_resolve_when_settings_match_defaults(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Start.run skips re-resolution when version settings match variant defaults."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        bt.why = []
+        item = _make_start_item()
+        original_url = item.work_item.source_url
+
+        mock_pbi = Mock(
+            pre_built=False,
+            is_pre_built=Mock(return_value=False),
+            exclusive_build=False,
+            wheel_server_url=None,
+            get_wheel_server_url=Mock(return_value=None),
+        )
+
+        with (
+            patch.object(tmp_context, "package_build_info", return_value=mock_pbi),
+            patch(
+                "fromager.bootstrapper._start._re_resolve_url",
+            ) as mock_re_resolve,
+        ):
+            item.run(bt)
+
+        mock_re_resolve.assert_not_called()
+        assert item.work_item.source_url == original_url
+
+    def test_fallback_to_original_url_on_failed_re_resolve(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Start.run keeps original URL and logs warning when re-resolve returns None."""
+        bt = bootstrapper.Bootstrapper(tmp_context)
+        bt.why = []
+        item = _make_start_item()
+        original_url = item.work_item.source_url
+
+        mock_pbi = Mock(
+            pre_built=False,
+            is_pre_built=Mock(return_value=True),
+            exclusive_build=False,
+            wheel_server_url=None,
+            get_wheel_server_url=Mock(return_value=None),
+        )
+
+        with (
+            patch.object(tmp_context, "package_build_info", return_value=mock_pbi),
+            patch(
+                "fromager.bootstrapper._start._re_resolve_url",
+                return_value=None,
+            ) as mock_re_resolve,
+        ):
+            item.run(bt)
+
+        mock_re_resolve.assert_called_once()
+        assert item.work_item.source_url == original_url
 
 
 class TestComplete:
@@ -2022,7 +2269,9 @@ class TestPhaseProcessInstallDeps:
             patch.object(
                 tmp_context,
                 "package_build_info",
-                return_value=Mock(pre_built=False),
+                return_value=Mock(
+                    pre_built=False, is_pre_built=Mock(return_value=False)
+                ),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "add_to_build_order") as mock_build_order,
@@ -2062,7 +2311,9 @@ class TestPhaseProcessInstallDeps:
             patch.object(
                 tmp_context,
                 "package_build_info",
-                return_value=Mock(pre_built=False),
+                return_value=Mock(
+                    pre_built=False, is_pre_built=Mock(return_value=False)
+                ),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "add_to_build_order") as mock_build_order,
@@ -2107,7 +2358,9 @@ class TestPhaseProcessInstallDeps:
             patch.object(
                 tmp_context,
                 "package_build_info",
-                return_value=Mock(pre_built=False),
+                return_value=Mock(
+                    pre_built=False, is_pre_built=Mock(return_value=False)
+                ),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "add_to_build_order") as mock_build_order,
@@ -2159,7 +2412,9 @@ class TestPhaseProcessInstallDeps:
             patch.object(
                 tmp_context,
                 "package_build_info",
-                return_value=Mock(pre_built=False),
+                return_value=Mock(
+                    pre_built=False, is_pre_built=Mock(return_value=False)
+                ),
             ),
             patch.object(tmp_context.constraints, "get_constraint", return_value=None),
             patch.object(bt, "add_to_build_order"),
@@ -2188,7 +2443,7 @@ class TestPhaseProcessInstallDeps:
             patch.object(
                 tmp_context,
                 "package_build_info",
-                return_value=Mock(pre_built=True),
+                return_value=Mock(pre_built=True, is_pre_built=Mock(return_value=True)),
             ),
             patch.object(
                 tmp_context.constraints,
