@@ -146,7 +146,8 @@ def _download_wheel_from_cache(
             req=req, wheel_url=wheel_url, output_directory=ctx.wheels_downloads
         )
         if cache_wheel_server_url != ctx.wheel_server_url:
-            server.update_wheel_mirror(ctx)
+            # Index only this wheel — never sweep wheels_build from bg threads.
+            server.index_wheel(ctx, cached_wheel)
         logger.info("found built wheel on cache server")
         unpack_dir = _extract_build_reqs_from_wheel(
             ctx.work_dir, req, resolved_version, cached_wheel
@@ -171,23 +172,71 @@ def _download_wheel_from_cache(
         return None, None
 
 
+def _find_cached_wheel_via_manager(
+    ctx: context.WorkContext,
+    req: Requirement,
+    resolved_version: Version,
+) -> tuple[pathlib.Path | None, pathlib.Path | None]:
+    """Cache lookup using the CacheManager (thread-safe, no Bootstrapper state).
+
+    Delegates to ``ctx.cache.lookup_wheel()`` for a unified prioritized
+    lookup across backends. On hit, extracts build-requirement metadata
+    into a work_dir unpack directory (same contract as the legacy path).
+
+    Returns:
+        Tuple of (cached_wheel_filename, unpack_dir).
+        Both None if no cache hit. ``unpack_dir`` is under ``ctx.work_dir``.
+    """
+    assert ctx.cache is not None
+    pbi = ctx.package_build_info(req)
+    build_tag = pbi.build_tag(resolved_version)
+
+    result = ctx.cache.lookup_wheel(req, resolved_version, build_tag)
+    if not result.hit:
+        return None, None
+
+    assert result.path is not None
+    if result.was_downloaded:
+        # Index only the promoted wheel. Full update_wheel_mirror() would
+        # move every file out of the shared wheels_build directory and can
+        # steal an in-progress build from another package.
+        server.index_wheel(ctx, result.path)
+
+    try:
+        unpack_dir = _extract_build_reqs_from_wheel(
+            ctx.work_dir, req, resolved_version, result.path
+        )
+    except Exception as err:
+        logger.debug(
+            "could not extract build requirements from cached wheel %s: %s",
+            result.path.name,
+            err,
+        )
+        unpack_dir = None
+    if unpack_dir is None:
+        unpack_dir = _create_unpack_dir(ctx.work_dir, req, resolved_version)
+    return result.path, unpack_dir
+
+
 def find_cached_wheel(
     ctx: context.WorkContext,
     cache_wheel_server_url: str | None,
     req: Requirement,
     resolved_version: Version,
 ) -> tuple[pathlib.Path | None, pathlib.Path | None]:
-    """Look for cached wheel in 3 locations (thread-safe, no Bootstrapper state).
+    """Look for cached wheel (thread-safe, no Bootstrapper state).
 
-    Checks for cached wheels in order:
-    1. wheels_build directory (previously built)
-    2. wheels_downloads directory (previously downloaded)
-    3. Cache server (remote cache)
+    When a CacheManager is configured on the context, delegates to it
+    for a unified prioritized lookup across backends. Otherwise falls
+    back to the legacy per-directory search.
 
     Returns:
         Tuple of (cached_wheel_filename, unpacked_cached_wheel).
         Both None if no cache hit.
     """
+    if ctx.cache is not None:
+        return _find_cached_wheel_via_manager(ctx, req, resolved_version)
+
     cached_wheel, unpacked = _look_for_existing_wheel(
         ctx, req, resolved_version, ctx.wheels_build
     )
@@ -218,9 +267,10 @@ def bg_prepare_prebuilt(
 ) -> PreparedSourceData:
     """Background-safe prebuilt download: no Bootstrapper state accessed."""
     # Thread-safe: paths include {req.name}-{resolved_version} (unique per package),
-    # mkdir uses exist_ok=True (atomic), and update_wheel_mirror() is already locked.
+    # mkdir uses exist_ok=True (atomic), and index_wheel() is locked.
     logger.info(f"using pre-built wheel for {req_type} requirement")
     wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
     unpack_dir = _create_unpack_dir(ctx.work_dir, req, resolved_version)
-    server.update_wheel_mirror(ctx)
+    # Index only this prebuilt wheel so bg threads never sweep wheels_build.
+    server.index_wheel(ctx, wheel_filename)
     return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
