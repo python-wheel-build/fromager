@@ -1,3 +1,4 @@
+import json
 import pathlib
 import zipfile
 from unittest.mock import Mock, patch
@@ -147,6 +148,34 @@ def test_add_extra_metadata_generates_sbom_when_enabled(
     wheel_dir.mkdir()
     wheel_file = wheel_dir / "test_pkg-1.0.0-py3-none-any.whl"
 
+    native_sbom = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "metadata": {
+            "component": {
+                "type": "library",
+                "bom-ref": "pkg:cargo/test-pkg@1.0.0",
+                "name": "test-pkg",
+                "version": "1.0.0",
+                "purl": "pkg:cargo/test-pkg@1.0.0",
+            }
+        },
+        "components": [
+            {
+                "type": "library",
+                "bom-ref": "pkg:cargo/serde@1.0.0",
+                "name": "serde",
+                "version": "1.0.0",
+                "purl": "pkg:cargo/serde@1.0.0",
+            }
+        ],
+        "dependencies": [
+            {
+                "ref": "pkg:cargo/test-pkg@1.0.0",
+                "dependsOn": ["pkg:cargo/serde@1.0.0"],
+            }
+        ],
+    }
     with zipfile.ZipFile(wheel_file, "w") as zf:
         zf.writestr("test_pkg/__init__.py", "")
         zf.writestr(
@@ -156,6 +185,10 @@ def test_add_extra_metadata_generates_sbom_when_enabled(
         zf.writestr(
             "test_pkg-1.0.0.dist-info/WHEEL",
             "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        )
+        zf.writestr(
+            "test_pkg-1.0.0.dist-info/sboms/rust.cyclonedx.json",
+            json.dumps(native_sbom),
         )
 
     mock_run.return_value = ""
@@ -167,14 +200,14 @@ def test_add_extra_metadata_generates_sbom_when_enabled(
     sdist_dir.mkdir()
 
     # Capture the wheel contents before repack by inspecting what wheel pack receives
-    captured_contents: list[str] = []
+    captured_contents: dict[str, str] = {}
 
     def fake_run(cmd: list[str], **kwargs: object) -> str:
         # wheel pack is called with the unpacked dir as second arg
         unpacked_dir = pathlib.Path(cmd[2])
         for f in unpacked_dir.rglob("*"):
             if f.is_file():
-                captured_contents.append(str(f.relative_to(unpacked_dir)))
+                captured_contents[str(f.relative_to(unpacked_dir))] = f.read_text()
         repacked.touch()
         return ""
 
@@ -189,8 +222,16 @@ def test_add_extra_metadata_generates_sbom_when_enabled(
         wheel_file=wheel_file,
     )
 
-    # Verify the SBOM file was added to the unpacked wheel before repacking
-    assert any("sboms/fromager.spdx.json" in c for c in captured_contents)
+    # Verify the canonical SBOM was merged and the native file was preserved.
+    assert "test_pkg-1.0.0.dist-info/sboms/fromager.spdx.json" in captured_contents
+    assert "test_pkg-1.0.0.dist-info/sboms/rust.cyclonedx.json" in captured_contents
+    merged_sbom = json.loads(
+        captured_contents["test_pkg-1.0.0.dist-info/sboms/fromager.spdx.json"]
+    )
+    assert {package["name"] for package in merged_sbom["packages"]} >= {
+        "test-pkg",
+        "serde",
+    }
 
 
 def test_download_wheel_unquotes_url_encoded_filenames(tmp_path: pathlib.Path) -> None:
