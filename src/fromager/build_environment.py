@@ -48,6 +48,9 @@ class MissingDependency(Exception):  # noqa: N818
         self.all_reqs = all_reqs
         resolutions = []
         for r in all_reqs:
+            if ctx.offline:
+                resolutions.append(f"{r} -> missing from prefetch bundle")
+                continue
             try:
                 _, version = resolver.resolve(
                     ctx=ctx,
@@ -154,6 +157,17 @@ class BuildEnvironment:
         venv_environ["UV_NO_MANAGED_PYTHON"] = "true"
         venv_environ["UV_PYTHON_DOWNLOADS"] = "never"
         venv_environ["UV_PYTHON"] = str(self.python)
+        if self._ctx.offline:
+            venv_environ["UV_OFFLINE"] = "true"
+            venv_environ["UV_NO_CACHE"] = "true"
+            venv_environ["PIP_NO_INDEX"] = "1"
+            venv_environ["PIP_FIND_LINKS"] = " ".join(
+                os.fspath(path) for path in self._ctx.wheelhouse_dirs
+            )
+            if self._ctx.offline_constraints_file is not None:
+                venv_environ["PIP_CONSTRAINT"] = os.fspath(
+                    self._ctx.offline_constraints_file
+                )
 
         return venv_environ
 
@@ -233,7 +247,9 @@ class BuildEnvironment:
         self.run(
             cmd,
             cwd=str(self.path.parent),
-            network_isolation=False,
+            network_isolation=(
+                self._ctx.network_isolation if self._ctx.offline else False
+            ),
         )
         logger.info(
             "installed dependencies %s into build environment in %s",
@@ -337,6 +353,40 @@ def prepare_build_environment(
     else:
         logger.debug("build env %r has packages %r", build_env.path, distributions)
 
+    return build_env
+
+
+@metrics.timeit(description="prepare prefetched build environment")
+def prepare_build_environment_from_prefetch(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    sdist_root_dir: pathlib.Path,
+    build_requirements: typing.Iterable[Requirement],
+) -> BuildEnvironment:
+    """Create a build environment from graph-resolved requirements.
+
+    Args:
+        ctx: Offline work context.
+        req: Requirement being built.
+        sdist_root_dir: Root directory of the unpacked prepared source archive.
+        build_requirements: Exact requirements captured during prefetch.
+
+    Returns:
+        Prepared build environment.
+    """
+    build_env = BuildEnvironment(
+        ctx=ctx,
+        req=req,
+        sdist_root_dir=sdist_root_dir,
+    )
+    _safe_install(
+        ctx=ctx,
+        req=req,
+        build_env=build_env,
+        deps=set(build_requirements),
+        dep_req_type=RequirementType.BUILD_SYSTEM,
+    )
     return build_env
 
 

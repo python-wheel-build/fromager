@@ -42,6 +42,24 @@ def test_missing_dependency_format(
     assert "flit_core -> 3.9.0" in s
 
 
+@patch("fromager.resolver.resolve")
+def test_missing_dependency_offline_does_not_resolve(
+    resolve_dist: Mock,
+    tmp_context: WorkContext,
+) -> None:
+    tmp_context.enable_offline_build([])
+
+    ex = build_environment.MissingDependency(
+        tmp_context,
+        RequirementType.BUILD_BACKEND,
+        "setuptools",
+        [Requirement("setuptools>=40.8.0")],
+    )
+
+    assert "setuptools>=40.8.0 -> missing from prefetch bundle" in str(ex)
+    resolve_dist.assert_not_called()
+
+
 def test_missing_dependency_pattern() -> None:
     msg = textwrap.dedent("""
         DEBUG uv 0.8.4
@@ -104,3 +122,35 @@ def test_get_distributions_invalid_json_raises() -> None:
 
     with pytest.raises(json.JSONDecodeError):
         build_environment.BuildEnvironment.get_distributions(env)
+
+
+@patch("fromager.build_environment._safe_install")
+@patch("fromager.build_environment.BuildEnvironment")
+def test_prepare_build_environment_from_prefetch_uses_exact_requirements(
+    build_environment_class: Mock,
+    safe_install: Mock,
+    tmp_context: WorkContext,
+) -> None:
+    req = Requirement("demo==1.0")
+    build_requirements = {
+        Requirement("flit-core==3.12.0"),
+        Requirement("packaging==24.0"),
+    }
+    sdist_root = tmp_context.work_dir / "demo-1.0"
+    expected_build_environment = build_environment_class.return_value
+
+    result = build_environment.prepare_build_environment_from_prefetch(
+        ctx=tmp_context,
+        req=req,
+        sdist_root_dir=sdist_root,
+        build_requirements=build_requirements,
+    )
+
+    assert result is expected_build_environment
+    safe_install.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        build_env=expected_build_environment,
+        deps=build_requirements,
+        dep_req_type=RequirementType.BUILD_SYSTEM,
+    )

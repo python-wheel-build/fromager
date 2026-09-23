@@ -97,6 +97,21 @@ The ``build`` command uses the same source acquisition and build
 subsystems but skips resolution and recursion -- it compiles a
 single package given a name, version, and source URL.
 
+Prefetch Bundles
+----------------
+
+.. versionadded:: 0.92.0
+
+``bootstrap --prefetch-dir`` separates network-enabled discovery from an
+airgapped production build. It runs the sdist-only bootstrap pipeline to
+dependency closure, then exports prepared source archives, bootstrap wheels, prebuilt
+wheels, ``graph.json``, and ``build-order.json`` into a versioned bundle.
+
+``build-sequence --prefetch-dir`` verifies the bundle manifest, skips source
+resolution, downloading, and source preparation, and builds from the prepared
+source archives. Build-environment dependencies are installed from local wheelhouse
+directories with the package index disabled.
+
 Extension Points
 ----------------
 
@@ -126,7 +141,7 @@ breakdown.
 Key Data Structures
 -------------------
 
-Four data structures flow between subsystems:
+Five data structures flow between subsystems:
 
 .. list-table::
    :header-rows: 1
@@ -148,3 +163,6 @@ Four data structures flow between subsystems:
    * - ``BuildEnvironment``
      - Isolated virtual environment for building one package.  Created
        per source build, cleaned up after completion.
+   * - ``PrefetchBundle``
+     - Verified manifest and local artifacts used to move dependency discovery
+       and source preparation ahead of an airgapped build.

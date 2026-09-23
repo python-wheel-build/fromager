@@ -6,7 +6,13 @@ import re
 import typing
 
 from packaging.requirements import Requirement
-from packaging.utils import BuildTag, canonicalize_name
+from packaging.utils import (
+    BuildTag,
+    InvalidWheelFilename,
+    canonicalize_name,
+    parse_wheel_filename,
+)
+from packaging.version import Version
 
 from . import overrides, resolver
 from .constraints import Constraints
@@ -192,6 +198,33 @@ def find_wheel(
             if str(filename.name).lower().startswith(base.lower()):
                 return filename
 
+    return None
+
+
+def find_exact_wheel(
+    download_dirs: typing.Iterable[pathlib.Path],
+    req: Requirement,
+    dist_version: str,
+    build_tag: BuildTag = (),
+) -> pathlib.Path | None:
+    """Find a wheel matching an exact name, version, and build tag."""
+    expected_name = canonicalize_name(req.name)
+    expected_version = Version(dist_version)
+    expected_build_tag = build_tag or (0, "")
+    for directory in download_dirs:
+        for candidate in sorted(directory.glob("*.whl")):
+            try:
+                name, version, candidate_build_tag, _ = parse_wheel_filename(
+                    candidate.name
+                )
+            except InvalidWheelFilename:
+                continue
+            if (
+                name == expected_name
+                and version == expected_version
+                and (candidate_build_tag or (0, "")) == expected_build_tag
+            ):
+                return candidate
     return None
 
 

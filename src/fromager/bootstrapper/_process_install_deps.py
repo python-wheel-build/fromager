@@ -149,13 +149,32 @@ class ProcessInstallDeps(Phase):
 
         pbi = bt.ctx.package_build_info(wi.req)
         constraint = bt.ctx.constraints.get_constraint(wi.req.name)
+        build_order_kwargs: dict[str, typing.Any] = {
+            "req": wi.req,
+            "version": wi.resolved_version,
+            "source_url": wi.source_url,
+            "source_type": wi.build_result.source_type,
+            "prebuilt": pbi.pre_built,
+            "constraint": constraint,
+            "build_requirements": (
+                wi.resolved_build_requirements
+                if bt.capture_build_requirements
+                else None
+            ),
+        }
+        if bt.capture_build_requirements and wi.build_result.sdist_root_dir is not None:
+            build_order_kwargs.update(
+                {
+                    "prepared_source_root": str(
+                        wi.build_result.sdist_root_dir.relative_to(bt.ctx.work_dir)
+                    ),
+                    "prepared_source_workspace": str(
+                        wi.build_result.unpack_dir.relative_to(bt.ctx.work_dir)
+                    ),
+                }
+            )
         bt.add_to_build_order(
-            req=wi.req,
-            version=wi.resolved_version,
-            source_url=wi.source_url,
-            source_type=wi.build_result.source_type,
-            prebuilt=pbi.pre_built,
-            constraint=constraint,
+            **build_order_kwargs,
         )
 
         dep_items: list[Phase] = bt.create_unresolved_work_items(

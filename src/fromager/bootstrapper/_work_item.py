@@ -50,6 +50,9 @@ class WorkItem:
     build_system_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_backend_deps: set[Requirement] = dataclasses.field(default_factory=set)
     build_sdist_deps: set[Requirement] = dataclasses.field(default_factory=set)
+    resolved_build_requirements: dict[str, Version] = dataclasses.field(
+        default_factory=dict
+    )
 
     def is_build_requirement_context(self) -> bool:
         """Return True if this item is being processed as part of a build requirement.
