@@ -542,6 +542,63 @@ def test_skip_constraints_cli_option() -> None:
     assert "Skip generating constraints.txt file" in result.output
 
 
+@patch("fromager.commands.bootstrap.prefetch.export_prefetch_bundle")
+@patch("fromager.commands.bootstrap.write_constraints_file", return_value=True)
+@patch("fromager.commands.bootstrap.bootstrapper.Bootstrapper")
+@patch("fromager.commands.bootstrap.server.start_wheel_server")
+@patch("fromager.commands.bootstrap.progress.progress_context")
+@patch("fromager.commands.bootstrap.metrics.summarize")
+def test_prefetch_dir_enables_sdist_only_bootstrap(
+    mock_metrics: Mock,
+    mock_progress: Mock,
+    mock_server: Mock,
+    mock_bootstrapper: Mock,
+    mock_write_constraints: Mock,
+    mock_export: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    mock_progress.return_value.__enter__.return_value = Mock()
+    mock_progress.return_value.__exit__.return_value = None
+    mock_bt_instance = Mock()
+    mock_bt_instance.__enter__ = Mock(return_value=mock_bt_instance)
+    mock_bt_instance.__exit__ = Mock(return_value=None)
+    mock_bt_instance.finalize.return_value = 0
+    mock_bootstrapper.return_value = mock_bt_instance
+    mock_export.return_value.root = pathlib.Path("prefetch")
+
+    result = CliRunner().invoke(
+        bootstrap.bootstrap,
+        ["--prefetch-dir", "prefetch", "demo"],
+        obj=tmp_context,
+    )
+
+    assert result.exit_code == 0
+    assert tmp_context.cleanup is False
+    assert mock_bootstrapper.call_args.kwargs["sdist_only"] is True
+    assert mock_bootstrapper.call_args.kwargs["capture_build_requirements"] is True
+    mock_export.assert_called_once_with(tmp_context, pathlib.Path("prefetch"))
+
+
+def test_prefetch_dir_rejects_existing_prepared_sources(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    stale_source = tmp_context.work_dir / "demo-1.0" / "demo-1.0"
+    stale_source.mkdir(parents=True)
+
+    with patch("fromager.commands.bootstrap.bootstrapper.Bootstrapper") as mock_bt:
+        result = CliRunner().invoke(
+            bootstrap.bootstrap,
+            ["--prefetch-dir", str(tmp_path / "prefetch"), "demo"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 2
+    assert "requires a clean work directory" in result.output
+    mock_bt.assert_not_called()
+    assert tmp_context.cleanup is True
+
+
 @patch("fromager.commands.bootstrap.bootstrapper.Bootstrapper")
 @patch("fromager.commands.bootstrap.server.start_wheel_server")
 @patch("fromager.commands.bootstrap.progress.progress_context")

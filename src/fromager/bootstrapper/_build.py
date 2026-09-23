@@ -58,6 +58,9 @@ class Build(Phase):
         if remaining_deps.isdisjoint(wi.build_system_deps):
             wi.build_env.install(remaining_deps)
 
+        if bt.capture_build_requirements:
+            wi.resolved_build_requirements = dict(wi.build_env.get_distributions())
+
         wheel_filename, sdist_filename = self.do_build(bt.ctx, bt.explain)
 
         source_type = sources.get_source_type(bt.ctx, wi.req)

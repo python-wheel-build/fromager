@@ -84,6 +84,21 @@ def test_find_wheel_returns_none_when_only_non_wheel_files(
     assert finders.find_wheel(downloads, req, "1.2", ()) is None
 
 
+def test_find_exact_wheel_matches_build_tag(tmp_path: pathlib.Path) -> None:
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    expected = downloads / "mypkg-1.2-2-py3-none-any.whl"
+    expected.touch()
+    (downloads / "mypkg-1.2-1-py3-none-any.whl").touch()
+    (downloads / "mypkg-2.0-2-py3-none-any.whl").touch()
+
+    result = finders.find_exact_wheel(
+        (downloads,), Requirement("mypkg"), "1.2", (2, "")
+    )
+
+    assert result == expected
+
+
 @pytest.mark.parametrize(
     "dist_name,version_string,unpack_base,source_base",
     [

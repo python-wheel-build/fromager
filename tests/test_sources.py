@@ -519,6 +519,20 @@ def test_unpack_source_zip(
     assert (result / "setup.py").is_file()
 
 
+def test_normalize_source_timestamps_uses_zip_safe_epoch(
+    tmp_path: pathlib.Path,
+) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    source_file = source_root / "module.py"
+    source_file.write_text("# module\n", encoding="utf-8")
+
+    sources.normalize_source_timestamps(source_root)
+
+    assert source_root.stat().st_mtime == sources.ZIP_SAFE_EPOCH
+    assert source_file.stat().st_mtime == sources.ZIP_SAFE_EPOCH
+
+
 def test_unpack_source_unknown_extension(
     tmp_context: context.WorkContext,
     tmp_path: pathlib.Path,
@@ -531,6 +545,23 @@ def test_unpack_source_unknown_extension(
     with pytest.raises(ValueError):
         sources.unpack_source(
             ctx=tmp_context, req=req, version=version, source_filename=bad_file
+        )
+
+
+def test_unpack_source_rejects_zip_path_traversal(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    archive = tmp_path / "mypkg-1.0.zip"
+    with zipfile.ZipFile(archive, "w") as zip_file:
+        zip_file.writestr("../outside.txt", "unsafe")
+
+    with pytest.raises(ValueError, match="unsafe path"):
+        sources.unpack_source(
+            ctx=tmp_context,
+            req=Requirement("mypkg==1.0"),
+            version=Version("1.0"),
+            source_filename=archive,
         )
 
 
@@ -556,6 +587,39 @@ def test_unpack_source_renames_mismatched_dir(
 
     assert is_new is True
     assert result.name == expected_name
+
+
+def test_unpack_source_preserves_sibling_directories(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    req = Requirement("mypkg==1.0")
+    version = Version("1.0")
+    archive_root = tmp_path / "archive"
+    source_dir = archive_root / "mypkg-1.0"
+    sibling_dir = archive_root / "prepared-dependency"
+    source_dir.mkdir(parents=True)
+    sibling_dir.mkdir()
+    (source_dir / "setup.py").write_text("# setup")
+    (sibling_dir / "README").write_text("prepared")
+
+    tar_path = tmp_path / "mypkg-1.0.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as archive:
+        archive.add(source_dir, arcname=source_dir.name)
+        archive.add(sibling_dir, arcname=sibling_dir.name)
+
+    result, is_new = sources.unpack_source(
+        ctx=tmp_context,
+        req=req,
+        version=version,
+        source_filename=tar_path,
+    )
+
+    assert is_new is True
+    assert result == tmp_context.work_dir / "mypkg-1.0" / "mypkg-1.0"
+    assert (result.parent / "prepared-dependency" / "README").read_text() == (
+        "prepared"
+    )
 
 
 def test_unpack_source_reuse_when_no_cleanup(
@@ -588,6 +652,40 @@ def test_unpack_source_reuse_when_no_cleanup(
     assert is_new is False
     assert result == existing
     assert (result / "setup.py").read_text() == "# old"
+
+
+def test_unpack_source_replaces_existing_when_reuse_disabled(
+    tmp_path: pathlib.Path,
+) -> None:
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "overrides/patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cleanup=False,
+    )
+    ctx.setup()
+    existing = ctx.work_dir / "mypkg-1.0" / "mypkg-1.0"
+    existing.mkdir(parents=True)
+    (existing / "setup.py").write_text("# old")
+    archive_root = tmp_path / "archive" / "mypkg-1.0"
+    archive_root.mkdir(parents=True)
+    (archive_root / "setup.py").write_text("# new")
+    source = tmp_path / "mypkg-1.0.tar.gz"
+    with tarfile.open(source, "w:gz") as archive:
+        archive.add(archive_root, arcname=archive_root.name)
+
+    result, is_new = sources.unpack_source(
+        ctx=ctx,
+        req=Requirement("mypkg==1.0"),
+        version=Version("1.0"),
+        source_filename=source,
+        reuse_existing=False,
+    )
+
+    assert is_new is True
+    assert (result / "setup.py").read_text() == "# new"
 
 
 @patch("fromager.overrides.find_and_invoke")
@@ -786,3 +884,29 @@ def test_default_build_sdist_normalizes_filename(
                 expected_filename = f"{expected_filename_part}-1.0.0.tar.gz"
                 assert sdist_file.name == expected_filename
                 assert sdist_file.parent == tmp_context.sdists_builds
+
+
+def test_default_build_sdist_preserves_configured_build_dir(
+    testdata_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    source_root = tmp_path / "test_pkg-1.0"
+    build_dir = source_root / "python"
+    build_dir.mkdir(parents=True)
+    (source_root / "PKG-INFO").write_text("metadata")
+    (build_dir / "pyproject.toml").write_text("[build-system]\n")
+
+    sdist = sources.default_build_sdist(
+        ctx=testdata_context,
+        extra_environ={},
+        req=Requirement("test-pkg==1.0"),
+        version=Version("1.0"),
+        sdist_root_dir=source_root,
+        build_env=Mock(),
+        build_dir=build_dir,
+    )
+
+    with tarfile.open(sdist) as archive:
+        names = set(archive.getnames())
+    assert "test_pkg-1.0/PKG-INFO" in names
+    assert "test_pkg-1.0/python/pyproject.toml" in names

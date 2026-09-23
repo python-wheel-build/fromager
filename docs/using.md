@@ -127,6 +127,33 @@ Production builds use separate commands for the steps described as
 part of bootstrapping, and accept arguments to control the servers
 that are used for downloading source or built wheels.
 
+### Airgapped builds
+
+Use `bootstrap --prefetch-dir` to prepare a dependency graph and all source
+artifacts while network access is available. Prefetch mode uses the sdist-only
+bootstrap path, runs source preparation hooks, and exports prepared source
+archives (including patched sdists and any prepared sibling directories),
+bootstrap wheels, prebuilt wheels, the dependency graph, and the build order.
+
+```bash
+fromager -O bootstrap-output bootstrap \
+  --prefetch-dir prefetch-output \
+  -r requirements.txt
+```
+
+Copy `prefetch-output` into the isolated environment, then build directly from
+the bundle. The build validates all recorded file sizes and SHA-256 digests,
+does not resolve or download sources, and installs build dependencies from the
+local wheel directories using the exact versions selected during prefetch.
+
+```bash
+fromager -O build-output build-sequence --prefetch-dir prefetch-output
+```
+
+The build variant and package settings must match the prefetch run. The first
+implementation supports `build-sequence`; parallel bundle builds are not yet
+supported.
+
 Two commands support building wheels from source.
 
 ### The build command

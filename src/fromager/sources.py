@@ -3,8 +3,10 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import os
 import pathlib
 import shutil
+import stat
 import tarfile
 import typing
 import warnings
@@ -38,6 +40,10 @@ if typing.TYPE_CHECKING:
     from . import build_environment, context
 
 logger = logging.getLogger(__name__)
+
+# ZIP stores local timestamps and cannot represent dates before 1980. Use the
+# following day so this remains valid in timezones west of UTC.
+ZIP_SAFE_EPOCH = 315619200
 
 
 def download_url(
@@ -250,11 +256,34 @@ def _takes_arg(f: typing.Callable, arg_name: str) -> bool:
     return arg_name in sig.parameters
 
 
+def _extract_zip_safely(archive: zipfile.ZipFile, destination: pathlib.Path) -> None:
+    """Extract a ZIP archive without allowing path traversal or symlinks."""
+    destination = destination.resolve()
+    for member in archive.infolist():
+        member_path = pathlib.PurePosixPath(member.filename)
+        if member_path.is_absolute() or ".." in member_path.parts:
+            raise ValueError(f"unsafe path in source archive: {member.filename}")
+        target = (destination / pathlib.Path(*member_path.parts)).resolve()
+        if not target.is_relative_to(destination):
+            raise ValueError(f"unsafe path in source archive: {member.filename}")
+        mode = (member.external_attr >> 16) & 0o170000
+        if stat.S_ISLNK(mode):
+            raise ValueError(f"symlink in source archive: {member.filename}")
+        if member.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(member) as source, target.open("wb") as output:
+            shutil.copyfileobj(source, output)
+
+
 def unpack_source(
     ctx: context.WorkContext,
     req: Requirement,
     version: Version,
     source_filename: pathlib.Path,
+    *,
+    reuse_existing: bool = True,
 ) -> tuple[pathlib.Path, bool]:
     """Extracts a downloaded source archive (.tar.gz or .zip file) into a standardized directory."""
     # sdist names are less standardized and the names of the directories they
@@ -267,7 +296,7 @@ def unpack_source(
     # build process, including the unpacked source in a subdirectory.
     unpack_dir = ctx.work_dir / expected_name
     if unpack_dir.exists():
-        if ctx.cleanup:
+        if ctx.cleanup or not reuse_existing:
             logger.debug("cleaning up %s", unpack_dir)
             shutil.rmtree(unpack_dir)
         else:
@@ -285,7 +314,7 @@ def unpack_source(
                 t.extractall(unpack_dir)
     elif str(source_filename).endswith(".zip"):
         with zipfile.ZipFile(source_filename) as zf:
-            zf.extractall(path=unpack_dir)
+            _extract_zip_safely(zf, unpack_dir)
     else:
         raise ValueError(f"Do not know how to unpack source archive {source_filename}")
 
@@ -293,8 +322,14 @@ def unpack_source(
     # not be the same name as the root directory of the content in the sdist
     # (due to case, punctuation, etc.), so after we unpack it look for what was
     # created and ensure the extracted directory matches the override module
-    # name and version of the requirement.
-    unpacked_root_dir = next(iter(unpack_dir.glob("*")))
+    # name and version of the requirement. Prepared-source archives may also
+    # contain sibling directories, so prefer the expected root when present.
+    expected_root_dir = unpack_dir / expected_name
+    unpacked_root_dir = (
+        expected_root_dir
+        if expected_root_dir.is_dir()
+        else next(iter(unpack_dir.glob("*")))
+    )
     if unpacked_root_dir.name != expected_name:
         desired_name = unpacked_root_dir.parent / expected_name
         try:
@@ -309,6 +344,13 @@ def unpack_source(
         unpacked_root_dir = desired_name
 
     return (unpacked_root_dir, True)
+
+
+def normalize_source_timestamps(source_root_dir: pathlib.Path) -> None:
+    """Set source mtimes to a reproducible value accepted by ZIP files."""
+    paths = [source_root_dir, *source_root_dir.rglob("*")]
+    for path in paths:
+        os.utime(path, (ZIP_SAFE_EPOCH, ZIP_SAFE_EPOCH), follow_symlinks=False)
 
 
 def patch_source(
@@ -546,12 +588,14 @@ def default_build_sdist(
         build_dir=build_dir,
     )
     # The format argument is specified based on
-    # https://peps.python.org/pep-0517/#build-sdist.
+    # https://peps.python.org/pep-0517/#build-sdist. Keep the complete source
+    # root in the archive so a configured build_dir remains available after
+    # the archive is unpacked.
     with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
         tarballs.tar_reproducible(
             tar=sdist,
-            basedir=build_dir,
-            prefix=build_dir.parent,
+            basedir=sdist_root_dir,
+            prefix=sdist_root_dir.parent,
         )
     return sdist_filename
 

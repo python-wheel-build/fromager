@@ -114,6 +114,34 @@ The following example shows `graph.json` file for the top-level dependency `whee
 }
 ```
 
+## Prefetch bundle
+
+`bootstrap --prefetch-dir` exports the files needed by a later airgapped build:
+
+```text
+prefetch-output/
+├── manifest.json
+├── graph.json
+├── build-order.json
+├── constraints.txt
+├── merged-constraints.txt
+├── sdists/
+├── wheels/
+└── prebuilt/
+```
+
+`sdists/` contains source archives after `prepare_source` hooks, project
+overrides, patches, and Rust vendoring have run. When a hook prepares files
+beside the source root, the archive preserves those sibling directories too.
+`wheels/` contains wheels needed to create build environments, and `prebuilt/`
+contains packages intentionally used as binary distributions.
+
+`manifest.json` records the format version, build variant, Python environment,
+effective settings fingerprint, package-to-artifact mapping, exact build
+requirements, file sizes, and SHA-256 digests. All paths in the manifest are
+relative to the bundle directory. `build-sequence --prefetch-dir` validates the
+manifest before starting any builds.
+
 ## Output Directories
 
 During the wheel building process, fromager generates multiple output directories namely `sdists-repo`, `wheels-repo` and `work-dir`. These directories contain important information related to the wheel build.

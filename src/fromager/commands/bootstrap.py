@@ -1,4 +1,5 @@
 import logging
+import pathlib
 import time
 import typing
 from datetime import timedelta
@@ -12,9 +13,11 @@ from fromager.dependency_graph import DependencyNode
 
 from .. import (
     bootstrapper,
+    clickext,
     context,
     dependency_graph,
     metrics,
+    prefetch,
     progress,
     requirements_file,
     resolver,
@@ -125,6 +128,12 @@ def _get_requirements_from_args(
     show_default=True,
     help="Number of background threads for parallel I/O pre-fetching (min 1).",
 )
+@click.option(
+    "--prefetch-dir",
+    type=clickext.ClickPath(),
+    default=None,
+    help="Export prepared build inputs for a later offline build.",
+)
 @click.argument("toplevel", nargs=-1)
 @click.pass_obj
 def bootstrap(
@@ -138,6 +147,7 @@ def bootstrap(
     multiple_versions: bool,
     max_release_age: int | None,
     num_bg_threads: int,
+    prefetch_dir: pathlib.Path | None,
     toplevel: list[str],
 ) -> None:
     """Compute and build the dependencies of a set of requirements recursively
@@ -147,6 +157,9 @@ def bootstrap(
 
     .. versionadded:: 0.89.0
        ``--bg-threads`` option for parallel I/O pre-fetching.
+
+    .. versionadded:: 0.92.0
+       ``--prefetch-dir`` exports inputs for an offline build.
     """
     logger.info(f"cache wheel server url: {cache_wheel_server_url}")
 
@@ -163,6 +176,24 @@ def bootstrap(
     else:
         logger.info("no previous bootstrap data")
         prev_graph = None
+
+    if prefetch_dir is not None and not sdist_only:
+        logger.info("prefetch mode enables sdist-only bootstrap")
+        sdist_only = True
+
+    if prefetch_dir is not None:
+        existing_prepared_sources = sorted(
+            directory.name
+            for directory in wkctx.work_dir.iterdir()
+            if directory.is_dir() and (directory / directory.name).is_dir()
+        )
+        if existing_prepared_sources:
+            raise click.UsageError(
+                "--prefetch-dir requires a clean work directory; found existing "
+                "prepared source workspaces: " + ", ".join(existing_prepared_sources)
+            )
+        logger.info("prefetch mode keeps prepared source trees for bundle export")
+        wkctx.cleanup = False
 
     if sdist_only:
         logger.info("sdist-only (fast mode), getting metadata from sdists")
@@ -210,6 +241,7 @@ def bootstrap(
             test_mode=test_mode,
             multiple_versions=multiple_versions,
             num_bg_threads=num_bg_threads,
+            capture_build_requirements=prefetch_dir is not None,
         ) as bt:
             # Resolve and bootstrap all top-level dependencies and their transitive
             # dependencies. Context management and error handling are handled internally
@@ -232,6 +264,10 @@ def bootstrap(
                 raise ValueError(
                     f"Could not produce a pip compatible constraints file. Please review {constraints_filename} for more details"
                 )
+
+    if prefetch_dir is not None:
+        bundle = prefetch.export_prefetch_bundle(wkctx, prefetch_dir)
+        logger.info("wrote prefetch bundle to %s", bundle.root)
 
     logger.debug("match_py_req LRU cache: %r", resolver.match_py_req.cache_info())
 
@@ -561,6 +597,7 @@ def bootstrap_parallel(
         multiple_versions=multiple_versions,
         max_release_age=max_release_age,
         num_bg_threads=num_bg_threads,
+        prefetch_dir=None,
         toplevel=toplevel,
     )
 

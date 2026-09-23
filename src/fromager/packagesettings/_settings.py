@@ -225,6 +225,22 @@ class Settings:
             if self.package_build_info(name).pre_built
         )
 
+    def configuration_data(
+        self, packages: typing.Iterable[str]
+    ) -> dict[str, typing.Any]:
+        """Return stable configuration data for selected packages."""
+        package_names = {Package(canonicalize_name(name)) for name in packages}
+        return {
+            "global": self._settings.model_dump(mode="json"),
+            "max_jobs": self.max_jobs,
+            "packages": {
+                str(name): settings.model_dump(mode="json")
+                for name, settings in sorted(self._package_settings.items())
+                if settings.has_config and name in package_names
+            },
+            "variant": self.variant,
+        }
+
     def list_overrides(self) -> set[Package]:
         """List packages with overrides
 
