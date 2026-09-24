@@ -14,7 +14,7 @@ from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 
-from . import finders, resolver, sources, wheels
+from . import resolver, sources, wheels
 from .dependency_graph import DependencyGraph
 from .requirements_file import RequirementType
 
@@ -43,7 +43,6 @@ class BootstrapRequirementResolver:
         ctx: context.WorkContext,
         prev_graph: DependencyGraph | None = None,
         multiple_versions: bool = False,
-        cache_wheel_server_url: str = "",
     ) -> None:
         """Initialize requirement resolver.
 
@@ -51,16 +50,13 @@ class BootstrapRequirementResolver:
             ctx: Work context with constraints and settings
             prev_graph: Optional previous dependency graph for caching
             multiple_versions: If ``True`` and no results are found through
-                any other approach, takes the latest candidate from the
-                cache server, ignoring the age filters.  In all other
-                cases, returns an empty list when no candidates are found.
-            cache_wheel_server_url: URL of the remote wheel cache server.
-                Used as a fallback when age filtering produces no candidates.
+                any other approach, takes the latest candidate, ignoring the
+                age filters.  In all other cases, returns an empty list when
+                no candidates are found.
         """
         self.ctx = ctx
         self.prev_graph = prev_graph
         self.multiple_versions = multiple_versions
-        self.cache_wheel_server_url = cache_wheel_server_url
         # All known versions for a package, accumulated across resolution
         # contexts.  Versions discovered via different specifiers or req_types
         # are merged so that later lookups see the widest set.
@@ -211,19 +207,9 @@ class BootstrapRequirementResolver:
                 age_fallback=age_fallback,
             )
 
-            if not results and self.multiple_versions and self.cache_wheel_server_url:
-                logger.info(
-                    "no results found with normal resolution, "
-                    "falling back to the cache server %s",
-                    self.cache_wheel_server_url,
-                )
-                results = self._resolve_from_cache_server(req)
-
             if not results:
                 logger.warning(
-                    "resolver returned no results "
-                    "(wheel server URL %s, %s version mode)",
-                    self.cache_wheel_server_url or "(none)",
+                    "resolver returned no results (%s version mode)",
                     "multiple" if self.multiple_versions else "single",
                 )
 
@@ -234,43 +220,6 @@ class BootstrapRequirementResolver:
                 if version not in versions or (url and not versions[version]):
                     versions[version] = url
             self._resolved_rules.add((str(req), pre_built))
-
-    def _resolve_from_cache_server(self, req: Requirement) -> list[tuple[str, Version]]:
-        """Fall back to the remote wheel cache server for a cached version.
-
-        When age filtering removes all candidates in multi-version mode,
-        queries the remote cache server for the newest available wheel.
-        Returns at most one version so that transitive dependencies are
-        re-processed without rebuilding every old version.
-        """
-        logger.info(
-            "checking cache server %s for existing build",
-            self.cache_wheel_server_url,
-        )
-        best: tuple[str, Version] | None = None
-        for include_sdists, include_wheels in [(False, True), (True, False)]:
-            try:
-                provider = finders.PyPICacheProvider(
-                    cache_server_url=self.cache_wheel_server_url,
-                    constraints=self.ctx.constraints,
-                    include_sdists=include_sdists,
-                    include_wheels=include_wheels,
-                )
-                results = resolver.find_all_matching_from_provider(provider, req)
-                if results:
-                    url, version = results[0]
-                    if best is None or version > best[1]:
-                        best = (url, version)
-            except Exception as err:
-                logger.warning(
-                    "error checking cache server %s: %s",
-                    self.cache_wheel_server_url,
-                    err,
-                )
-        if best is not None:
-            logger.info("found version %s on cache server", best[1])
-            return [best]
-        return []
 
     def get_matching_versions(
         self,
