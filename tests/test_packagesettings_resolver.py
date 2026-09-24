@@ -30,6 +30,7 @@ from fromager.packagesettings._resolver import (
     PyPIPrebuiltResolver,
     PyPISDistResolver,
     SourceResolver,
+    VersionMapGitResolver,
 )
 from fromager.packagesettings._typedefs import MODEL_CONFIG
 from fromager.requirements_file import RequirementType
@@ -636,6 +637,50 @@ class TestGitLabTagCloneResolver:
 
 
 # -- Special resolvers --------------------------------------------------------
+
+
+class TestVersionMapGitResolver:
+    YAML = """\
+        source:
+          provider: versionmap-git
+          clone_url: https://git.test/project/repo.git
+          build_sdist: pep517
+          versionmap:
+            '1.0': abad1dea
+            '1.1': refs/tags/1.1
+    """
+
+    def test_parse(self) -> None:
+        r = _parse(self.YAML)
+        assert isinstance(r, VersionMapGitResolver)
+        assert r.provider == "versionmap-git"
+        assert str(r.clone_url) == "https://git.test/project/repo.git"
+        assert r.build_sdist == BuildSDist.pep517
+        assert r.versionmap == {"1.0": "abad1dea", "1.1": "refs/tags/1.1"}
+
+    def test_resolver_provider(self, tmp_context: WorkContext) -> None:
+        r = _parse(self.YAML)
+        p = r.resolver_provider(tmp_context, _REQ_TYPE)
+        assert isinstance(p, resolver.VersionMapProvider)
+        clone_url = "https://git.test/project/repo.git"
+        assert p.version_map["1.0"] == f"git+{clone_url}@abad1dea"
+        assert p.version_map["1.1"] == f"git+{clone_url}@refs/tags/1.1"
+
+    def test_clone_url_rejects_http(self) -> None:
+        with pytest.raises(pydantic.ValidationError):
+            VersionMapGitResolver(
+                provider="versionmap-git",
+                clone_url="http://git.test/project/repo.git",  # type: ignore[arg-type]
+                versionmap={"1.0": "abc123"},
+            )
+
+    def test_clone_url_rejects_empty_path(self) -> None:
+        with pytest.raises(pydantic.ValidationError):
+            VersionMapGitResolver(
+                provider="versionmap-git",
+                clone_url="https://git.test",  # type: ignore[arg-type]
+                versionmap={"1.0": "abc123"},
+            )
 
 
 class TestNotAvailableResolver:
