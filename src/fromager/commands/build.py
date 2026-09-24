@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 import pathlib
+import shutil
 import sys
 import threading
 import typing
@@ -27,6 +28,7 @@ from fromager import (
     hooks,
     metrics,
     overrides,
+    prefetch,
     progress,
     read,
     server,
@@ -142,27 +144,59 @@ build._fromager_show_build_settings = True  # type: ignore
     "cache_wheel_server_url",
     help="url to a wheel server from where fromager can check if it had already built the wheel",
 )
-@click.argument("build_order_file")
+@click.option(
+    "--prefetch-dir",
+    type=clickext.ClickPath(exists=True, file_okay=False),
+    default=None,
+    help="Use prepared sources and wheels from a prefetch bundle.",
+)
+@click.argument("build_order_file", required=False)
 @click.pass_obj
 def build_sequence(
     wkctx: context.WorkContext,
-    build_order_file: str,
+    build_order_file: str | None,
     force: bool,
     cache_wheel_server_url: str | None,
+    prefetch_dir: pathlib.Path | None,
 ) -> None:
     """Build a sequence of wheels in order
 
-    BUILD_ORDER_FILE is the build-order.json files to build
-
-    SDIST_SERVER_URL is the URL for a PyPI-compatible package index hosting sdists
+    BUILD_ORDER_FILE is the build-order.json file to build. It is optional when
+    ``--prefetch-dir`` supplies a verified build order and local artifacts.
 
     Performs the equivalent of the 'build' command for each item in
     the build order file.
 
     """
-    server.start_wheel_server(wkctx)
+    prefetch_bundle: prefetch.PrefetchBundle | None = None
+    if prefetch_dir is not None:
+        if cache_wheel_server_url is not None:
+            raise click.UsageError(
+                "--cache-wheel-server-url cannot be used with --prefetch-dir"
+            )
+        prefetch_bundle = prefetch.load_prefetch_bundle(
+            prefetch_dir,
+            expected_variant=wkctx.variant,
+        )
+        prefetch_bundle.validate_configuration(wkctx)
+        wkctx.enable_offline_build(
+            prefetch_bundle.wheelhouse_dirs,
+            constraints_file=prefetch_bundle.constraints_file,
+        )
+        wkctx.network_isolation = True
+        build_order_file = str(prefetch_bundle.build_order_file)
+        logger.info("using prefetch bundle %s", prefetch_bundle.root)
+    elif build_order_file is None:
+        raise click.UsageError("pass BUILD_ORDER_FILE or use --prefetch-dir")
 
-    if force:
+    if prefetch_bundle is not None:
+        logger.info("using local wheel directories for offline builds")
+    else:
+        server.start_wheel_server(wkctx)
+
+    if prefetch_bundle is not None:
+        logger.info("rebuilding prefetched packages as needed")
+    elif force:
         logger.info(
             "rebuilding all wheels even if they exist in "
             f"{wkctx.wheel_server_url=}, {cache_wheel_server_url=}"
@@ -193,6 +227,7 @@ def build_sequence(
                     source_download_url=source_download_url,
                     force=force,
                     cache_wheel_server_url=cache_wheel_server_url,
+                    prefetch_bundle=prefetch_bundle,
                 )
                 if entry.prebuilt:
                     logger.info(
@@ -312,6 +347,108 @@ def _create_table(
     return table
 
 
+def _stage_prefetched_artifact(
+    source: pathlib.Path, destination_dir: pathlib.Path
+) -> pathlib.Path:
+    destination = destination_dir / source.name
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if source.resolve() != destination.resolve():
+        shutil.copy2(source, destination)
+    return destination
+
+
+@dataclasses.dataclass(frozen=True)
+class _PreparedBuildSource:
+    sdist_filename: pathlib.Path
+    source_root_dir: pathlib.Path
+    build_env: build_environment.BuildEnvironment
+    workspace_dir: pathlib.Path | None = None
+
+
+def _prepare_prefetched_source(
+    wkctx: context.WorkContext,
+    bundle: prefetch.PrefetchBundle,
+    req: Requirement,
+    resolved_version: Version,
+) -> _PreparedBuildSource:
+    prefetched_sdist = bundle.package_artifact(
+        req.name, str(resolved_version), prebuilt=False
+    )
+    source_root_dir, _ = sources.unpack_source(
+        ctx=wkctx,
+        req=req,
+        version=resolved_version,
+        source_filename=prefetched_sdist,
+        reuse_existing=False,
+    )
+    sources.write_build_meta(
+        source_root_dir.parent, req, prefetched_sdist, resolved_version
+    )
+    sources.normalize_source_timestamps(source_root_dir)
+    build_env = build_environment.prepare_build_environment_from_prefetch(
+        ctx=wkctx,
+        req=req,
+        sdist_root_dir=source_root_dir,
+        build_requirements=bundle.build_requirements(req.name, str(resolved_version)),
+    )
+    sdist_filename = sources.build_sdist(
+        ctx=wkctx,
+        req=req,
+        version=resolved_version,
+        sdist_root_dir=source_root_dir,
+        build_env=build_env,
+    )
+    return _PreparedBuildSource(
+        sdist_filename,
+        source_root_dir,
+        build_env,
+        workspace_dir=source_root_dir.parent,
+    )
+
+
+def _prepare_online_source(
+    wkctx: context.WorkContext,
+    req: Requirement,
+    resolved_version: Version,
+    source_download_url: str,
+) -> _PreparedBuildSource:
+    source_filename = sources.download_source(
+        ctx=wkctx,
+        req=req,
+        version=resolved_version,
+        download_url=source_download_url,
+    )
+    source_root_dir = sources.prepare_source(
+        ctx=wkctx,
+        req=req,
+        source_filename=source_filename,
+        version=resolved_version,
+    )
+    build_env = build_environment.prepare_build_environment(
+        ctx=wkctx,
+        req=req,
+        version=resolved_version,
+        sdist_root_dir=source_root_dir,
+    )
+    sdist_filename = sources.build_sdist(
+        ctx=wkctx,
+        req=req,
+        version=resolved_version,
+        sdist_root_dir=source_root_dir,
+        build_env=build_env,
+    )
+    return _PreparedBuildSource(sdist_filename, source_root_dir, build_env)
+
+
+def _clean_prepared_source(
+    wkctx: context.WorkContext, prepared: _PreparedBuildSource
+) -> None:
+    if prepared.workspace_dir is not None and wkctx.cleanup:
+        shutil.rmtree(prepared.workspace_dir)
+        return
+    wkctx.clean_build_dirs(prepared.source_root_dir, prepared.build_env)
+
+
 def _build(
     wkctx: context.WorkContext,
     resolved_version: Version,
@@ -319,6 +456,39 @@ def _build(
     source_download_url: str,
     force: bool,
     cache_wheel_server_url: str | None,
+    prefetch_bundle: prefetch.PrefetchBundle | None = None,
+) -> BuildSequenceEntry:
+    """Build one package and always release its per-package log handler."""
+    root_logger = logging.getLogger(None)
+    module_name = overrides.pkgname_to_override_module(req.name)
+    wheel_log = wkctx.logs_dir / f"{module_name}-{resolved_version}.log"
+    file_handler = logging.FileHandler(filename=str(wheel_log))
+    file_handler.setFormatter(logging.Formatter(VERBOSE_LOG_FMT))
+    file_handler.addFilter(ThreadLogFilter(threading.current_thread().name))
+    root_logger.addHandler(file_handler)
+    try:
+        return _build_unlogged(
+            wkctx=wkctx,
+            resolved_version=resolved_version,
+            req=req,
+            source_download_url=source_download_url,
+            force=force,
+            cache_wheel_server_url=cache_wheel_server_url,
+            prefetch_bundle=prefetch_bundle,
+        )
+    finally:
+        root_logger.removeHandler(file_handler)
+        file_handler.close()
+
+
+def _build_unlogged(
+    wkctx: context.WorkContext,
+    resolved_version: Version,
+    req: Requirement,
+    source_download_url: str,
+    force: bool,
+    cache_wheel_server_url: str | None,
+    prefetch_bundle: prefetch.PrefetchBundle | None = None,
 ) -> BuildSequenceEntry:
     """Handle one version of one wheel.
 
@@ -334,24 +504,18 @@ def _build(
     # We attach a handler to the root logger so that all messages are logged to
     # the file, and we add a filter to the handler so that only messages from
     # the current thread are logged for when we build in parallel.
-    root_logger = logging.getLogger(None)
-    module_name = overrides.pkgname_to_override_module(req.name)
-    wheel_log = wkctx.logs_dir / f"{module_name}-{resolved_version}.log"
-    file_handler = logging.FileHandler(filename=str(wheel_log))
-    file_handler.setFormatter(logging.Formatter(VERBOSE_LOG_FMT))
-    file_handler.addFilter(ThreadLogFilter(threading.current_thread().name))
-    root_logger.addHandler(file_handler)
-
     logger.info("starting processing")
     pbi = wkctx.package_build_info(req)
     prebuilt = pbi.pre_built
 
-    wheel_server_urls = wheels.get_wheel_server_urls(
-        wkctx, req, cache_wheel_server_url=cache_wheel_server_url
-    )
+    wheel_server_urls: list[str] = []
+    if prefetch_bundle is None:
+        wheel_server_urls = wheels.get_wheel_server_urls(
+            wkctx, req, cache_wheel_server_url=cache_wheel_server_url
+        )
 
     # See if we can reuse an existing wheel.
-    if not force:
+    if not force and prefetch_bundle is None:
         wheel_filename = _is_wheel_built(
             wkctx,
             req.name,
@@ -365,12 +529,21 @@ def _build(
     # Handle prebuilt wheels.
     if prebuilt:
         if not wheel_filename:
-            logger.info("downloading prebuilt wheel")
-            wheel_filename = wheels.download_wheel(
-                req=req,
-                wheel_url=source_download_url,
-                output_directory=wkctx.wheels_build,
-            )
+            if prefetch_bundle is not None:
+                prefetched_wheel = prefetch_bundle.package_artifact(
+                    req.name, str(resolved_version), prebuilt=True
+                )
+                wheel_filename = _stage_prefetched_artifact(
+                    prefetched_wheel, wkctx.wheels_build
+                )
+                logger.info("using prefetched wheel %s", wheel_filename)
+            else:
+                logger.info("downloading prebuilt wheel")
+                wheel_filename = wheels.download_wheel(
+                    req=req,
+                    wheel_url=source_download_url,
+                    output_directory=wkctx.wheels_build,
+                )
         else:
             # already downloaded prebuilt wheel
             use_exiting_wheel = True
@@ -388,51 +561,28 @@ def _build(
     # If we get here and still don't have a wheel filename, then we need to
     # build the wheel.
     if not wheel_filename:
-        source_filename = sources.download_source(
-            ctx=wkctx,
-            req=req,
-            version=resolved_version,
-            download_url=source_download_url,
-        )
+        if prefetch_bundle is not None:
+            prepared = _prepare_prefetched_source(
+                wkctx, prefetch_bundle, req, resolved_version
+            )
+        else:
+            prepared = _prepare_online_source(
+                wkctx, req, resolved_version, source_download_url
+            )
         logger.debug(
             "saved sdist of version %s from %s to %s",
             resolved_version,
             source_download_url,
-            source_filename,
-        )
-
-        # Prepare source
-        source_root_dir = sources.prepare_source(
-            ctx=wkctx,
-            req=req,
-            source_filename=source_filename,
-            version=resolved_version,
-        )
-
-        # Build environment
-        build_env = build_environment.prepare_build_environment(
-            ctx=wkctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=source_root_dir,
-        )
-
-        # Make a new source distribution, in case we patched the code.
-        sdist_filename = sources.build_sdist(
-            ctx=wkctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=source_root_dir,
-            build_env=build_env,
+            prepared.sdist_filename,
         )
 
         # Build
         wheel_filename = wheels.build_wheel(
             ctx=wkctx,
             req=req,
-            sdist_root_dir=source_root_dir,
+            sdist_root_dir=prepared.source_root_dir,
             version=resolved_version,
-            build_env=build_env,
+            build_env=prepared.build_env,
         )
 
         hooks.run_post_build_hooks(
@@ -440,14 +590,11 @@ def _build(
             req=req,
             dist_name=canonicalize_name(req.name),
             dist_version=str(resolved_version),
-            sdist_filename=sdist_filename,
+            sdist_filename=prepared.sdist_filename,
             wheel_filename=wheel_filename,
         )
 
-        wkctx.clean_build_dirs(source_root_dir, build_env)
-
-    root_logger.removeHandler(file_handler)
-    file_handler.close()
+        _clean_prepared_source(wkctx, prepared)
 
     server.update_wheel_mirror(wkctx)
 

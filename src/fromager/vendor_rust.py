@@ -16,13 +16,6 @@ logger = logging.getLogger(__name__)
 
 VENDOR_DIR = "vendor"
 
-CARGO_CONFIG = {
-    "source": {
-        "crates-io": {"replace-with": "vendored-sources"},
-        "vendored-sources": {"directory": VENDOR_DIR},
-    },
-}
-
 
 class RustBuildSystem(enum.StrEnum):
     maturin = "maturin"
@@ -33,15 +26,30 @@ def _cargo_vendor(
     req: Requirement,
     manifests: list[pathlib.Path],
     project_dir: pathlib.Path,
-) -> typing.Iterable[pathlib.Path]:
+) -> tuple[typing.Iterable[pathlib.Path], tomlkit.TOMLDocument]:
     """Run cargo vendor"""
     logger.info(f"updating vendored rust dependencies in {project_dir}")
     args = ["cargo", "vendor", f"--manifest-path={manifests[0]}"]
     for manifest in manifests[1:]:
         args.append(f"--sync={manifest}")
     args.append(os.fspath(project_dir / VENDOR_DIR))
-    external_commands.run(args, network_isolation=False)
-    return sorted(project_dir.joinpath(VENDOR_DIR).iterdir())
+    output = external_commands.run(args, network_isolation=False)
+    cargo_config = _parse_cargo_vendor_config(output)
+    return sorted(project_dir.joinpath(VENDOR_DIR).iterdir()), cargo_config
+
+
+def _parse_cargo_vendor_config(output: str) -> tomlkit.TOMLDocument:
+    """Extract Cargo's source replacement configuration."""
+    config_start = output.find("[source.")
+    if config_start < 0:
+        raise ValueError("cargo vendor did not emit source configuration")
+
+    try:
+        cargo_config = tomlkit.parse(output[config_start:])
+        cargo_config["source"]["vendored-sources"]["directory"] = VENDOR_DIR
+    except (KeyError, tomlkit.exceptions.ParseError) as err:
+        raise ValueError("cargo vendor emitted invalid source configuration") from err
+    return cargo_config
 
 
 def _cargo_shrink(crate_dir: pathlib.Path) -> None:
@@ -70,7 +78,9 @@ def _cargo_shrink(crate_dir: pathlib.Path) -> None:
             json.dump(checksums, f)
 
 
-def _cargo_config(project_dir: pathlib.Path) -> None:
+def _cargo_config(
+    project_dir: pathlib.Path, cargo_config: tomlkit.TOMLDocument
+) -> None:
     """create .cargo/config.toml"""
     dotcargo = project_dir / ".cargo"
     config_toml = dotcargo / "config.toml"
@@ -83,7 +93,7 @@ def _cargo_config(project_dir: pathlib.Path) -> None:
         dotcargo.mkdir(exist_ok=True)
         cfg = tomlkit.parse("")
 
-    cfg.update(CARGO_CONFIG)
+    cfg.update(cargo_config)
 
     with open(config_toml, "w", encoding="utf-8") as f:
         tomlkit.dump(cfg, f)
@@ -127,7 +137,7 @@ def vendor_generic_rust_package(
         # default to Cargo.toml in root dir
         manifests = [root_dir / "Cargo.toml"]
     # fetch and vendor Rust crates
-    vendored = _cargo_vendor(req, manifests, root_dir)
+    vendored, cargo_config = _cargo_vendor(req, manifests, root_dir)
     logger.debug(f"vendored crates: {sorted(d.name for d in vendored)}")
 
     # remove unnecessary pre-compiled files for Windows, macOS, and iOS.
@@ -136,7 +146,7 @@ def vendor_generic_rust_package(
             _cargo_shrink(crate_dir)
 
     # update or create .cargo/config.toml
-    _cargo_config(root_dir)
+    _cargo_config(root_dir, cargo_config)
     return vendored
 
 

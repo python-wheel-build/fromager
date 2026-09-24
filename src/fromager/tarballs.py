@@ -4,6 +4,7 @@ import os
 import pathlib
 import stat
 import tarfile
+import typing
 
 VCS_DIRS = {".bzr", ".git", ".hg", ".svn"}
 
@@ -30,6 +31,8 @@ def tar_reproducible(
     prefix: pathlib.Path | None = None,
     *,
     exclude_vcs: bool = False,
+    exclude: typing.Callable[[pathlib.Path], bool] | None = None,
+    include_basedir: bool = True,
 ) -> None:
     """Create reproducible tar file
 
@@ -38,14 +41,30 @@ def tar_reproducible(
 
     If ``exclude_vcs`` is True, then Bazaar, git, Mercurial, and subversion
     directories and files are excluded.
+
+    ``exclude`` can remove additional paths from the archive.
+
+    If ``include_basedir`` is false, archive the contents of ``basedir``
+    without adding the directory itself.
     """
-    content = [str(basedir)]  # convert from pathlib.Path, if that's what we have
+    content = [str(basedir)] if include_basedir else []
     for root, dirs, files in os.walk(basedir):
         if exclude_vcs:
             # modify lists in-place, so os.walk does not descent into the
             # excluded entries. git submodules have a `.git` file.
             dirs[:] = [directory for directory in dirs if directory not in VCS_DIRS]
             files[:] = [filename for filename in files if filename not in VCS_DIRS]
+        if exclude is not None:
+            dirs[:] = [
+                directory
+                for directory in dirs
+                if not exclude(pathlib.Path(root) / directory)
+            ]
+            files[:] = [
+                filename
+                for filename in files
+                if not exclude(pathlib.Path(root) / filename)
+            ]
         for directory in dirs:
             content.append(os.path.join(root, directory))
         for filename in files:

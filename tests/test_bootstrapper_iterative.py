@@ -1870,6 +1870,30 @@ class TestPhaseBuild:
 
         mock_env.install.assert_not_called()
 
+    def test_captures_installed_build_requirements(
+        self, tmp_context: WorkContext
+    ) -> None:
+        bt = bootstrapper.Bootstrapper(tmp_context, capture_build_requirements=True)
+        item = self._make_build_phase_item(tmp_context)
+        build_env = item.work_item.build_env
+        assert build_env is not None
+        distributions = {
+            "flit_core": Version("3.12.0"),
+            "packaging": Version("24.0"),
+        }
+
+        with (
+            patch.object(item, "do_build", return_value=(None, None)),
+            patch.object(build_env, "get_distributions", return_value=distributions),
+            patch("fromager.sources.get_source_type", return_value=SourceType.SDIST),
+        ):
+            item.run(bt)
+
+        assert item.work_item.resolved_build_requirements == {
+            "flit_core": Version("3.12.0"),
+            "packaging": Version("24.0"),
+        }
+
     def test_partial_overlap_deps_skips_install(self, tmp_context: WorkContext) -> None:
         """isdisjoint is False on partial overlap, so install is skipped entirely."""
         bt = bootstrapper.Bootstrapper(tmp_context)
@@ -2207,6 +2231,7 @@ class TestPhaseProcessInstallDeps:
             source_type=SourceType.SDIST,
             prebuilt=True,
             constraint=constraint,
+            build_requirements=None,
         )
 
 

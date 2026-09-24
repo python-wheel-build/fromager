@@ -65,6 +65,7 @@ class Bootstrapper:
         test_mode: bool = False,
         multiple_versions: bool = False,
         num_bg_threads: int = DEFAULT_BG_THREADS,
+        capture_build_requirements: bool = False,
     ) -> None:
         if test_mode and sdist_only:
             raise ValueError(
@@ -78,6 +79,7 @@ class Bootstrapper:
         self.sdist_only = sdist_only
         self.test_mode = test_mode
         self.multiple_versions = multiple_versions
+        self.capture_build_requirements = capture_build_requirements
         self.why: list[tuple[RequirementType, Requirement, Version]] = []
         self._num_bg_threads = max(1, num_bg_threads)
         self._bg_pool: concurrent.futures.ThreadPoolExecutor | None = (
@@ -699,6 +701,9 @@ class Bootstrapper:
         source_type: SourceType,
         prebuilt: bool = False,
         constraint: Requirement | None = None,
+        build_requirements: typing.Mapping[str, Version] | None = None,
+        prepared_source_root: str | None = None,
+        prepared_source_workspace: str | None = None,
     ) -> None:
         """Append a package to the build-order list if not already present.
 
@@ -715,6 +720,11 @@ class Bootstrapper:
             prebuilt: True if the wheel was taken from a prebuilt cache rather
                 than compiled locally.
             constraint: The version constraint active for this package, if any.
+            build_requirements: Exact distributions installed in the build environment.
+            prepared_source_root: Source root relative to ``ctx.work_dir`` when
+                capturing a prefetch build.
+            prepared_source_workspace: Source workspace relative to ``ctx.work_dir``
+                when capturing a prefetch build.
         """
         # We only care if this version of this package has been built,
         # and don't want to trigger building it twice. The "extras"
@@ -735,6 +745,15 @@ class Bootstrapper:
             "source_url": source_url,
             "source_url_type": str(source_type),
         }
+        if build_requirements is not None:
+            info["build_requirements"] = [
+                f"{canonicalize_name(name)}=={version}"
+                for name, version in sorted(build_requirements.items())
+            ]
+        if prepared_source_root is not None:
+            info["prepared_source_root"] = prepared_source_root
+        if prepared_source_workspace is not None:
+            info["prepared_source_workspace"] = prepared_source_workspace
         self._build_stack.append(info)
 
     def _check_write_error(self, fut: concurrent.futures.Future[int]) -> None:

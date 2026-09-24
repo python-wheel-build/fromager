@@ -28,6 +28,7 @@ def _bg_prepare_source(
     req: Requirement,
     resolved_version: Version,
     source_url: str,
+    use_wheel_cache: bool = True,
 ) -> PreparedSourceData:
     """Background-safe source download+unpack: no Bootstrapper state accessed."""
     # Thread-safe: _seen_requirements in the main thread prevents the same
@@ -35,14 +36,15 @@ def _bg_prepare_source(
     # Paths from download_source() and prepare_source() include {name}-{version},
     # making them unique across concurrent threads processing different packages.
     logger.info("preparing source")
-    cached_wheel, unpacked = _cache.find_cached_wheel(
-        ctx, cache_wheel_server_url, req, resolved_version
-    )
-    if unpacked is not None:
-        return PreparedSourceData(
-            sdist_root_dir=unpacked / unpacked.stem,
-            cached_wheel_filename=cached_wheel,
+    if use_wheel_cache:
+        cached_wheel, unpacked = _cache.find_cached_wheel(
+            ctx, cache_wheel_server_url, req, resolved_version
         )
+        if unpacked is not None:
+            return PreparedSourceData(
+                sdist_root_dir=unpacked / unpacked.stem,
+                cached_wheel_filename=cached_wheel,
+            )
     source_filename = sources.download_source(
         ctx=ctx, req=req, version=resolved_version, download_url=source_url
     )
@@ -96,7 +98,12 @@ class PrepareSource(Phase):
         def do_prepare_source() -> PreparedSourceData:
             with req_ctxvar_context(req, resolved_version):
                 return _bg_prepare_source(
-                    ctx, cache_wheel_server_url, req, resolved_version, source_url
+                    ctx,
+                    cache_wheel_server_url,
+                    req,
+                    resolved_version,
+                    source_url,
+                    use_wheel_cache=not bt.capture_build_requirements,
                 )
 
         return do_prepare_source

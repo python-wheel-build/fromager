@@ -193,6 +193,30 @@ def test_build_order_repeats(tmp_context: WorkContext) -> None:
     assert expected == contents
 
 
+def test_build_order_records_captured_build_requirements(
+    tmp_context: WorkContext,
+) -> None:
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.add_to_build_order(
+        req=Requirement("buildme>1.0"),
+        version=Version("6.0"),
+        source_url="url",
+        source_type=SourceType.SDIST,
+        build_requirements={
+            "flit_core": Version("3.12.0"),
+            "packaging": Version("24.0"),
+        },
+    )
+
+    bt.finalize()
+
+    contents = json.loads(bt._build_order_filename.read_text())
+    assert contents[0]["build_requirements"] == [
+        "flit-core==3.12.0",
+        "packaging==24.0",
+    ]
+
+
 def test_build_order_name_canonicalization(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt.add_to_build_order(
@@ -901,6 +925,11 @@ def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
     with (
         patch.object(
             bt,
+            "resolve_versions",
+            return_value=[("https://example.test/testpkg-1.0.tar.gz", Version("1.0"))],
+        ),
+        patch.object(
+            bt,
             "_resolve_and_add_top_level",
             return_value=("http://example.test/testpkg-1.0.tar.gz", Version("1.0")),
         ),
@@ -921,6 +950,7 @@ def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
     req = Requirement("badpkg")
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(bt, "_resolve_and_add_top_level", return_value=None),
         patch.object(Resolve, "run") as mock_run,
         patch.object(bt, "_record_stack_state"),
@@ -943,6 +973,7 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
         return []
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(
             bt,
             "_resolve_and_add_top_level",
@@ -1084,6 +1115,35 @@ def test_bg_prepare_source_log_prefix_includes_version(
         assert msg.startswith("mypkg-1.2.3: "), (
             f"Expected 'mypkg-1.2.3: ' prefix, got: {msg!r}"
         )
+
+
+def test_bg_prepare_source_skips_wheel_cache_for_prefetch(
+    tmp_context: WorkContext,
+) -> None:
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+    source_filename = pathlib.Path("mypkg-1.2.3.tar.gz")
+    source_root = tmp_context.work_dir / "mypkg-1.2.3" / "mypkg-1.2.3"
+
+    with (
+        patch("fromager.bootstrapper._cache.find_cached_wheel") as find_cached,
+        patch(
+            "fromager.sources.download_source", return_value=source_filename
+        ) as download_source,
+        patch("fromager.sources.prepare_source", return_value=source_root),
+    ):
+        result = _bg_prepare_source(
+            ctx=tmp_context,
+            cache_wheel_server_url="https://cache.test/simple/",
+            req=req,
+            resolved_version=version,
+            source_url="https://pkg.test/mypkg-1.2.3.tar.gz",
+            use_wheel_cache=False,
+        )
+
+    find_cached.assert_not_called()
+    download_source.assert_called_once()
+    assert result.sdist_root_dir == source_root
 
 
 def test_bg_prepare_prebuilt_log_prefix_includes_version(

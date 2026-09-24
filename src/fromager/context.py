@@ -94,6 +94,9 @@ class WorkContext:
         self.time_description_store: dict[str, str] = {}
 
         self._parallel_builds = False
+        self._offline = False
+        self._offline_constraints_file: pathlib.Path | None = None
+        self._wheelhouse_dirs: tuple[pathlib.Path, ...] = ()
 
         self.cooldown: candidate.Cooldown | None = cooldown
         self._max_release_age: datetime.timedelta | None = max_release_age
@@ -124,6 +127,11 @@ class WorkContext:
 
     @property
     def pip_wheel_server_args(self) -> list[str]:
+        if self._offline:
+            args = ["--no-index", "--offline"]
+            for directory in self.wheelhouse_dirs:
+                args.extend(["--find-links", os.fspath(directory)])
+            return args
         args = ["--index-url", self.wheel_server_url]
         parsed = urlparse(self.wheel_server_url)
         if parsed.scheme != "https" and parsed.hostname:
@@ -131,7 +139,36 @@ class WorkContext:
         return args
 
     @property
+    def offline(self) -> bool:
+        """Whether builds must use only local prefetched artifacts."""
+        return self._offline
+
+    @property
+    def offline_constraints_file(self) -> pathlib.Path | None:
+        """Constraints file supplied by the prefetch bundle."""
+        return self._offline_constraints_file
+
+    @property
+    def wheelhouse_dirs(self) -> tuple[pathlib.Path, ...]:
+        """Directories available for offline wheel installation."""
+        return (self.wheels_downloads, *self._wheelhouse_dirs)
+
+    def enable_offline_build(
+        self,
+        wheelhouse_dirs: typing.Iterable[pathlib.Path],
+        constraints_file: pathlib.Path | None = None,
+    ) -> None:
+        """Use local wheel directories for dependency installation."""
+        self._offline = True
+        self._offline_constraints_file = (
+            constraints_file.resolve() if constraints_file is not None else None
+        )
+        self._wheelhouse_dirs = tuple(path.resolve() for path in wheelhouse_dirs)
+
+    @property
     def pip_constraint_args(self) -> list[str]:
+        if self._offline_constraints_file is not None:
+            return ["--constraint", os.fspath(self._offline_constraints_file)]
         if not self.constraints:
             return []
         return ["--constraint", os.fspath(self.merged_constraints)]

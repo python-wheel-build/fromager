@@ -107,3 +107,7 @@ Typical Workflow
    ``build-order.json`` from bootstrap to rebuild deterministically
 
 3. **Fixes:** Use ``build`` to rebuild individual packages after applying patches
+
+4. **Airgapped builds:** Use ``bootstrap --prefetch-dir`` while connected, copy
+   the resulting bundle into the isolated environment, then run
+   ``build-sequence --prefetch-dir``.
