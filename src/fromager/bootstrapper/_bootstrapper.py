@@ -91,7 +91,6 @@ class Bootstrapper:
             ctx=ctx,
             prev_graph=prev_graph,
             multiple_versions=multiple_versions,
-            cache_wheel_server_url=self.cache_wheel_server_url,
         )
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
