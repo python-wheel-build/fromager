@@ -183,7 +183,7 @@ class WorkContext:
         ]:
             if not p.exists():
                 logger.debug("creating %s", p)
-                p.mkdir(parents=True)
+                p.mkdir(parents=True, exist_ok=True)
         self.write_constraints()
 
     def write_constraints(self) -> None:
