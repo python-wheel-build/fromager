@@ -412,7 +412,10 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
 
         req = Requirement("testpkg>=1.0")
 
-        with patch.object(PrepareSource, "run", prepare_source_run):
+        with (
+            patch.object(PrepareSource, "background_work", return_value=None),
+            patch.object(PrepareSource, "run", prepare_source_run),
+        ):
             with patch.object(bt, "has_been_seen", return_value=False):
                 bt._bootstrap_one(
                     req=req,

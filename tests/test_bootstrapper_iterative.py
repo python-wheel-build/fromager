@@ -1247,6 +1247,7 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(Resolve, "run", resolve_run),
             patch.object(Start, "run", start_run),
+            patch.object(PrepareSource, "background_work", return_value=None),
             patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(PrepareBuild, "run", prepare_build_run),
             patch.object(Build, "run", build_run),
@@ -1336,6 +1337,7 @@ class TestIterativeBootstrapLoop:
         with (
             patch.object(Resolve, "run", resolve_run),
             patch.object(Start, "run", start_run),
+            patch.object(PrepareSource, "background_work", return_value=None),
             patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(Complete, "run", complete_run),
             patch.object(
@@ -1376,6 +1378,7 @@ class TestIterativeBootstrapLoop:
             return []
 
         with (
+            patch.object(PrepareSource, "background_work", return_value=None),
             patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(
                 bt._resolver,
@@ -1420,6 +1423,7 @@ class TestIterativeBootstrapLoop:
 
         with (
             patch.object(Resolve, "run", resolve_run),
+            patch.object(PrepareSource, "background_work", return_value=None),
             patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(
                 bt._resolver,
@@ -1452,6 +1456,7 @@ class TestIterativeBootstrapLoop:
             return []
 
         with (
+            patch.object(PrepareSource, "background_work", return_value=None),
             patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(
                 bt._resolver,
