@@ -344,10 +344,13 @@ def _build(
 
     logger.info("starting processing")
     pbi = wkctx.package_build_info(req)
-    prebuilt = pbi.pre_built
+    prebuilt = pbi.is_pre_built(resolved_version)
 
     wheel_server_urls = wheels.get_wheel_server_urls(
-        wkctx, req, cache_wheel_server_url=cache_wheel_server_url
+        wkctx,
+        req,
+        cache_wheel_server_url=cache_wheel_server_url,
+        version=resolved_version,
     )
 
     # See if we can reuse an existing wheel.

@@ -444,7 +444,9 @@ def test_resolve_auto_routes_to_prebuilt(
     # Mock package build info to return pre_built=True
     mock_pbi = MagicMock()
     mock_pbi.pre_built = True
+    mock_pbi.is_pre_built.return_value = True
     mock_pbi.wheel_server_url = None
+    mock_pbi.get_wheel_server_url.return_value = None
     mock_pbi.resolver_min_release_age = None
 
     with patch.object(tmp_context, "package_build_info", return_value=mock_pbi):
@@ -485,6 +487,7 @@ def test_resolve_auto_routes_to_source(
     # Mock package build info to return pre_built=False
     mock_pbi = MagicMock()
     mock_pbi.pre_built = False
+    mock_pbi.is_pre_built.return_value = False
     mock_pbi.resolver_include_sdists = True
     mock_pbi.resolver_include_wheels = True
     mock_pbi.resolver_ignore_platform = True

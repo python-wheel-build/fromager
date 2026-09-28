@@ -22,6 +22,7 @@ from ._typedefs import (
     BuildDirectory,
     EnvVars,
     Package,
+    PackageVersion,
     PurlType,
     RawAnnotations,
     Template,
@@ -450,6 +451,32 @@ class ProjectOverride(pydantic.BaseModel):
         return v
 
 
+class VersionSpecificSettings(pydantic.BaseModel):
+    """Per-version overrides within a variant.
+
+    Allows overriding ``pre_built`` and ``wheel_server_url`` for
+    specific package versions.  When a field is ``None``, the
+    variant-wide default is used.
+
+    .. versionadded:: 0.95.0
+
+    ::
+
+      versions:
+        "2.9.0":
+          pre_built: true
+          wheel_server_url: https://gitlab.example.com/simple
+    """
+
+    model_config = MODEL_CONFIG
+
+    wheel_server_url: str | None = None
+    """Alternative package index for this version's pre-built wheel"""
+
+    pre_built: bool | None = None
+    """Override pre-built flag for this version (None = inherit variant default)"""
+
+
 class VariantInfo(pydantic.BaseModel):
     """Variant information for a package
 
@@ -460,6 +487,10 @@ class VariantInfo(pydantic.BaseModel):
         VAR2: "2.0
       wheel_server_url: https://pypi.org/simple/
       pre_built: False
+      versions:
+        "2.9.0":
+          pre_built: true
+          wheel_server_url: https://gitlab.example.com/simple
     """
 
     model_config = MODEL_CONFIG
@@ -480,9 +511,32 @@ class VariantInfo(pydantic.BaseModel):
     pre_built: bool = False
     """Use pre-built wheel from index server?"""
 
+    versions: Mapping[PackageVersion, VersionSpecificSettings] = Field(
+        default_factory=dict
+    )
+    """Per-version overrides for ``pre_built`` and ``wheel_server_url``.
+
+    Version-specific settings take precedence over variant defaults
+    when present.
+
+    .. versionadded:: 0.95.0
+    """
+
     # TODO
     # source: SourceResolver | None
     # """Source resolver and downloader"""
+
+    @pydantic.field_validator("versions", mode="before")
+    @classmethod
+    def before_none_versions(
+        cls,
+        v: dict[str, typing.Any] | None,
+        info: core_schema.ValidationInfo,
+    ) -> dict[str, typing.Any]:
+        """Coerce ``None`` to empty dict for bare ``versions:`` YAML key."""
+        if v is None:
+            return {}
+        return v
 
 
 class GitOptions(pydantic.BaseModel):

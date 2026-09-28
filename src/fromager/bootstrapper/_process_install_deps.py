@@ -154,7 +154,7 @@ class ProcessInstallDeps(Phase):
             version=wi.resolved_version,
             source_url=wi.source_url,
             source_type=wi.build_result.source_type,
-            prebuilt=pbi.pre_built,
+            prebuilt=pbi.is_pre_built(wi.resolved_version),
             constraint=constraint,
         )
 

@@ -12,7 +12,7 @@ import typing
 
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 
 from . import finders, resolver, sources, wheels
 from .dependency_graph import DependencyGraph
@@ -22,6 +22,21 @@ if typing.TYPE_CHECKING:
     from . import context
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_pinned_version(req: Requirement) -> Version | None:
+    """Return the version if *req* is pinned to exactly one (``==``).
+
+    Returns ``None`` for range specifiers, wildcard pins (``==1.*``),
+    extras-only, or empty specifiers.
+    """
+    specs = list(req.specifier)
+    if len(specs) == 1 and specs[0].operator == "==" and "*" not in specs[0].version:
+        try:
+            return Version(specs[0].version)
+        except InvalidVersion:
+            return None
+    return None
 
 
 class BootstrapRequirementResolver:
@@ -113,7 +128,8 @@ class BootstrapRequirementResolver:
         # Determine pre_built if not specified (needed for cache key)
         if pre_built is None:
             pbi = self.ctx.package_build_info(req)
-            pre_built = pbi.pre_built
+            pinned = _extract_pinned_version(req)
+            pre_built = pbi.is_pre_built(pinned)
 
         rule_key = (str(req), pre_built)
 
@@ -181,8 +197,12 @@ class BootstrapRequirementResolver:
             results = cached_resolution
         elif pre_built:
             # Resolve prebuilt wheel
+            pinned = _extract_pinned_version(req)
             wheel_server_urls = wheels.get_wheel_server_urls(
-                self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
+                self.ctx,
+                req,
+                cache_wheel_server_url=resolver.PYPI_SERVER_URL,
+                version=pinned,
             )
             results = wheels.resolve_all_prebuilt_wheels(
                 ctx=self.ctx,

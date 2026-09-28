@@ -50,10 +50,19 @@ variants:
             EGG: "spam ${EGG}"
             EGG_AGAIN: "$EGG"
         wheel_server_url: https://wheel.test/simple
+        versions:
+            "2.9.0":
+                pre_built: true
+                wheel_server_url: https://mirror.test/simple
+            "2.8.0":
+                pre_built: false
     rocm:
         annotations:
             fromager.test.override: amd override
         env:
             SPAM: ""
         pre_built: True
+        versions:
+            "1.0.0":
+                pre_built: false
     cuda: {}
