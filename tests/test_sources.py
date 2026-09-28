@@ -786,3 +786,38 @@ def test_default_build_sdist_normalizes_filename(
                 expected_filename = f"{expected_filename_part}-1.0.0.tar.gz"
                 assert sdist_file.name == expected_filename
                 assert sdist_file.parent == tmp_context.sdists_builds
+
+
+def test_default_build_sdist_normalizes_name_and_root(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify the sdist filename and archive root for a monorepo package."""
+    sdist_root = tmp_path / "Foo.Bar-1.0"
+    build_dir = sdist_root / "src"
+    build_dir.mkdir(parents=True)
+    (build_dir / "setup.py").write_text("from setuptools import setup; setup()\n")
+    (build_dir / "module.py").write_text("# module\n")
+
+    req = Requirement("Foo.Bar==1.0")
+    version = Version("1.0")
+    build_env = Mock()
+
+    sdist_file = sources.default_build_sdist(
+        ctx=tmp_context,
+        extra_environ={},
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root,
+        build_env=build_env,
+        build_dir=build_dir,
+    )
+
+    assert sdist_file.name == "foo_bar-1.0.tar.gz"
+    assert sdist_file.parent == tmp_context.sdists_builds
+
+    with tarfile.open(sdist_file, "r:gz") as tar:
+        names = tar.getnames()
+        top_levels = {name.split("/")[0] for name in names}
+        assert top_levels == {"foo_bar-1.0"}
+        assert "foo_bar-1.0/setup.py" in names
