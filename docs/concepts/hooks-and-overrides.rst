@@ -1,7 +1,7 @@
 Hooks and Overrides
 ===================
 
-Fromager has two plugin systems that serve different purposes:
+Fromager has two plugin systems based on entry points:
 **per-package overrides** replace default behavior for a specific
 package, while **global hooks** broadcast notifications after events
 for every package.
@@ -82,3 +82,13 @@ entry-point group in their ``pyproject.toml``, mapping a hook name to
 a callable.
 
 See :doc:`/customization` for examples and argument details.
+
+Configured Wheel Build Tag Hook
+-------------------------------
+
+.. versionadded:: 0.99.0
+
+The ``wheels.build_tag_hook`` setting names one callable with a Python
+import string in global ``settings.yaml``. Its return value supplies
+wheel filename suffixes during builds and cache lookups. See
+:doc:`/customization` for the configuration and hook signature.

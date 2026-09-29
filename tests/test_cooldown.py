@@ -28,6 +28,7 @@ from fromager import (
     wheels,
 )
 from fromager.commands import build as build_command
+from fromager.packagesettings import WheelSettings
 from fromager.requirements_file import RequirementType
 
 _BOOTSTRAP_TIME = datetime.datetime(2026, 3, 26, 0, 0, 0, tzinfo=datetime.UTC)
@@ -875,6 +876,23 @@ def _simple_wheel_index(
     }
 
 
+def _wheel_index_for_filenames(
+    server_url: str, filenames: list[str]
+) -> dict[str, typing.Any]:
+    return {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": filename,
+                "url": f"{server_url}test-pkg/{filename}",
+                "hashes": {"sha256": "bbb"},
+            }
+            for filename in filenames
+        ],
+    }
+
+
 def _empty_index() -> dict[str, typing.Any]:
     return {"meta": {"api-version": "1.1"}, "name": "test-pkg", "files": []}
 
@@ -925,6 +943,141 @@ def _record_download(
         return path
 
     return _download
+
+
+def _set_existing_wheel_build_tag_hook(
+    ctx: context.WorkContext, suffixes: list[str]
+) -> None:
+    """Configure a hook and changelog for build-tag lookup tests."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return suffixes
+
+    ctx.settings._settings = ctx.settings._settings.model_copy(
+        update={
+            "changelog": {"cpu": ["test entry"]},
+            "wheels": WheelSettings(build_tag_hook=hook),
+        }
+    )
+    ctx.settings._pbi_cache.clear()
+
+
+def test_is_wheel_built_checks_all_candidates(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mismatched candidate does not hide a later match on the same server."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["aaa"])
+
+    version = Version("1.3.2")
+    stale_name = "test_pkg-1.3.2-1_zzz-py3-none-any.whl"
+    matching_name = "test_pkg-1.3.2-1_aaa-py3-none-any.whl"
+    matching_url = f"{_LOCAL_WHEEL_SERVER}test-pkg/{matching_name}"
+
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(
+                _LOCAL_WHEEL_SERVER, [stale_name, matching_name]
+            ),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(ctx, "test-pkg", version)
+
+    assert found is not None
+    assert found.name == matching_name
+    assert downloaded == [matching_url]
+    assert [request.url for request in r.request_history] == [
+        f"{_LOCAL_WHEEL_SERVER}test-pkg/"
+    ]
+
+
+def test_is_wheel_built_checks_next_server_after_tag_mismatch(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mismatch on the local server does not hide a match in the job cache."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["aaa"])
+
+    version = Version("1.3.2")
+    stale_name = "test_pkg-1.3.2-1_zzz-py3-none-any.whl"
+    matching_name = "test_pkg-1.3.2-1_aaa-py3-none-any.whl"
+    matching_url = f"{_CACHE_WHEEL_SERVER}test-pkg/{matching_name}"
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_LOCAL_WHEEL_SERVER, [stale_name]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        r.get(
+            f"{_CACHE_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_CACHE_WHEEL_SERVER, [matching_name]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(
+            ctx,
+            "test-pkg",
+            version,
+            cache_wheel_server_url=_CACHE_WHEEL_SERVER,
+        )
+
+    assert found is not None
+    assert found.name == matching_name
+    assert [request.url for request in r.request_history] == [
+        f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+        f"{_CACHE_WHEEL_SERVER}test-pkg/",
+    ]
+    assert downloaded == [matching_url]
+
+
+def test_is_wheel_built_propagates_build_tag_hook_error(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Invalid hook output is not treated as a cache miss."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["invalid-suffix"])
+    version = Version("1.3.2")
+    filename = "test_pkg-1.3.2-1_aaa-py3-none-any.whl"
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_LOCAL_WHEEL_SERVER, [filename]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        with pytest.raises(ValueError, match="invalid segment"):
+            build_command._is_wheel_built(ctx, "test-pkg", version)
+
+
+def test_is_wheel_built_propagates_inconsistent_build_tag(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A higher build number with the expected suffix remains an error."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["aaa"])
+    version = Version("1.3.2")
+    filename = "test_pkg-1.3.2-2_aaa-py3-none-any.whl"
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_LOCAL_WHEEL_SERVER, [filename]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        with pytest.raises(ValueError, match=r"changelog.*inconsistent"):
+            build_command._is_wheel_built(ctx, "test-pkg", version)
 
 
 def test_is_wheel_built_uses_package_wheel_server_url(

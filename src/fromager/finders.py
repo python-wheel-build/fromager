@@ -153,7 +153,18 @@ def find_wheel(
     dist_version: str,
     build_tag: BuildTag = (),
 ) -> pathlib.Path | None:
-    """Find a wheel file in downloads_dir for the given requirement.
+    """Return the first matching wheel file for the given requirement."""
+    matches = find_wheels(downloads_dir, req, dist_version, build_tag)
+    return matches[0] if matches else None
+
+
+def find_wheels(
+    downloads_dir: pathlib.Path,
+    req: Requirement,
+    dist_version: str,
+    build_tag: BuildTag = (),
+) -> list[pathlib.Path]:
+    """Find matching wheel files in downloads_dir for the given requirement.
 
     Tries four naming conventions (PEP 427 transformed, canonical, original,
     and dotted), each suffixed with the build tag when present. Uses
@@ -162,37 +173,35 @@ def find_wheel(
     """
     filename_prefix = _dist_name_to_filename(req.name)
     canonical_name = canonicalize_name(req.name)
-    # if build tag is 0 then we can ignore to handle non tagged wheels for backward compatibility
-    candidate_bases_build_tag = f"{build_tag[0]}{build_tag[1]}-" if build_tag else ""
 
-    candidate_bases = set(
-        [
-            # First check if the file is there using the canonically
-            # transformed name.
-            f"{filename_prefix}-{dist_version}-{candidate_bases_build_tag}",
-            # If that didn't work, try the canonical dist name. That's not
-            # "correct" but we do see it. (charset-normalizer-3.3.2-
-            # and setuptools-scm-8.0.4-) for example
-            f"{canonical_name}-{dist_version}-{candidate_bases_build_tag}",
-            # If *that* didn't work, try the dist name we've been
-            # given as a dependency. That's not "correct", either but we do
-            # see it. (oslo.messaging-14.7.0-) for example
-            f"{req.name}-{dist_version}-{candidate_bases_build_tag}",
-            # Sometimes the sdist uses '.' instead of '-' in the
-            # package name portion.
-            f"{req.name.replace('-', '.')}-{dist_version}-{candidate_bases_build_tag}",
-        ]
-    )
-    # Case-insensitive globbing was added to Python 3.12, but we
-    # have to run with older versions, too, so do our own name
-    # comparison.
-    for base in candidate_bases:
+    build_tag_prefixes: list[str] = []
+    if build_tag:
+        build_tag_prefixes.append(f"{build_tag[0]}{build_tag[1]}-")
+        if not build_tag[1]:
+            build_tag_prefixes.append(f"{build_tag[0]}_")
+    else:
+        build_tag_prefixes.append("")
+
+    name_variants = [
+        filename_prefix,
+        canonical_name,
+        req.name,
+        req.name.replace("-", "."),
+    ]
+
+    candidate_bases: set[str] = set()
+    for name in name_variants:
+        for btp in build_tag_prefixes:
+            candidate_bases.add(f"{name}-{dist_version}-{btp}")
+
+    for base in sorted(candidate_bases):
         logger.debug('looking for wheel as "%s"', base)
-        for filename in downloads_dir.glob("*.whl"):
-            if str(filename.name).lower().startswith(base.lower()):
-                return filename
-
-    return None
+    lower_bases = {base.lower() for base in candidate_bases}
+    return [
+        filename
+        for filename in sorted(downloads_dir.glob("*.whl"))
+        if any(filename.name.lower().startswith(base) for base in lower_bases)
+    ]
 
 
 def default_expected_source_directory_name(req: Requirement, dist_version: str) -> str:

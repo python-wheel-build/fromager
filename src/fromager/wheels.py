@@ -4,6 +4,7 @@ import collections
 import logging
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -39,10 +40,67 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_BUILD_TAG_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9.]+$")
+
 FROMAGER_BUILD_SETTINGS = "fromager-build-settings"
 FROMAGER_ELF_PROVIDES = "fromager-elf-provides.txt"
 FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
 FROMAGER_BUILD_REQ_PREFIX = "fromager"
+
+
+def _validate_build_tag_segments(segments: list[str]) -> None:
+    """Validate that each segment matches ``[a-zA-Z0-9.]``."""
+    for seg in segments:
+        if not isinstance(seg, str):
+            raise ValueError(
+                f"build_tag_hook must return strings, got {type(seg).__name__}"
+            )
+        if not _BUILD_TAG_SEGMENT_RE.fullmatch(seg):
+            raise ValueError(
+                f"build tag hook returned invalid segment {seg!r}: "
+                "each segment must match [a-zA-Z0-9.]"
+            )
+
+
+def get_build_tag(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    wheel_tags: frozenset[Tag],
+) -> BuildTag:
+    """Compute the full build tag including any hook-provided suffix.
+
+    Calls ``pbi.build_tag(version)`` for the numeric base, then invokes
+    the configured ``build_tag_hook`` (if any) to append variant
+    suffix segments.  The hook should use *wheel_tags* only to
+    distinguish platlib from purelib wheels, not for platform-specific
+    decisions.
+
+    .. versionadded:: 0.99.0
+    """
+    pbi = ctx.package_build_info(req)
+    base_tag = pbi.build_tag(version)
+    if not base_tag:
+        return base_tag
+
+    hook = ctx.settings.build_tag_hook
+    if hook is None:
+        return base_tag
+
+    raw = hook(ctx=ctx, req=req, version=version, wheel_tags=wheel_tags)
+    if isinstance(raw, str | bytes):
+        raise ValueError(
+            "build_tag_hook must return a sequence of strings, not a single string"
+        )
+    segments = list(raw)
+    _validate_build_tag_segments(segments)
+
+    if not segments:
+        return base_tag
+
+    suffix = base_tag[1] + "_" + "_".join(segments)
+    return (base_tag[0], suffix)
 
 
 def _log_existing_sboms(
@@ -265,8 +323,11 @@ def add_extra_metadata_to_wheels(
             )
             sbom.write_sbom(sbom=sbom_doc, dist_info_dir=dist_info_dir)
 
-        build_tag_from_settings = pbi.build_tag(version)
-        build_tag = build_tag_from_settings if build_tag_from_settings else (0, "")
+        build_tag = get_build_tag(
+            ctx=ctx, req=req, version=version, wheel_tags=wheel_tags
+        )
+        if not build_tag:
+            build_tag = (0, "")
 
         cmd = [
             "wheel",
@@ -509,6 +570,37 @@ def get_prebuilt_wheel_provider(
     )
 
 
+def _resolve_all_cached_wheels(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    cache_server_url: str,
+) -> list[tuple[str, Version]]:
+    """Return matching wheels from a trusted cache server."""
+    provider = finders.PyPICacheProvider(
+        cache_server_url=cache_server_url,
+        constraints=ctx.constraints,
+    )
+    results = resolver.find_all_matching_from_provider(provider, req)
+    return [(str(wheel_url), version) for wheel_url, version in results]
+
+
+@metrics.timeit(description="resolve wheel")
+def resolve_all_cached_wheels(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    cache_server_url: str,
+) -> list[tuple[str, Version]]:
+    """Return all matching wheels from a trusted cache server.
+
+    Uses ``PyPICacheProvider`` -- no cooldown, no hooks, no upload-time checks.
+    """
+    return _resolve_all_cached_wheels(
+        ctx=ctx, req=req, cache_server_url=cache_server_url
+    )
+
+
 @metrics.timeit(description="resolve wheel")
 def resolve_cached_wheel(
     *,
@@ -516,20 +608,14 @@ def resolve_cached_wheel(
     req: Requirement,
     cache_server_url: str,
 ) -> tuple[str, Version]:
-    """Resolve a wheel from a trusted cache server (local or remote).
-
-    Uses ``PyPICacheProvider`` -- no cooldown, no hooks, no upload-time checks.
-    """
-    provider = finders.PyPICacheProvider(
-        cache_server_url=cache_server_url,
-        constraints=ctx.constraints,
+    """Resolve the best wheel from a trusted cache server (local or remote)."""
+    results = _resolve_all_cached_wheels(
+        ctx=ctx, req=req, cache_server_url=cache_server_url
     )
-    results = resolver.find_all_matching_from_provider(provider, req)
-    wheel_url, version = results[0]
-    return str(wheel_url), version
+    return results[0]
 
 
-def resolve_all_prebuilt_wheels(
+def _resolve_all_prebuilt_wheels(
     *,
     ctx: context.WorkContext,
     req: Requirement,
@@ -568,6 +654,20 @@ def resolve_all_prebuilt_wheels(
 
 
 @metrics.timeit(description="resolve wheel")
+def resolve_all_prebuilt_wheels(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    wheel_server_urls: list[str],
+    req_type: requirements_file.RequirementType | None = None,
+) -> list[tuple[str, Version]]:
+    """Return all matching prebuilt wheels from the first successful server."""
+    return _resolve_all_prebuilt_wheels(
+        ctx=ctx, req=req, wheel_server_urls=wheel_server_urls, req_type=req_type
+    )
+
+
+@metrics.timeit(description="resolve wheel")
 def resolve_prebuilt_wheel(
     *,
     ctx: context.WorkContext,
@@ -580,7 +680,7 @@ def resolve_prebuilt_wheel(
     Tries wheel servers in order and returns the highest matching version
     from the first server that succeeds.
     """
-    results = resolve_all_prebuilt_wheels(
+    results = _resolve_all_prebuilt_wheels(
         ctx=ctx, req=req, wheel_server_urls=wheel_server_urls, req_type=req_type
     )
     # Return highest version (first in sorted list)
