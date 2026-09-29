@@ -55,6 +55,26 @@ class SettingsFile(pydantic.BaseModel):
     .. versionadded:: 0.92.0
     """
 
+    build_system_dependencies_hook: pydantic.ImportString | None = None
+    """Post-processing hook for build-system dependencies
+
+    A dotted import path to a callable that receives build-system
+    dependencies after the per-package override (or default) runs
+    and returns a (possibly modified) list.  When not set, no
+    post-processing is applied.
+
+    The callable signature must be::
+
+        def hook(
+            *,
+            ctx: WorkContext,
+            req: Requirement,
+            sdist_root_dir: pathlib.Path,
+            build_dir: pathlib.Path,
+            requirements: list[str],
+        ) -> list[str]: ...
+    """
+
     @classmethod
     def from_string(
         cls,
@@ -192,6 +212,11 @@ class Settings:
         .. versionadded:: 0.92.0
         """
         return self._settings.external_commands
+
+    @property
+    def build_system_dependencies_hook(self) -> typing.Callable[..., list[str]] | None:
+        """Get the build-system dependencies post-processing hook, if configured."""
+        return self._settings.build_system_dependencies_hook
 
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""
