@@ -1,3 +1,4 @@
+import os
 import pathlib
 import typing
 from unittest.mock import Mock, patch
@@ -1152,3 +1153,52 @@ def test_filter_env(
 ) -> None:
     ec = ExternalCommands(keep_env=keep, delete_env=delete)
     assert ec.filter_env(env) == expected
+
+
+class TestWheelSettings:
+    """Tests for ``WheelSettings`` and ``SettingsFile.wheels``."""
+
+    def test_settings_file_parses_wheels_section(self) -> None:
+        """wheels.build_tag_hook is loaded from YAML."""
+        sf = SettingsFile.from_string(
+            """
+wheels:
+  build_tag_hook: "os.path:join"
+"""
+        )
+        assert sf.wheels is not None
+        assert sf.wheels.build_tag_hook is os.path.join
+
+    def test_settings_file_defaults_to_no_wheels(self) -> None:
+        """When wheels section is absent, wheels is None."""
+        sf = SettingsFile.from_string("")
+        assert sf.wheels is None
+
+    def test_settings_build_tag_hook_property(self) -> None:
+        """Settings.build_tag_hook exposes the hook callable."""
+        sf = SettingsFile.from_string(
+            """
+wheels:
+  build_tag_hook: "os.path:join"
+"""
+        )
+        settings = Settings(
+            settings=sf,
+            package_settings=[],
+            variant="cpu",
+            patches_dir=pathlib.Path("/tmp"),
+            max_jobs=None,
+        )
+        assert settings.build_tag_hook is os.path.join
+
+    def test_settings_build_tag_hook_none_when_unset(self) -> None:
+        """Settings.build_tag_hook is None when not configured."""
+        sf = SettingsFile.from_string("")
+        settings = Settings(
+            settings=sf,
+            package_settings=[],
+            variant="cpu",
+            patches_dir=pathlib.Path("/tmp"),
+            max_jobs=None,
+        )
+        assert settings.build_tag_hook is None

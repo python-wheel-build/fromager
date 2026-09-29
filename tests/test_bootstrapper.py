@@ -15,6 +15,7 @@ from fromager import bootstrapper, log
 from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._cache import (
     _download_wheel_from_cache,
+    _look_for_existing_wheel,
     bg_prepare_prebuilt,
     find_cached_wheel,
 )
@@ -36,6 +37,7 @@ from fromager.bootstrapper._types import (
 from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
 from fromager.dependency_graph import ROOT
+from fromager.packagesettings import WheelSettings
 from fromager.requirements_file import RequirementType, SourceType
 
 
@@ -490,6 +492,109 @@ def _make_cache_bootstrapper(
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt.cache_wheel_server_url = "https://cache.test/simple"
     return bt
+
+
+def _set_cache_build_tag_hook(
+    ctx: WorkContext, hook: typing.Callable[..., list[str]]
+) -> None:
+    """Configure a build tag hook for cache lookup tests."""
+    ctx.settings._settings = ctx.settings._settings.model_copy(
+        update={"wheels": WheelSettings(build_tag_hook=hook)}
+    )
+
+
+def test_cache_lookup_checks_all_local_build_tags(
+    testdata_context: WorkContext,
+) -> None:
+    """A stale local suffix does not hide a wheel with the expected suffix."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return ["zzz"]
+
+    _set_cache_build_tag_hook(testdata_context, hook)
+    req = Requirement("test-pkg")
+    version = Version("1.0.1")
+    stale = testdata_context.wheels_build / "test_pkg-1.0.1-1_aaa-py3-none-any.whl"
+    matching = testdata_context.wheels_build / "test_pkg-1.0.1-1_zzz-py3-none-any.whl"
+    stale.touch()
+    matching.touch()
+
+    with patch(
+        "fromager.bootstrapper._cache._extract_build_reqs_from_wheel",
+        return_value=None,
+    ):
+        wheel, _ = _look_for_existing_wheel(
+            testdata_context, req, version, testdata_context.wheels_build
+        )
+
+    assert wheel == matching
+
+
+def test_cache_lookup_checks_all_remote_build_tags(
+    testdata_context: WorkContext,
+) -> None:
+    """A stale remote suffix does not hide a wheel with the expected suffix."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return ["zzz"]
+
+    _set_cache_build_tag_hook(testdata_context, hook)
+    req = Requirement("test-pkg")
+    version = Version("1.0.1")
+    cache_url = "https://cache.test/simple"
+    testdata_context.wheel_server_url = cache_url
+    stale_url = f"{cache_url}/test_pkg-1.0.1-1_aaa-py3-none-any.whl"
+    matching_name = "test_pkg-1.0.1-1_zzz-py3-none-any.whl"
+    matching_url = f"{cache_url}/{matching_name}"
+    matching = testdata_context.wheels_downloads / matching_name
+
+    with (
+        patch(
+            "fromager.resolver.find_all_matching_from_provider",
+            return_value=[(stale_url, version), (matching_url, version)],
+        ),
+        patch("fromager.wheels.download_wheel", return_value=matching) as download,
+        patch(
+            "fromager.bootstrapper._cache._extract_build_reqs_from_wheel",
+            return_value=None,
+        ),
+    ):
+        wheel, _ = _download_wheel_from_cache(testdata_context, cache_url, req, version)
+
+    assert wheel == matching
+    download.assert_called_once_with(
+        req=req,
+        wheel_url=matching_url,
+        output_directory=testdata_context.wheels_downloads,
+    )
+
+
+def test_cache_lookup_propagates_build_tag_hook_error(
+    testdata_context: WorkContext,
+) -> None:
+    """Invalid hook output fails the lookup instead of becoming a cache miss."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return ["bad-suffix"]
+
+    _set_cache_build_tag_hook(testdata_context, hook)
+    req = Requirement("test-pkg")
+    version = Version("1.0.1")
+    cache_url = "https://cache.test/simple"
+    testdata_context.wheel_server_url = cache_url
+    wheel_url = f"{cache_url}/test_pkg-1.0.1-1_valid-py3-none-any.whl"
+
+    with (
+        patch(
+            "fromager.resolver.find_all_matching_from_provider",
+            return_value=[(wheel_url, version)],
+        ),
+        patch("fromager.wheels.download_wheel") as download,
+        pytest.raises(ValueError, match="invalid segment"),
+    ):
+        _download_wheel_from_cache(testdata_context, cache_url, req, version)
+
+    download.assert_not_called()
 
 
 def test_cache_lookup_resolver_exception_logs_info(

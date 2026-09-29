@@ -146,3 +146,48 @@ def test_pypi_cache_provider() -> None:
         finders.PyPICacheProvider(
             cache_server_url=url, include_sdists=False, include_wheels=False
         )
+
+
+class TestFindWheelBuildTagSuffix:
+    """Tests for ``find_wheel`` with build tag suffixes."""
+
+    def test_find_wheel_with_exact_build_tag(self, tmp_path: pathlib.Path) -> None:
+        """Plain build tag matches a plain-tagged wheel."""
+        downloads = tmp_path / "downloads"
+        downloads.mkdir()
+        wheel = downloads / "mypkg-1.0.0-2-py3-none-any.whl"
+        wheel.write_text("not-empty")
+        result = finders.find_wheel(downloads, Requirement("mypkg"), "1.0.0", (2, ""))
+        assert result == wheel
+
+    def test_find_wheel_matches_suffixed_with_base_tag(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Base tag (2, '') matches a suffixed wheel when no plain one exists."""
+        downloads = tmp_path / "downloads"
+        downloads.mkdir()
+        wheel = downloads / "mypkg-1.0.0-2_el9.6-cp312-cp312-linux_x86_64.whl"
+        wheel.write_text("not-empty")
+        result = finders.find_wheel(downloads, Requirement("mypkg"), "1.0.0", (2, ""))
+        assert result == wheel
+
+    def test_find_wheel_no_false_positive_on_higher_number(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Build tag 2 does not match build tag 20."""
+        downloads = tmp_path / "downloads"
+        downloads.mkdir()
+        (downloads / "mypkg-1.0.0-20-py3-none-any.whl").write_text("not-empty")
+        result = finders.find_wheel(downloads, Requirement("mypkg"), "1.0.0", (2, ""))
+        assert result is None
+
+    def test_find_wheel_with_full_suffix(self, tmp_path: pathlib.Path) -> None:
+        """Exact suffixed build tag matches the right wheel."""
+        downloads = tmp_path / "downloads"
+        downloads.mkdir()
+        wheel = downloads / "mypkg-1.0.0-2_el9.6_cuda13.0-cp312-cp312-linux_x86_64.whl"
+        wheel.write_text("not-empty")
+        result = finders.find_wheel(
+            downloads, Requirement("mypkg"), "1.0.0", (2, "_el9.6_cuda13.0")
+        )
+        assert result == wheel
