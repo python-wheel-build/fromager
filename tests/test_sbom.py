@@ -381,6 +381,56 @@ def test_merge_cyclonedx_sbom_imports_packages_and_relationships(
     _validate_spdx(document)
 
 
+def test_cyclonedx_checksums_skips_unsupported_algorithm() -> None:
+    """SHA3-224 has no SPDX 2.3 equivalent and must be dropped."""
+    component = {
+        "name": "serde",
+        "hashes": [
+            {"alg": "SHA3-224", "content": "a" * 56},
+            {"alg": "SHA-256", "content": "b" * 64},
+        ],
+    }
+
+    checksums = sbom._cyclonedx_checksums(component)
+
+    assert checksums == [{"algorithm": "SHA256", "checksumValue": "b" * 64}]
+
+
+def test_cyclonedx_checksums_skips_non_hex_content() -> None:
+    """Non-hexadecimal checksum content would fail SPDX validation."""
+    component = {
+        "name": "serde",
+        "hashes": [
+            {"alg": "SHA-256", "content": "not-a-valid-hash"},
+            {"alg": "SHA-512", "content": "c" * 128},
+        ],
+    }
+
+    checksums = sbom._cyclonedx_checksums(component)
+
+    assert checksums == [{"algorithm": "SHA512", "checksumValue": "c" * 128}]
+
+
+def test_cyclonedx_license_expression_skips_invalid() -> None:
+    """Invalid SPDX expressions must not be copied into licenseDeclared."""
+    component = {
+        "name": "serde",
+        "licenses": [
+            {"expression": "MIT"},
+            {"expression": "Totally Not A License"},
+        ],
+    }
+
+    assert sbom._cyclonedx_license_expression(component) == "MIT"
+
+
+def test_cyclonedx_license_expression_all_invalid_returns_none() -> None:
+    """A component with only invalid expressions declares no license."""
+    component = {"name": "serde", "licenses": [{"license": {"id": "Bogus-9.9"}}]}
+
+    assert sbom._cyclonedx_license_expression(component) is None
+
+
 def test_merge_cyclonedx_sboms_maps_python_root_to_wheel(
     tmp_path: pathlib.Path,
 ) -> None:

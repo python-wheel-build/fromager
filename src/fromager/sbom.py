@@ -11,9 +11,11 @@ import importlib.metadata
 import json
 import logging
 import pathlib
+import re
 import typing
 from datetime import UTC, datetime
 
+from license_expression import ExpressionError, get_spdx_licensing
 from packageurl import PackageURL
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
@@ -188,7 +190,7 @@ _CYCLONEDX_HASH_TO_SPDX = {
     "SHA-256": "SHA256",
     "SHA-384": "SHA384",
     "SHA-512": "SHA512",
-    "SHA3-224": "SHA3-224",
+    # SPDX 2.3 has no SHA3-224 algorithm, so it is intentionally omitted.
     "SHA3-256": "SHA3-256",
     "SHA3-384": "SHA3-384",
     "SHA3-512": "SHA3-512",
@@ -196,6 +198,12 @@ _CYCLONEDX_HASH_TO_SPDX = {
     "BLAKE2B-384": "BLAKE2b-384",
     "BLAKE2B-512": "BLAKE2b-512",
 }
+
+# Reused across components; parsing SPDX license expressions is relatively costly.
+_SPDX_LICENSING = get_spdx_licensing()
+
+# SPDX checksum values must be lowercase or uppercase hexadecimal digits.
+_HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
 
 def _cyclonedx_string(value: typing.Any) -> str | None:
@@ -333,18 +341,33 @@ def _cyclonedx_license_expression(
         if not isinstance(license_choice, dict):
             continue
         expression = _cyclonedx_string(license_choice.get("expression"))
-        if expression:
-            expressions.append(expression)
+        if not expression:
+            license_info = license_choice.get("license")
+            if isinstance(license_info, dict):
+                expression = _cyclonedx_string(license_info.get("id"))
+        if not expression:
             continue
-        license_info = license_choice.get("license")
-        if isinstance(license_info, dict):
-            identifier = _cyclonedx_string(license_info.get("id"))
-            if identifier:
-                expressions.append(identifier)
+        if _valid_spdx_expression(expression):
+            expressions.append(expression)
+        else:
+            logger.warning(
+                "component %s has an invalid SPDX license expression %r; skipping it",
+                _cyclonedx_component_purl(component) or component.get("name"),
+                expression,
+            )
 
     if not expressions:
         return None
     return " AND ".join(expressions)
+
+
+def _valid_spdx_expression(expression: str) -> bool:
+    """Return True if *expression* is a valid SPDX license expression."""
+    try:
+        _SPDX_LICENSING.parse(expression, validate=True)
+    except ExpressionError:
+        return False
+    return True
 
 
 def _cyclonedx_checksums(
@@ -364,6 +387,14 @@ def _cyclonedx_checksums(
             continue
         normalized_algorithm = _CYCLONEDX_HASH_TO_SPDX.get(algorithm.upper())
         if normalized_algorithm is None:
+            continue
+        if not _HEX_RE.fullmatch(content):
+            logger.warning(
+                "component %s has a non-hexadecimal %s checksum %r; skipping it",
+                _cyclonedx_component_purl(component) or component.get("name"),
+                normalized_algorithm,
+                content,
+            )
             continue
         checksums.append({"algorithm": normalized_algorithm, "checksumValue": content})
     return checksums
