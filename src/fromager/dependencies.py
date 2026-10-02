@@ -236,7 +236,7 @@ def default_get_build_sdist_dependencies(
     """Get build sdist dependencies
 
     Defaults to result of hook call
-    :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_wheel`
+    :meth:`~pyproject_hooks.BuildBackendHookCaller.get_requires_for_build_sdist`
     """
     logger.info(f"looking for build sdist dependencies in {build_dir}")
     pbi = ctx.package_build_info(req)
@@ -247,7 +247,7 @@ def default_get_build_sdist_dependencies(
         override_environ=extra_environ,
         build_env=build_env,
     )
-    return hook_caller.get_requires_for_build_wheel(
+    return hook_caller.get_requires_for_build_sdist(
         config_settings=pbi.config_settings,
     )
 
