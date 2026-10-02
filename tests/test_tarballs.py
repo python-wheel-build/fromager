@@ -93,3 +93,34 @@ def test_vcs_exclude(tmp_path: pathlib.Path) -> None:
     with tarfile.open(t1, "r") as tf:
         names = tf.getnames()
     assert names == [str(p).lstrip(os.sep) for p in [root, root / "a"]]
+
+
+def test_arcname_root(tmp_path: pathlib.Path) -> None:
+    """Test that arcname_root sets the top-level directory name.
+
+    This reproduces issue #1315: when basedir is a subdirectory (monorepo case),
+    arcname_root should ensure the top-level archive entry is {name}-{version},
+    not the basedir's name.
+    """
+    # Simulate a monorepo structure: mypkg-1.0/python/
+    sdist_root = tmp_path / "mypkg-1.0"
+    build_dir = sdist_root / "python"
+    build_dir.mkdir(parents=True)
+    (build_dir / "setup.py").write_text("from setuptools import setup; setup()\n")
+
+    t1 = tmp_path / "out.tar"
+    with tarfile.open(t1, "w") as tf:
+        tarballs.tar_reproducible(
+            tar=tf,
+            basedir=build_dir,
+            prefix=sdist_root,
+            arcname_root="mypkg-1.0",
+        )
+    with tarfile.open(t1, "r") as tf:
+        names = tf.getnames()
+
+    # All entries should be rooted at mypkg-1.0, not python/
+    # This ensures the sdist unpacks to mypkg-1.0/, not python/
+    assert "mypkg-1.0" in names[0]
+    assert "python" not in names[0]  # build_dir's name should not appear
+    assert "mypkg-1.0/setup.py" in names
