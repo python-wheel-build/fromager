@@ -1047,7 +1047,7 @@ class PyPIProvider(BaseProvider):
                     and c.version not in sdist_versions
                     and all(c.version in r.specifier for r in reqs)
                 ):
-                    logger.warning(
+                    logger.info(
                         "%s==%s: no sdist available, only a wheel (skipped)",
                         c.name,
                         c.version,

@@ -1,4 +1,5 @@
 import datetime
+import logging
 import re
 import typing
 
@@ -1307,8 +1308,9 @@ def test_cli_package_resolver(
     assert "- missing from Fromager: 1.3.1+local, 2.0.0a1" in result.stdout
 
 
-def test_warn_wheel_only_version(caplog: pytest.LogCaptureFixture) -> None:
-    """Warn when a version matching the specifier has no sdist."""
+def test_log_wheel_only_version_at_info(caplog: pytest.LogCaptureFixture) -> None:
+    """Log an eligible wheel-only version at INFO level."""
+    caplog.set_level(logging.INFO)
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/testpkg/",
@@ -1323,11 +1325,18 @@ def test_warn_wheel_only_version(caplog: pytest.LogCaptureFixture) -> None:
         candidate = result.mapping["testpkg"]
         assert str(candidate.version) == "1.0.3"
 
-    assert "testpkg==1.0.2: no sdist available, only a wheel (skipped)" in caplog.text
+    assert any(
+        record.levelno == logging.INFO
+        and record.getMessage().endswith(
+            "testpkg==1.0.2: no sdist available, only a wheel (skipped)"
+        )
+        for record in caplog.records
+    )
 
 
-def test_no_warn_when_sdist_exists(caplog: pytest.LogCaptureFixture) -> None:
-    """No warning for versions that have both sdist and wheel."""
+def test_no_log_when_sdist_exists(caplog: pytest.LogCaptureFixture) -> None:
+    """Do not log versions that have both sdist and wheel."""
+    caplog.set_level(logging.INFO)
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/testpkg/",
@@ -1345,8 +1354,9 @@ def test_no_warn_when_sdist_exists(caplog: pytest.LogCaptureFixture) -> None:
     assert "testpkg==1.0.3" not in caplog.text
 
 
-def test_no_warn_outside_specifier(caplog: pytest.LogCaptureFixture) -> None:
-    """No warning for wheel-only versions outside the requirement specifier."""
+def test_no_log_outside_specifier(caplog: pytest.LogCaptureFixture) -> None:
+    """Do not log wheel-only versions outside the requirement specifier."""
+    caplog.set_level(logging.INFO)
     with requests_mock.Mocker() as r:
         r.get(
             "https://pypi.org/simple/testpkg/",
