@@ -30,10 +30,6 @@ priority order and accumulates results in a thread-safe session cache:
    │          ▼                                            │
    │  3. Network (PyPI / GitHub / GitLab)                  │
    │     (per-package configurable)                        │
-   │          │ age filter empties result                  │
-   │          ▼                                            │
-   │  4. Cache server fallback                             │
-   │     (multiple_versions mode only)                     │
    └───────────────────────────────────────────────────────┘
 
    Git URL requirements (top-level only) bypass this
@@ -43,6 +39,10 @@ priority order and accumulates results in a thread-safe session cache:
 Versions discovered from any source are merged into the session cache.
 Subsequent requests for the same package skip the network entirely if
 the cache already contains a matching version.
+
+The configured wheel cache server is not a version-resolution fallback.
+After a version has been selected, the bootstrapper checks the cache
+server separately for a previously built wheel.
 
 Provider Hierarchy
 ------------------
@@ -73,8 +73,8 @@ CLI commands interact with providers through a common
        Filters by platform tags, Python version, and yanked status.
    * - ``PyPICacheProvider``
      - Subclass of ``PyPIProvider`` pointing at fromager's own wheel
-       server.  No cooldown applied.  Used as a fallback when age
-       filtering eliminates all candidates.
+       server.  No cooldown applied.  Used by the bootstrapper's
+       previously-built-wheel lookup, not by source version resolution.
    * - ``GenericProvider``
      - Callback-based provider that pairs a version source function
        with a configurable match function (plain parse or regex).
@@ -117,10 +117,11 @@ Two age-based filters can narrow the set of acceptable versions:
   ``multiple_versions`` mode to limit the range of versions built.
 
 When both are active, only versions published within the window are
-considered.  If all candidates are filtered out, the behavior depends
-on the mode: in single-version mode a warning is logged and all
-candidates are kept; in ``multiple_versions`` mode the cache server
-fallback is tried instead.
+considered.  If all source candidates are filtered out, the behavior
+depends on the mode: in single-version mode a warning is logged and all
+candidates are kept; in ``multiple_versions`` mode only the newest
+candidate is retained.  A source provider with no matching candidates
+raises a resolution error; it is not replaced by a cache-server lookup.
 
 Flat Resolution by Design
 -------------------------
