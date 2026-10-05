@@ -129,6 +129,33 @@ def test_get_build_backend(
     assert expected_results == actual
 
 
+def test_get_pyproject_contents_out_of_order_tables(tmp_path: pathlib.Path) -> None:
+    # Regression test for #1356: a spec-valid pyproject.toml that re-opens a
+    # super-table (created via dotted keys) out of order. tomlkit rejects this,
+    # stdlib tomllib accepts it.
+    tmp_path.joinpath("pyproject.toml").write_text(
+        textwrap.dedent("""\
+            [build-system]
+            requires = ["setuptools", "wheel"]
+            build-backend = "setuptools.build_meta"
+
+            [tool.ruff]
+            lint.extend-select = ["UP"]
+            lint.ignore = ["E402"]
+
+            [[tool.mypy.overrides]]
+            module = ["pkg.mod"]
+
+            [tool.ruff.lint.per-file-ignores]
+            "__init__.py" = ["F401"]
+            """)
+    )
+
+    contents = dependencies.get_pyproject_contents(tmp_path)
+
+    assert contents["build-system"]["requires"] == ["setuptools", "wheel"]
+
+
 def _clean_build_artifacts(f: typing.Callable[..., None]) -> typing.Callable[..., None]:
     @functools.wraps(f)
     def _with_cleanup(*args: typing.Any, **kwds: typing.Any) -> None:

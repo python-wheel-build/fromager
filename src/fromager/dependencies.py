@@ -5,11 +5,11 @@ import logging
 import os
 import pathlib
 import tempfile
+import tomllib
 import typing
 import zipfile
 
 import pyproject_hooks
-import tomlkit
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
@@ -492,7 +492,9 @@ def get_pyproject_contents(sdist_root_dir: pathlib.Path) -> dict[str, typing.Any
     pyproject_toml_filename = sdist_root_dir / "pyproject.toml"
     if not os.path.exists(pyproject_toml_filename):
         return {}
-    return tomlkit.loads(pyproject_toml_filename.read_text())
+    # Read-only parse: use stdlib tomllib, not tomlkit. tomlkit rejects some
+    # spec-valid files (out-of-order tables), e.g. #1356.
+    return tomllib.loads(pyproject_toml_filename.read_text())
 
 
 # From pypa/build/src/build/__main__.py
