@@ -901,12 +901,18 @@ def _context_for_existing_wheel(
     tmp_path: pathlib.Path,
     *,
     package_wheel_server_url: str | None = None,
+    pre_built: bool = False,
 ) -> context.WorkContext:
     settings_dir = tmp_path / "settings"
     settings_dir.mkdir()
-    if package_wheel_server_url is not None:
+    if package_wheel_server_url is not None or pre_built:
+        variant_lines = ["variants:", "  cpu:"]
+        if pre_built:
+            variant_lines.append("    pre_built: true")
+        if package_wheel_server_url is not None:
+            variant_lines.append(f"    wheel_server_url: {package_wheel_server_url}")
         (settings_dir / "test-pkg.yaml").write_text(
-            f"variants:\n  cpu:\n    wheel_server_url: {package_wheel_server_url}\n",
+            "\n".join(variant_lines) + "\n",
             encoding="utf-8",
         )
     settings = packagesettings.Settings.from_files(
@@ -1078,6 +1084,89 @@ def test_is_wheel_built_propagates_inconsistent_build_tag(
         )
         with pytest.raises(ValueError, match=r"changelog.*inconsistent"):
             build_command._is_wheel_built(ctx, "test-pkg", version)
+
+
+def test_is_wheel_built_prebuilt_keeps_publisher_build_tag(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pre-built wheel with a publisher build number is reused.
+
+    The changelog tag is empty for pre-built packages. That must not reject
+    a higher build number, and the highest published build number is used.
+    """
+    ctx = _context_for_existing_wheel(
+        tmp_path,
+        package_wheel_server_url=_PACKAGE_WHEEL_SERVER,
+        pre_built=True,
+    )
+    version = Version("1.3.2")
+    older_name = "test_pkg-1.3.2-1-py3-none-any.whl"
+    newer_name = "test_pkg-1.3.2-2-py3-none-any.whl"
+    newer_url = f"{_PACKAGE_WHEEL_SERVER}test-pkg/{newer_name}"
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_PACKAGE_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(
+                _PACKAGE_WHEEL_SERVER, [older_name, newer_name]
+            ),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(ctx, "test-pkg", version)
+
+    assert found is not None
+    assert found.name == newer_name
+    assert downloaded == [newer_url]
+
+
+def test_is_wheel_built_prebuilt_reuses_cache_build_tag(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pre-built package reuses a build-tagged wheel from the job cache.
+
+    No package wheel_server_url is set, so the lookup uses the local server
+    and --cache-wheel-server-url. The publisher build number must not raise.
+    """
+    ctx = _context_for_existing_wheel(tmp_path, pre_built=True)
+    version = Version("1.3.2")
+    wheel_name = "test_pkg-1.3.2-2-py3-none-any.whl"
+    wheel_url = f"{_CACHE_WHEEL_SERVER}test-pkg/{wheel_name}"
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_empty_index(),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        r.get(
+            f"{_CACHE_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_CACHE_WHEEL_SERVER, [wheel_name]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(
+            ctx,
+            "test-pkg",
+            version,
+            cache_wheel_server_url=_CACHE_WHEEL_SERVER,
+        )
+
+    assert found is not None
+    assert found.name == wheel_name
+    assert downloaded == [wheel_url]
+    assert [request.url for request in r.request_history] == [
+        f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+        f"{_CACHE_WHEEL_SERVER}test-pkg/",
+    ]
 
 
 def test_is_wheel_built_uses_package_wheel_server_url(
