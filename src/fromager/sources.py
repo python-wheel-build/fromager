@@ -613,7 +613,7 @@ def ensure_pkg_info(
     for directory in directories:
         pkg_info_file = directory / "PKG-INFO"
         if not pkg_info_file.is_file():
-            logger.warning(
+            logger.info(
                 f"PKG-INFO file is missing from {directory}, creating stub file"
             )
             pkg_info_file.write_text(
