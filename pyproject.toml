@@ -60,7 +60,8 @@ build = [
 ]
 mypy = [
     "mypy",
-    "pytest",
+    "pytest>=8.4",
+    "pytest-socket>=0.8.0",
     "types-html5lib",
     "types-psutil",
     "types-PyYAML",
@@ -70,8 +71,9 @@ mypy = [
 ]
 test = [
     "coverage[toml]!=4.4,>=4.0",
-    "pytest",
+    "pytest>=8.4",
     "pytest-cov",
+    "pytest-socket>=0.8.0",
     "pytest-xdist",
     "requests-mock",
     "spdx-tools",
@@ -295,7 +297,10 @@ build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail
 
 [tool.pytest.ini_options]
 # run tests in parallel with 3 pytest-xdist workers
-addopts = "-n 3"
+addopts = "-n 3 --disable-socket --allow-unix-socket"
+filterwarnings = [
+    'always::UserWarning:pytest_socket$',
+]
 testpaths = ["tests"]
 markers = [
     "network: test that need network access",

@@ -1000,42 +1000,29 @@ def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
     """bootstrap([req]) resolves and processes the requirement."""
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("testpkg==1.0")
-    captured: list[Resolve] = []
 
-    def capture_run(self: Resolve, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
-        captured.append(self)
-        return []
+    started = _bootstrap_and_record_started(
+        bt,
+        [req],
+        {str(req): [("https://pkg.test/testpkg-1.0.tar.gz", Version("1.0"))]},
+    )
 
-    with (
-        patch.object(
-            bt,
-            "_resolve_and_add_top_level",
-            return_value=("http://example.test/testpkg-1.0.tar.gz", Version("1.0")),
-        ),
-        patch.object(Resolve, "run", capture_run),
-        patch.object(bt, "_record_stack_state"),
-    ):
-        bt.bootstrap([req])
-
-    assert len(captured) == 1
-    assert isinstance(captured[0], Resolve)
-    assert captured[0].work_item.req == req
-    assert captured[0].work_item.req_type == RequirementType.TOP_LEVEL
+    assert started == {"testpkg==1.0"}
+    assert set(tmp_context.dependency_graph.nodes) == {ROOT, "testpkg==1.0"}
 
 
 def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
-    """bootstrap() skips requirements whose resolution returns None."""
-    bt = bootstrapper.Bootstrapper(tmp_context)
+    """bootstrap() records unresolved requirements and skips processing them."""
+    bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
     req = Requirement("badpkg")
 
-    with (
-        patch.object(bt, "_resolve_and_add_top_level", return_value=None),
-        patch.object(Resolve, "run") as mock_run,
-        patch.object(bt, "_record_stack_state"),
-    ):
-        bt.bootstrap([req])
+    started = _bootstrap_and_record_started(bt, [req], {str(req): []})
 
-    mock_run.assert_not_called()
+    assert started == set()
+    assert set(tmp_context.dependency_graph.nodes) == {ROOT}
+    assert len(bt.failed_packages) == 1
+    assert bt.failed_packages[0]["package"] == "badpkg"
+    assert bt.failed_packages[0]["failure_type"] == "resolution"
 
 
 def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> None:
@@ -1044,24 +1031,17 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
     req1 = Requirement("pkg1==1.0")
     req2 = Requirement("pkg2==2.0")
 
-    dispatch_calls: list = []
+    started = _bootstrap_and_record_started(
+        bt,
+        [req1, req2],
+        {
+            str(req1): [("https://pkg.test/pkg1-1.0.tar.gz", Version("1.0"))],
+            str(req2): [("https://pkg.test/pkg2-2.0.tar.gz", Version("2.0"))],
+        },
+    )
 
-    def capture_run(self: Resolve, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
-        dispatch_calls.append(self.work_item.req.name)
-        return []
-
-    with (
-        patch.object(
-            bt,
-            "_resolve_and_add_top_level",
-            return_value=("http://example.test/pkg-1.0.tar.gz", Version("1.0")),
-        ),
-        patch.object(Resolve, "run", capture_run),
-        patch.object(bt, "_record_stack_state"),
-    ):
-        bt.bootstrap([req1, req2])
-
-    assert sorted(dispatch_calls) == ["pkg1", "pkg2"]
+    assert started == {"pkg1==1.0", "pkg2==2.0"}
+    assert set(tmp_context.dependency_graph.nodes) == {ROOT, *started}
 
 
 def _bootstrap_and_record_started(
