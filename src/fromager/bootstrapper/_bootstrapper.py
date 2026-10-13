@@ -91,7 +91,6 @@ class Bootstrapper:
             ctx=ctx,
             prev_graph=prev_graph,
             multiple_versions=multiple_versions,
-            cache_wheel_server_url=self.cache_wheel_server_url,
         )
         # Push items onto the stack as we start to resolve their
         # dependencies so at the end we have a list of items that need to
@@ -266,6 +265,25 @@ class Bootstrapper:
         Args:
             requirements: Top-level requirements to resolve and bootstrap.
         """
+        # Warm the resolver cache with every top-level rule before adding any
+        # of them to the graph: a later rule for the same package (e.g. an
+        # exact pin that bypasses the release-age cooldown) changes what an
+        # earlier rule resolves to. Errors are reported by
+        # _resolve_and_add_top_level below.
+        for req in requirements:
+            with req_ctxvar_context(req):
+                try:
+                    self.resolve_versions(
+                        req=req,
+                        req_type=RequirementType.TOP_LEVEL,
+                        parent_req=None,
+                        return_all_versions=self.multiple_versions,
+                    )
+                except Exception as err:
+                    logger.debug(
+                        "deferring resolution error to top-level handling: %s", err
+                    )
+
         # Resolve all top-level reqs and build initial stack.
         # Use the token pattern (no try/finally) so that if resolution raises
         # in normal mode, the context var stays set for the top-level error
@@ -641,6 +659,16 @@ class Bootstrapper:
         if not sdist_only:
             # Mark wheel seen only for wheel build
             self._seen_requirements.add(self._resolved_key(req, version, "wheel"))
+
+    def _forget_seen(self, name: NormalizedName, version: Version) -> None:
+        """Drop every seen-marker for name==version, whatever extras or type."""
+        version_str = str(version)
+        stale = {
+            key
+            for key in self._seen_requirements
+            if key[0] == name and key[2] == version_str
+        }
+        self._seen_requirements.difference_update(stale)
 
     def has_been_seen(
         self,
@@ -1022,13 +1050,15 @@ class Bootstrapper:
                 err,
                 f"failed during {type(item).phase} phase",
             )
-            self.ctx.dependency_graph.remove_dependency(pkg_name, wi.resolved_version)
-            self._seen_requirements.discard(
-                self._resolved_key(wi.req, wi.resolved_version, "sdist")
+            removed_nodes = self.ctx.dependency_graph.remove_dependency(
+                pkg_name, wi.resolved_version
             )
-            self._seen_requirements.discard(
-                self._resolved_key(wi.req, wi.resolved_version, "wheel")
-            )
+            # The failed version may not be in the graph yet. Descendants
+            # removed with it lost their edges; forget them too so a later
+            # encounter goes through PrepareSource again.
+            self._forget_seen(pkg_name, wi.resolved_version)
+            for node in removed_nodes:
+                self._forget_seen(node.canonicalized_name, node.version)
             self._write_graph_async()
             return []
 

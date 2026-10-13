@@ -13,6 +13,7 @@ import zipfile
 import resolvelib
 from packaging.requirements import Requirement
 from packaging.utils import (
+    canonicalize_name,
     parse_sdist_filename,
 )
 from packaging.version import Version
@@ -567,7 +568,8 @@ def default_build_sdist(
     #
     # For cases where the PEP 517 approach works, use
     # pep517_build_sdist().
-    sdist_filename = ctx.sdists_builds / f"{req.name}-{version}.tar.gz"
+    dist_name = canonicalize_name(req.name).replace("-", "_")
+    sdist_filename = ctx.sdists_builds / f"{dist_name}-{version}.tar.gz"
     if sdist_filename.exists():
         sdist_filename.unlink()
     ensure_pkg_info(
@@ -584,6 +586,7 @@ def default_build_sdist(
             tar=sdist,
             basedir=build_dir,
             prefix=build_dir.parent,
+            arcname_root=f"{dist_name}-{version}",
         )
     return sdist_filename
 
@@ -644,7 +647,7 @@ def ensure_pkg_info(
     for directory in directories:
         pkg_info_file = directory / "PKG-INFO"
         if not pkg_info_file.is_file():
-            logger.warning(
+            logger.info(
                 f"PKG-INFO file is missing from {directory}, creating stub file"
             )
             pkg_info_file.write_text(

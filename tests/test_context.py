@@ -116,6 +116,17 @@ def test_setup_is_idempotent(tmp_path: pathlib.Path) -> None:
     assert test_file.read_text() == "test text"
 
 
+def test_setup_handles_directory_created_after_exists_check(
+    tmp_path: pathlib.Path,
+) -> None:
+    ctx = _make_context(tmp_path)
+    for directory in _all_setup_dirs(ctx):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    with patch.object(pathlib.Path, "exists", return_value=False):
+        ctx.setup()
+
+
 def test_package_build_info_extracts_name_from_requirement(
     tmp_context: context.WorkContext,
 ) -> None:

@@ -15,6 +15,7 @@ from fromager import bootstrapper, log
 from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._cache import (
     _download_wheel_from_cache,
+    _look_for_existing_wheel,
     bg_prepare_prebuilt,
     find_cached_wheel,
 )
@@ -35,7 +36,8 @@ from fromager.bootstrapper._types import (
 )
 from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
-from fromager.packagesettings import DownloadKind
+from fromager.dependency_graph import ROOT
+from fromager.packagesettings import DownloadKind, WheelSettings
 from fromager.requirements_file import RequirementType, SourceType
 
 
@@ -412,7 +414,10 @@ def test_multiple_versions_continues_on_error(tmp_context: WorkContext) -> None:
 
         req = Requirement("testpkg>=1.0")
 
-        with patch.object(PrepareSource, "run", prepare_source_run):
+        with (
+            patch.object(PrepareSource, "background_work", return_value=None),
+            patch.object(PrepareSource, "run", prepare_source_run),
+        ):
             with patch.object(bt, "has_been_seen", return_value=False):
                 bt._bootstrap_one(
                     req=req,
@@ -487,6 +492,109 @@ def _make_cache_bootstrapper(
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt.cache_wheel_server_url = "https://cache.test/simple"
     return bt
+
+
+def _set_cache_build_tag_hook(
+    ctx: WorkContext, hook: typing.Callable[..., list[str]]
+) -> None:
+    """Configure a build tag hook for cache lookup tests."""
+    ctx.settings._settings = ctx.settings._settings.model_copy(
+        update={"wheels": WheelSettings(build_tag_hook=hook)}
+    )
+
+
+def test_cache_lookup_checks_all_local_build_tags(
+    testdata_context: WorkContext,
+) -> None:
+    """A stale local suffix does not hide a wheel with the expected suffix."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return ["zzz"]
+
+    _set_cache_build_tag_hook(testdata_context, hook)
+    req = Requirement("test-pkg")
+    version = Version("1.0.1")
+    stale = testdata_context.wheels_build / "test_pkg-1.0.1-1_aaa-py3-none-any.whl"
+    matching = testdata_context.wheels_build / "test_pkg-1.0.1-1_zzz-py3-none-any.whl"
+    stale.touch()
+    matching.touch()
+
+    with patch(
+        "fromager.bootstrapper._cache._extract_build_reqs_from_wheel",
+        return_value=None,
+    ):
+        wheel, _ = _look_for_existing_wheel(
+            testdata_context, req, version, testdata_context.wheels_build
+        )
+
+    assert wheel == matching
+
+
+def test_cache_lookup_checks_all_remote_build_tags(
+    testdata_context: WorkContext,
+) -> None:
+    """A stale remote suffix does not hide a wheel with the expected suffix."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return ["zzz"]
+
+    _set_cache_build_tag_hook(testdata_context, hook)
+    req = Requirement("test-pkg")
+    version = Version("1.0.1")
+    cache_url = "https://cache.test/simple"
+    testdata_context.wheel_server_url = cache_url
+    stale_url = f"{cache_url}/test_pkg-1.0.1-1_aaa-py3-none-any.whl"
+    matching_name = "test_pkg-1.0.1-1_zzz-py3-none-any.whl"
+    matching_url = f"{cache_url}/{matching_name}"
+    matching = testdata_context.wheels_downloads / matching_name
+
+    with (
+        patch(
+            "fromager.resolver.find_all_matching_from_provider",
+            return_value=[(stale_url, version), (matching_url, version)],
+        ),
+        patch("fromager.wheels.download_wheel", return_value=matching) as download,
+        patch(
+            "fromager.bootstrapper._cache._extract_build_reqs_from_wheel",
+            return_value=None,
+        ),
+    ):
+        wheel, _ = _download_wheel_from_cache(testdata_context, cache_url, req, version)
+
+    assert wheel == matching
+    download.assert_called_once_with(
+        req=req,
+        wheel_url=matching_url,
+        output_directory=testdata_context.wheels_downloads,
+    )
+
+
+def test_cache_lookup_propagates_build_tag_hook_error(
+    testdata_context: WorkContext,
+) -> None:
+    """Invalid hook output fails the lookup instead of becoming a cache miss."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return ["bad-suffix"]
+
+    _set_cache_build_tag_hook(testdata_context, hook)
+    req = Requirement("test-pkg")
+    version = Version("1.0.1")
+    cache_url = "https://cache.test/simple"
+    testdata_context.wheel_server_url = cache_url
+    wheel_url = f"{cache_url}/test_pkg-1.0.1-1_valid-py3-none-any.whl"
+
+    with (
+        patch(
+            "fromager.resolver.find_all_matching_from_provider",
+            return_value=[(wheel_url, version)],
+        ),
+        patch("fromager.wheels.download_wheel") as download,
+        pytest.raises(ValueError, match="invalid segment"),
+    ):
+        _download_wheel_from_cache(testdata_context, cache_url, req, version)
+
+    download.assert_not_called()
 
 
 def test_cache_lookup_resolver_exception_logs_info(
@@ -899,11 +1007,13 @@ def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
         return []
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(
             bt,
             "_resolve_and_add_top_level",
             return_value=("http://example.test/testpkg-1.0.tar.gz", Version("1.0")),
         ),
+        patch.object(Resolve, "background_work", return_value=None),
         patch.object(Resolve, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
@@ -921,7 +1031,9 @@ def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
     req = Requirement("badpkg")
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(bt, "_resolve_and_add_top_level", return_value=None),
+        patch.object(Resolve, "background_work", return_value=None),
         patch.object(Resolve, "run") as mock_run,
         patch.object(bt, "_record_stack_state"),
     ):
@@ -943,17 +1055,98 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
         return []
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(
             bt,
             "_resolve_and_add_top_level",
             return_value=("http://example.test/pkg-1.0.tar.gz", Version("1.0")),
         ),
+        patch.object(Resolve, "background_work", return_value=None),
         patch.object(Resolve, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
         bt.bootstrap([req1, req2])
 
     assert sorted(dispatch_calls) == ["pkg1", "pkg2"]
+
+
+def _bootstrap_and_record_started(
+    bt: bootstrapper.Bootstrapper,
+    requirements: list[Requirement],
+    versions_by_rule: dict[str, list[tuple[str, Version]]],
+) -> set[str]:
+    """Run bootstrap() against a fake index and return the node keys Start saw.
+
+    versions_by_rule maps each top-level rule string to what the index
+    returns for it, which is how the release-age cooldown looks to the
+    bootstrapper: an unpinned rule does not see a version inside the
+    cooldown window, an exact pin does.
+    """
+    started: set[str] = set()
+
+    def fake_lookup(
+        provider: typing.Any, req: Requirement, **kwargs: typing.Any
+    ) -> list[tuple[str, Version]]:
+        return list(versions_by_rule[str(req)])
+
+    def fake_start_run(self: Start, bt_arg: bootstrapper.Bootstrapper) -> list[Phase]:
+        wi = self.work_item
+        started.add(f"{canonicalize_name(wi.req.name)}=={wi.resolved_version}")
+        return []
+
+    with (
+        patch.object(bt._resolver, "_resolve_from_graph", return_value=None),
+        patch("fromager.bootstrap_requirement_resolver.sources.get_source_provider"),
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            side_effect=fake_lookup,
+        ),
+        patch.object(Start, "run", fake_start_run),
+        patch.object(bt, "_record_stack_state"),
+    ):
+        bt.bootstrap(requirements)
+
+    return started
+
+
+_OLD = ("https://files.test/pkg-0.39.0.tar.gz", Version("0.39.0"))
+_NEW = ("https://files.test/pkg-0.39.1.tar.gz", Version("0.39.1"))
+
+
+def test_bootstrap_toplevel_unpinned_then_pin_leaves_no_stale_node(
+    tmp_context: WorkContext,
+) -> None:
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    requirements = [Requirement("pkg"), Requirement("pkg==0.39.1")]
+
+    started = _bootstrap_and_record_started(
+        bt, requirements, {"pkg": [_OLD], "pkg==0.39.1": [_NEW]}
+    )
+
+    graph_nodes = set(tmp_context.dependency_graph.nodes) - {ROOT}
+    assert started == {"pkg==0.39.1"}
+    assert graph_nodes == started
+    root_edges = tmp_context.dependency_graph.nodes[ROOT].children
+    assert sorted(str(edge.req) for edge in root_edges) == ["pkg", "pkg==0.39.1"]
+    assert {edge.destination_node.key for edge in root_edges} == {"pkg==0.39.1"}
+
+
+def test_bootstrap_toplevel_multiple_versions_graph_matches_started(
+    tmp_context: WorkContext,
+) -> None:
+    bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+    requirements = [Requirement("pkg"), Requirement("pkg==0.39.1")]
+
+    with patch("fromager.bootstrapper._resolve._cache.find_cached_wheel") as cached:
+        cached.return_value = (None, None)
+        started = _bootstrap_and_record_started(
+            bt, requirements, {"pkg": [_OLD], "pkg==0.39.1": [_NEW]}
+        )
+
+    graph_nodes = set(tmp_context.dependency_graph.nodes) - {ROOT}
+    assert started == {"pkg==0.39.0", "pkg==0.39.1"}
+    assert graph_nodes == started
 
 
 def test_bg_prepare_source_log_prefix_includes_version(

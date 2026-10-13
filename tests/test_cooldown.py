@@ -27,6 +27,8 @@ from fromager import (
     sources,
     wheels,
 )
+from fromager.commands import build as build_command
+from fromager.packagesettings import WheelSettings
 from fromager.requirements_file import RequirementType
 
 _BOOTSTRAP_TIME = datetime.datetime(2026, 3, 26, 0, 0, 0, tzinfo=datetime.UTC)
@@ -650,12 +652,12 @@ def test_local_wheel_server_allows_without_upload_time(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """resolve_all_prebuilt_wheels() allows candidates from the local wheel server
-    even when upload_time is missing.
+    even when upload_time is missing, without emitting a warning.
 
     The local fromager wheel server is PEP 503-only and serves packages that were
     already resolved and built earlier in the same run. They are trusted and must
     not be fail-closed by the cooldown just because the local server cannot supply
-    upload timestamps.
+    upload timestamps. Localhost indexes silently skip the cooldown check.
     """
     local_server_url = "http://127.0.0.1:9999/simple/"
     ctx = context.WorkContext(
@@ -696,7 +698,630 @@ def test_local_wheel_server_allows_without_upload_time(
     assert len(results) == 1
     _, version = results[0]
     assert str(version) == "1.3.2"
-    assert "cooldown check skipped" in caplog.text
+    assert "cooldown cannot be enforced" not in caplog.text
+
+
+def test_local_wheel_server_skips_cooldown_entirely(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """resolve_cached_wheel() disables cooldown for the local wheel server.
+
+    The local fromager wheel server serves packages that were already resolved
+    and built earlier in the same run.  They are trusted, so resolve_cached_wheel
+    uses PyPICacheProvider (cooldown=None) and no cooldown-related warnings are
+    emitted.
+    """
+    local_server_url = "http://127.0.0.1:9999/simple/"
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
+
+    no_timestamp_response = {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": "test_pkg-1.3.2-py3-none-any.whl",
+                "url": f"{local_server_url}test-pkg/test_pkg-1.3.2-py3-none-any.whl",
+                "hashes": {"sha256": "bbb"},
+            },
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{local_server_url}test-pkg/",
+                json=no_timestamp_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            _url, version = wheels.resolve_cached_wheel(
+                ctx=ctx,
+                req=Requirement("test-pkg"),
+                cache_server_url=local_server_url,
+            )
+
+    assert str(version) == "1.3.2"
+    assert "cooldown" not in caplog.text.lower()
+
+
+def test_cache_wheel_server_skips_cooldown_entirely(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """resolve_cached_wheel() disables cooldown for the cache wheel server.
+
+    The cache wheel server contains wheels from previous fromager runs that
+    were already vetted during original sdist resolution.  Cooldown is not
+    applicable.
+    """
+    cache_server_url = "https://registry.test/packages/pypi/simple/"
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
+
+    no_timestamp_response = {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": "test_pkg-1.3.2-py3-none-any.whl",
+                "url": f"{cache_server_url}test-pkg/test_pkg-1.3.2-py3-none-any.whl",
+                "hashes": {"sha256": "bbb"},
+            },
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{cache_server_url}test-pkg/",
+                json=no_timestamp_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            _url, version = wheels.resolve_cached_wheel(
+                ctx=ctx,
+                req=Requirement("test-pkg"),
+                cache_server_url=cache_server_url,
+            )
+
+    assert str(version) == "1.3.2"
+    assert "cooldown" not in caplog.text.lower()
+
+
+def test_non_cache_server_retains_cooldown(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """resolve_all_prebuilt_wheels() keeps cooldown active for non-cache servers.
+
+    When a server URL is an external/upstream index (not local or cache),
+    cooldown remains active.  Candidates without upload timestamps trigger a
+    warning because the server does not support upload_time.
+    """
+    external_server_url = "https://external.test/simple/"
+    ctx = context.WorkContext(
+        active_settings=None,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        cooldown=_COOLDOWN,
+    )
+
+    no_timestamp_response = {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": "test_pkg-1.3.2-py3-none-any.whl",
+                "url": f"{external_server_url}test-pkg/test_pkg-1.3.2-py3-none-any.whl",
+                "hashes": {"sha256": "bbb"},
+            },
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{external_server_url}test-pkg/",
+                json=no_timestamp_response,
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            results = wheels.resolve_all_prebuilt_wheels(
+                ctx=ctx,
+                req=Requirement("test-pkg"),
+                wheel_server_urls=[external_server_url],
+            )
+
+    assert len(results) == 1
+    _, version = results[0]
+    assert str(version) == "1.3.2"
+    assert "cooldown cannot be enforced" in caplog.text
+
+
+_LOCAL_WHEEL_SERVER = "http://127.0.0.1:8080/simple/"
+_CACHE_WHEEL_SERVER = "https://cache.test/simple/"
+_PACKAGE_WHEEL_SERVER = "https://custom.test/simple/"
+_RECENT_UPLOAD_TIME = "2026-03-25T00:00:00+00:00"
+_OLD_UPLOAD_TIME = "2026-03-15T00:00:00+00:00"
+
+
+def _simple_wheel_index(
+    server_url: str,
+    *,
+    upload_time: str | None = None,
+    version: str = "1.3.2",
+) -> dict[str, typing.Any]:
+    filename = f"test_pkg-{version}-py3-none-any.whl"
+    file_entry: dict[str, typing.Any] = {
+        "filename": filename,
+        "url": f"{server_url}test-pkg/{filename}",
+        "hashes": {"sha256": "bbb"},
+    }
+    if upload_time is not None:
+        file_entry["upload-time"] = upload_time
+    return {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [file_entry],
+    }
+
+
+def _wheel_index_for_filenames(
+    server_url: str, filenames: list[str]
+) -> dict[str, typing.Any]:
+    return {
+        "meta": {"api-version": "1.1"},
+        "name": "test-pkg",
+        "files": [
+            {
+                "filename": filename,
+                "url": f"{server_url}test-pkg/{filename}",
+                "hashes": {"sha256": "bbb"},
+            }
+            for filename in filenames
+        ],
+    }
+
+
+def _empty_index() -> dict[str, typing.Any]:
+    return {"meta": {"api-version": "1.1"}, "name": "test-pkg", "files": []}
+
+
+def _context_for_existing_wheel(
+    tmp_path: pathlib.Path,
+    *,
+    package_wheel_server_url: str | None = None,
+    pre_built: bool = False,
+) -> context.WorkContext:
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    if package_wheel_server_url is not None or pre_built:
+        variant_lines = ["variants:", "  cpu:"]
+        if pre_built:
+            variant_lines.append("    pre_built: true")
+        if package_wheel_server_url is not None:
+            variant_lines.append(f"    wheel_server_url: {package_wheel_server_url}")
+        (settings_dir / "test-pkg.yaml").write_text(
+            "\n".join(variant_lines) + "\n",
+            encoding="utf-8",
+        )
+    settings = packagesettings.Settings.from_files(
+        settings_file=tmp_path / "settings.yaml",
+        settings_dir=settings_dir,
+        variant="cpu",
+        patches_dir=tmp_path / "patches",
+        max_jobs=None,
+    )
+    return context.WorkContext(
+        active_settings=settings,
+        patches_dir=tmp_path / "patches",
+        sdists_repo=tmp_path / "sdists-repo",
+        wheels_repo=tmp_path / "wheels-repo",
+        work_dir=tmp_path / "work-dir",
+        wheel_server_url=_LOCAL_WHEEL_SERVER,
+        cooldown=_COOLDOWN,
+    )
+
+
+def _record_download(
+    seen: list[str],
+) -> typing.Callable[[Requirement, str, pathlib.Path], pathlib.Path]:
+    def _download(
+        req: Requirement,
+        wheel_url: str,
+        output_directory: pathlib.Path,
+    ) -> pathlib.Path:
+        del req
+        seen.append(wheel_url)
+        output_directory.mkdir(parents=True, exist_ok=True)
+        path = output_directory / wheel_url.rsplit("/", 1)[-1]
+        path.write_bytes(b"")
+        return path
+
+    return _download
+
+
+def _set_existing_wheel_build_tag_hook(
+    ctx: context.WorkContext, suffixes: list[str]
+) -> None:
+    """Configure a hook and changelog for build-tag lookup tests."""
+
+    def hook(**kwargs: object) -> list[str]:
+        return suffixes
+
+    ctx.settings._settings = ctx.settings._settings.model_copy(
+        update={
+            "changelog": {"cpu": ["test entry"]},
+            "wheels": WheelSettings(build_tag_hook=hook),
+        }
+    )
+    ctx.settings._pbi_cache.clear()
+
+
+def test_is_wheel_built_checks_all_candidates(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mismatched candidate does not hide a later match on the same server."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["aaa"])
+
+    version = Version("1.3.2")
+    stale_name = "test_pkg-1.3.2-1_zzz-py3-none-any.whl"
+    matching_name = "test_pkg-1.3.2-1_aaa-py3-none-any.whl"
+    matching_url = f"{_LOCAL_WHEEL_SERVER}test-pkg/{matching_name}"
+
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(
+                _LOCAL_WHEEL_SERVER, [stale_name, matching_name]
+            ),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(ctx, "test-pkg", version)
+
+    assert found is not None
+    assert found.name == matching_name
+    assert downloaded == [matching_url]
+    assert [request.url for request in r.request_history] == [
+        f"{_LOCAL_WHEEL_SERVER}test-pkg/"
+    ]
+
+
+def test_is_wheel_built_checks_next_server_after_tag_mismatch(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mismatch on the local server does not hide a match in the job cache."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["aaa"])
+
+    version = Version("1.3.2")
+    stale_name = "test_pkg-1.3.2-1_zzz-py3-none-any.whl"
+    matching_name = "test_pkg-1.3.2-1_aaa-py3-none-any.whl"
+    matching_url = f"{_CACHE_WHEEL_SERVER}test-pkg/{matching_name}"
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_LOCAL_WHEEL_SERVER, [stale_name]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        r.get(
+            f"{_CACHE_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_CACHE_WHEEL_SERVER, [matching_name]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(
+            ctx,
+            "test-pkg",
+            version,
+            cache_wheel_server_url=_CACHE_WHEEL_SERVER,
+        )
+
+    assert found is not None
+    assert found.name == matching_name
+    assert [request.url for request in r.request_history] == [
+        f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+        f"{_CACHE_WHEEL_SERVER}test-pkg/",
+    ]
+    assert downloaded == [matching_url]
+
+
+def test_is_wheel_built_propagates_build_tag_hook_error(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Invalid hook output is not treated as a cache miss."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["invalid-suffix"])
+    version = Version("1.3.2")
+    filename = "test_pkg-1.3.2-1_aaa-py3-none-any.whl"
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_LOCAL_WHEEL_SERVER, [filename]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        with pytest.raises(ValueError, match="invalid segment"):
+            build_command._is_wheel_built(ctx, "test-pkg", version)
+
+
+def test_is_wheel_built_propagates_inconsistent_build_tag(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A higher build number with the expected suffix remains an error."""
+    ctx = _context_for_existing_wheel(tmp_path)
+    _set_existing_wheel_build_tag_hook(ctx, ["aaa"])
+    version = Version("1.3.2")
+    filename = "test_pkg-1.3.2-2_aaa-py3-none-any.whl"
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_LOCAL_WHEEL_SERVER, [filename]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        with pytest.raises(ValueError, match=r"changelog.*inconsistent"):
+            build_command._is_wheel_built(ctx, "test-pkg", version)
+
+
+def test_is_wheel_built_prebuilt_keeps_publisher_build_tag(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pre-built wheel with a publisher build number is reused.
+
+    The changelog tag is empty for pre-built packages. That must not reject
+    a higher build number, and the highest published build number is used.
+    """
+    ctx = _context_for_existing_wheel(
+        tmp_path,
+        package_wheel_server_url=_PACKAGE_WHEEL_SERVER,
+        pre_built=True,
+    )
+    version = Version("1.3.2")
+    older_name = "test_pkg-1.3.2-1-py3-none-any.whl"
+    newer_name = "test_pkg-1.3.2-2-py3-none-any.whl"
+    newer_url = f"{_PACKAGE_WHEEL_SERVER}test-pkg/{newer_name}"
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_PACKAGE_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(
+                _PACKAGE_WHEEL_SERVER, [older_name, newer_name]
+            ),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(ctx, "test-pkg", version)
+
+    assert found is not None
+    assert found.name == newer_name
+    assert downloaded == [newer_url]
+
+
+def test_is_wheel_built_prebuilt_reuses_cache_build_tag(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pre-built package reuses a build-tagged wheel from the job cache.
+
+    No package wheel_server_url is set, so the lookup uses the local server
+    and --cache-wheel-server-url. The publisher build number must not raise.
+    """
+    ctx = _context_for_existing_wheel(tmp_path, pre_built=True)
+    version = Version("1.3.2")
+    wheel_name = "test_pkg-1.3.2-2-py3-none-any.whl"
+    wheel_url = f"{_CACHE_WHEEL_SERVER}test-pkg/{wheel_name}"
+    downloaded: list[str] = []
+    monkeypatch.setattr(
+        build_command.wheels, "download_wheel", _record_download(downloaded)
+    )
+
+    with requests_mock.Mocker() as r:
+        r.get(
+            f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+            json=_empty_index(),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        r.get(
+            f"{_CACHE_WHEEL_SERVER}test-pkg/",
+            json=_wheel_index_for_filenames(_CACHE_WHEEL_SERVER, [wheel_name]),
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        found = build_command._is_wheel_built(
+            ctx,
+            "test-pkg",
+            version,
+            cache_wheel_server_url=_CACHE_WHEEL_SERVER,
+        )
+
+    assert found is not None
+    assert found.name == wheel_name
+    assert downloaded == [wheel_url]
+    assert [request.url for request in r.request_history] == [
+        f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+        f"{_CACHE_WHEEL_SERVER}test-pkg/",
+    ]
+
+
+def test_is_wheel_built_uses_package_wheel_server_url(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A package wheel_server_url is the only index consulted.
+
+    The job cache and local server are not fallbacks. A missing upload
+    timestamp warns and still allows the wheel, because this path uses the
+    pre-built resolver rather than the trusted cache.
+    """
+    ctx = _context_for_existing_wheel(
+        tmp_path,
+        package_wheel_server_url=_PACKAGE_WHEEL_SERVER,
+    )
+    seen: list[str] = []
+    monkeypatch.setattr(build_command.wheels, "download_wheel", _record_download(seen))
+
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{_PACKAGE_WHEEL_SERVER}test-pkg/",
+                json=_simple_wheel_index(_PACKAGE_WHEEL_SERVER),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            r.get(
+                f"{_CACHE_WHEEL_SERVER}test-pkg/",
+                json=_simple_wheel_index(
+                    _CACHE_WHEEL_SERVER,
+                    upload_time=_OLD_UPLOAD_TIME,
+                ),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            r.get(
+                f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+                json=_simple_wheel_index(_LOCAL_WHEEL_SERVER),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            found = build_command._is_wheel_built(
+                ctx,
+                "test-pkg",
+                Version("1.3.2"),
+                cache_wheel_server_url=_CACHE_WHEEL_SERVER,
+            )
+
+    assert found is not None
+    assert found.name == "test_pkg-1.3.2-py3-none-any.whl"
+    assert seen == [f"{_PACKAGE_WHEEL_SERVER}test-pkg/test_pkg-1.3.2-py3-none-any.whl"]
+    requested = [request.url for request in r.request_history]
+    assert any(url.startswith(_PACKAGE_WHEEL_SERVER) for url in requested)
+    assert all(not url.startswith(_CACHE_WHEEL_SERVER) for url in requested)
+    assert all(not url.startswith(_LOCAL_WHEEL_SERVER) for url in requested)
+    assert "cooldown cannot be enforced" in caplog.text
+
+
+def test_is_wheel_built_package_wheel_server_keeps_cooldown(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A too-new wheel on a package index is rejected and the cache is not used.
+
+    The cache holds an older matching wheel. Falling through to it would hide
+    the cooldown that must stay on for an upstream pre-built index.
+    """
+    ctx = _context_for_existing_wheel(
+        tmp_path,
+        package_wheel_server_url=_PACKAGE_WHEEL_SERVER,
+    )
+    seen: list[str] = []
+    monkeypatch.setattr(build_command.wheels, "download_wheel", _record_download(seen))
+
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{_PACKAGE_WHEEL_SERVER}test-pkg/",
+                json=_simple_wheel_index(
+                    _PACKAGE_WHEEL_SERVER,
+                    upload_time=_RECENT_UPLOAD_TIME,
+                ),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            r.get(
+                f"{_CACHE_WHEEL_SERVER}test-pkg/",
+                json=_simple_wheel_index(
+                    _CACHE_WHEEL_SERVER,
+                    upload_time=_OLD_UPLOAD_TIME,
+                ),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            r.get(
+                f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+                json=_simple_wheel_index(
+                    _LOCAL_WHEEL_SERVER,
+                    upload_time=_OLD_UPLOAD_TIME,
+                ),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            found = build_command._is_wheel_built(
+                ctx,
+                "test-pkg",
+                Version("1.3.2"),
+                cache_wheel_server_url=_CACHE_WHEEL_SERVER,
+            )
+
+    assert found is None
+    assert seen == []
+    requested = [request.url for request in r.request_history]
+    assert any(url.startswith(_PACKAGE_WHEEL_SERVER) for url in requested)
+    assert all(not url.startswith(_CACHE_WHEEL_SERVER) for url in requested)
+    assert all(not url.startswith(_LOCAL_WHEEL_SERVER) for url in requested)
+    assert "cooldown blocked" in caplog.text
+
+
+def test_is_wheel_built_cache_ignores_recent_upload_time(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The job cache is trusted even when its upload-time is inside the cooldown.
+
+    Pulp reports the time the artifact was added to the index, not the PyPI
+    publish date. That timestamp must not cause a cached wheel to be rebuilt.
+    """
+    ctx = _context_for_existing_wheel(tmp_path)
+    seen: list[str] = []
+    monkeypatch.setattr(build_command.wheels, "download_wheel", _record_download(seen))
+
+    with caplog.at_level(logging.WARNING, logger="fromager.resolver"):
+        with requests_mock.Mocker() as r:
+            r.get(
+                f"{_LOCAL_WHEEL_SERVER}test-pkg/",
+                json=_empty_index(),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            r.get(
+                f"{_CACHE_WHEEL_SERVER}test-pkg/",
+                json=_simple_wheel_index(
+                    _CACHE_WHEEL_SERVER,
+                    upload_time=_RECENT_UPLOAD_TIME,
+                ),
+                headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+            )
+            found = build_command._is_wheel_built(
+                ctx,
+                "test-pkg",
+                Version("1.3.2"),
+                cache_wheel_server_url=_CACHE_WHEEL_SERVER,
+            )
+
+    assert found is not None
+    assert seen == [f"{_CACHE_WHEEL_SERVER}test-pkg/test_pkg-1.3.2-py3-none-any.whl"]
+    assert "cooldown" not in caplog.text.lower()
 
 
 # ---------------------------------------------------------------------------

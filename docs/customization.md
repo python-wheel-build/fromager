@@ -393,6 +393,78 @@ $ tox -e cli -- canonicalize flit-core
 flit_core
 ```
 
+## Global settings
+
+Global settings are configured in the `settings.yaml` file passed via the
+`--settings-file` flag. These settings apply to all packages being built.
+
+### Wheel build tag hook
+
+```{versionadded} 0.99.0
+```
+
+The `build_tag_hook` is a configuration option that allows you to customize
+wheel filenames by appending configuration-specific suffixes to the build tag.
+This is useful for creating unique, deterministic filenames that reflect the
+build configuration and distinguish wheels built for different variants.
+
+Process hooks register multiple event callbacks through entry points.
+`build_tag_hook` selects one callable in `settings.yaml` because Fromager
+uses its return value when building wheels and checking the cache.
+
+Configure the hook in your global `settings.yaml`:
+
+```yaml
+wheels:
+  build_tag_hook: "myproject.hooks:build_tag_hook"
+```
+
+The module must be importable by the Python environment running Fromager.
+
+The hook function receives keyword-only arguments and returns a sequence of
+suffix segments (strings) to append to the wheel build tag:
+
+```python
+from typing import Sequence
+
+from packaging.requirements import Requirement
+from packaging.tags import Tag
+from packaging.version import Version
+
+from fromager import context
+
+
+def build_tag_hook(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    wheel_tags: frozenset[Tag],
+) -> Sequence[str]:
+    """Return a valid suffix for each configured variant."""
+    suffixes = {"cpu": "cpu", "cuda-13": "cuda13"}
+    return [suffixes[ctx.variant]]
+```
+
+Fromager joins segments in order with `_`. If the changelog build tag is `2`,
+returning `["cuda13", "torch2.10"]` produces `2_cuda13_torch2.10`.
+
+**Important notes:**
+
+- The hook runs only when the package has a changelog-derived build tag. It
+  is skipped when there is no changelog entry or the package is prebuilt.
+- Return a sequence of strings, not a single string or bytes object. Each
+  segment must be non-empty and contain only ASCII letters, digits, or dots.
+  Map variant names with other characters to distinct valid segments.
+- The hook must be deterministic and independent of wheel contents, build
+  environment, or ELF metadata, so that fresh builds and cache lookups
+  produce identical tags.
+- Use `wheel_tags` only to distinguish pure wheels from platform wheels.
+  The hook must return identical results across architectures for the same
+  configured variant.
+- Installers do not use build tags to select a variant. Keep incompatible
+  variants in separate package indexes.
+
 ## Process hooks
 
 Fromager supports plugging in Python hooks to be run after build events.
