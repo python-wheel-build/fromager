@@ -1,4 +1,19 @@
 pull_request_rules:
+  - name: Backport main changes to new-resolver-config
+    conditions:
+      - repository-full-name=python-wheel-build/fromager
+      - base=main
+      - merged
+      # PR #1367 brought the feature branch up to date at this cutoff.
+      - merged-at>2026-10-13T18:55:47Z
+      - head!=new-resolver-config
+    actions:
+      backport:
+        branches:
+          - new-resolver-config
+        ignore_conflicts: true
+        label_conflicts: conflicts
+
   - name: Add CI label
     conditions:
       - or:
@@ -27,6 +42,10 @@ pull_request_rules:
     conditions:
       - and:
           - "-draft"
+          # Maintainers merge resolver backports after reviewing CI and conflicts.
+          - or:
+              - base!=new-resolver-config
+              - -head~=^mergify/bp/new-resolver-config/
 
           # Unit tests
           - check-success=unit (3.12, 1.75, ubuntu-latest)
