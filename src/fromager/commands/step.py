@@ -50,7 +50,7 @@ def download_source_archive(
     source_url, version = sources.resolve_source(
         ctx=wkctx, req=req, sdist_server_url=sdist_server_url
     )
-    filename = sources.download_source(
+    filename, _ = sources.download_source(
         ctx=wkctx,
         req=req,
         version=version,

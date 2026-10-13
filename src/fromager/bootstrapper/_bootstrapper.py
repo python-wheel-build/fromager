@@ -465,13 +465,14 @@ class Bootstrapper:
         source_url: str,
     ) -> pathlib.Path:
         """Download source for a package."""
-        result: pathlib.Path = sources.download_source(
+        download_result = sources.download_source(
             ctx=self.ctx,
             req=req,
             version=resolved_version,
             download_url=source_url,
         )
-        return result
+        source_path: pathlib.Path = download_result[0]
+        return source_path
 
     def _prepare_source(
         self,
