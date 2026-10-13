@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 PYTHON_VERSION = Version(python_version())
 DEBUG_RESOLVER = os.environ.get("DEBUG_RESOLVER", "")
 PYPI_SERVER_URL = "https://pypi.org/simple"
+_LOCALHOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
 GITHUB_URL = "https://github.com"
 
 # all supported tags
@@ -871,7 +872,7 @@ class BaseProvider(ExtrasProvider):
             for b in blocked:
                 candidates.remove(b)
             versions = ", ".join(str(b.version) for b in blocked)
-            logger.info(
+            logger.warning(
                 "cooldown blocked %d version(s): %s",
                 len(blocked),
                 versions,
@@ -925,6 +926,20 @@ class PyPIProvider(BaseProvider):
         self.sdist_server_url = sdist_server_url
         self.ignore_platform = ignore_platform
         self.override_download_url = override_download_url
+
+    def is_blocked_by_cooldown(self, candidate: Candidate) -> bool:
+        """Return True if the candidate is rejected by the release-age cooldown.
+
+        Silently skips the cooldown check for localhost indexes, which never
+        provide upload timestamps.
+        """
+        if (
+            self.cooldown is not None
+            and candidate.upload_time is None
+            and urlparse(self.sdist_server_url).hostname in _LOCALHOST_NAMES
+        ):
+            return False
+        return super().is_blocked_by_cooldown(candidate)
 
     @property
     def cache_key(self) -> str:
@@ -1034,7 +1049,25 @@ class PyPIProvider(BaseProvider):
         requirements: RequirementsMap,
         incompatibilities: CandidatesMap,
     ) -> Candidates:
-        return super().find_matches(identifier, requirements, incompatibilities)
+        candidates = super().find_matches(identifier, requirements, incompatibilities)
+        if not self.include_wheels:
+            accepted_versions = {c.version for c in candidates}
+            all_candidates = self._find_cached_candidates(identifier)
+            sdist_versions = {c.version for c in all_candidates if c.is_sdist}
+            reqs = requirements.get(identifier, [])
+            for c in all_candidates:
+                if (
+                    not c.is_sdist
+                    and c.version not in accepted_versions
+                    and c.version not in sdist_versions
+                    and all(c.version in r.specifier for r in reqs)
+                ):
+                    logger.info(
+                        "%s==%s: no sdist available, only a wheel (skipped)",
+                        c.name,
+                        c.version,
+                    )
+        return candidates
 
 
 class MatchFunction(typing.Protocol):

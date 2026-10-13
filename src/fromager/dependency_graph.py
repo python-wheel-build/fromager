@@ -364,7 +364,7 @@ class DependencyGraph:
         self,
         req_name: NormalizedName,
         req_version: Version,
-    ) -> None:
+    ) -> list[DependencyNode]:
         """Remove a dependency node and any orphaned descendants from the graph.
 
         Removes the node and all edges pointing to it. Child nodes that have
@@ -373,11 +373,16 @@ class DependencyGraph:
         Args:
             req_name: Canonical name of the package
             req_version: Version of the package
+
+        Returns:
+            The removed nodes: the requested node first, then the orphaned
+            descendants. Empty if the node is not in the graph.
         """
+        removed: list[DependencyNode] = []
         key = f"{req_name}=={req_version}"
         if key not in self.nodes:
             logger.debug(f"Cannot remove {key} - not in graph")
-            return
+            return removed
 
         queue: collections.deque[str] = collections.deque([key])
 
@@ -392,6 +397,7 @@ class DependencyGraph:
             logger.debug(f"Removing failed dependency {key} from graph")
 
             deleted_node = self.nodes[key]
+            removed.append(deleted_node)
 
             # Remove references to this node from its direct children
             children = []
@@ -423,6 +429,8 @@ class DependencyGraph:
             for child in children:
                 if child.key != ROOT and child.key in self.nodes and not child.parents:
                     queue.append(child.key)
+
+        return removed
 
     def get_dependency_edges(
         self, match_dep_types: list[RequirementType] | None = None

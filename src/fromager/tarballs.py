@@ -30,11 +30,16 @@ def tar_reproducible(
     prefix: pathlib.Path | None = None,
     *,
     exclude_vcs: bool = False,
+    arcname_root: str | None = None,
 ) -> None:
     """Create reproducible tar file
 
     Add content from basedir to already opened tar. If prefix is provided, use
     it to set relative paths for the content being added.
+
+    If arcname_root is provided, prepend it to all archive entry names.
+    This allows the top-level directory to be explicitly set regardless of
+    the basedir or prefix.
 
     If ``exclude_vcs`` is True, then Bazaar, git, Mercurial, and subversion
     directories and files are excluded.
@@ -53,7 +58,13 @@ def tar_reproducible(
     content.sort()
 
     for fn in content:
-        # Ensure that the paths in the tarfile are rooted at the prefix
-        # directory, if we have one.
-        arcname = fn if prefix is None else os.path.relpath(fn, prefix)
+        if arcname_root is not None:
+            # When arcname_root is specified, compute paths relative to basedir
+            # to avoid including intermediate directory names from build_dir
+            rel = os.path.relpath(fn, basedir)
+            arcname = arcname_root if rel == "." else os.path.join(arcname_root, rel)
+        else:
+            # Ensure that the paths in the tarfile are rooted at the prefix
+            # directory, if we have one.
+            arcname = fn if prefix is None else os.path.relpath(fn, prefix)
         tar.add(fn, filter=_tar_reset, recursive=False, arcname=arcname)
