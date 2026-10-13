@@ -228,31 +228,19 @@ hatch run test:coverage-report                   # Coverage summary
 
 ## Resolver Branch Backports
 
-Mergify creates a backport PR into `new-resolver-config` for each PR merged into
-`main` after the baseline sync in [#1367](https://github.com/python-wheel-build/fromager/pull/1367)
-on 2026-10-13 at 18:55:47 UTC. The rule excludes PRs whose head branch is
-`new-resolver-config`. It uses the installed Mergify GitHub App and needs no
-personal token or additional workflow.
+Mergify cherry-picks PRs merged into `main` after the
+[baseline sync #1367](https://github.com/python-wheel-build/fromager/pull/1367)
+into backport PRs for `new-resolver-config`, using its GitHub App without a personal
+token. Maintainers review and manually merge them after applicable CI passes,
+merging dependent backports in source order.
 
-Backport PRs link to their source and use branches named
-`mergify/bp/new-resolver-config/pr-<number>`. An authorized maintainer must review
-and manually merge each backport after its applicable CI checks pass. Merge
-dependent backports in the order their source PRs landed in `main`.
+Resolve conflicts and remove the `conflicts` label before merging. To request a
+missing backport, check for an existing PR, then comment
+`@mergifyio backport new-resolver-config` on the merged source PR.
 
-Conflicting backports receive the `conflicts` label. Resolve conflicts on the
-backport branch, remove the label after resolution, and wait for CI before
-merging. If Mergify cannot create a backport, inspect its check on the source PR;
-some PRs containing merge commits require a manually prepared backport.
-
-For a missing backport, first check for an existing PR, then comment
-`@mergifyio backport new-resolver-config` on the merged source PR. This also covers
-PRs merged between the baseline sync and activation of the rule. Direct pushes to
-`main` require manual handling.
-
-Backports cherry-pick changes into new commits, so Git may report the feature
-branch as behind `main` even after its backports have merged. Remove the rule when
-the feature branch is retired. Removing it stops new backports; maintainers must
-handle any PRs already open.
+Direct pushes and unsupported merge histories need manual backports. Cherry-picks
+create new commits, so Git may still report the branch as behind `main`. Remove
+the backport rule when the feature branch is retired.
 
 ---
 
