@@ -32,6 +32,9 @@ from ._typedefs import (
 
 logger = logging.getLogger(__name__)
 
+_PACKAGE_LEGACY_SOURCE_FIELDS = frozenset({"download_source", "resolver_dist"})
+_VARIANT_LEGACY_SOURCE_FIELDS = frozenset({"wheel_server_url", "pre_built"})
+
 
 class SbomSettings(pydantic.BaseModel):
     """Global SBOM generation settings
@@ -488,8 +491,7 @@ class VariantInfo(pydantic.BaseModel):
         """Validate that ``source`` is mutually exclusive with legacy fields."""
         if self.source is None:
             return self
-        legacy_fields = {"wheel_server_url", "pre_built"}
-        conflicts = legacy_fields & self.model_fields_set
+        conflicts = _VARIANT_LEGACY_SOURCE_FIELDS & self.model_fields_set
         if conflicts:
             raise ValueError(
                 f"'source' is mutually exclusive with legacy settings: "
@@ -641,16 +643,35 @@ class PackageSettings(pydantic.BaseModel):
 
     @pydantic.model_validator(mode="after")
     def validate_source_exclusivity(self) -> typing.Self:
-        """Validate that ``source`` is mutually exclusive with legacy fields."""
-        if self.source is None:
-            return self
-        legacy_fields = {"download_source", "resolver_dist"}
-        conflicts = legacy_fields & self.model_fields_set
-        if conflicts:
+        """Validate source and legacy fields across package and variant levels."""
+        package_legacy_fields = _PACKAGE_LEGACY_SOURCE_FIELDS & self.model_fields_set
+        if self.source is not None and package_legacy_fields:
             raise ValueError(
                 f"'source' is mutually exclusive with legacy settings: "
-                f"{sorted(conflicts)}. Use 'source' alone or remove it "
+                f"{sorted(package_legacy_fields)}. Use 'source' alone or remove it "
                 f"and use the legacy settings."
+            )
+
+        cross_level_conflicts: list[str] = []
+        for variant_name, variant in self.variants.items():
+            if self.source is not None:
+                variant_legacy_fields = (
+                    _VARIANT_LEGACY_SOURCE_FIELDS & variant.model_fields_set
+                )
+                cross_level_conflicts.extend(
+                    f"source and variants.{variant_name}.{field}"
+                    for field in sorted(variant_legacy_fields)
+                )
+            if variant.source is not None:
+                cross_level_conflicts.extend(
+                    f"variants.{variant_name}.source and {field}"
+                    for field in sorted(package_legacy_fields)
+                )
+
+        if cross_level_conflicts:
+            raise ValueError(
+                "source is mutually exclusive with legacy settings across "
+                "package and variant levels: " + "; ".join(cross_level_conflicts)
             )
         return self
 
