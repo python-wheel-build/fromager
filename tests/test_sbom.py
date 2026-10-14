@@ -1,6 +1,8 @@
 import json
 import pathlib
 import typing
+import uuid
+from unittest.mock import patch
 
 from conftest import make_sbom_ctx
 from packaging.requirements import Requirement
@@ -88,20 +90,113 @@ def test_generate_sbom_custom_settings(tmp_path: pathlib.Path) -> None:
         creators=["Organization: ExampleCo"],
     )
     ctx = make_sbom_ctx(tmp_path, sbom_settings=settings)
-    doc = sbom.generate_sbom(
-        ctx=ctx,
-        req=Requirement("my-package==2.0.0"),
-        version=Version("2.0.0"),
-    )
+    fixed_uuid = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    with patch("fromager.sbom.uuid.uuid4", return_value=fixed_uuid):
+        doc = sbom.generate_sbom(
+            ctx=ctx,
+            req=Requirement("my-package==2.0.0"),
+            version=Version("2.0.0"),
+        )
 
     wheel = doc["packages"][0]
     assert wheel["supplier"] == "Organization: ExampleCo"
     assert doc["documentNamespace"] == (
-        "https://www.example.com/my-package-2.0.0.spdx.json"
+        f"https://www.example.com/my-package-2.0.0-{fixed_uuid}.spdx.json"
     )
     creators = doc["creationInfo"]["creators"]
     assert "Organization: ExampleCo" in creators
     assert any("fromager" in c for c in creators)
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_document_identity_follows_purl_version_override(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify document name and namespace follow the purl version override.
+
+    The document header must identify the built wheel, not the resolved
+    upstream version, and must not disagree with the package it
+    DESCRIBES.
+    """
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(),
+        package_overrides={
+            "purl": {
+                "version": "0.5.5+corp.1",
+                "upstream": "pkg:pypi/test-pkg@0.5.5",
+            },
+        },
+    )
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.5.5"),
+        version=Version("0.5.5"),
+    )
+
+    assert doc["name"] == "test-pkg-0.5.5+corp.1"
+    assert doc["documentNamespace"].startswith(
+        "https://spdx.org/spdxdocs/test-pkg-0.5.5%2Bcorp.1-"
+    )
+    assert doc["documentNamespace"].endswith(".spdx.json")
+    wheel = doc["packages"][0]
+    assert wheel["name"] == "test-pkg"
+    assert wheel["versionInfo"] == "0.5.5+corp.1"
+    upstream = doc["packages"][1]
+    assert upstream["versionInfo"] == "0.5.5"
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_namespace_is_unique_per_document(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify each generated document gets a distinct namespace."""
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    kwargs: dict[str, typing.Any] = {
+        "ctx": ctx,
+        "req": Requirement("test-pkg==0.5.5"),
+        "version": Version("0.5.5"),
+    }
+
+    doc1 = sbom.generate_sbom(**kwargs)
+    doc2 = sbom.generate_sbom(**kwargs)
+
+    assert doc1["name"] == doc2["name"]
+    assert doc1["documentNamespace"] != doc2["documentNamespace"]
+    _validate_spdx(doc1)
+    _validate_spdx(doc2)
+
+
+def test_generate_sbom_namespace_percent_encodes_purl_overrides(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify URI-hostile purl overrides are percent-encoded in the namespace."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(),
+        package_overrides={
+            "purl": {
+                "name": "my package",
+                "version": "1.0 beta",
+            },
+        },
+    )
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==1.0"),
+        version=Version("1.0"),
+    )
+
+    # Document and package names keep the raw override values
+    assert doc["name"] == "my package-1.0 beta"
+    wheel = doc["packages"][0]
+    assert wheel["name"] == "my package"
+    assert wheel["versionInfo"] == "1.0 beta"
+    # The namespace percent-encodes them so it stays a valid URI
+    namespace = doc["documentNamespace"]
+    assert namespace.startswith("https://spdx.org/spdxdocs/my%20package-1.0%20beta-")
+    assert " " not in namespace
+    assert namespace.endswith(".spdx.json")
     _validate_spdx(doc)
 
 
@@ -127,6 +222,8 @@ def test_generate_sbom_purl_field_overrides(tmp_path: pathlib.Path) -> None:
     assert upstream["externalRefs"][0]["referenceLocator"] == (
         "pkg:generic/custom-name@1.0.0"
     )
+    # Document identity follows the purl name override
+    assert doc["name"] == "custom-name-1.0.0"
     _validate_spdx(doc)
 
 

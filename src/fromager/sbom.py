@@ -11,7 +11,9 @@ import json
 import logging
 import pathlib
 import typing
+import uuid
 from datetime import UTC, datetime
+from urllib.parse import quote
 
 from packageurl import PackageURL
 from packaging.requirements import Requirement
@@ -96,6 +98,10 @@ def generate_sbom(
     The document contains the downstream wheel as the primary package,
     the upstream source as a second package, and DESCRIBES /
     GENERATED_FROM relationships.
+
+    The document name and namespace are derived from the downstream
+    purl (including any ``purl`` field overrides), so the document
+    identity always matches the wheel package entry it describes.
     """
     sbom_settings = ctx.settings.sbom_settings
     if sbom_settings is None:
@@ -108,8 +114,6 @@ def generate_sbom(
 
     creators = list(sbom_settings.creators)
     creators.append(f"Tool: fromager-{fromager_version}")
-
-    namespace = f"{sbom_settings.namespace!s}/{name}-{version}.spdx.json"
 
     downstream = _build_downstream_purl(
         name=name,
@@ -124,10 +128,23 @@ def generate_sbom(
         sbom_settings=sbom_settings,
     )
 
+    # Derive the document identity from the downstream purl so the
+    # document and the package it describes cannot drift apart. The
+    # random UUID keeps the namespace unique per generated document,
+    # as required by SPDX 2.3. The name and version are percent-encoded
+    # so the namespace is always a valid URI, even when purl overrides
+    # contain URI-hostile characters.
+    doc_name = downstream.name
+    doc_version = downstream.version or str(version)
+    namespace = (
+        f"{sbom_settings.namespace!s}/{quote(doc_name, safe='')}"
+        f"-{quote(doc_version, safe='')}-{uuid.uuid4()}.spdx.json"
+    )
+
     wheel_entry: dict[str, typing.Any] = {
         "SPDXID": "SPDXRef-wheel",
-        "name": downstream.name,
-        "versionInfo": downstream.version or str(version),
+        "name": doc_name,
+        "versionInfo": doc_version,
         "downloadLocation": "NOASSERTION",
         "supplier": sbom_settings.supplier,
         "externalRefs": [
@@ -158,7 +175,7 @@ def generate_sbom(
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
-        "name": f"{name}-{version}",
+        "name": f"{doc_name}-{doc_version}",
         "documentNamespace": namespace,
         "creationInfo": {
             "created": timestamp,
