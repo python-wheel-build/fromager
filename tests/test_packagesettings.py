@@ -1309,6 +1309,67 @@ def test_variant_source_exclusivity_invalid(yaml_str: str) -> None:
         PackageSettings.from_string("conflict-pkg", yaml_str)
 
 
+@pytest.mark.parametrize(
+    ("yaml_str", "source_path", "legacy_path"),
+    [
+        pytest.param(
+            "source:\n  provider: pypi-sdist\nvariants:\n  cpu:\n    pre_built: true\n",
+            "source",
+            "variants.cpu.pre_built",
+            id="package-source-variant-pre-built",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "variants:\n  cpu:\n    pre_built: false\n",
+            "source",
+            "variants.cpu.pre_built",
+            id="package-source-variant-explicit-false",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "variants:\n  cpu:\n    wheel_server_url: https://wheel.test/simple\n",
+            "source",
+            "variants.cpu.wheel_server_url",
+            id="package-source-variant-wheel-server",
+        ),
+        pytest.param(
+            "download_source:\n  url: https://egg.test/pkg.tar.gz\n"
+            "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
+            "variants.cpu.source",
+            "download_source",
+            id="variant-source-package-download-source",
+        ),
+        pytest.param(
+            "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n"
+            "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
+            "variants.cpu.source",
+            "resolver_dist",
+            id="variant-source-package-resolver-dist",
+        ),
+    ],
+)
+def test_cross_level_source_exclusivity_invalid(
+    yaml_str: str, source_path: str, legacy_path: str
+) -> None:
+    """Reject source and legacy fields mixed across package and variant levels."""
+    with pytest.raises(RuntimeError, match="mutually exclusive") as exc_info:
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+    error_str = str(exc_info.value)
+    assert source_path in error_str
+    assert legacy_path in error_str
+
+
+def test_package_source_with_unrelated_variant_setting_valid() -> None:
+    """Omitted variant legacy fields do not conflict with package source."""
+    yaml_str = (
+        "source:\n  provider: pypi-sdist\n"
+        "variants:\n  cpu:\n    env:\n      BUILD_MODE: fast\n"
+    )
+    ps = PackageSettings.from_string("source-pkg", yaml_str)
+    assert ps.source is not None
+    assert ps.variants[Variant("cpu")].pre_built is False
+
+
 def test_legacy_only_config_valid() -> None:
     """Legacy-only config loads without error."""
     yaml_str = (
