@@ -18,6 +18,7 @@ from resolvelib.resolvers import ResolverException
 
 from .. import (
     bootstrap_requirement_resolver,
+    packagesettings,
     progress,
     sources,
     threading_utils,
@@ -483,14 +484,13 @@ class Bootstrapper:
         source_url: str,
     ) -> pathlib.Path:
         """Download source for a package."""
-        download_result = sources.download_source(
+        result: packagesettings.DownloadedSource = sources.download_source(
             ctx=self.ctx,
             req=req,
             version=resolved_version,
             download_url=source_url,
         )
-        source_path: pathlib.Path = download_result[0]
-        return source_path
+        return result.path
 
     def _prepare_source(
         self,

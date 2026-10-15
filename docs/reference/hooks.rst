@@ -219,6 +219,8 @@ Source hooks
    were removed. Define a :ref:`resolver_provider <resolver_provider_hook>` hook
    to resolve sources.
 
+.. _download_source_hook:
+
 .. autofromagerhook:: default_download_source
 
     The ``download_source()`` function is responsible for downloading the
@@ -228,7 +230,73 @@ Source hooks
     evaluated, version of the package being downloaded, the download URL,
     and the output directory in which the source should be downloaded.
 
-    The return value should be a ``pathlib.Path`` file path to the downloaded source.
+    For packages without ``source:`` configuration, return a ``pathlib.Path``
+    to the downloaded source. This legacy contract is unchanged.
+
+    .. versionchanged:: 0.96.0
+
+       The ``hook-sdist`` and ``hook-prebuilt`` source profiles accept
+       :class:`~fromager.packagesettings.DownloadedSource` with a local
+       ``pathlib.Path`` and an explicit
+       :class:`~fromager.packagesettings.DownloadKind`:
+
+       * ``hook-sdist`` accepts ``sdist``, ``tarball``, or ``git_checkout``.
+       * ``hook-prebuilt`` accepts only ``prebuilt_wheel``.
+
+       A bare ``Path`` remains supported for legacy hooks: ``hook-sdist``
+       treats ``.tar.gz`` and ``.zip`` paths as ``sdist``; ``hook-prebuilt``
+       treats ``.whl`` paths as ``prebuilt_wheel``. Bare directories and other
+       path forms are rejected. The sdist default preserves legacy archive
+       semantics; it does not infer the artifact kind from archive contents.
+       Hooks needing tarball or git-checkout semantics must return a typed
+       result with the explicit kind. ``any_source`` and ``not_available``
+       are not valid concrete result kinds.
+
+       Invalid return types, malformed typed fields, and kinds incompatible
+       with the profile raise errors identifying the package and hook.
+       Hook exceptions are chained to a ``RuntimeError`` with that context;
+       neither failures nor invalid results trigger a fallback download.
+
+       If the download hook is absent, ``hook-sdist`` downloads the candidate
+       URL as an sdist into ``ctx.sdists_downloads``. ``hook-prebuilt`` downloads
+       it as a wheel into ``ctx.wheels_prebuilt``. These defaults use the
+       standard archive and wheel validation. Custom tarball URLs and git
+       downloads require a download hook. The ``get_resolver_provider`` hook
+       remains required for both profiles.
+
+    To migrate a raw-tarball hook to ``source: {provider: hook-sdist}``, return
+    its artifact kind explicitly:
+
+    .. code-block:: python
+
+       import pathlib
+
+       from packaging.requirements import Requirement
+       from packaging.version import Version
+
+       from fromager import downloads
+       from fromager.context import WorkContext
+       from fromager.packagesettings import DownloadedSource, DownloadKind
+
+       def download_source(
+           ctx: WorkContext,
+           req: Requirement,
+           version: Version,
+           download_url: str,
+           sdists_downloads_dir: pathlib.Path,
+       ) -> DownloadedSource:
+           """Download a raw source tarball and identify its kind."""
+           path = downloads.download_url(
+               destination_dir=sdists_downloads_dir,
+               url=download_url,
+               destination_filename=f"{req.name}-{version}.tar.gz",
+           )
+           return DownloadedSource(path=path, kind=DownloadKind.tarball)
+
+    A hook that clones sources returns the checkout directory with
+    ``kind=DownloadKind.git_checkout``. Typed results are supported through
+    the configured hook profiles; packages using legacy settings still require
+    a bare ``Path``.
 
 .. autofromagerhook:: default_prepare_source
 

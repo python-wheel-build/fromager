@@ -97,7 +97,8 @@ CLI commands interact with providers through a common
 .. versionchanged:: 0.96.0
    The ``hook-sdist`` and ``hook-prebuilt`` profiles create providers through
    the required ``get_resolver_provider`` override hook. They do not fall back
-   to PyPI, and hook-backed artifact downloading remains a separate feature.
+   to PyPI. Their ``download()`` methods invoke the package's ``download_source``
+   hook when present and return a validated ``DownloadedSource``.
 
 Per-package settings in YAML can select which provider to use and
 configure its parameters (index URL, tag pattern, etc.).  When a package
@@ -108,6 +109,14 @@ returns a :class:`~fromager.resolver.BaseProvider`.
 Otherwise, override plugins can replace the provider for a specific package
 via the ``get_resolver_provider`` hook, after which the legacy resolver
 settings are used.
+
+Hook downloads accept explicit artifact kinds and adapt legacy paths using
+profile-specific defaults. If no download hook exists, the profile selects the
+standard sdist or wheel downloader and its destination directory. Hook errors
+propagate with context instead of triggering a fallback. The typed result makes
+the artifact kind available for source preparation; consuming it in preparation
+and integrating prebuilt detection into the bootstrapper are separate steps.
+See :ref:`download_source_hook` for the return contract and compatibility rules.
 
 Version Filtering Window
 -------------------------
