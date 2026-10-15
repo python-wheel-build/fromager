@@ -431,11 +431,27 @@ def test_cyclonedx_license_expression_all_invalid_returns_none() -> None:
     assert sbom._cyclonedx_license_expression(component) is None
 
 
+def test_cyclonedx_license_expression_groups_or_operands() -> None:
+    """OR expressions must be parenthesized so AND-joining cannot weaken them."""
+    component = {
+        "name": "serde",
+        "licenses": [
+            {"expression": "MIT OR Apache-2.0"},
+            {"expression": "BSD-3-Clause"},
+        ],
+    }
+
+    assert (
+        sbom._cyclonedx_license_expression(component)
+        == "(MIT OR Apache-2.0) AND BSD-3-Clause"
+    )
+
+
 def test_merge_cyclonedx_sboms_maps_python_root_to_wheel(
     tmp_path: pathlib.Path,
 ) -> None:
     """Verify an auditwheel Python root is attached to the wheel package."""
-    settings = SbomSettings(repository_url=AnyUrl("https://packages.redhat.com"))
+    settings = SbomSettings(repository_url=AnyUrl("https://pkg.test/simple/"))
     ctx = make_sbom_ctx(tmp_path, sbom_settings=settings)
     document = sbom.generate_sbom(
         ctx=ctx,

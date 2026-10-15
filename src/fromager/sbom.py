@@ -358,7 +358,12 @@ def _cyclonedx_license_expression(
 
     if not expressions:
         return None
-    return " AND ".join(expressions)
+    # Parenthesize OR expressions before joining: SPDX gives AND higher
+    # precedence than OR, so an ungrouped OR would weaken the declaration.
+    return " AND ".join(
+        f"({expression})" if " OR " in expression else expression
+        for expression in expressions
+    )
 
 
 def _valid_spdx_expression(expression: str) -> bool:
