@@ -81,6 +81,8 @@ def _trove_to_spdx(troves: list[str]) -> LicenseExpression:
         if mapped is None:
             raise ValueError(f"{trove!r} is ambiguous")
         trove_spdx.append(mapped)
+    if not trove_spdx:
+        raise ValueError("no classifier maps to a SPDX license expression")
     # join with AND
     return _parse_spdx(" AND ".join(trove_spdx), simplify=True)
 

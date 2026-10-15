@@ -108,6 +108,18 @@ def test_license_from_metadata(metadata: Metadata, expected: str) -> None:
         (None, None, None),
         (None, "invalid", None),
         (None, None, ["License :: OSI Approved :: BSD License"]),
+        # classifiers with no entry that maps to SPDX (see issue #1372)
+        (None, None, ["Programming Language :: Python :: 3"]),
+        (None, None, ["License :: OSI Approved"]),
+        # non-license classifier alongside an ambiguous license classifier
+        (
+            None,
+            None,
+            [
+                "Programming Language :: Python :: 3",
+                "License :: OSI Approved :: BSD License",
+            ],
+        ),
     ],
 )
 def test_license_from_metadata_errors(
