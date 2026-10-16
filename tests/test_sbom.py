@@ -147,6 +147,33 @@ def test_generate_sbom_document_identity_follows_purl_version_override(
     _validate_spdx(doc)
 
 
+def test_generate_sbom_upstream_uses_source_version_without_upstream_override(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Keep the source release distinct from a locally versioned wheel."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(),
+        package_overrides={"purl": {"version": "0.5.5+local.1"}},
+    )
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.5.5"),
+        version=Version("0.5.5"),
+    )
+
+    wheel, upstream = doc["packages"]
+    assert wheel["versionInfo"] == "0.5.5+local.1"
+    assert wheel["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@0.5.5%2Blocal.1"
+    )
+    assert upstream["versionInfo"] == "0.5.5"
+    assert upstream["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@0.5.5"
+    )
+    _validate_spdx(doc)
+
+
 def test_generate_sbom_namespace_is_unique_per_document(
     tmp_path: pathlib.Path,
 ) -> None:
