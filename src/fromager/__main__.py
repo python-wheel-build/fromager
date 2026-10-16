@@ -262,7 +262,15 @@ def main(
             hooks.log_hooks()
 
     if network_isolation and not SUPPORTS_NETWORK_ISOLATION:
-        ctx.fail(f"network isolation is not available: {NETWORK_ISOLATION_ERROR}")
+        # Some CI runners (for example Docker's default seccomp profile)
+        # block the unshare syscall, which made fromager fail at startup
+        # with no workaround. Warn and continue without isolation instead
+        # of blocking the build.
+        logger.warning(
+            "network isolation is not available: %s; continuing without it",
+            NETWORK_ISOLATION_ERROR,
+        )
+        network_isolation = False
 
     wkctx = context.WorkContext(
         active_settings=packagesettings.Settings.from_files(
