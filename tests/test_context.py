@@ -57,6 +57,7 @@ def test_pip_constraints_args(tmp_path: pathlib.Path) -> None:
             "# auto-generated constraints file",
             f"# {constraints_file}",
             "",
+            f"# {constraints_file}",
             "test==1.0",
             "",
         )
@@ -87,7 +88,10 @@ def test_multiple_constraints_files(tmp_path: pathlib.Path) -> None:
             f"# {constraints2}",
             f"# {constraints3}",
             "",
+            f"# {constraints2}",
+            f"# {constraints3}",
             "foo!=2.1.1,>=2.0",
+            f"# {constraints1}",
             "test==1.0",
             "",
         )
