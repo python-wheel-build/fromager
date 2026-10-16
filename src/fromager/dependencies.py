@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import copy
 import logging
 import os
@@ -102,9 +103,74 @@ def default_get_build_system_dependencies(
     """Get build system requirements
 
     Defaults to ``[build-system] requires`` from ``pyproject.toml``.
+
+    When ``setup.py`` uses APIs removed in newer setuptools versions,
+    a version cap is appended automatically:
+
+    - ``setuptools<81`` when ``setup.py`` passes ``dry_run=`` keyword
+      arguments (removed in setuptools 81)
+    - ``setuptools<82`` when ``setup.py`` imports ``pkg_resources``
+      (removed in setuptools 82)
     """
     pyproject_toml = get_pyproject_contents(build_dir)
-    return typing.cast(list[str], get_build_backend(pyproject_toml)["requires"])
+    requires = list(
+        typing.cast(list[str], get_build_backend(pyproject_toml)["requires"])
+    )
+    constraint = _get_setuptools_constraint(sdist_root_dir)
+    if constraint:
+        logger.info(
+            "%s: auto-adding %s (setup.py uses removed APIs)", req.name, constraint
+        )
+        requires.append(constraint)
+    return requires
+
+
+def _get_setuptools_constraint(sdist_root_dir: pathlib.Path) -> str | None:
+    """Return a setuptools version cap if setup.py uses removed APIs.
+
+    - setuptools 81 removed ``distutils.spawn(dry_run=...)`` and
+      ``distutils.dir_util.remove_tree(dry_run=...)``
+    - setuptools 82 removed ``pkg_resources`` entirely
+
+    Parses the AST to avoid false positives from string matches in
+    comments or string literals.
+
+    Returns ``"setuptools<81"``, ``"setuptools<82"``, or ``None``.
+    The tighter constraint wins when both apply.
+    """
+    setup_py = sdist_root_dir / "setup.py"
+    if not setup_py.is_file():
+        return None
+    try:
+        source = setup_py.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(source, filename=str(setup_py))
+    except (OSError, SyntaxError):
+        return None
+
+    findings: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pkg_resources" or alias.name.startswith(
+                    "pkg_resources."
+                ):
+                    findings.add("pkg_resources")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module is not None and (
+                node.module == "pkg_resources"
+                or node.module.startswith("pkg_resources.")
+            ):
+                findings.add("pkg_resources")
+        elif isinstance(node, ast.Call):
+            for kw in node.keywords:
+                if kw.arg == "dry_run":
+                    findings.add("dry_run")
+
+    if "dry_run" in findings:
+        return "setuptools<81"
+    if "pkg_resources" in findings:
+        return "setuptools<82"
+    return None
 
 
 def get_build_backend_dependencies(
