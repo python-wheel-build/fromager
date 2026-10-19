@@ -261,8 +261,16 @@ def _versions_match(left: str, right: str) -> bool:
 
 def _is_python_wheel_root(
     component: dict[str, typing.Any],
-    sbom: dict[str, typing.Any],
+    name: str,
+    version: str,
 ) -> bool:
+    """Return True if the CycloneDX root *component* is the wheel itself.
+
+    The root is matched against the real package identity (*name* and
+    *version* of the built wheel), not the SPDX wheel entry, because
+    ``purl`` overrides change the entry but not what the build tool
+    reports.
+    """
     purl = _cyclonedx_component_purl(component)
     if purl is None:
         return False
@@ -282,29 +290,11 @@ def _is_python_wheel_root(
     if component_name is None or component_version is None:
         return False
 
-    packages = sbom.get("packages")
-    if not isinstance(packages, list):
-        return False
-    wheel = next(
-        (
-            package
-            for package in packages
-            if isinstance(package, dict) and package.get("SPDXID") == "SPDXRef-wheel"
-        ),
-        None,
-    )
-    if wheel is None:
-        return False
-
-    wheel_name = _cyclonedx_string(wheel.get("name"))
-    wheel_version = _cyclonedx_string(wheel.get("versionInfo"))
-    if wheel_name is None or wheel_version is None:
-        return False
     return (
-        canonicalize_name(parsed_purl.name) == canonicalize_name(wheel_name)
-        and _versions_match(parsed_purl.version, wheel_version)
-        and canonicalize_name(component_name) == canonicalize_name(wheel_name)
-        and _versions_match(component_version, wheel_version)
+        canonicalize_name(parsed_purl.name) == canonicalize_name(name)
+        and _versions_match(parsed_purl.version, version)
+        and canonicalize_name(component_name) == canonicalize_name(name)
+        and _versions_match(component_version, version)
     )
 
 
@@ -532,8 +522,15 @@ def merge_cyclonedx_sboms(
     *,
     sbom: dict[str, typing.Any],
     sboms_dir: pathlib.Path,
+    name: str,
+    version: str,
 ) -> None:
     """Merge CycloneDX components into a Fromager SPDX document.
+
+    *name* and *version* are the real identity of the built wheel (the
+    requirement name and the version from the wheel file name). They are
+    used to recognize a build tool's root component as the wheel itself,
+    independent of any ``purl`` overrides in the SPDX wheel entry.
 
     Imported components are related to the wheel with ``CONTAINS``. Local file
     download qualifiers are removed from their PURLs. The original CycloneDX
@@ -585,7 +582,7 @@ def merge_cyclonedx_sboms(
             identity = _cyclonedx_component_identity(component)
             purl = _cyclonedx_spdx_purl(component)
             spdx_id: str | None
-            if is_root and _is_python_wheel_root(component, sbom):
+            if is_root and _is_python_wheel_root(component, name, version):
                 spdx_id = "SPDXRef-wheel"
                 if purl:
                     purl_to_spdx_id[purl] = spdx_id

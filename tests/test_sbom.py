@@ -354,7 +354,9 @@ def test_merge_cyclonedx_sbom_imports_packages_and_relationships(
     sboms_dir = tmp_path / "sboms"
     _write_cyclonedx_sbom(sboms_dir, "example.cyclonedx.json")
 
-    sbom.merge_cyclonedx_sboms(sbom=document, sboms_dir=sboms_dir)
+    sbom.merge_cyclonedx_sboms(
+        sbom=document, sboms_dir=sboms_dir, name="example-pkg", version="1.2.3"
+    )
 
     packages = {package["name"]: package for package in document["packages"]}
     assert {"example-pkg", "example", "serde"} <= packages.keys()
@@ -490,7 +492,9 @@ def test_merge_cyclonedx_sboms_maps_python_root_to_wheel(
     sboms_dir.mkdir(parents=True)
     (sboms_dir / "auditwheel.cdx.json").write_text(json.dumps(auditwheel))
 
-    sbom.merge_cyclonedx_sboms(sbom=document, sboms_dir=sboms_dir)
+    sbom.merge_cyclonedx_sboms(
+        sbom=document, sboms_dir=sboms_dir, name="pillow", version="12.3.0"
+    )
 
     packages = document["packages"]
     assert len(packages) == 3
@@ -507,6 +511,70 @@ def test_merge_cyclonedx_sboms_maps_python_root_to_wheel(
     assert not any(
         relationship_type == "DEPENDS_ON" for _, relationship_type, _ in relationships
     )
+    _validate_spdx(document)
+
+
+def test_merge_cyclonedx_sboms_maps_python_root_with_purl_version_override(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify a purl version override does not stop the root matching."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(),
+        package_overrides={"purl": {"version": "0.5.5+local.1"}},
+    )
+    document = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.5.5"),
+        version=Version("0.5.5"),
+    )
+    wheel = next(
+        package
+        for package in document["packages"]
+        if package["SPDXID"] == "SPDXRef-wheel"
+    )
+    assert wheel["versionInfo"] == "0.5.5+local.1"
+    root_purl = "pkg:pypi/test-pkg@0.5.5"
+    maturin = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "metadata": {
+            "component": {
+                "type": "library",
+                "bom-ref": root_purl,
+                "name": "test-pkg",
+                "version": "0.5.5",
+                "purl": root_purl,
+            }
+        },
+        "components": [
+            {
+                "type": "library",
+                "bom-ref": "pkg:cargo/serde@1.0.0",
+                "name": "serde",
+                "version": "1.0.0",
+                "purl": "pkg:cargo/serde@1.0.0",
+            }
+        ],
+    }
+    sboms_dir = tmp_path / "sboms"
+    sboms_dir.mkdir()
+    (sboms_dir / "maturin.cdx.json").write_text(json.dumps(maturin))
+
+    sbom.merge_cyclonedx_sboms(
+        sbom=document, sboms_dir=sboms_dir, name="test-pkg", version="0.5.5"
+    )
+
+    assert len(document["packages"]) == 3
+    serde = next(
+        package for package in document["packages"] if package["name"] == "serde"
+    )
+    contains = {
+        relationship["relatedSpdxElement"]
+        for relationship in document["relationships"]
+        if relationship["relationshipType"] == "CONTAINS"
+    }
+    assert contains == {serde["SPDXID"]}
     _validate_spdx(document)
 
 
@@ -551,7 +619,9 @@ def test_merge_cyclonedx_sboms_does_not_map_unrelated_python_root_to_wheel(
     sboms_dir.mkdir()
     (sboms_dir / "custom.cyclonedx.json").write_text(json.dumps(cyclonedx))
 
-    sbom.merge_cyclonedx_sboms(sbom=document, sboms_dir=sboms_dir)
+    sbom.merge_cyclonedx_sboms(
+        sbom=document, sboms_dir=sboms_dir, name="example-pkg", version="1.2.3"
+    )
 
     packages = {package["name"]: package for package in document["packages"]}
     assert {"unrelated", "libXau"} <= packages.keys()
@@ -632,7 +702,9 @@ def test_merge_cyclonedx_sboms_imports_nested_components(
     sboms_dir.mkdir()
     (sboms_dir / "nested.cyclonedx.json").write_text(json.dumps(cyclonedx))
 
-    sbom.merge_cyclonedx_sboms(sbom=document, sboms_dir=sboms_dir)
+    sbom.merge_cyclonedx_sboms(
+        sbom=document, sboms_dir=sboms_dir, name="example-pkg", version="1.2.3"
+    )
 
     packages = {package["name"]: package for package in document["packages"]}
     assert {"example", "example-target", "example-nested"} <= packages.keys()
@@ -686,7 +758,9 @@ def test_merge_cyclonedx_sboms_deduplicates_packages_by_purl(
         root_name="another",
     )
 
-    sbom.merge_cyclonedx_sboms(sbom=document, sboms_dir=sboms_dir)
+    sbom.merge_cyclonedx_sboms(
+        sbom=document, sboms_dir=sboms_dir, name="example-pkg", version="1.2.3"
+    )
 
     serde_packages = [
         package for package in document["packages"] if package["name"] == "serde"
@@ -719,7 +793,9 @@ def test_merge_cyclonedx_sboms_ignores_invalid_and_other_formats(
     (sboms_dir / "broken.json").write_text("{")
 
     with caplog.at_level("WARNING", logger="fromager.sbom"):
-        sbom.merge_cyclonedx_sboms(sbom=document, sboms_dir=sboms_dir)
+        sbom.merge_cyclonedx_sboms(
+            sbom=document, sboms_dir=sboms_dir, name="example-pkg", version="1.2.3"
+        )
 
     assert len(document["packages"]) == 2
     assert "could not read" in caplog.text
