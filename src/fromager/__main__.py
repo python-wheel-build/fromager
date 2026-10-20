@@ -299,8 +299,26 @@ for cmd in commands.commands:
 
 def _format_exception(exc: BaseException) -> str:
     if exc.__cause__:
-        cause = _format_exception(exc.__cause__)
-        return f"{exc} because {cause}"
+        exc_str = str(exc)
+        cause_str = str(exc.__cause__)
+        formatted_cause = _format_exception(exc.__cause__)
+        # resolver.py wraps failures as f"...: {original_msg}" where
+        # original_msg is str(err) before chaining `from err`. Anchor on
+        # the ": " separator that construction actually uses, rather than
+        # a bare endswith(cause_str), so a short cause message can't
+        # coincidentally match the tail of an unrelated outer message
+        # (e.g. RuntimeError("failed to match") from ValueError("match")
+        # must NOT be deduped - it doesn't embed the cause deliberately).
+        # Preserve any additional cause-chain information the recursive
+        # formatting adds beyond the raw immediate cause - otherwise a
+        # deeper cause (the immediate cause's own cause) would be
+        # silently dropped.
+        if cause_str and exc_str.endswith(f": {cause_str}"):
+            if formatted_cause == cause_str:
+                return exc_str
+            if formatted_cause.startswith(f"{cause_str} because "):
+                return exc_str + formatted_cause[len(cause_str) :]
+        return f"{exc_str} because {formatted_cause}"
     return str(exc)
 
 
