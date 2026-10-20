@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling>=1.27", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -11,12 +11,12 @@ authors = [
 description = "Wheel maker"
 readme = "README.md"
 dynamic = ["version"]
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE*"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -53,7 +53,7 @@ dependencies = [
     "uvicorn",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 build = [
     "build",
     "twine",
@@ -148,6 +148,12 @@ exclude_lines = [
     "if typing.TYPE_CHECKING",
 ]
 
+[tool.hatch]
+# 1.18.0 added the `requires-hatch` field itself and enforces it; older
+# versions ignore it. 1.16.3+ is the true floor for the `dependency-groups`
+# env key used below.
+requires-hatch = ">=1.18.0"
+
 [tool.hatch.version]
 path = "src/fromager/version.py"
 source = "vcs"
@@ -227,7 +233,7 @@ reportImplicitStringConcatenation = false
 dependencies = []
 
 [tool.hatch.envs.test]
-features = ["test"]
+dependency-groups = ["test"]
 # {args:tests} allows passing arguments to specify which tests to run
 
 [tool.hatch.envs.test.scripts]
@@ -239,7 +245,7 @@ coverage-report = ["coverage combine", "coverage report --format=markdown | tee 
 [tool.hatch.envs.lint]
 description = "Run linters."
 skip-install = true # Corresponds to skipping project installation for linting
-features = ["build"]
+dependency-groups = ["build"]
 dependencies = [
   "ruff",
   "packaging",
@@ -279,7 +285,7 @@ run = "{args}"
 
 [tool.hatch.envs.mypy]
 description = "Python type checking with mypy."
-features = ["mypy"]
+dependency-groups = ["mypy"]
 [tool.hatch.envs.mypy.scripts]
 check = [
   "mypy -p fromager",
@@ -289,7 +295,7 @@ check = [
 
 [tool.hatch.envs.docs]
 description = "Sphinx docs."
-features = ["docs"]
+dependency-groups = ["docs"]
 [tool.hatch.envs.docs.scripts]
 build = "sphinx-build -M html docs docs/_build -j auto --keep-going {args:--fail-on-warning --fresh-env -n}"
 
