@@ -333,8 +333,9 @@ class PurlConfig(pydantic.BaseModel):
     GENERATED_FROM relationship. Used for packages sourced from
     GitHub/GitLab rather than PyPI.
 
-    When absent, the upstream purl is auto-derived from the downstream
-    purl without the ``repository_url`` qualifier.
+    When absent, the upstream purl keeps the downstream name, type, and
+    namespace but uses the resolved source version instead of a local
+    downstream version override. The ``repository_url`` qualifier is omitted.
     """
 
 

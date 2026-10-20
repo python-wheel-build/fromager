@@ -67,9 +67,9 @@ def _build_upstream_purl(
     """Build the upstream source package URL.
 
     If ``upstream`` is set in the per-package ``PurlConfig``, it is
-    used as-is.  Otherwise, the upstream purl is derived from the same
-    base as the downstream purl but without the ``repository_url``
-    qualifier.
+    used as-is. Otherwise, the upstream purl uses the resolved source
+    version rather than a downstream wheel version override, and excludes
+    the ``repository_url`` qualifier.
     """
     pc = pbi.purl_config
     if pc and pc.upstream:
@@ -78,12 +78,11 @@ def _build_upstream_purl(
     purl_type = pc.type if pc else None
     purl_namespace = pc.namespace if pc else None
     purl_name = pc.name if pc else None
-    purl_version = pc.version if pc else None
     return PackageURL(
         type=purl_type or sbom_settings.purl_type,
         namespace=purl_namespace,
         name=purl_name or name,
-        version=purl_version or str(version),
+        version=str(version),
     )
 
 
