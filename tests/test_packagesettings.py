@@ -36,6 +36,7 @@ TEST_PREBUILT_PKG = "test-prebuilt-pkg"
 TEST_COOLDOWN_PKG = "test-cooldown-pkg"
 
 FULL_EXPECTED: dict[str, typing.Any] = {
+    "build_number": {},
     "annotations": {
         "fromager.test.value": "somevalue",
         "fromager.test.override": "variant override",
@@ -118,6 +119,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
 }
 
 EMPTY_EXPECTED: dict[str, typing.Any] = {
+    "build_number": {},
     "name": "test-empty-pkg",
     "annotations": None,
     "build_dir": None,
@@ -157,6 +159,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
 }
 
 PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
+    "build_number": {},
     "name": "test-prebuilt-pkg",
     "annotations": None,
     "build_dir": None,

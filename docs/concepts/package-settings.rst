@@ -119,7 +119,39 @@ adds variant awareness, patch discovery, and template resolution.
      - Merged list of unversioned + version-specific + variant-specific
        patch files, sorted by filename
    * - **Metadata**
-     - Build tag (from changelog length), annotations, PURL config,
+     - Build tag (explicit number or changelog length), annotations, PURL config,
        pyproject.toml overrides
 
 See :doc:`/reference/config-reference` for the full field reference.
+
+Explicit Build Numbers
+----------------------
+
+``build_number`` maps public versions to nonnegative integers, replacing the
+combined variant and package changelog count for those versions in every
+variant. Variant-specific explicit numbers are not supported. Changelogs
+remain available as history. Keys with local version suffixes are rejected;
+requested versions with local suffixes use their public version for lookup.
+
+.. code-block:: yaml
+
+   build_number:
+     "1.2.3": 0
+     "2.0": 7
+
+.. versionadded:: 0.102.0
+
+Explicit numbers require exact build tags in local and remote cache lookups
+across ``bootstrap``, ``build`` and ``build-sequence``. Zero produces a numeric
+``0`` tag; a missing or different tag is a cache miss. ``build_tag_hook`` still
+appends suffixes, including for zero. Unconfigured versions retain their
+changelog-derived tags and cache behavior; pre-built wheels keep their tags.
+
+Any loaded non-prebuilt package with a non-empty ``build_number`` mapping
+switches all build-environment dependency installation to a filtered local
+wheel view, even if its configured versions are not used. Fromager logs this
+mode and reinstalls all dependencies, including unconfigured versions and
+pre-built wheels. Installation does not fetch from ``--wheel-server-url``;
+all required dependency wheels must already be available locally. Installed
+``WHEEL`` metadata is checked before building. Without such settings,
+dependency installation retains its existing behavior.

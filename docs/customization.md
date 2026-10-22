@@ -446,19 +446,27 @@ def build_tag_hook(
     return [suffixes[ctx.variant]]
 ```
 
-Fromager joins segments in order with `_`. If the changelog build tag is `2`,
-returning `["cuda13", "torch2.10"]` produces `2_cuda13_torch2.10`.
+Fromager joins segments in order with `_`. If the numeric part of the build
+tag is `2`, returning `["cuda13", "torch2.10"]` produces
+`2_cuda13_torch2.10`. With an explicit `build_number` of zero, the same
+segments produce `0_cuda13_torch2.10`.
 
 **Important notes:**
 
-- The hook runs only when the package has a changelog-derived build tag. It
-  is skipped when there is no changelog entry or the package is prebuilt.
+- The hook runs when the package version has an explicit `build_number`
+  (including zero) or a changelog-derived build tag. It is skipped for
+  pre-built wheels, or when neither an explicit number nor a non-empty
+  changelog supplies a build tag.
 - Return a sequence of strings, not a single string or bytes object. Each
   segment must be non-empty and contain only ASCII letters, digits, or dots.
   Map variant names with other characters to distinct valid segments.
 - The hook must be deterministic and independent of wheel contents, build
   environment, or ELF metadata, so that fresh builds and cache lookups
   produce identical tags.
+- When explicit counters enable dependency-installation checks, the suffix
+  must depend only on the requirement name, version, variant, and `wheel_tags`.
+  These checks reconstruct a bare requirement from the wheel or installed
+  distribution name, without the original extras, markers, specifier, or URL.
 - Use `wheel_tags` only to distinguish pure wheels from platform wheels.
   The hook must return identical results across architectures for the same
   configured variant.

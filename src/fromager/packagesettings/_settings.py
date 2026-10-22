@@ -211,6 +211,19 @@ class Settings:
             return None
         return self._settings.wheels.build_tag_hook
 
+    @property
+    def has_explicit_build_numbers(self) -> bool:
+        """Whether any loaded non-prebuilt package has explicit build numbers.
+
+        Entries for unused versions also activate local-only installation.
+
+        .. versionadded:: 0.102.0
+        """
+        return any(
+            package.build_number and not self.package_build_info(package.name).pre_built
+            for package in self._package_settings.values()
+        )
+
     def variant_changelog(self) -> list[str]:
         """Get global changelog for current variant"""
         return list(self._settings.changelog.get(self.variant, []))
