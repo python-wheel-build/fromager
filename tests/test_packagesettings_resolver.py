@@ -19,6 +19,7 @@ from fromager import resolver
 from fromager.candidate import Candidate, Cooldown
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
+    AbstractResolver,
     BuildSDist,
     DownloadedSource,
     DownloadKind,
@@ -126,6 +127,22 @@ def _parse(raw_yaml: str) -> SourceResolver:
     data = yaml.safe_load(textwrap.dedent(raw_yaml))
     wrapper = _SourceWrapper.model_validate(data)
     return wrapper.source
+
+
+def test_resolver_requires_build_sdist_strategy() -> None:
+    """Require every resolver to declare an sdist build strategy."""
+    with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+        AbstractResolver.model_validate({"provider": "test"})
+
+
+@pytest.mark.parametrize(
+    "provider",
+    ["pypi-sdist", "pypi-prebuilt", "hook-prebuilt", "not-available"],
+)
+def test_resolver_rejects_unsupported_build_sdist_strategy(provider: str) -> None:
+    """Keep fixed resolver strategies from accepting a different build method."""
+    with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+        _parse(f"source:\n  provider: {provider}\n  build_sdist: pep517\n")
 
 
 # -- PyPI resolvers -----------------------------------------------------------
@@ -679,17 +696,33 @@ class TestHookSDistResolver:
     YAML = """\
         source:
           provider: hook-sdist
+          build_sdist: tarball
     """
 
     def test_parse(self) -> None:
         r = _parse(self.YAML)
         assert isinstance(r, HookSDistResolver)
         assert r.provider == "hook-sdist"
+        assert r.build_sdist is BuildSDist.tarball
         assert r.supports_override_hooks is True
         assert r.resolves_prebuilt_wheel is False
         assert r.download_kinds == frozenset(
             {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
         )
+
+    @pytest.mark.parametrize("build_method", list(BuildSDist))
+    def test_build_sdist_method(self, build_method: BuildSDist) -> None:
+        """Load the hook sdist build method from YAML."""
+        r = _parse(
+            f"source:\n  provider: hook-sdist\n  build_sdist: {build_method.value}\n"
+        )
+
+        assert r.build_sdist is build_method
+
+    def test_build_sdist_method_required(self) -> None:
+        """Require a build method because hook artifacts need different strategies."""
+        with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+            _parse("source:\n  provider: hook-sdist\n")
 
     @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
     def test_resolver_provider(
@@ -805,7 +838,11 @@ def test_hook_download_preserves_typed_result_and_arguments(
     tmp_context: WorkContext, provider: str, kind: DownloadKind
 ) -> None:
     """Preserve the hook's explicit kind and forward the legacy arguments."""
-    r = _parse(f"source:\n  provider: {provider}")
+    r = _parse(
+        TestHookSDistResolver.YAML
+        if provider == "hook-sdist"
+        else TestHookPrebuiltResolver.YAML
+    )
     candidate = _CANDIDATE_WHEEL if r.resolves_prebuilt_wheel else _CANDIDATE_SDIST
     expected = DownloadedSource(path=tmp_context.work_dir / "artifact", kind=kind)
     captured: dict[str, object] = {}
@@ -862,7 +899,11 @@ def test_hook_download_adapts_legacy_path_and_narrow_signature(
     tmp_context: WorkContext, provider: str, filename: str, kind: DownloadKind
 ) -> None:
     """Adapt bare paths without requiring hooks to accept every argument."""
-    r = _parse(f"source:\n  provider: {provider}")
+    r = _parse(
+        TestHookSDistResolver.YAML
+        if provider == "hook-sdist"
+        else TestHookPrebuiltResolver.YAML
+    )
     expected = tmp_context.work_dir / filename
 
     def hook(req: Requirement, version: Version) -> pathlib.Path:
@@ -924,7 +965,11 @@ def test_hook_download_rejects_invalid_results_without_fallback(
     message: str,
 ) -> None:
     """Reject malformed hook results with package and provider context."""
-    r = _parse(f"source:\n  provider: {provider}")
+    r = _parse(
+        TestHookSDistResolver.YAML
+        if provider == "hook-sdist"
+        else TestHookPrebuiltResolver.YAML
+    )
 
     def hook() -> object:
         return hook_result
@@ -953,7 +998,11 @@ def test_hook_download_rejects_kind_incompatible_with_profile(
     tmp_context: WorkContext, provider: str, kind: DownloadKind
 ) -> None:
     """Do not relabel an explicit kind to fit the selected profile."""
-    r = _parse(f"source:\n  provider: {provider}")
+    r = _parse(
+        TestHookSDistResolver.YAML
+        if provider == "hook-sdist"
+        else TestHookPrebuiltResolver.YAML
+    )
 
     def hook() -> DownloadedSource:
         return DownloadedSource(path=tmp_context.work_dir, kind=kind)
@@ -983,7 +1032,11 @@ def test_hook_download_requires_kind_for_unsupported_legacy_paths(
     tmp_context: WorkContext, provider: str, filename: str, is_directory: bool
 ) -> None:
     """Require an explicit kind when a path cannot use the legacy default."""
-    r = _parse(f"source:\n  provider: {provider}")
+    r = _parse(
+        TestHookSDistResolver.YAML
+        if provider == "hook-sdist"
+        else TestHookPrebuiltResolver.YAML
+    )
     path = tmp_context.work_dir / filename
     if is_directory:
         path.mkdir()
@@ -1005,7 +1058,11 @@ def test_hook_download_uses_profile_default_when_hook_is_missing(
     tmp_context: WorkContext, provider: str
 ) -> None:
     """Select the correct download helper and destination without a hook."""
-    r = _parse(f"source:\n  provider: {provider}")
+    r = _parse(
+        TestHookSDistResolver.YAML
+        if provider == "hook-sdist"
+        else TestHookPrebuiltResolver.YAML
+    )
     prebuilt = r.resolves_prebuilt_wheel
     candidate = _CANDIDATE_WHEEL if prebuilt else _CANDIDATE_SDIST
     destination = (
@@ -1032,7 +1089,11 @@ def test_hook_download_chains_failure_without_fallback(
     tmp_context: WorkContext, provider: str
 ) -> None:
     """Preserve the hook failure and do not attempt a default download."""
-    r = _parse(f"source:\n  provider: {provider}")
+    r = _parse(
+        TestHookSDistResolver.YAML
+        if provider == "hook-sdist"
+        else TestHookPrebuiltResolver.YAML
+    )
     cause = OSError("download failed")
 
     def hook() -> pathlib.Path:
@@ -1087,7 +1148,9 @@ def test_hook_resolver_supports_legacy_hook_signature(
         return provider
 
     find_override_method.return_value = legacy_hook
-    resolver_model = HookSDistResolver(provider="hook-sdist")
+    resolver_model = HookSDistResolver(
+        provider="hook-sdist", build_sdist=BuildSDist.tarball
+    )
 
     result = resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
@@ -1105,7 +1168,9 @@ def test_hook_resolver_does_not_fall_back_when_hook_is_missing(
     tmp_context: WorkContext,
 ) -> None:
     """A missing hook fails instead of selecting the default PyPI provider."""
-    resolver_model = HookSDistResolver(provider="hook-sdist")
+    resolver_model = HookSDistResolver(
+        provider="hook-sdist", build_sdist=BuildSDist.tarball
+    )
 
     with pytest.raises(ValueError, match="requires a get_resolver_provider"):
         resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
@@ -1164,7 +1229,9 @@ def test_hook_resolver_chains_hook_exception(
         raise ValueError("hook failure")
 
     find_override_method.return_value = hook
-    resolver_model = HookSDistResolver(provider="hook-sdist")
+    resolver_model = HookSDistResolver(
+        provider="hook-sdist", build_sdist=BuildSDist.tarball
+    )
 
     with pytest.raises(RuntimeError, match="hook-sdist") as exc_info:
         resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)

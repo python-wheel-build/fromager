@@ -116,6 +116,7 @@ def test_get_source_provider_hook_forwards_url_and_applies_cooldown(
     tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
     source_resolver = packagesettings.HookSDistResolver(
         provider="hook-sdist",
+        build_sdist=packagesettings.BuildSDist.tarball,
         min_release_age=14,
     )
 
@@ -968,7 +969,9 @@ def test_download_source_preserves_configured_hook_result(
             packagesettings.PackageBuildInfo,
             "source_resolver",
             new_callable=PropertyMock,
-            return_value=packagesettings.HookSDistResolver(provider="hook-sdist"),
+            return_value=packagesettings.HookSDistResolver(
+                provider="hook-sdist", build_sdist=packagesettings.BuildSDist.pep517
+            ),
         ),
         patch("fromager.overrides.find_override_method", return_value=hook),
     ):
@@ -1059,6 +1062,203 @@ def test_prepare_source_plugin_returns_bad_tuple(
             source_filename=tmp_path / "pkg-1.0.tar.gz",
             version=Version("1.0"),
         )
+
+
+@pytest.mark.parametrize(
+    "source_resolver",
+    [
+        packagesettings.GitHubTagCloneResolver(
+            provider="github-tag-git",
+            project_url=pydantic.HttpUrl("https://github.test/org/pkg"),
+        ),
+        packagesettings.HookSDistResolver(
+            provider="hook-sdist", build_sdist=packagesettings.BuildSDist.pep517
+        ),
+    ],
+    ids=["git-clone", "hook-source"],
+)
+@pytest.mark.parametrize("has_override", [False, True])
+def test_build_sdist_uses_pep517_for_configured_source(
+    source_resolver: (
+        packagesettings.GitHubTagCloneResolver | packagesettings.HookSDistResolver
+    ),
+    has_override: bool,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Prefer PEP 517 and warn when it replaces an installed build hook."""
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    build_env = Mock()
+    sdist_root_dir = tmp_path / "src"
+    sdist_file = tmp_context.sdists_builds / "pkg-1.0.tar.gz"
+    sdist_file.write_text("fake sdist")
+    override = Mock() if has_override else None
+    with (
+        patch.object(
+            packagesettings.PackageBuildInfo,
+            "source_resolver",
+            new_callable=PropertyMock,
+            return_value=source_resolver,
+        ),
+        patch("fromager.packagesettings.get_extra_environ", return_value={}),
+        patch("fromager.sources.pep517_build_sdist", return_value=sdist_file) as pep517,
+        patch("fromager.sources.overrides.find_and_invoke") as find_and_invoke,
+        patch(
+            "fromager.sources.overrides.find_override_method", return_value=override
+        ) as find_override,
+    ):
+        result = sources.build_sdist(
+            ctx=tmp_context,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
+
+    assert result == sdist_file.resolve()
+    pep517.assert_called_once_with(
+        ctx=tmp_context,
+        extra_environ={},
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_env=build_env,
+    )
+    find_and_invoke.assert_not_called()
+    find_override.assert_called_once_with(req.name, "build_sdist")
+    warning = "ignoring build_sdist override because source.build_sdist is pep517"
+    assert (warning in caplog.text) is has_override
+    if override is not None:
+        override.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "source_resolver",
+    [
+        None,
+        packagesettings.HookSDistResolver(
+            provider="hook-sdist", build_sdist=packagesettings.BuildSDist.tarball
+        ),
+        packagesettings.GitHubTagCloneResolver(
+            provider="github-tag-git",
+            project_url=pydantic.HttpUrl("https://github.test/org/pkg"),
+            build_sdist=packagesettings.BuildSDist.tarball,
+        ),
+    ],
+    ids=["legacy", "hook-source", "configured-tarball"],
+)
+@pytest.mark.parametrize("has_override", [False, True])
+def test_build_sdist_uses_configured_tarball_or_legacy_hook(
+    source_resolver: (
+        packagesettings.HookSDistResolver
+        | packagesettings.GitHubTagCloneResolver
+        | None
+    ),
+    has_override: bool,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Use configured tarball builds directly and keep overrides for legacy settings."""
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    build_env = Mock()
+    sdist_root_dir = tmp_path / "src"
+    sdist_file = tmp_context.sdists_builds / "pkg-1.0.tar.gz"
+    sdist_file.write_text("fake sdist")
+    override = Mock() if has_override else None
+
+    with (
+        patch.object(
+            packagesettings.PackageBuildInfo,
+            "source_resolver",
+            new_callable=PropertyMock,
+            return_value=source_resolver,
+        ),
+        patch("fromager.packagesettings.get_extra_environ", return_value={}),
+        patch(
+            "fromager.sources.overrides.find_and_invoke", return_value=sdist_file
+        ) as find_and_invoke,
+        patch("fromager.sources.pep517_build_sdist") as pep517,
+        patch(
+            "fromager.sources.default_build_sdist", return_value=sdist_file
+        ) as tarball,
+        patch(
+            "fromager.sources.overrides.find_override_method", return_value=override
+        ) as find_override,
+    ):
+        result = sources.build_sdist(
+            ctx=tmp_context,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
+
+    assert result == sdist_file.resolve()
+    build_kwargs = dict(
+        ctx=tmp_context,
+        extra_environ={},
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=sdist_root_dir,
+        build_env=build_env,
+    )
+    if source_resolver is None:
+        find_and_invoke.assert_called_once_with(
+            req.name, "build_sdist", tarball, **build_kwargs
+        )
+        tarball.assert_not_called()
+        find_override.assert_not_called()
+    else:
+        tarball.assert_called_once_with(**build_kwargs)
+        find_and_invoke.assert_not_called()
+        find_override.assert_called_once_with(req.name, "build_sdist")
+        if override is not None:
+            override.assert_not_called()
+    warning = "ignoring build_sdist override because source.build_sdist is tarball"
+    assert (warning in caplog.text) is (source_resolver is not None and has_override)
+    pep517.assert_not_called()
+
+
+@pytest.mark.parametrize("strategy", [None, "unsupported"])
+def test_build_sdist_rejects_unsupported_configured_strategy(
+    strategy: str | None,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Reject unsupported configured strategies without calling a builder or hook."""
+    source_resolver = Mock(build_sdist=strategy)
+    with (
+        patch.object(
+            packagesettings.PackageBuildInfo,
+            "source_resolver",
+            new_callable=PropertyMock,
+            return_value=source_resolver,
+        ),
+        patch("fromager.packagesettings.get_extra_environ", return_value={}),
+        patch("fromager.sources.overrides.find_override_method", return_value=None),
+        patch("fromager.sources.overrides.find_and_invoke") as find_and_invoke,
+        patch("fromager.sources.pep517_build_sdist") as pep517,
+        patch("fromager.sources.default_build_sdist") as tarball,
+    ):
+        with pytest.raises(
+            ValueError, match=r"unsupported source\.build_sdist strategy"
+        ):
+            sources.build_sdist(
+                ctx=tmp_context,
+                req=Requirement("pkg==1.0"),
+                version=Version("1.0"),
+                sdist_root_dir=tmp_path / "src",
+                build_env=Mock(),
+            )
+
+    find_and_invoke.assert_not_called()
+    pep517.assert_not_called()
+    tarball.assert_not_called()
 
 
 @patch("fromager.overrides.find_and_invoke")
