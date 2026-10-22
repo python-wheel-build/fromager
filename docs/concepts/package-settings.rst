@@ -35,6 +35,17 @@ Settings Loading Flow
 ``PackageBuildInfo`` objects are created lazily the first time a
 package is queried and cached for the rest of the run.
 
+``PackageSettings`` validates source settings when it loads each package.
+A package-level ``source`` cannot be combined with an explicitly set
+variant ``pre_built`` or ``wheel_server_url``. A variant-level ``source``
+cannot be combined with package-level ``download_source`` or
+``resolver_dist``. An explicit ``pre_built: false`` also conflicts;
+an omitted ``pre_built`` does not.
+
+.. versionchanged:: 0.102.0
+   Source and legacy settings mixed across package and variant levels
+   now raise a validation error when package settings load.
+
 Directory Structure
 -------------------
 
