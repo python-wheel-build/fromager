@@ -10,6 +10,7 @@ import stat
 import textwrap
 import threading
 import typing
+import uuid
 from urllib.parse import quote
 
 import uvicorn
@@ -59,7 +60,10 @@ def run_wheel_server(
 
 
 @with_thread_lock()
-def update_wheel_mirror(ctx: context.WorkContext) -> None:
+def update_wheel_mirror(
+    ctx: context.WorkContext, *, preferred_prebuilt_wheel: pathlib.Path | None = None
+) -> None:
+    """Refresh the local index, preferring a newly staged wheel when provided."""
     for wheel in ctx.wheels_build.glob("*.whl"):
         logger.info("adding %s to local wheel server", wheel.name)
         downloads_dest_filename = ctx.wheels_downloads / wheel.name
@@ -87,6 +91,26 @@ def update_wheel_mirror(ctx: context.WorkContext) -> None:
             logger.debug("linking %s -> %s into local index", wheel.name, relpath)
             simple_dest_filename.parent.mkdir(parents=True, exist_ok=True)
             simple_dest_filename.symlink_to(relpath)
+
+    # A fresh configured wheel can share a filename with an older download.
+    # Switch the index link atomically so readers always see a complete wheel.
+    if preferred_prebuilt_wheel is not None:
+        (normalized_name, _, _, _) = parse_wheel_filename(preferred_prebuilt_wheel.name)
+        simple_dest_filename = (
+            ctx.wheel_server_dir / normalized_name / preferred_prebuilt_wheel.name
+        )
+        if simple_dest_filename.resolve() != preferred_prebuilt_wheel.resolve():
+            relpath = os.path.relpath(
+                preferred_prebuilt_wheel, simple_dest_filename.parent
+            )
+            temporary_link = simple_dest_filename.with_name(
+                f".{simple_dest_filename.name}.{uuid.uuid4().hex}"
+            )
+            try:
+                temporary_link.symlink_to(relpath)
+                os.replace(temporary_link, simple_dest_filename)
+            finally:
+                temporary_link.unlink(missing_ok=True)
 
 
 class SimpleHTMLIndex:

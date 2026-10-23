@@ -86,6 +86,44 @@ def test_update_wheel_mirror_prebuilt_wheels(
     assert symlink.is_file()
 
 
+def test_update_wheel_mirror_prefers_fresh_prebuilt_wheel(
+    tmp_context: context.WorkContext,
+) -> None:
+    """An explicit fresh wheel replaces an old mirror link with the same name."""
+    wheel_name = "foo-1.0-py3-none-any.whl"
+    old_wheel = _create_fake_wheel(tmp_context.wheels_downloads, wheel_name)
+    server.update_wheel_mirror(tmp_context)
+    mirror_wheel = tmp_context.wheel_server_dir / "foo" / wheel_name
+
+    fresh_wheel = _create_fake_wheel(tmp_context.wheels_prebuilt, wheel_name)
+    server.update_wheel_mirror(tmp_context)
+    assert mirror_wheel.resolve() == old_wheel
+
+    server.update_wheel_mirror(tmp_context, preferred_prebuilt_wheel=fresh_wheel)
+    assert mirror_wheel.resolve() == fresh_wheel
+    assert old_wheel.is_file()
+
+
+def test_update_wheel_mirror_failed_relink_keeps_old_wheel(
+    tmp_context: context.WorkContext,
+) -> None:
+    """A failed atomic switch leaves the existing mirror link intact."""
+    wheel_name = "foo-1.0-py3-none-any.whl"
+    old_wheel = _create_fake_wheel(tmp_context.wheels_downloads, wheel_name)
+    server.update_wheel_mirror(tmp_context)
+    fresh_wheel = _create_fake_wheel(tmp_context.wheels_prebuilt, wheel_name)
+    mirror_wheel = tmp_context.wheel_server_dir / "foo" / wheel_name
+
+    with (
+        patch("fromager.server.os.replace", side_effect=OSError("replace failed")),
+        pytest.raises(OSError, match="replace failed"),
+    ):
+        server.update_wheel_mirror(tmp_context, preferred_prebuilt_wheel=fresh_wheel)
+
+    assert mirror_wheel.resolve() == old_wheel
+    assert not list(mirror_wheel.parent.glob(f".{wheel_name}.*"))
+
+
 def test_update_wheel_mirror_cleans_dangling_symlinks(
     tmp_context: context.WorkContext,
 ) -> None:

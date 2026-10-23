@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import pathlib
 import subprocess
@@ -5,13 +6,335 @@ import typing
 from unittest.mock import Mock, patch
 
 import click
+import pytest
 from click.testing import CliRunner
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import packagesettings
-from fromager.commands import bootstrap, build, step
+from fromager import packagesettings, server, wheels
+from fromager.commands import bootstrap, build, download_sequence, step
 from fromager.context import WorkContext
+from fromager.log import requirement_ctxvar
+
+
+def _configure_package(ctx: WorkContext, yaml_str: str) -> None:
+    """Apply one package setting to the test context."""
+    ps = packagesettings.PackageSettings.from_string("pkg", yaml_str)
+    ctx.settings._package_settings[ps.name] = ps
+
+
+@pytest.mark.parametrize("provider", ["pypi-prebuilt", "hook-prebuilt"])
+def test_build_order_replay_uses_configured_download(
+    tmp_context: WorkContext, provider: str
+) -> None:
+    """A later build run selects the configured wheel download contract."""
+    _configure_package(tmp_context, f"source:\n  provider: {provider}\n")
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(build, "_is_wheel_built", return_value=None),
+        patch.object(wheels, "download_prebuilt_wheel", return_value=wheel) as download,
+        patch.object(build.wheels, "download_wheel") as legacy,
+        patch.object(build.hooks, "run_prebuilt_wheel_hooks") as hooks,
+        patch.object(build.server, "update_wheel_mirror") as mirror,
+    ):
+        result = build._build(tmp_context, version, req, url, False, None)
+
+    assert result.prebuilt is True
+    assert result.wheel_filename == wheel
+    download.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        version=version,
+        download_url=url,
+        direct_download_directory=tmp_context.wheels_build,
+    )
+    legacy.assert_not_called()
+    hooks.assert_called_once()
+    mirror.assert_called_once_with(tmp_context, preferred_prebuilt_wheel=wheel)
+
+
+def test_build_replay_local_mirror_url_skips_download_hook(
+    tmp_context: WorkContext,
+) -> None:
+    """Build replay downloads a local mirror URL directly and runs wheel hooks."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    req = Requirement("pkg==1.0")
+    url = "https://local.test/simple/pkg/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_build / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(build, "_is_wheel_built", return_value=None),
+        patch.object(wheels, "download_wheel", return_value=wheel) as direct,
+        patch("fromager.wheels.sources.download_source") as configured,
+        patch.object(build.hooks, "run_prebuilt_wheel_hooks") as hooks,
+        patch.object(build.server, "update_wheel_mirror"),
+    ):
+        result = build._build(tmp_context, Version("1.0"), req, url, False, None)
+
+    assert result.wheel_filename == tmp_context.wheels_downloads / wheel.name
+    direct.assert_called_once_with(req, url, tmp_context.wheels_build)
+    configured.assert_not_called()
+    hooks.assert_called_once()
+
+
+def test_fresh_configured_prebuilt_replaces_old_mirror_entry(
+    tmp_context: WorkContext,
+) -> None:
+    """A forced hook download makes its new wheel visible in the mirror."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    req = Requirement("pkg==1.0")
+    wheel_name = "pkg-1.0-py3-none-any.whl"
+    old_wheel = tmp_context.wheels_downloads / wheel_name
+    old_wheel.write_bytes(b"old wheel")
+    server.update_wheel_mirror(tmp_context)
+
+    fresh_wheel = tmp_context.wheels_prebuilt / wheel_name
+    fresh_wheel.write_bytes(b"fresh wheel")
+    with (
+        patch.object(wheels, "download_prebuilt_wheel", return_value=fresh_wheel),
+        patch.object(build.hooks, "run_prebuilt_wheel_hooks"),
+    ):
+        result = build._build(
+            tmp_context,
+            Version("1.0"),
+            req,
+            f"https://pkg.test/{wheel_name}",
+            True,
+            None,
+        )
+
+    mirror_wheel = tmp_context.wheel_server_dir / "pkg" / wheel_name
+    assert result.wheel_filename == fresh_wheel
+    assert mirror_wheel.resolve() == fresh_wheel
+    assert mirror_wheel.read_bytes() == b"fresh wheel"
+    assert old_wheel.read_bytes() == b"old wheel"
+
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    mirror_url = f"https://local.test/simple/pkg/{wheel_name}"
+    with (
+        patch.object(
+            wheels,
+            "resolve_all_cached_wheels",
+            return_value=[(mirror_url, Version("1.0"))],
+        ),
+        patch.object(wheels, "download_wheel") as direct,
+    ):
+        cached_wheel = build._is_wheel_built(tmp_context, "pkg", Version("1.0"))
+
+    assert cached_wheel == fresh_wheel
+    direct.assert_not_called()
+
+
+def test_configured_prebuilt_reuses_cached_wheel(tmp_context: WorkContext) -> None:
+    """A cache hit avoids a fresh resolver download while retaining hooks."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    cached = tmp_context.wheels_downloads / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(build, "_is_wheel_built", return_value=cached),
+        patch.object(wheels, "download_prebuilt_wheel") as download,
+        patch.object(build.hooks, "run_prebuilt_wheel_hooks") as hooks,
+        patch.object(build.server, "update_wheel_mirror"),
+    ):
+        result = build._build(tmp_context, version, req, url, False, None)
+
+    assert result.wheel_filename == cached
+    assert result.skipped is True
+    download.assert_not_called()
+    hooks.assert_called_once()
+
+
+def test_download_sequence_replays_configured_prebuilt(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Download sequence uses the saved URL with the selected source resolver."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [{"dist": "pkg", "version": "1.0", "prebuilt": True, "source_url": url}]
+        )
+    )
+    with (
+        patch.object(wheels, "download_prebuilt_wheel") as download,
+        patch.object(download_sequence.wheels, "download_wheel") as legacy,
+    ):
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [
+                str(build_order),
+                "https://index.test/simple",
+                "--include-wheels",
+                "--num-threads",
+                "1",
+            ],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    download.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        download_url=url,
+        direct_download_directory=tmp_context.wheels_prebuilt,
+    )
+    legacy.assert_not_called()
+
+
+def test_download_sequence_local_mirror_url_skips_download_hook(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Download replay fetches a local mirror wheel without invoking its hook."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    url = "https://local.test/simple/pkg/pkg-1.0-py3-none-any.whl"
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [{"dist": "pkg", "version": "1.0", "prebuilt": True, "source_url": url}]
+        )
+    )
+    with (
+        patch.object(wheels, "download_wheel") as direct,
+        patch("fromager.wheels.sources.download_source") as configured,
+    ):
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [
+                str(build_order),
+                "https://index.test/simple",
+                "--include-wheels",
+                "--num-threads",
+                "1",
+            ],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    direct.assert_called_once_with(
+        Requirement("pkg==1.0"), url, tmp_context.wheels_prebuilt
+    )
+    configured.assert_not_called()
+
+
+@pytest.mark.parametrize("download_fails", [False, True])
+def test_download_sequence_clears_requirement_context(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+    download_fails: bool,
+) -> None:
+    """A prebuilt return or error leaves no package context on the worker."""
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": True,
+                    "source_url": "https://pkg.test/pkg-1.0-py3-none-any.whl",
+                }
+            ]
+        )
+    )
+    failure = ValueError("download failed") if download_fails else None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        with (
+            patch.object(
+                download_sequence.futures,
+                "ThreadPoolExecutor",
+                return_value=executor,
+            ),
+            patch.object(wheels, "download_prebuilt_wheel", side_effect=failure),
+        ):
+            result = cli_runner.invoke(
+                download_sequence.download_sequence,
+                [
+                    str(build_order),
+                    "https://index.test/simple",
+                    "--include-wheels",
+                    "--num-threads",
+                    "1",
+                ],
+                obj=tmp_context,
+            )
+        assert executor.submit(requirement_ctxvar.get, None).result() is None
+
+    if download_fails:
+        assert isinstance(result.exception, ValueError)
+    else:
+        assert result.exit_code == 0, result.output
+
+
+def test_download_sequence_rejects_stale_prebuilt_flag(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """A source-only resolver cannot replay a prebuilt build-order entry."""
+    _configure_package(tmp_context, "source:\n  provider: pypi-sdist\n")
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": True,
+                    "source_url": "https://pkg.test/pkg-1.0-py3-none-any.whl",
+                }
+            ]
+        )
+    )
+    with (
+        patch.object(wheels, "download_wheel") as direct,
+        patch("fromager.wheels.sources.download_source") as configured,
+    ):
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [
+                str(build_order),
+                "https://index.test/simple",
+                "--include-wheels",
+                "--num-threads",
+                "1",
+            ],
+            obj=tmp_context,
+        )
+
+    assert isinstance(result.exception, ValueError)
+    assert "does not resolve prebuilt wheels" in str(result.exception)
+    configured.assert_not_called()
+    direct.assert_not_called()
+
+
+def test_legacy_prebuilt_keeps_direct_download(tmp_context: WorkContext) -> None:
+    """Legacy pre_built still downloads into the build wheel directory."""
+    _configure_package(tmp_context, "variants:\n  cpu:\n    pre_built: true\n")
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_build / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(build, "_is_wheel_built", return_value=None),
+        patch.object(build.wheels, "download_wheel", return_value=wheel) as legacy,
+        patch("fromager.wheels.sources.download_source") as configured,
+        patch.object(build.hooks, "run_prebuilt_wheel_hooks"),
+        patch.object(build.server, "update_wheel_mirror") as mirror,
+    ):
+        result = build._build(tmp_context, version, req, url, False, None)
+
+    assert result.prebuilt is True
+    assert result.wheel_filename == tmp_context.wheels_downloads / wheel.name
+    legacy.assert_called_once_with(req, url, tmp_context.wheels_build)
+    configured.assert_not_called()
+    mirror.assert_called_once_with(tmp_context)
 
 
 def get_option_names(cmd: click.Command) -> typing.Iterable[str]:

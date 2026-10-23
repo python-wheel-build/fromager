@@ -10,9 +10,11 @@ import logging
 import threading
 import typing
 
+import requests.exceptions
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
+from resolvelib.resolvers import ResolverException
 
 from . import resolver, sources, wheels
 from .dependency_graph import DependencyGraph
@@ -171,13 +173,17 @@ class BootstrapRequirementResolver:
             parent_req=parent_req,
         )
 
+        source_resolver = self.ctx.package_build_info(req).source_resolver
+        configured_prebuilt = (
+            source_resolver is not None and source_resolver.resolves_prebuilt_wheel
+        )
         if cached_resolution:
             logger.debug(
                 f"resolved from previous bootstrap: {len(cached_resolution)} version(s)"
             )
             results = cached_resolution
-        elif pre_built:
-            # Resolve prebuilt wheel
+        elif pre_built and not configured_prebuilt:
+            # Legacy prebuilt resolution also serves test-mode source-build fallback.
             wheel_server_urls = wheels.get_wheel_server_urls(
                 self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
             )
@@ -188,30 +194,39 @@ class BootstrapRequirementResolver:
                 req_type=req_type,
             )
         else:
-            # Resolve source (sdist)
-            provider = sources.get_source_provider(
-                ctx=self.ctx,
-                req=req,
-                sdist_server_url=resolver.PYPI_SERVER_URL,
-                req_type=req_type,
-            )
-            max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
-            age_fallback = (
-                resolver.AgeFallback.NEWEST
-                if self.multiple_versions
-                else resolver.AgeFallback.ALL
-            )
-            results = resolver.find_all_matching_from_provider(
-                provider,
-                req,
-                max_age_cutoff=max_age_cutoff,
-                age_fallback=age_fallback,
-            )
+            results = []
+            if configured_prebuilt and self.ctx.wheel_server_url:
+                try:
+                    results = wheels.resolve_all_cached_wheels(
+                        ctx=self.ctx,
+                        req=req,
+                        cache_server_url=self.ctx.wheel_server_url,
+                    )
+                except ResolverException:
+                    logger.debug("no matching wheel in local cache")
+                except requests.exceptions.RequestException as err:
+                    logger.warning("could not check local wheel cache: %s", err)
 
             if not results:
-                logger.warning(
-                    "resolver returned no results (%s version mode)",
-                    "multiple" if self.multiple_versions else "single",
+                # The configured source provider resolves either source archives
+                # or prebuilt wheels, according to its selected capability.
+                provider = sources.get_source_provider(
+                    ctx=self.ctx,
+                    req=req,
+                    sdist_server_url=resolver.PYPI_SERVER_URL,
+                    req_type=req_type,
+                )
+                max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
+                age_fallback = (
+                    resolver.AgeFallback.NEWEST
+                    if self.multiple_versions
+                    else resolver.AgeFallback.ALL
+                )
+                results = resolver.find_all_matching_from_provider(
+                    provider,
+                    req,
+                    max_age_cutoff=max_age_cutoff,
+                    age_fallback=age_fallback,
                 )
 
         if results:

@@ -32,6 +32,7 @@ from . import (
     requirements_file,
     resolver,
     sbom,
+    sources,
 )
 from .pkgmetadata.pep376 import verbatim_dist_name
 
@@ -518,6 +519,64 @@ def download_wheel(
         logger.info(f"have existing wheel {wheel_filename}")
 
     return wheel_filename
+
+
+def is_local_wheel_url(wheel_url: str, wheel_server_url: str | None) -> bool:
+    """Return whether a wheel URL belongs to the local wheel mirror.
+
+    .. versionadded:: 0.102.0
+    """
+    if not wheel_server_url:
+        return False
+    return wheel_url.startswith(wheel_server_url.rstrip("/") + "/")
+
+
+def download_prebuilt_wheel(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    download_url: str,
+    direct_download_directory: pathlib.Path,
+) -> pathlib.Path:
+    """Download a prebuilt wheel via its resolver or the direct wheel path.
+
+    Configured external wheels use the resolver download contract. Legacy
+    wheels and local-mirror URLs use the direct wheel downloader.
+
+    .. versionadded:: 0.102.0
+    """
+    source_resolver = ctx.package_build_info(req).source_resolver
+    if source_resolver is not None and not source_resolver.resolves_prebuilt_wheel:
+        raise ValueError(
+            f"{req}: source resolver {source_resolver.provider!r} "
+            "does not resolve prebuilt wheels"
+        )
+    if source_resolver is None or is_local_wheel_url(
+        download_url, ctx.wheel_server_url
+    ):
+        return download_wheel(req, download_url, direct_download_directory)
+
+    downloaded: packagesettings.DownloadedSource = sources.download_source(
+        ctx=ctx, req=req, version=version, download_url=download_url
+    )
+    wheel_path = downloaded.path
+    if wheel_path.parent != ctx.wheels_prebuilt:
+        ctx.wheels_prebuilt.mkdir(parents=True, exist_ok=True)
+        staged_path = ctx.wheels_prebuilt / wheel_path.name
+        with tempfile.NamedTemporaryFile(
+            dir=ctx.wheels_prebuilt,
+            prefix=f".tmp.{wheel_path.name}.",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = pathlib.Path(temporary_file.name)
+        try:
+            shutil.copy2(wheel_path, temporary_path)
+            os.replace(temporary_path, staged_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return staged_path
+    return wheel_path
 
 
 def get_wheel_server_urls(

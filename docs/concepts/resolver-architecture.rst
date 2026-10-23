@@ -43,6 +43,8 @@ the cache already contains a matching version.
 The configured wheel cache server is not a version-resolution fallback.
 After a version has been selected, the bootstrapper checks the cache
 server separately for a previously built wheel.
+For prebuilt packages, the local wheel server can supply a cached wheel
+before a fresh resolution through the selected source provider.
 
 Provider Hierarchy
 ------------------
@@ -132,7 +134,15 @@ The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
 ``step download-source-archive --output-format json`` exposes that result's
 actual path and kind without changing its default path-only output.
 Without ``--source-kind``, it keeps the legacy archive behavior.
-Integrating prebuilt detection into the bootstrapper remains a separate step.
+Configured prebuilt resolvers select the prebuilt bootstrap path. Fresh
+external wheels use their ``download()`` contract and are staged in the
+prebuilt wheel directory. Bootstrap, build, and download-sequence use the
+direct wheel downloader for local mirror URLs, so they do not rerun the
+configured download hook. Test-mode fallback also downloads directly.
+When a fresh configured wheel shares a filename with an older cached wheel,
+the local mirror and later build replay use the fresh staged wheel.
+Legacy build downloads still pass through the build wheel directory before
+the mirror moves them to downloads.
 See :ref:`download_source_hook` for the return contract and compatibility rules.
 
 .. versionchanged:: 0.102.0
@@ -143,7 +153,9 @@ See :ref:`download_source_hook` for the return contract and compatibility rules.
    ``build_sdist: tarball``. PyPI sdist resolvers
    repack a tarball. Both configured strategies take precedence over an installed
    ``build_sdist`` override and log a warning when it is ignored. Legacy
-   settings continue to use the override.
+   settings continue to use the override. Configured prebuilt profiles use
+   their source provider after a local cache check, and local mirror URLs
+   bypass configured download hooks during replay.
 
 Version Filtering Window
 -------------------------
