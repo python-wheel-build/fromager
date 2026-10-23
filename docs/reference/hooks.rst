@@ -264,8 +264,8 @@ Source hooks
        downloads require a download hook. The ``get_resolver_provider`` hook
        remains required for both profiles.
 
-    To migrate a raw-tarball hook to ``source: {provider: hook-sdist}``, return
-    its artifact kind explicitly:
+    To migrate a raw-tarball hook to ``hook-sdist``, specify ``build_sdist``
+    in YAML and return its artifact kind explicitly:
 
     .. code-block:: python
 

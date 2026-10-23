@@ -69,6 +69,9 @@ class AbstractResolver(pydantic.BaseModel):
 
     provider: str
 
+    build_sdist: BuildSDist | None
+    """Sdist build strategy; None for resolvers that do not build from source."""
+
     supports_override_hooks: typing.ClassVar[bool] = False
     """Does resolver support override hooks?"""
 
@@ -208,7 +211,7 @@ class PyPISDistResolver(AbstractPyPIResolver):
 
     # It is not safe to use PEP 517 to re-generate a source distribution.
     # Some PEP 517 backends require VCS to generate correct sdist.
-    build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
+    build_sdist: typing.Literal[BuildSDist.tarball] = BuildSDist.tarball
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset({DownloadKind.sdist})
 
     def resolver_provider(
@@ -258,7 +261,7 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
 
     provider: typing.Literal["pypi-prebuilt"]
 
-    build_sdist: typing.ClassVar[BuildSDist | None] = None
+    build_sdist: None = None
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.prebuilt_wheel}
     )
@@ -322,7 +325,7 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
     URL must contain '{version}' template string.
     """
 
-    build_sdist: typing.ClassVar[BuildSDist | None] = BuildSDist.tarball
+    build_sdist: typing.Literal[BuildSDist.tarball] = BuildSDist.tarball
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.sdist, DownloadKind.tarball}
     )
@@ -747,6 +750,7 @@ class NotAvailableResolver(AbstractResolver):
     """Prevent resolve and download"""
 
     provider: typing.Literal["not-available"]
+    build_sdist: None = None
 
     def resolver_provider(
         self,
@@ -901,13 +905,18 @@ class HookSDistResolver(AbstractHookResolver):
     a tarball, or a git checkout. Download hooks can return ``DownloadedSource``
     with a concrete kind, or a legacy archive ``Path`` treated as an sdist.
     Without a download hook, the candidate is downloaded as an sdist.
+    Specify ``build_sdist`` explicitly: ``tarball`` to repack an existing
+    sdist, or ``pep517`` to build from a git checkout.
 
     Example::
 
         provider: hook-sdist
+        build_sdist: tarball
     """
 
     provider: typing.Literal["hook-sdist"]
+    build_sdist: BuildSDist
+    """Source distribution build method."""
 
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
@@ -957,6 +966,7 @@ class HookPrebuiltResolver(AbstractHookResolver):
     """
 
     provider: typing.Literal["hook-prebuilt"]
+    build_sdist: None = None
 
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.prebuilt_wheel}

@@ -512,8 +512,9 @@ def build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
-    """Build source distribution"""
+    """Build a source distribution using the configured strategy or legacy hook."""
     pbi = ctx.package_build_info(req)
+    source_resolver = pbi.source_resolver
     build_dir = pbi.build_dir(sdist_root_dir)
 
     logger.info(f"building {ctx.variant} source distribution for {req} in {build_dir}")
@@ -524,18 +525,56 @@ def build_sdist(
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
-    sdist_file: pathlib.Path = overrides.find_and_invoke(
-        req.name,
-        "build_sdist",
-        default_build_sdist,
-        ctx=ctx,
-        extra_environ=extra_environ,
-        req=req,
-        version=version,
-        sdist_root_dir=sdist_root_dir,
-        build_dir=build_dir,
-        build_env=build_env,
-    )
+    if source_resolver is not None:
+        if overrides.find_override_method(req.name, "build_sdist") is not None:
+            logger.warning(
+                "%s: ignoring build_sdist override because source.build_sdist is %s",
+                req.name,
+                source_resolver.build_sdist,
+            )
+    if (
+        source_resolver is not None
+        and source_resolver.build_sdist is packagesettings.BuildSDist.pep517
+    ):
+        sdist_file = pep517_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
+    elif (
+        source_resolver is not None
+        and source_resolver.build_sdist is packagesettings.BuildSDist.tarball
+    ):
+        sdist_file = default_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            build_env=build_env,
+        )
+    elif source_resolver is None:
+        sdist_file = overrides.find_and_invoke(
+            req.name,
+            "build_sdist",
+            default_build_sdist,
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            build_env=build_env,
+        )
+    else:
+        raise ValueError(
+            f"{req.name}: unsupported source.build_sdist strategy "
+            f"{source_resolver.build_sdist!r}"
+        )
     logger.info(f"built source distribution {sdist_file}")
 
     # validate location and file name

@@ -118,6 +118,14 @@ the artifact kind available for source preparation; consuming it in preparation
 and integrating prebuilt detection into the bootstrapper are separate steps.
 See :ref:`download_source_hook` for the return contract and compatibility rules.
 
+.. versionchanged:: 0.102.0
+   Configured source resolvers also select the sdist build method. Git checkout
+   resolvers use PEP 517 by default; hook sdist resolvers require an explicit
+   ``build_sdist: pep517`` or ``build_sdist: tarball``. PyPI sdist resolvers
+   repack a tarball. Both configured strategies take precedence over an installed
+   ``build_sdist`` override and log a warning when it is ignored. Legacy
+   settings continue to use the override.
+
 Version Filtering Window
 -------------------------
 
