@@ -384,25 +384,26 @@ def _build(
     # If we get here and still don't have a wheel filename, then we need to
     # build the wheel.
     if not wheel_filename:
-        source_filename = sources.download_source(
+        downloaded_source = sources.download_source(
             ctx=wkctx,
             req=req,
             version=resolved_version,
             download_url=source_download_url,
-        ).path
+        )
         logger.debug(
-            "saved sdist of version %s from %s to %s",
+            "saved source of version %s from %s to %s",
             resolved_version,
             source_download_url,
-            source_filename,
+            downloaded_source.path,
         )
 
         # Prepare source
         source_root_dir = sources.prepare_source(
             ctx=wkctx,
             req=req,
-            source_filename=source_filename,
+            source_filename=downloaded_source.path,
             version=resolved_version,
+            download_kind=downloaded_source.kind,
         )
 
         # Build environment

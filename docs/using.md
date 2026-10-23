@@ -256,9 +256,19 @@ package index and downloads it. It will be common to run this step
 with `pypi.org`, but for truly isolated and reproducible builds a
 private index server is more robust.
 
-The `step prepare-source` command unpacks the source archive
-downloaded from the previous step and applies any patches (refer to
-[customization](customization.md) for details about patching).
+The `step prepare-source` command unpacks a source archive and applies any
+patches (refer to [customization](customization.md) for details about patching).
+It defaults to the archive kind for existing scripts. For a Git checkout, pass
+`--source-kind git_checkout`. Pass `--source-path` when the downloaded source
+cannot be found at its standard location. Git checkouts must use the standard
+double-nested work directory layout so later build steps can find them. The
+download command's optional
+`--output-format json` prints both `path` and `kind` when a hook can return
+different artifact kinds. Its default output remains the path alone. Git
+preparation applies patches to the selected checkout itself, so use a
+disposable clone for `--source-path`. Git downloads do not reuse an existing
+checkout with `--no-cleanup`; the files remain available for inspection. Enable
+cleanup or use a new work directory to download it again.
 
 The `step prepare-build` command creates a virtualenv with the build
 dependencies for building the wheel. It expects a `--wheel-server-url`

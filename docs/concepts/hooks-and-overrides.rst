@@ -62,6 +62,12 @@ arguments.
    download results with explicit artifact kinds. See :ref:`download_source_hook`
    for the contract, legacy path defaults, and a migration example.
 
+.. versionchanged:: 0.102.0
+
+   ``prepare_source`` selects an archive or Git default using the downloaded
+   artifact kind. Package overrides remain active. See :ref:`prepare_source_hook`
+   for their arguments and the public Git checkout helper.
+
 Global Hooks
 ------------
 

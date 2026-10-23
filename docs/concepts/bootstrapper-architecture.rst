@@ -57,7 +57,8 @@ the contract every phase must satisfy:
    * - ``Start``
      - Add to dependency graph; deduplicate already-seen packages
    * - ``PrepareSource``
-     - Download source or prebuilt wheel; read build-system deps
+     - Download source or prebuilt wheel; prepare archives or checkouts;
+       read build-system deps
    * - ``PrepareBuild``
      - Install build-system deps; discover backend and sdist deps
    * - ``Build``
@@ -66,6 +67,10 @@ the contract every phase must satisfy:
      - Run post-bootstrap hooks; extract install deps; record build order
    * - ``Complete``
      - Clean up build directories (terminal phase)
+
+.. versionchanged:: 0.102.0
+   ``PrepareSource`` passes the downloaded artifact kind through preparation,
+   so Git checkouts can be prepared without unpacking them.
 
 Each phase wraps a ``WorkItem`` dataclass that accumulates per-package
 state (resolved version, build environment, build result, etc.) as it

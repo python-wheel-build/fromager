@@ -298,17 +298,32 @@ Source hooks
     the configured hook profiles; packages using legacy settings still require
     a bare ``Path``.
 
+.. _prepare_source_hook:
+
 .. autofromagerhook:: default_prepare_source
 
-    The ``prepare_source()`` function is responsible for setting up a tree
-    of source files in a format that is ready to be built. The default
-    implementation unpacks the source archive and applies patches.
+    The ``prepare_source()`` function sets up a source tree for building. It
+    selects ``default_prepare_source()`` for archives or
+    ``default_prepare_git_checkout()`` for a Git checkout according to the
+    downloaded ``DownloadKind``. Both defaults apply patches and other project
+    preparation.
 
-    The arguments are the ``WorkContext``, the ``Requirement`` being
-    evaluated, the ``Path`` to the source archive, and the version.
+    In-process callers pass the ``path`` and ``kind`` from ``DownloadedSource``
+    to ``prepare_source()``. The Python function accepts a source ``Path`` and
+    optional ``download_kind``; path-only callers default to ``sdist``.
+    A configured ``source:`` resolver does not disable the package
+    ``prepare_source`` override. The override receives the ``WorkContext``,
+    ``Requirement``, source ``Path``, and version, but not ``download_kind``.
+    An archive-specific override can call ``sources.default_prepare_source()``;
+    a Git-specific override can call
+    ``sources.default_prepare_git_checkout()`` before its own changes.
 
-    The return value should be the ``Path`` to the root of the source tree,
-    ideally inside the ``ctx.work_dir`` directory.
+    The override returns the source root ``Path`` or a ``(Path, bool)`` pair.
+    Git checkouts must use the double-nested package/version layout under
+    ``ctx.work_dir`` so the later bootstrap and step commands can find them.
+
+    .. versionchanged:: 0.102.0
+       Passing ``DownloadKind.git_checkout`` prepares a clean Git checkout.
 
 .. autofromagerhook:: default_build_sdist
 
@@ -327,6 +342,8 @@ Source helper functions
 
 The following helper functions are available in the ``fromager.sources`` module
 for use in custom source hooks:
+
+.. autofunction:: fromager.sources.default_prepare_git_checkout
 
 .. autofunction:: fromager.sources.ensure_pkg_info
 

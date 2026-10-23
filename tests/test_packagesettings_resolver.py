@@ -4,6 +4,7 @@ import dataclasses
 import datetime
 import pathlib
 import re
+import subprocess
 import textwrap
 import typing
 from unittest import mock
@@ -15,7 +16,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 from wheel.wheelfile import WheelFile
 
-from fromager import resolver
+from fromager import resolver, sources
 from fromager.candidate import Candidate, Cooldown
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
@@ -406,6 +407,131 @@ class TestPyPIGitResolver:
             destination_dir=expected_dest,
             vcs_url=_CANDIDATE_GIT.url,
         )
+
+    def test_download_rejects_existing_checkout_without_cleanup(
+        self, tmp_context: WorkContext
+    ) -> None:
+        tmp_context.cleanup = False
+        checkout = (
+            tmp_context.work_dir / f"{_REQ.name}-{_VERSION}" / f"{_REQ.name}-{_VERSION}"
+        )
+        checkout.mkdir(parents=True)
+        (checkout / ".git").mkdir()
+        (checkout / "keep.txt").write_text("prepared")
+
+        with pytest.raises(FileExistsError, match="enable cleanup"):
+            _parse(self.YAML).download(tmp_context, _REQ, _CANDIDATE_GIT)
+
+        assert (checkout / "keep.txt").read_text() == "prepared"
+
+    def test_download_cleans_checkout_before_reclone(
+        self, tmp_context: WorkContext
+    ) -> None:
+        checkout = (
+            tmp_context.work_dir / f"{_REQ.name}-{_VERSION}" / f"{_REQ.name}-{_VERSION}"
+        )
+        checkout.mkdir(parents=True)
+        (checkout / "old.txt").write_text("old")
+        (checkout.parent / "build-meta.json").write_text("old")
+
+        def clone(*, destination_dir: pathlib.Path, vcs_url: str) -> pathlib.Path:
+            assert vcs_url == _CANDIDATE_GIT.url
+            destination_dir.mkdir(parents=True)
+            (destination_dir / "new.txt").write_text("new")
+            return destination_dir
+
+        with mock.patch("fromager.downloads.download_git_source", side_effect=clone):
+            result = _parse(self.YAML).download(tmp_context, _REQ, _CANDIDATE_GIT)
+
+        assert result == DownloadedSource(checkout, DownloadKind.git_checkout)
+        assert (checkout / "new.txt").read_text() == "new"
+        assert not (checkout / "old.txt").exists()
+        assert not (checkout.parent / "build-meta.json").exists()
+
+    def test_download_preserves_non_checkout_on_collision(
+        self, tmp_context: WorkContext
+    ) -> None:
+        tmp_context.cleanup = False
+        checkout = (
+            tmp_context.work_dir / f"{_REQ.name}-{_VERSION}" / f"{_REQ.name}-{_VERSION}"
+        )
+        checkout.mkdir(parents=True)
+        (checkout / "keep.txt").write_text("existing source")
+        meta_file = checkout.parent / "build-meta.json"
+        meta_file.write_text("existing metadata")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            _parse(self.YAML).download(tmp_context, _REQ, _CANDIDATE_GIT)
+
+        assert (checkout / "keep.txt").read_text() == "existing source"
+        assert meta_file.read_text() == "existing metadata"
+
+    def test_local_git_checkout_prepares_and_reclones(
+        self, tmp_context: WorkContext, tmp_path: pathlib.Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+        (repo / "pyproject.toml").write_text("[build-system]\nrequires = []\n")
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@pkg.test",
+                "commit",
+                "-m",
+                "Initial source",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(["git", "-C", str(repo), "tag", "v1.2.3"], check=True)
+        candidate = Candidate(
+            name=_REQ.name,
+            version=_VERSION,
+            url=f"git+file://{repo}@refs/tags/v1.2.3",
+        )
+        source_resolver = _parse(self.YAML)
+        tmp_context.cleanup = False
+        package_dir = tmp_context.work_dir / f"{_REQ.name}-{_VERSION}"
+        (package_dir / "other-dir").mkdir(parents=True)
+        (package_dir / "build-meta.json").write_text("stale")
+
+        downloaded = source_resolver.download(tmp_context, _REQ, candidate)
+        assert (package_dir / "other-dir").is_dir()
+        assert (package_dir / "build-meta.json").read_text() == "stale"
+        prepared = sources.prepare_source(
+            ctx=tmp_context,
+            req=_REQ,
+            source_filename=downloaded.path,
+            version=_VERSION,
+            download_kind=downloaded.kind,
+        )
+        (prepared / "keep.txt").write_text("prepared")
+        with pytest.raises(FileExistsError, match="already exists"):
+            source_resolver.download(tmp_context, _REQ, candidate)
+
+        assert downloaded.kind is DownloadKind.git_checkout
+        assert prepared == downloaded.path
+        assert (prepared / ".git").is_dir()
+        assert (prepared / "keep.txt").read_text() == "prepared"
+        assert sources.read_build_meta(prepared.parent)["source-filename"] == str(
+            prepared
+        )
+
+        tmp_context.cleanup = True
+        recloned = source_resolver.download(tmp_context, _REQ, candidate)
+
+        assert recloned.path == prepared
+        assert (recloned.path / ".git").is_dir()
+        assert not (recloned.path / "keep.txt").exists()
+        assert not (package_dir / "other-dir").exists()
+        assert not (recloned.path.parent / "build-meta.json").exists()
 
 
 # -- Git source resolvers ----------------------------------------------------

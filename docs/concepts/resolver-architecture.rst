@@ -113,15 +113,34 @@ settings are used.
 Hook downloads accept explicit artifact kinds and adapt legacy paths using
 profile-specific defaults. If no download hook exists, the profile selects the
 standard sdist or wheel downloader and its destination directory. Hook errors
-propagate with context instead of triggering a fallback. The typed result makes
-the artifact kind available for source preparation; consuming it in preparation
-and integrating prebuilt detection into the bootstrapper are separate steps.
+propagate with context instead of triggering a fallback. In-process callers
+pass the downloaded path and kind to preparation: ``sdist`` and ``tarball``
+are unpacked, while ``git_checkout`` uses the checkout directory. The checkout
+uses the same double-nested work directory pattern as an unpacked archive;
+the directory names can differ for normalized package names.
+The default Git preparer rejects a checkout with local changes before applying
+patches, project overrides, and Rust vendoring. Git status does not prove that the
+checkout is the original clone or preserve it after preparation. Build metadata
+is written after preparation but is not used to choose the preparation path.
+With ``--no-cleanup``, downloading to an existing checkout fails and preserves
+its files for inspection. Enable cleanup or use a new work directory to
+download and prepare a fresh checkout. Git status cannot detect changes to
+patch or settings files outside the checkout. If preparation left the checkout
+clean, a manual second ``prepare-source`` call runs the preparation steps again.
+The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
+``--source-path`` because it cannot retrieve the earlier Python download result.
+``step download-source-archive --output-format json`` exposes that result's
+actual path and kind without changing its default path-only output.
+Without ``--source-kind``, it keeps the legacy archive behavior.
+Integrating prebuilt detection into the bootstrapper remains a separate step.
 See :ref:`download_source_hook` for the return contract and compatibility rules.
 
 .. versionchanged:: 0.102.0
-   Configured source resolvers also select the sdist build method. Git checkout
-   resolvers use PEP 517 by default; hook sdist resolvers require an explicit
-   ``build_sdist: pep517`` or ``build_sdist: tarball``. PyPI sdist resolvers
+   Explicit ``DownloadKind.git_checkout`` results can be prepared without
+   unpacking an archive. Configured source resolvers also select the sdist
+   build method. Git checkout resolvers use PEP 517 by default; hook sdist
+   resolvers require an explicit ``build_sdist: pep517`` or
+   ``build_sdist: tarball``. PyPI sdist resolvers
    repack a tarball. Both configured strategies take precedence over an installed
    ``build_sdist`` override and log a warning when it is ignored. Legacy
    settings continue to use the override.
