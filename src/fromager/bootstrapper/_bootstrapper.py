@@ -482,7 +482,7 @@ class Bootstrapper:
         req: Requirement,
         resolved_version: Version,
         source_url: str,
-    ) -> pathlib.Path:
+    ) -> packagesettings.DownloadedSource:
         """Download source for a package."""
         result: packagesettings.DownloadedSource = sources.download_source(
             ctx=self.ctx,
@@ -490,20 +490,21 @@ class Bootstrapper:
             version=resolved_version,
             download_url=source_url,
         )
-        return result.path
+        return result
 
     def _prepare_source(
         self,
         req: Requirement,
         resolved_version: Version,
-        source_filename: pathlib.Path,
+        downloaded_source: packagesettings.DownloadedSource,
     ) -> pathlib.Path:
         """Prepare (unpack/patch) source for building."""
         result: pathlib.Path = sources.prepare_source(
             ctx=self.ctx,
             req=req,
-            source_filename=source_filename,
+            source_filename=downloaded_source.path,
             version=resolved_version,
+            download_kind=downloaded_source.kind,
         )
         return result
 

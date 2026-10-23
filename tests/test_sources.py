@@ -1,5 +1,6 @@
 import datetime
 import pathlib
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -788,6 +789,99 @@ def test_unpack_source_unknown_extension(
         )
 
 
+@pytest.mark.parametrize("cleanup", [True, False])
+def test_unpack_source_rejects_directory_before_cleanup(
+    tmp_context: context.WorkContext,
+    cleanup: bool,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    tmp_context.cleanup = cleanup
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    (checkout / "keep.txt").write_text("original")
+
+    with pytest.raises(ValueError, match="is a directory, not a source archive"):
+        sources.unpack_source(
+            ctx=tmp_context, req=req, version=version, source_filename=checkout
+        )
+
+    assert (checkout / "keep.txt").read_text() == "original"
+
+
+def test_unpack_source_rejects_archive_path_through_cleanup_dir(
+    tmp_context: context.WorkContext,
+) -> None:
+    """A path using the soon-to-be-deleted directory stops working after cleanup."""
+    unpack_dir = tmp_context.work_dir / "pkg-1.0"
+    unpack_dir.mkdir()
+    archive = tmp_context.work_dir / "pkg-1.0.tar.gz"
+    archive.write_bytes(b"original archive")
+    source_path = unpack_dir / ".." / archive.name
+
+    with pytest.raises(ValueError, match="overlaps"):
+        sources.unpack_source(
+            ctx=tmp_context,
+            req=Requirement("pkg==1.0"),
+            version=Version("1.0"),
+            source_filename=source_path,
+        )
+
+    assert unpack_dir.is_dir()
+    assert archive.read_bytes() == b"original archive"
+
+
+def test_unpack_source_rejects_symlink_into_cleanup_dir(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Reject an external symlink whose archive target would be deleted."""
+    unpack_dir = tmp_context.work_dir / "pkg-1.0"
+    unpack_dir.mkdir()
+    archive = unpack_dir / "pkg-1.0.tar.gz"
+    archive.write_bytes(b"original archive")
+    source_path = tmp_context.work_dir / "pkg-1.0.tar.gz"
+    source_path.symlink_to(archive)
+
+    with pytest.raises(ValueError, match="overlaps"):
+        sources.unpack_source(
+            ctx=tmp_context,
+            req=Requirement("pkg==1.0"),
+            version=Version("1.0"),
+            source_filename=source_path,
+        )
+
+    assert archive.read_bytes() == b"original archive"
+
+
+def test_unpack_source_replaces_existing_tree_from_external_archive(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Keep the normal cleanup path for an archive outside the work tree."""
+    unpack_dir = tmp_context.work_dir / "pkg-1.0"
+    unpack_dir.mkdir()
+    (unpack_dir / "stale.txt").write_text("old output")
+    content_dir = tmp_path / "content" / "pkg-1.0"
+    content_dir.mkdir(parents=True)
+    (content_dir / "setup.py").write_text("# setup")
+    archive = tmp_path / "pkg-1.0.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(content_dir, arcname=content_dir.name)
+
+    source_root, is_new = sources.unpack_source(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        source_filename=archive,
+    )
+
+    assert is_new is True
+    assert source_root == unpack_dir / "pkg-1.0"
+    assert (source_root / "setup.py").read_text() == "# setup"
+    assert not (unpack_dir / "stale.txt").exists()
+    assert archive.is_file()
+
+
 def test_unpack_source_renames_mismatched_dir(
     tmp_context: context.WorkContext,
     tmp_path: pathlib.Path,
@@ -1019,6 +1113,509 @@ def test_prepare_source_plugin_returns_path(
     )
 
     assert result == source_dir
+
+
+def test_prepare_source_keeps_override_with_configured_resolver(
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    downloaded = packagesettings.DownloadedSource(
+        path=checkout, kind=packagesettings.DownloadKind.git_checkout
+    )
+    source_resolver = Mock()
+    source_resolver.download.return_value = downloaded
+
+    def prepare_override(
+        ctx: context.WorkContext,
+        req: Requirement,
+        source_filename: pathlib.Path,
+        version: Version,
+    ) -> pathlib.Path:
+        assert ctx is tmp_context
+        assert req == Requirement("pkg==1.0")
+        assert source_filename == checkout
+        assert version == Version("1.0")
+        return checkout
+
+    with (
+        patch.object(
+            packagesettings.PackageBuildInfo,
+            "source_resolver",
+            new_callable=PropertyMock,
+            return_value=source_resolver,
+        ),
+        patch(
+            "fromager.overrides.find_override_method", return_value=prepare_override
+        ) as find_override_method,
+    ):
+        result = sources.download_source(
+            ctx=tmp_context,
+            req=req,
+            version=version,
+            download_url="git+https://code.test/org/pkg.git@v1.0",
+        )
+        prepared = sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=result.path,
+            version=version,
+            download_kind=result.kind,
+        )
+
+    assert result is downloaded
+    assert prepared == checkout
+    source_resolver.download.assert_called_once_with(
+        tmp_context,
+        req,
+        Candidate(
+            name=req.name,
+            version=version,
+            url="git+https://code.test/org/pkg.git@v1.0",
+        ),
+    )
+    find_override_method.assert_called_once_with(req.name, "prepare_source")
+    assert (checkout.parent / "build-meta.json").is_file()
+
+
+def test_prepare_source_git_checkout_rejects_dirty_retry(
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+
+    def add_prepared_file(**_: object) -> None:
+        (checkout / "prepared.txt").write_text("patched")
+
+    with patch(
+        "fromager.sources.prepare_new_source", side_effect=add_prepared_file
+    ) as prepare_new_source:
+        result = sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=checkout,
+            version=version,
+            download_kind=packagesettings.DownloadKind.git_checkout,
+        )
+        with pytest.raises(ValueError, match="has local changes"):
+            sources.prepare_source(
+                ctx=tmp_context,
+                req=req,
+                source_filename=checkout,
+                version=version,
+                download_kind=packagesettings.DownloadKind.git_checkout,
+            )
+
+    assert result == checkout
+    assert (checkout / "prepared.txt").read_text() == "patched"
+    prepare_new_source.assert_called_once_with(
+        ctx=tmp_context, req=req, source_root_dir=checkout, version=version
+    )
+    assert sources.read_build_meta(checkout.parent) == {
+        "req": "pkg==1.0",
+        "source-filename": str(checkout),
+        "version": "1.0",
+    }
+
+
+def test_prepare_source_git_checkout_rejects_ignored_files(
+    tmp_context: context.WorkContext,
+) -> None:
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+    (checkout / ".gitignore").write_text("build/\n")
+    subprocess.run(["git", "-C", str(checkout), "add", ".gitignore"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@pkg.test",
+            "commit",
+            "-m",
+            "Ignore build outputs",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    (checkout / "build").mkdir()
+    (checkout / "build" / "generated.txt").write_text("generated")
+
+    with patch("fromager.sources.prepare_new_source") as prepare_new_source:
+        with pytest.raises(ValueError, match="has local changes"):
+            sources.prepare_source(
+                ctx=tmp_context,
+                req=Requirement("pkg==1.0"),
+                source_filename=checkout,
+                version=Version("1.0"),
+                download_kind=packagesettings.DownloadKind.git_checkout,
+            )
+
+    prepare_new_source.assert_not_called()
+
+
+@pytest.mark.parametrize("change_kind", ["tracked", "ignored"])
+def test_prepare_source_git_checkout_rejects_nested_submodule_changes(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+    change_kind: str,
+) -> None:
+    def run_git(repo: pathlib.Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout
+
+    leaf = tmp_path / "leaf"
+    leaf.mkdir()
+    run_git(leaf, "init")
+    (leaf / "tracked.txt").write_text("original")
+    (leaf / ".gitignore").write_text("build/\n")
+    run_git(leaf, "add", ".")
+    run_git(
+        leaf,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@pkg.test",
+        "commit",
+        "-m",
+        "Initial leaf",
+    )
+
+    middle = tmp_path / "middle"
+    middle.mkdir()
+    run_git(middle, "init")
+    run_git(
+        middle,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(leaf),
+        "leaf",
+    )
+    run_git(middle, "config", "-f", ".gitmodules", "submodule.leaf.ignore", "all")
+    run_git(middle, "add", ".")
+    run_git(
+        middle,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@pkg.test",
+        "commit",
+        "-m",
+        "Initial middle",
+    )
+
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    run_git(checkout, "init")
+    run_git(
+        checkout,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(middle),
+        "middle",
+    )
+    run_git(checkout, "config", "-f", ".gitmodules", "submodule.middle.ignore", "all")
+    run_git(checkout, "add", ".")
+    run_git(
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@pkg.test",
+        "commit",
+        "-m",
+        "Initial checkout",
+    )
+    run_git(
+        checkout,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+    )
+
+    nested_checkout = checkout / "middle" / "leaf"
+    if change_kind == "tracked":
+        (nested_checkout / "tracked.txt").write_text("changed")
+    else:
+        (nested_checkout / "build").mkdir()
+        (nested_checkout / "build" / "generated.txt").write_text("generated")
+
+    assert (
+        run_git(
+            checkout,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignored=matching",
+        )
+        == ""
+    )
+    with patch("fromager.sources.prepare_new_source") as prepare_new_source:
+        with pytest.raises(ValueError, match="has local changes"):
+            sources.prepare_source(
+                ctx=tmp_context,
+                req=Requirement("pkg==1.0"),
+                source_filename=checkout,
+                version=Version("1.0"),
+                download_kind=packagesettings.DownloadKind.git_checkout,
+            )
+
+    prepare_new_source.assert_not_called()
+
+
+def test_prepare_source_checkout_ignores_stale_build_metadata(
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+    (checkout.parent / "build-meta.json").write_text("stale")
+
+    with patch("fromager.sources.prepare_new_source") as prepare_new_source:
+        result = sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=checkout,
+            version=version,
+            download_kind=packagesettings.DownloadKind.git_checkout,
+        )
+
+    assert result == checkout
+    prepare_new_source.assert_called_once()
+    assert sources.read_build_meta(checkout.parent)["source-filename"] == str(checkout)
+
+
+def test_prepare_source_git_checkout_runs_preparation_steps(
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+
+    with (
+        patch("fromager.sources.patch_source") as patch_source,
+        patch(
+            "fromager.sources.pyproject.apply_project_override"
+        ) as apply_project_override,
+        patch("fromager.sources.vendor_rust.vendor_rust") as vendor_rust,
+    ):
+        result = sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=checkout,
+            version=version,
+            download_kind=packagesettings.DownloadKind.git_checkout,
+        )
+
+    assert result == checkout
+    patch_source.assert_called_once_with(tmp_context, checkout, req, version)
+    apply_project_override.assert_called_once_with(
+        ctx=tmp_context, req=req, sdist_root_dir=checkout
+    )
+    vendor_rust.assert_called_once_with(
+        req, tmp_context.package_build_info(req).build_dir(checkout)
+    )
+
+
+def test_prepare_source_rejects_non_git_directory(
+    tmp_context: context.WorkContext,
+) -> None:
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="is not a Git checkout"):
+        sources.prepare_source(
+            ctx=tmp_context,
+            req=Requirement("pkg==1.0"),
+            source_filename=checkout,
+            version=Version("1.0"),
+            download_kind=packagesettings.DownloadKind.git_checkout,
+        )
+
+
+def test_prepare_source_git_kind_rejects_archive_file(
+    tmp_context: context.WorkContext,
+) -> None:
+    archive = tmp_context.sdists_downloads / "pkg-1.0.tar.gz"
+    archive.write_bytes(b"archive")
+
+    with pytest.raises(ValueError, match="is not a Git checkout"):
+        sources.prepare_source(
+            ctx=tmp_context,
+            req=Requirement("pkg==1.0"),
+            source_filename=archive,
+            version=Version("1.0"),
+            download_kind=packagesettings.DownloadKind.git_checkout,
+        )
+
+    assert archive.read_bytes() == b"archive"
+
+
+def test_prepare_source_path_only_rejects_checkout_without_removing_it(
+    tmp_context: context.WorkContext,
+) -> None:
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    (checkout / "keep.txt").write_text("original")
+
+    with pytest.raises(ValueError, match="is a directory, not a source archive"):
+        sources.prepare_source(
+            ctx=tmp_context,
+            req=Requirement("pkg==1.0"),
+            source_filename=checkout,
+            version=Version("1.0"),
+        )
+
+    assert (checkout / "keep.txt").read_text() == "original"
+
+
+@pytest.mark.parametrize(
+    "download_kind",
+    [packagesettings.DownloadKind.sdist, packagesettings.DownloadKind.tarball],
+)
+def test_prepare_source_archive_still_unpacks_and_prepares(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+    download_kind: packagesettings.DownloadKind,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    content = tmp_path / "content" / "pkg-1.0"
+    content.mkdir(parents=True)
+    (content / "pyproject.toml").write_text("[build-system]\n")
+    archive = tmp_path / "pkg-1.0.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(content, arcname="pkg-1.0")
+
+    with patch("fromager.sources.prepare_new_source") as prepare_new_source:
+        result = sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=archive,
+            version=version,
+            download_kind=download_kind,
+        )
+
+    expected = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    assert result == expected
+    assert (result / "pyproject.toml").is_file()
+    prepare_new_source.assert_called_once_with(
+        ctx=tmp_context, req=req, source_root_dir=expected, version=version
+    )
+    assert sources.read_build_meta(result.parent)["source-filename"] == str(archive)
+
+
+def test_prepare_source_checkout_keeps_override_contract(
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+
+    with patch(
+        "fromager.sources.overrides.find_and_invoke", return_value=(checkout, True)
+    ) as invoke:
+        result = sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=checkout,
+            version=version,
+            download_kind=packagesettings.DownloadKind.git_checkout,
+        )
+
+    assert result == checkout
+    invoke.assert_called_once_with(
+        req.name,
+        "prepare_source",
+        sources.default_prepare_git_checkout,
+        ctx=tmp_context,
+        req=req,
+        source_filename=checkout,
+        version=version,
+    )
+    assert (checkout.parent / "build-meta.json").is_file()
+
+
+def test_prepare_source_git_override_calls_public_default(
+    tmp_context: context.WorkContext,
+) -> None:
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+
+    def prepare_override(
+        ctx: context.WorkContext,
+        req: Requirement,
+        source_filename: pathlib.Path,
+        version: Version,
+    ) -> tuple[pathlib.Path, bool]:
+        assert ctx is tmp_context
+        assert req == Requirement("pkg==1.0")
+        assert source_filename == checkout
+        assert version == Version("1.0")
+        return sources.default_prepare_git_checkout(ctx, req, source_filename, version)
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=prepare_override),
+        patch("fromager.sources.prepare_new_source") as prepare_new_source,
+    ):
+        result = sources.prepare_source(
+            ctx=tmp_context,
+            req=req,
+            source_filename=checkout,
+            version=version,
+            download_kind=packagesettings.DownloadKind.git_checkout,
+        )
+
+    assert result == checkout
+    prepare_new_source.assert_called_once_with(
+        ctx=tmp_context, req=req, source_root_dir=checkout, version=version
+    )
+    assert (checkout.parent / "build-meta.json").is_file()
+
+
+def test_prepare_source_rejects_prebuilt_wheel_kind(
+    tmp_context: context.WorkContext,
+) -> None:
+    with patch("fromager.sources.overrides.find_and_invoke") as invoke:
+        with pytest.raises(ValueError, match="cannot prepare source"):
+            sources.prepare_source(
+                ctx=tmp_context,
+                req=Requirement("pkg==1.0"),
+                source_filename=tmp_context.wheels_prebuilt / "pkg-1.0.whl",
+                version=Version("1.0"),
+                download_kind=packagesettings.DownloadKind.prebuilt_wheel,
+            )
+
+    invoke.assert_not_called()
 
 
 @patch("fromager.sources.write_build_meta")

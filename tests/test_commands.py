@@ -1,4 +1,6 @@
+import json
 import pathlib
+import subprocess
 import typing
 from unittest.mock import Mock, patch
 
@@ -34,7 +36,7 @@ def test_download_source_archive_prints_downloaded_path(
     tmp_context: WorkContext,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Print only the path when the download helper returns a tuple."""
+    """Keep the path-only output for existing scripts."""
     expected = tmp_path / "pkg-1.0.tar.gz"
 
     with (
@@ -66,11 +68,181 @@ def test_download_source_archive_prints_downloaded_path(
     assert result.output == f"{expected}\n"
 
 
-def test_build_passes_downloaded_path_to_prepare_source(
+def test_download_source_archive_json_includes_kind(
+    cli_runner: CliRunner,
     tmp_context: WorkContext,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Pass only the downloaded path into source preparation."""
+    checkout = tmp_path / "pkg-1.0"
+
+    with (
+        patch.object(
+            step.sources,
+            "resolve_source",
+            return_value=("git+https://code.test/pkg.git@v1.0", Version("1.0")),
+        ),
+        patch.object(
+            step.sources,
+            "download_source",
+            return_value=packagesettings.DownloadedSource(
+                checkout, packagesettings.DownloadKind.git_checkout
+            ),
+        ),
+    ):
+        result = cli_runner.invoke(
+            step.step,
+            [
+                "download-source-archive",
+                "--output-format",
+                "json",
+                "pkg",
+                "1.0",
+                "https://pkg.test/simple",
+            ],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "path": str(checkout),
+        "kind": "git_checkout",
+    }
+
+
+def test_step_prepare_source_prepares_clean_git_checkout(
+    cli_runner: CliRunner, tmp_context: WorkContext
+) -> None:
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+
+    with patch.object(step.sources, "prepare_new_source") as prepare_new_source:
+        result = cli_runner.invoke(
+            step.step,
+            ["prepare-source", "--source-kind", "git_checkout", "pkg", "1.0"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{checkout}\n"
+    prepare_new_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        source_root_dir=checkout,
+        version=Version("1.0"),
+    )
+    assert (checkout.parent / "build-meta.json").is_file()
+
+
+def test_step_prepare_source_kind_selects_checkout_over_archive(
+    cli_runner: CliRunner, tmp_context: WorkContext
+) -> None:
+    archive = tmp_context.sdists_downloads / "pkg-1.0.tar.gz"
+    archive.write_bytes(b"old archive")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+    with patch.object(
+        step.sources, "prepare_source", return_value=checkout
+    ) as prepare_source:
+        result = cli_runner.invoke(
+            step.step,
+            ["prepare-source", "--source-kind", "git_checkout", "pkg", "1.0"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0
+    assert result.output == f"{checkout}\n"
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        source_filename=checkout,
+        version=Version("1.0"),
+        download_kind=packagesettings.DownloadKind.git_checkout,
+    )
+
+
+def test_step_prepare_source_defaults_to_archive_kind(
+    cli_runner: CliRunner, tmp_context: WorkContext
+) -> None:
+    archive = tmp_context.sdists_downloads / "pkg-1.0.tar.gz"
+    archive.write_bytes(b"archive")
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+
+    with patch.object(
+        step.sources, "prepare_source", return_value=checkout
+    ) as prepare_source:
+        result = cli_runner.invoke(
+            step.step, ["prepare-source", "pkg", "1.0"], obj=tmp_context
+        )
+
+    assert result.exit_code == 0, result.output
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        source_filename=archive,
+        version=Version("1.0"),
+        download_kind=packagesettings.DownloadKind.sdist,
+    )
+
+
+def test_step_prepare_source_accepts_explicit_hook_path(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    checkout = tmp_path / "hook-checkout"
+    checkout.mkdir()
+
+    with patch.object(
+        step.sources, "prepare_source", return_value=checkout
+    ) as prepare_source:
+        result = cli_runner.invoke(
+            step.step,
+            [
+                "prepare-source",
+                "--source-kind",
+                "git_checkout",
+                "--source-path",
+                str(checkout),
+                "pkg",
+                "1.0",
+            ],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        source_filename=checkout,
+        version=Version("1.0"),
+        download_kind=packagesettings.DownloadKind.git_checkout,
+    )
+
+
+def test_step_prepare_source_keeps_archive_inside_cleanup_dir(
+    cli_runner: CliRunner, tmp_context: WorkContext
+) -> None:
+    """Reject an archive that cleanup would delete before opening it."""
+    archive = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0.tar.gz"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"original archive")
+
+    result = cli_runner.invoke(
+        step.step,
+        ["prepare-source", "--source-path", str(archive), "pkg", "1.0"],
+        obj=tmp_context,
+    )
+
+    assert isinstance(result.exception, ValueError)
+    assert "overlaps" in str(result.exception)
+    assert archive.read_bytes() == b"original archive"
+
+
+def test_build_passes_downloaded_kind_to_prepare_source(
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Pass the downloaded path and kind into source preparation."""
     req = Requirement("pkg==1.0")
     version = Version("1.0")
     source_url = "https://pkg.test/pkg-1.0.tar.gz"
@@ -119,5 +291,6 @@ def test_build_passes_downloaded_path_to_prepare_source(
         req=req,
         source_filename=source_filename,
         version=version,
+        download_kind=packagesettings.DownloadKind.sdist,
     )
     assert result.wheel_filename == tmp_context.wheels_downloads / wheel_filename.name

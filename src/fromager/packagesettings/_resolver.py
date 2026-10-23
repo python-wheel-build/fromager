@@ -7,6 +7,7 @@ import inspect
 import logging
 import pathlib
 import re
+import shutil
 import typing
 
 import pydantic
@@ -156,6 +157,14 @@ class AbstractResolver(pydantic.BaseModel):
                     / f"{req.name}-{candidate.version}"
                     / f"{req.name}-{candidate.version}"
                 )
+                if destination_dir.parent.exists():
+                    if ctx.cleanup:
+                        shutil.rmtree(destination_dir.parent)
+                    elif destination_dir.exists():
+                        raise FileExistsError(
+                            f"Git checkout {destination_dir} already exists; "
+                            "enable cleanup or use a new work directory to download it again"
+                        )
                 path = downloads.download_git_source(
                     destination_dir=destination_dir,
                     vcs_url=candidate.url,

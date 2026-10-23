@@ -1,6 +1,7 @@
 import json
 import logging
 import pathlib
+import subprocess
 import typing
 from unittest.mock import Mock, patch
 
@@ -1200,6 +1201,7 @@ def test_bg_prepare_source_log_prefix_includes_version(
                 req=req,
                 source_filename=source_filename,
                 version=version,
+                download_kind=DownloadKind.sdist,
             )
     finally:
         logging.setLogRecordFactory(old_factory)
@@ -1210,10 +1212,42 @@ def test_bg_prepare_source_log_prefix_includes_version(
         )
 
 
-def test_bootstrapper_download_source_returns_downloaded_path(
+def test_bg_prepare_source_accepts_git_checkout(tmp_context: WorkContext) -> None:
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+    checkout = tmp_context.work_dir / "mypkg-1.2.3" / "mypkg-1.2.3"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+
+    with (
+        patch(
+            "fromager.bootstrapper._cache.find_cached_wheel", return_value=(None, None)
+        ),
+        patch(
+            "fromager.sources.download_source",
+            return_value=DownloadedSource(checkout, DownloadKind.git_checkout),
+        ),
+        patch("fromager.sources.prepare_new_source") as prepare_new_source,
+    ):
+        result = _bg_prepare_source(
+            ctx=tmp_context,
+            cache_wheel_server_url=None,
+            req=req,
+            resolved_version=version,
+            source_url="git+https://code.test/org/mypkg.git@v1.2.3",
+        )
+
+    assert result.sdist_root_dir == checkout
+    prepare_new_source.assert_called_once_with(
+        ctx=tmp_context, req=req, source_root_dir=checkout, version=version
+    )
+    assert (checkout.parent / "build-meta.json").is_file()
+
+
+def test_bootstrapper_download_source_preserves_download_kind(
     tmp_context: WorkContext,
 ) -> None:
-    """Return only the path from the resolver download result."""
+    """Keep the artifact kind for the legacy Bootstrapper helper."""
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("mypkg==1.2.3")
     version = Version("1.2.3")
@@ -1226,12 +1260,39 @@ def test_bootstrapper_download_source_returns_downloaded_path(
     ) as download_source:
         result = bt._download_source(req, version, source_url)
 
-    assert result == source_filename
+    assert result == DownloadedSource(source_filename, DownloadKind.sdist)
     download_source.assert_called_once_with(
         ctx=tmp_context,
         req=req,
         version=version,
         download_url=source_url,
+    )
+
+
+def test_bootstrapper_prepare_source_passes_download_kind(
+    tmp_context: WorkContext,
+) -> None:
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+    downloaded = DownloadedSource(
+        tmp_context.work_dir / "mypkg-1.2.3" / "mypkg-1.2.3",
+        DownloadKind.git_checkout,
+    )
+
+    with patch(
+        "fromager.bootstrapper._bootstrapper.sources.prepare_source",
+        return_value=downloaded.path,
+    ) as prepare_source:
+        result = bt._prepare_source(req, version, downloaded)
+
+    assert result == downloaded.path
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        source_filename=downloaded.path,
+        version=version,
+        download_kind=DownloadKind.git_checkout,
     )
 
 

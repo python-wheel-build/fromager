@@ -5,6 +5,7 @@ import json
 import logging
 import pathlib
 import shutil
+import subprocess
 import tarfile
 import typing
 import warnings
@@ -293,6 +294,9 @@ def unpack_source(
     source_filename: pathlib.Path,
 ) -> tuple[pathlib.Path, bool]:
     """Extracts a downloaded source archive (.tar.gz or .zip file) into a standardized directory."""
+    if source_filename.is_dir():
+        raise ValueError(f"{source_filename} is a directory, not a source archive")
+
     # sdist names are less standardized and the names of the directories they
     # contain are also not very standard. Force the names into a predictable
     # form based on the override module name for the requirement.
@@ -304,6 +308,17 @@ def unpack_source(
     unpack_dir = ctx.work_dir / expected_name
     if unpack_dir.exists():
         if ctx.cleanup:
+            resolved_unpack_dir = unpack_dir.resolve()
+            # Deleting a parent can also break a path that uses ".." or a symlink.
+            source_paths = (source_filename, *source_filename.parents)
+            if any(
+                path.resolve().is_relative_to(resolved_unpack_dir)
+                for path in source_paths
+            ):
+                raise ValueError(
+                    f"source archive path {source_filename} overlaps {unpack_dir}; "
+                    "use an archive path outside the directory being cleaned"
+                )
             logger.debug("cleaning up %s", unpack_dir)
             shutil.rmtree(unpack_dir)
         else:
@@ -412,18 +427,43 @@ def prepare_source(
     req: Requirement,
     source_filename: pathlib.Path,
     version: Version,
+    download_kind: packagesettings.DownloadKind = packagesettings.DownloadKind.sdist,
 ) -> pathlib.Path:
-    """Unpack and prepare source for building.
+    """Prepare an archive or checkout according to its downloaded kind.
 
-    Calls ``find_and_invoke`` which may call a package-specific override.
-    The plugin may return a ``Path`` or a ``(Path, bool)`` tuple; both
-    forms are handled.
+    Path-only callers default to an sdist. Package-specific ``prepare_source``
+    overrides may replace the selected default, including when a source
+    resolver is configured. Overrides receive the original path-based
+    arguments and may return a ``Path`` or a ``(Path, bool)`` pair.
+    Git-specific overrides can call ``default_prepare_git_checkout()``.
+
+    Args:
+        ctx: Work context for the build.
+        req: Package requirement being prepared.
+        source_filename: Downloaded archive or checkout path.
+        version: Resolved package version.
+        download_kind: Artifact kind; defaults to an sdist.
+
+    Returns:
+        Path to the prepared source root.
+
+    .. versionchanged:: 0.102.0
+       Pass ``download_kind`` to prepare a Git checkout.
     """
     logger.info(f"preparing source for {req} from {source_filename}")
+    match download_kind:
+        case packagesettings.DownloadKind.sdist | packagesettings.DownloadKind.tarball:
+            default_fn = default_prepare_source
+        case packagesettings.DownloadKind.git_checkout:
+            default_fn = default_prepare_git_checkout
+        case _:
+            raise ValueError(
+                f"cannot prepare source with download kind {download_kind}"
+            )
     prepare_source_details = overrides.find_and_invoke(
         req.name,
         "prepare_source",
-        default_prepare_source,
+        default_fn,
         ctx=ctx,
         req=req,
         source_filename=source_filename,
@@ -450,7 +490,7 @@ def default_prepare_source(
     source_filename: pathlib.Path,
     version: Version,
 ) -> tuple[pathlib.Path, bool]:
-    """Unpack, modify, and check sdist sources
+    """Unpack an archive, then prepare newly extracted source.
 
     Calls :func:`~fromager.sources.prepare_new_source` by default.
     """
@@ -460,7 +500,79 @@ def default_prepare_source(
         version=version,
         source_filename=source_filename,
     )
-    if is_new:
+    return _prepare_source_root(
+        ctx, req, source_root_dir, version, should_prepare=is_new
+    )
+
+
+def default_prepare_git_checkout(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_filename: pathlib.Path,
+    version: Version,
+) -> tuple[pathlib.Path, bool]:
+    """Prepare a clean Git checkout in place.
+
+    Reject tracked, untracked, or ignored local changes in the checkout and its
+    initialized submodules before applying patches, project overrides, and Rust
+    vendoring. A clean status does not prove where the checkout came from or
+    that it will remain unchanged after preparation.
+
+    Args:
+        ctx: Work context for the build.
+        req: Package requirement being prepared.
+        source_filename: Path to the Git checkout.
+        version: Resolved package version.
+
+    Returns:
+        The checkout path and ``True`` because preparation ran.
+
+    .. versionadded:: 0.102.0
+    """
+    if not source_filename.is_dir() or not (source_filename / ".git").exists():
+        raise ValueError(f"{source_filename} is not a Git checkout")
+    status_command = (
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--ignored=matching",
+        "--ignore-submodules=none",
+    )
+    try:
+        changes = external_commands.run(status_command, cwd=str(source_filename))
+        if not changes:
+            # A parent repository can hide changes inside ignored submodules.
+            changes = external_commands.run(
+                [
+                    "git",
+                    "submodule",
+                    "--quiet",
+                    "foreach",
+                    "--recursive",
+                    " ".join(status_command),
+                ],
+                cwd=str(source_filename),
+            )
+    except subprocess.CalledProcessError as err:
+        raise ValueError(f"cannot inspect Git checkout {source_filename}") from err
+    if changes:
+        raise ValueError(
+            f"Git checkout {source_filename} has local changes; "
+            "download a fresh checkout before preparing"
+        )
+    return _prepare_source_root(ctx, req, source_filename, version, should_prepare=True)
+
+
+def _prepare_source_root(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_root_dir: pathlib.Path,
+    version: Version,
+    should_prepare: bool,
+) -> tuple[pathlib.Path, bool]:
+    """Run requested preparation and scan the resulting source tree."""
+    if should_prepare:
         prepare_new_source(
             ctx=ctx,
             req=req,
@@ -476,7 +588,7 @@ def default_prepare_source(
             ", ".join(str(f) for f in sorted(potential_issues)),
         )
 
-    return source_root_dir, is_new
+    return source_root_dir, should_prepare
 
 
 def prepare_new_source(
@@ -491,7 +603,8 @@ def prepare_new_source(
     - apply project overrides from settings
     - vendor Rust dependencies
 
-    :func:`~default_prepare_source` runs this function when the sources are new.
+    :func:`~default_prepare_source` and
+    :func:`~default_prepare_git_checkout` run this function for new sources.
     """
     patch_source(ctx, source_root_dir, req, version)
     pyproject.apply_project_override(
