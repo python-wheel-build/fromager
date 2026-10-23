@@ -245,12 +245,30 @@ def bg_prepare_prebuilt(
     req_type: RequirementType,
     resolved_version: Version,
     wheel_url: str,
+    *,
+    force_legacy_download: bool = False,
 ) -> PreparedSourceData:
-    """Background-safe prebuilt download: no Bootstrapper state accessed."""
+    """Download a prebuilt wheel, reusing local cache or test-mode fallback."""
     # Thread-safe: paths include {req.name}-{resolved_version} (unique per package),
     # mkdir uses exist_ok=True (atomic), and update_wheel_mirror() is already locked.
     logger.info(f"using pre-built wheel for {req_type} requirement")
-    wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
+    source_resolver = ctx.package_build_info(req).source_resolver
+    local_wheel_url = bool(ctx.wheel_server_url) and wheel_url.startswith(
+        ctx.wheel_server_url.rstrip("/") + "/"
+    )
+    if force_legacy_download:
+        wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
+    elif source_resolver is not None and not source_resolver.resolves_prebuilt_wheel:
+        raise ValueError(
+            f"{req}: source resolver {source_resolver.provider!r} "
+            "does not resolve prebuilt wheels"
+        )
+    elif local_wheel_url or source_resolver is None:
+        wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
+    else:
+        wheel_filename = wheels.download_prebuilt_wheel(
+            ctx=ctx, req=req, version=resolved_version, download_url=wheel_url
+        )
     unpack_dir = _create_unpack_dir(ctx.work_dir, req, resolved_version)
     server.update_wheel_mirror(ctx)
     return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)

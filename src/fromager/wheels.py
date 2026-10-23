@@ -32,6 +32,7 @@ from . import (
     requirements_file,
     resolver,
     sbom,
+    sources,
 )
 from .pkgmetadata.pep376 import verbatim_dist_name
 
@@ -518,6 +519,30 @@ def download_wheel(
         logger.info(f"have existing wheel {wheel_filename}")
 
     return wheel_filename
+
+
+def download_prebuilt_wheel(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    download_url: str,
+) -> pathlib.Path:
+    """Download a configured prebuilt wheel and stage it for the wheel mirror."""
+    downloaded: packagesettings.DownloadedSource = sources.download_source(
+        ctx=ctx, req=req, version=version, download_url=download_url
+    )
+    if downloaded.kind is not packagesettings.DownloadKind.prebuilt_wheel:
+        raise ValueError(
+            f"{req}: configured prebuilt source returned {downloaded.kind.value!r}; "
+            "expected 'prebuilt_wheel'"
+        )
+    wheel_path = downloaded.path
+    if wheel_path.parent != ctx.wheels_prebuilt:
+        staged_path = ctx.wheels_prebuilt / wheel_path.name
+        shutil.copy2(wheel_path, staged_path)
+        return staged_path
+    return wheel_path
 
 
 def get_wheel_server_urls(

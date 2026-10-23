@@ -9,8 +9,122 @@ from packaging.requirements import Requirement
 from packaging.tags import Tag
 from packaging.version import Version
 
-from fromager import build_environment, context, downloads, wheels
+from fromager import build_environment, context, downloads, packagesettings, wheels
 from fromager.packagesettings import SbomSettings, Settings, SettingsFile, WheelSettings
+
+
+def _configure_package(ctx: context.WorkContext, yaml_str: str) -> None:
+    """Apply one package setting to the test context."""
+    ps = packagesettings.PackageSettings.from_string("pkg", yaml_str)
+    ctx.settings._package_settings[ps.name] = ps
+
+
+@pytest.mark.parametrize("provider", ["pypi-prebuilt", "hook-prebuilt"])
+def test_configured_prebuilt_download_uses_resolver_default(
+    tmp_context: context.WorkContext, provider: str
+) -> None:
+    """Both profiles use their own default when no download hook exists."""
+    _configure_package(tmp_context, f"source:\n  provider: {provider}\n")
+    req = Requirement("pkg==1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    expected = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch("fromager.overrides.find_override_method", return_value=None),
+        patch("fromager.downloads.download_wheel", return_value=expected) as default,
+    ):
+        result = wheels.download_prebuilt_wheel(
+            ctx=tmp_context, req=req, version=Version("1.0"), download_url=url
+        )
+
+    assert result == expected
+    default.assert_called_once_with(
+        destination_dir=tmp_context.wheels_prebuilt, url=url
+    )
+
+
+def test_hook_prebuilt_download_stages_hook_result(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Use the hook's path and make its wheel visible to the local mirror."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    req = Requirement("pkg==1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    hook_path = tmp_context.work_dir / "pkg-1.0-py3-none-any.whl"
+    hook_path.write_bytes(b"wheel")
+    calls: list[str] = []
+
+    def hook(download_url: str) -> packagesettings.DownloadedSource:
+        calls.append(download_url)
+        return packagesettings.DownloadedSource(
+            path=hook_path, kind=packagesettings.DownloadKind.prebuilt_wheel
+        )
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=hook),
+        patch("fromager.downloads.download_wheel") as default,
+    ):
+        result = wheels.download_prebuilt_wheel(
+            ctx=tmp_context, req=req, version=Version("1.0"), download_url=url
+        )
+
+    assert result == tmp_context.wheels_prebuilt / hook_path.name
+    assert result.read_bytes() == b"wheel"
+    assert calls == [url]
+    default.assert_not_called()
+
+
+def test_configured_prebuilt_rejects_other_kind(
+    tmp_context: context.WorkContext,
+) -> None:
+    """An invalid hook result fails without trying a different downloader."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    req = Requirement("pkg==1.0")
+
+    def hook() -> packagesettings.DownloadedSource:
+        return packagesettings.DownloadedSource(
+            path=tmp_context.work_dir / "pkg-1.0.tar.gz",
+            kind=packagesettings.DownloadKind.sdist,
+        )
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=hook),
+        patch("fromager.downloads.download_wheel") as default,
+        pytest.raises(ValueError, match="unsupported kind 'sdist'"),
+    ):
+        wheels.download_prebuilt_wheel(
+            ctx=tmp_context,
+            req=req,
+            version=Version("1.0"),
+            download_url="https://pkg.test/pkg-1.0-py3-none-any.whl",
+        )
+    default.assert_not_called()
+
+
+def test_hook_prebuilt_failure_does_not_fall_back(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Keep the hook failure visible and avoid the default wheel fetch."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    req = Requirement("pkg==1.0")
+    failure = OSError("hook download failed")
+
+    def hook() -> pathlib.Path:
+        raise failure
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=hook),
+        patch("fromager.downloads.download_wheel") as default,
+        pytest.raises(RuntimeError, match="download_source hook failed") as exc_info,
+    ):
+        wheels.download_prebuilt_wheel(
+            ctx=tmp_context,
+            req=req,
+            version=Version("1.0"),
+            download_url="https://pkg.test/pkg-1.0-py3-none-any.whl",
+        )
+
+    assert exc_info.value.__cause__ is failure
+    default.assert_not_called()
 
 
 @patch("pyproject_hooks.BuildBackendHookCaller.build_wheel")

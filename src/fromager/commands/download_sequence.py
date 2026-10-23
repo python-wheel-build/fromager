@@ -69,7 +69,27 @@ def download_sequence(
 
         if entry["prebuilt"]:
             if include_wheels:
-                wheels.download_wheel(req, entry["source_url"], wkctx.wheels_prebuilt)
+                source_resolver = wkctx.package_build_info(req).source_resolver
+                if (
+                    source_resolver is not None
+                    and source_resolver.resolves_prebuilt_wheel
+                ):
+                    wheels.download_prebuilt_wheel(
+                        ctx=wkctx,
+                        req=req,
+                        version=Version(entry["version"]),
+                        download_url=entry["source_url"],
+                    )
+                elif source_resolver is not None:
+                    raise ValueError(
+                        f"{req}: build order marks a prebuilt wheel, but "
+                        f"source resolver {source_resolver.provider!r} "
+                        "does not resolve prebuilt wheels"
+                    )
+                else:
+                    wheels.download_wheel(
+                        req, entry["source_url"], wkctx.wheels_prebuilt
+                    )
             else:
                 logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
             return
