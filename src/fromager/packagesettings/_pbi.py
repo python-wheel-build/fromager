@@ -286,19 +286,35 @@ class PackageBuildInfo:
         package_changelog = self._ps.changelog.get(pv, [])
         return variant_changelog + package_changelog
 
-    def build_tag(self, version: Version) -> BuildTag:
-        """Build tag for version's changelog and this variant
+    def get_build_number(self, version: Version) -> int | None:
+        """Return the explicit public-version counter, or None for changelog defaults.
 
-        .. versionchanged 0.54.0::
+        .. versionadded:: 0.102.0
+        """
+        public = typing.cast(PackageVersion, Version(version.public))
+        return self._ps.build_number.get(public)
+
+    def build_tag(self, version: Version) -> BuildTag:
+        """Numeric tag from an explicit number or this variant's changelog
+
+        .. versionchanged:: 0.54.0
 
            Fromager ignores local version suffix of a package to determinate
            the build tag from changelog, e.g. version `1.0.3+local.suffix`
            uses `1.0.3`.
+
+        .. versionchanged:: 0.102.0
+
+           Explicit ``build_number`` values override changelog counts. Zero
+           returns ``(0, "")`` rather than an omitted build tag.
         """
         if self.pre_built:
             # pre-built wheels have no built tag
             return ()
-        pv = typing.cast(PackageVersion, version)
+        pv = typing.cast(PackageVersion, Version(version.public))
+        number = self.get_build_number(pv)
+        if number is not None:
+            return number, ""
         release = len(self.get_changelog(pv))
         if release == 0:
             return ()
