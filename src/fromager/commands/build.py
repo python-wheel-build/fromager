@@ -362,17 +362,30 @@ def _build(
     if prebuilt:
         if not wheel_filename:
             logger.info("downloading prebuilt wheel")
-            wheel_filename = wheels.download_wheel(
-                req=req,
-                wheel_url=source_download_url,
-                output_directory=wkctx.wheels_build,
-            )
+            source_resolver = pbi.source_resolver
+            if source_resolver is not None and source_resolver.resolves_prebuilt_wheel:
+                wheel_filename = wheels.download_prebuilt_wheel(
+                    ctx=wkctx,
+                    req=req,
+                    version=resolved_version,
+                    download_url=source_download_url,
+                )
+            elif source_resolver is not None:
+                raise ValueError(
+                    f"{req}: source resolver {source_resolver.provider!r} "
+                    "does not resolve prebuilt wheels"
+                )
+            else:
+                wheel_filename = wheels.download_wheel(
+                    req=req,
+                    wheel_url=source_download_url,
+                    output_directory=wkctx.wheels_build,
+                )
         else:
             # already downloaded prebuilt wheel
             use_exiting_wheel = True
 
-        # Run hooks for prebuilt wheels. At this point wheel_filename should
-        # be set either from _is_wheel_built() or download_wheel().
+        # Run hooks for both cached and freshly downloaded prebuilt wheels.
         hooks.run_prebuilt_wheel_hooks(
             ctx=wkctx,
             req=req,
@@ -448,9 +461,10 @@ def _build(
 
     server.update_wheel_mirror(wkctx)
 
-    # After we update the wheel mirror, the built file has
-    # moved to a new directory.
-    wheel_filename = wkctx.wheels_downloads / wheel_filename.name
+    # The mirror moves wheels from the build directory to downloads;
+    # configured prebuilt wheels stay in the prebuilt directory.
+    if wheel_filename.parent != wkctx.wheels_prebuilt:
+        wheel_filename = wkctx.wheels_downloads / wheel_filename.name
 
     return BuildSequenceEntry(
         name=canonicalize_name(req.name),

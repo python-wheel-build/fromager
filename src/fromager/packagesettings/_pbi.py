@@ -163,7 +163,10 @@ class PackageBuildInfo:
 
     @property
     def pre_built(self) -> bool:
-        """Does the variant use pre-build wheels?"""
+        """Whether the selected source or legacy variant uses prebuilt wheels."""
+        source_resolver = self.source_resolver
+        if source_resolver is not None:
+            return source_resolver.resolves_prebuilt_wheel
         vi = self._ps.variants.get(self.variant)
         if vi is not None:
             return vi.pre_built

@@ -1255,6 +1255,31 @@ def test_pbi_source_resolver_variant_overrides_package(
     assert isinstance(pbi.source_resolver, PyPIPrebuiltResolver)
 
 
+@pytest.mark.parametrize(
+    ("yaml_str", "expected"),
+    [
+        ("source:\n  provider: pypi-prebuilt\n", True),
+        ("source:\n  provider: hook-prebuilt\n", True),
+        ("source:\n  provider: pypi-sdist\n", False),
+        ("variants:\n  cpu:\n    pre_built: true\n", True),
+    ],
+)
+def test_pbi_prebuilt_uses_selected_source_or_legacy_variant(
+    tmp_path: pathlib.Path, yaml_str: str, expected: bool
+) -> None:
+    """Read configured source capability before the legacy variant flag."""
+    ps = PackageSettings.from_string("test-pkg", yaml_str)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+
+    assert settings.package_build_info("test-pkg").pre_built is expected
+
+
 # -- source vs legacy mutual exclusivity validation --------------------------
 
 

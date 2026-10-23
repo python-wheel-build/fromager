@@ -38,7 +38,12 @@ from fromager.bootstrapper._types import (
 from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
 from fromager.dependency_graph import ROOT
-from fromager.packagesettings import DownloadedSource, DownloadKind, WheelSettings
+from fromager.packagesettings import (
+    DownloadedSource,
+    DownloadKind,
+    PackageSettings,
+    WheelSettings,
+)
 from fromager.requirements_file import RequirementType, SourceType
 
 
@@ -61,6 +66,38 @@ def test_phase_abstract_subclass_without_phase_attribute_is_allowed() -> None:
 
     # Defining _AbstractMiddle itself must not raise.
     assert _AbstractMiddle.__abstractmethods__
+
+
+def test_test_mode_source_resolver_uses_legacy_prebuilt_fallback(
+    tmp_context: WorkContext,
+) -> None:
+    """A failed source build can use the forced legacy wheel fallback."""
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://fallback.test/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        PackageSettings.from_string("pkg", "source:\n  provider: pypi-sdist\n")
+    )
+    bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
+    with (
+        patch.object(bt._resolver, "resolve", return_value=[(url, version)]),
+        patch(
+            "fromager.bootstrapper._cache.wheels.download_wheel", return_value=wheel
+        ) as legacy,
+        patch("fromager.bootstrapper._cache.server.update_wheel_mirror"),
+    ):
+        result = bt._handle_test_mode_failure(
+            req=req,
+            resolved_version=version,
+            req_type=RequirementType.TOP_LEVEL,
+            build_error=RuntimeError("source build failed"),
+        )
+
+    assert result is not None
+    assert result.source_type is SourceType.PREBUILT
+    assert result.wheel_filename == wheel
+    legacy.assert_called_once_with(req, url, tmp_context.wheels_prebuilt)
 
 
 def test_seen(tmp_context: WorkContext) -> None:

@@ -171,12 +171,16 @@ class BootstrapRequirementResolver:
             parent_req=parent_req,
         )
 
+        source_resolver = self.ctx.package_build_info(req).source_resolver
+        configured_prebuilt = (
+            source_resolver is not None and source_resolver.resolves_prebuilt_wheel
+        )
         if cached_resolution:
             logger.debug(
                 f"resolved from previous bootstrap: {len(cached_resolution)} version(s)"
             )
             results = cached_resolution
-        elif pre_built:
+        elif pre_built and not configured_prebuilt:
             # Resolve prebuilt wheel
             wheel_server_urls = wheels.get_wheel_server_urls(
                 self.ctx, req, cache_wheel_server_url=resolver.PYPI_SERVER_URL
@@ -188,27 +192,40 @@ class BootstrapRequirementResolver:
                 req_type=req_type,
             )
         else:
-            # Resolve source (sdist)
-            provider = sources.get_source_provider(
-                ctx=self.ctx,
-                req=req,
-                sdist_server_url=resolver.PYPI_SERVER_URL,
-                req_type=req_type,
-            )
-            max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
-            age_fallback = (
-                resolver.AgeFallback.NEWEST
-                if self.multiple_versions
-                else resolver.AgeFallback.ALL
-            )
-            results = resolver.find_all_matching_from_provider(
-                provider,
-                req,
-                max_age_cutoff=max_age_cutoff,
-                age_fallback=age_fallback,
-            )
+            results = []
+            if pre_built and self.ctx.wheel_server_url:
+                try:
+                    results = wheels.resolve_all_cached_wheels(
+                        ctx=self.ctx,
+                        req=req,
+                        cache_server_url=self.ctx.wheel_server_url,
+                    )
+                except Exception:
+                    logger.debug("no matching wheel in local cache", exc_info=True)
 
             if not results:
+                # The configured source provider resolves either source archives
+                # or prebuilt wheels, according to its selected capability.
+                provider = sources.get_source_provider(
+                    ctx=self.ctx,
+                    req=req,
+                    sdist_server_url=resolver.PYPI_SERVER_URL,
+                    req_type=req_type,
+                )
+                max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
+                age_fallback = (
+                    resolver.AgeFallback.NEWEST
+                    if self.multiple_versions
+                    else resolver.AgeFallback.ALL
+                )
+                results = resolver.find_all_matching_from_provider(
+                    provider,
+                    req,
+                    max_age_cutoff=max_age_cutoff,
+                    age_fallback=age_fallback,
+                )
+
+            if not results and not pre_built:
                 logger.warning(
                     "resolver returned no results (%s version mode)",
                     "multiple" if self.multiple_versions else "single",

@@ -43,6 +43,8 @@ the cache already contains a matching version.
 The configured wheel cache server is not a version-resolution fallback.
 After a version has been selected, the bootstrapper checks the cache
 server separately for a previously built wheel.
+For prebuilt packages, the local wheel server can supply a cached wheel
+before a fresh resolution through the selected source provider.
 
 Provider Hierarchy
 ------------------
@@ -132,7 +134,9 @@ The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
 ``step download-source-archive --output-format json`` exposes that result's
 actual path and kind without changing its default path-only output.
 Without ``--source-kind``, it keeps the legacy archive behavior.
-Integrating prebuilt detection into the bootstrapper remains a separate step.
+Configured prebuilt resolvers select the prebuilt bootstrap path. Fresh
+wheels use their ``download()`` contract; local cached wheels and the
+test-mode fallback use the legacy wheel downloader.
 See :ref:`download_source_hook` for the return contract and compatibility rules.
 
 .. versionchanged:: 0.102.0
