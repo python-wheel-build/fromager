@@ -10,7 +10,7 @@ import typing
 
 import pydantic
 
-from .. import downloads, resolver
+from .. import downloads, overrides, resolver
 from ..candidate import Cooldown
 from ._typedefs import MODEL_CONFIG
 
@@ -796,6 +796,103 @@ class HookPrebuiltResolver(AbstractHookResolver):
     resolves_prebuilt_wheel: typing.ClassVar[bool] = True
 
 
+class LegacyResolver(AbstractResolver):
+    """Preserve the legacy resolution and download behavior as a typed resolver.
+
+    The ``legacy`` provider replicates the flow of
+    ``sources.get_source_provider()`` and ``sources.download_source()``:
+    it reads ``resolver_dist`` settings from the per-package build info,
+    invokes the ``get_resolver_provider`` and ``download_source`` override
+    hooks (falling back to their defaults), and applies the per-package
+    release-age cooldown.
+
+    When ``pbi.pre_built`` is true the download returns a pre-built wheel;
+    otherwise it returns a tarball via the ``download_source`` hook.
+
+    Example::
+
+        provider: legacy
+    """
+
+    provider: typing.Literal["legacy"]
+
+    supports_override_hooks: typing.ClassVar[bool] = True
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.tarball, DownloadKind.prebuilt_wheel}
+    )
+
+    def resolver_provider(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType,
+    ) -> resolver.BaseProvider:
+        """Return a resolver provider using the legacy resolution flow.
+
+        Replicates ``sources.get_source_provider()``.
+        """
+        pbi = ctx.package_build_info(req)
+        sdist_server_url = pbi.resolver_sdist_server_url(resolver.PYPI_SERVER_URL)
+
+        provider = typing.cast(
+            resolver.BaseProvider,
+            overrides.find_and_invoke(
+                req.name,
+                "get_resolver_provider",
+                resolver.default_resolver_provider,
+                ctx=ctx,
+                req=req,
+                include_sdists=pbi.resolver_include_sdists,
+                include_wheels=pbi.resolver_include_wheels,
+                sdist_server_url=sdist_server_url,
+                req_type=req_type,
+                ignore_platform=pbi.resolver_ignore_platform,
+            ),
+        )
+        provider.cooldown = resolver.resolve_package_cooldown(
+            ctx, req, req_type=req_type
+        )
+        return provider
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        candidate: Candidate,
+    ) -> tuple[pathlib.Path, DownloadKind]:
+        """Download using the legacy flow.
+
+        Delegates to the pre-built wheel downloader when the package
+        variant is configured as pre-built (see
+        ``bootstrapper._bg_prepare_prebuilt()``), otherwise invokes the
+        ``download_source`` override hook (see
+        ``sources.download_source()``).
+        """
+        pbi = ctx.package_build_info(req)
+        if pbi.pre_built:
+            return self._download(ctx, req, candidate, DownloadKind.prebuilt_wheel)
+
+        # Local import required to avoid circular import:
+        # _resolver -> sources -> packagesettings -> _resolver
+        from fromager.sources import default_download_source
+
+        source_path = overrides.find_and_invoke(
+            req.name,
+            "download_source",
+            default_download_source,
+            ctx=ctx,
+            req=req,
+            version=candidate.version,
+            download_url=candidate.url,
+            sdists_downloads_dir=ctx.sdists_downloads,
+        )
+        if not isinstance(source_path, pathlib.Path):
+            raise ValueError(
+                f"expected a Path back to downloaded source, got {source_path}"
+            )
+        return source_path, DownloadKind.tarball
+
+
 SourceResolver = typing.Annotated[
     PyPISDistResolver
     | PyPIPrebuiltResolver
@@ -807,6 +904,7 @@ SourceResolver = typing.Annotated[
     | GitLabTagDownloadResolver
     | NotAvailableResolver
     | HookSDistResolver
-    | HookPrebuiltResolver,
+    | HookPrebuiltResolver
+    | LegacyResolver,
     pydantic.Field(..., discriminator="provider"),
 ]
