@@ -94,6 +94,8 @@ class WorkContext:
         self.time_description_store: dict[str, str] = {}
 
         self._parallel_builds = False
+        # Each worker reuses its own filtered dependency wheel view.
+        self._installation_wheel_views = threading.local()
 
         self.cooldown: candidate.Cooldown | None = cooldown
         self._max_release_age: datetime.timedelta | None = max_release_age

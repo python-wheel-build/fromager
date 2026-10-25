@@ -547,16 +547,20 @@ def _is_wheel_built(
                     wheel_tags=wheel_tags,
                 )
                 build_tag = expected_tag if expected_tag else (0, "")
-                existing_build_tag = (
-                    build_tag_from_name if build_tag_from_name else (0, "")
-                )
-                if (
-                    existing_build_tag[0] > build_tag[0]
-                    and existing_build_tag[1] == build_tag[1]
-                ):
-                    raise ValueError(
-                        f"{dist_name}: changelog for version {candidate_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
-                    )
+                explicit = pbi.get_build_number(candidate_version) is not None
+                # An explicit zero is not an untagged wheel. Higher counters are
+                # cache misses for explicit settings, just as in bootstrap.
+                if explicit:
+                    existing_build_tag = build_tag_from_name
+                else:
+                    existing_build_tag = build_tag_from_name or (0, "")
+                    if (
+                        existing_build_tag[0] > build_tag[0]
+                        and existing_build_tag[1] == build_tag[1]
+                    ):
+                        raise ValueError(
+                            f"{dist_name}: changelog for version {candidate_version} is inconsistent. Found build tag {existing_build_tag} but expected {build_tag}"
+                        )
                 if existing_build_tag != build_tag:
                     logger.info(
                         "candidate wheel build tag %s does not match expected build tag %s",

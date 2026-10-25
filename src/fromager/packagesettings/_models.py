@@ -22,6 +22,7 @@ from ._typedefs import (
     BuildDirectory,
     EnvVars,
     Package,
+    PackageVersion,
     PurlType,
     RawAnnotations,
     Template,
@@ -55,8 +56,8 @@ class WheelSettings(pydantic.BaseModel):
     ``version``, and ``wheel_tags`` and returns
     ``Sequence[str]`` of suffix segments.
 
-    Only invoked when the package already has a non-empty build tag
-    from its changelog entry for the given version; otherwise the hook
+    Only invoked when the package has an explicit build number (including
+    zero) or a non-empty changelog build tag for the version; otherwise the hook
     is skipped and no build tag is added.  The callable must be
     deterministic and independent of wheel contents, build environment,
     or ELF metadata so fresh builds and cache lookups compute the same
@@ -625,6 +626,33 @@ class PackageSettings(pydantic.BaseModel):
 
     build_dir: BuildDirectory | None = None
     """sub-directory with setup.py or pyproject.toml"""
+
+    build_number: dict[
+        PackageVersion, typing.Annotated[int, Field(ge=0, strict=True)]
+    ] = Field(default_factory=dict)
+    """Explicit numeric wheel build tags, keyed by public version.
+
+    The number applies to all variants; variant overrides are not supported.
+    Overrides both global and package changelog counts for configured versions.
+    Zero is an explicit tag, distinct from the legacy empty (unspecified) tag.
+    Pre-built wheels retain their original tags. ABI suffix hooks still apply.
+
+    .. versionadded:: 0.102.0
+    """
+
+    @pydantic.field_validator("build_number")
+    @classmethod
+    def validate_build_number_versions(
+        cls, value: dict[PackageVersion, int]
+    ) -> dict[PackageVersion, int]:
+        """Require public version keys so configured numbers cannot be ignored."""
+        for version in value:
+            if version.local is not None:
+                raise ValueError(
+                    f"build_number key {str(version)!r} must be a public version "
+                    f"without a local version suffix; use {version.public!r}"
+                )
+        return value
 
     changelog: VariantChangelog = Field(default_factory=dict)
     """Changelog entries"""
