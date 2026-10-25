@@ -26,6 +26,16 @@ For example `flash_attn.yaml`.
 
 .. autopydantic_model:: fromager.packagesettings.SbomSettings
 
+SBOM upstream purls
+^^^^^^^^^^^^^^^^^^^
+
+When ``purl.upstream`` is absent, the upstream SBOM entry identifies the
+resolved source as ``pkg:pypi/<package name>@<resolved version>``. The
+per-package ``purl.name``, ``purl.type``, and ``purl.namespace`` settings and
+the global ``sbom.purl_type`` setting affect the wheel entry only. Previously,
+those settings also changed the upstream entry. Set ``purl.upstream`` to the
+full source purl when the source is not the resolved PyPI package.
+
 Source Resolver
 ^^^^^^^^^^^^^^^
 
