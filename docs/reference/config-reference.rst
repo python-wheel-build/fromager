@@ -61,6 +61,9 @@ Source Resolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
    :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
+.. autopydantic_model:: LegacyResolver
+   :members: download_kinds, supports_override_hooks
+
 .. autopydantic_model:: NotAvailableResolver
    :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
