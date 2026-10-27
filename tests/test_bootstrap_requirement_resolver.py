@@ -2,11 +2,14 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+import requests.exceptions
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
+from resolvelib.resolvers import ResolverException
 
-from fromager import resolver
+from fromager import packagesettings, resolver
 from fromager.bootstrap_requirement_resolver import BootstrapRequirementResolver
 from fromager.context import WorkContext
 from fromager.dependency_graph import DependencyGraph
@@ -433,6 +436,182 @@ def test_resolve_from_graph_name_fallback_returns_none_for_missing_package(
     assert result is None
 
 
+def test_configured_pypi_prebuilt_resolves_from_selected_index(
+    tmp_context: WorkContext,
+) -> None:
+    """Fresh prebuilt resolution uses the configured index provider."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        packagesettings.PackageSettings.from_string(
+            "pkg",
+            "source:\n  provider: pypi-prebuilt\n"
+            "  index_url: https://custom.test/simple/\n",
+        )
+    )
+    expected = [("https://custom.test/pkg-1.0-py3-none-any.whl", Version("1.0"))]
+    with (
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver.find_all_matching_from_provider",
+            return_value=expected,
+        ) as find_matches,
+        patch(
+            "fromager.bootstrap_requirement_resolver.wheels.resolve_all_prebuilt_wheels"
+        ) as legacy,
+    ):
+        result = BootstrapRequirementResolver(tmp_context).resolve(
+            req, RequirementType.TOP_LEVEL
+        )
+
+    assert result == expected
+    provider = find_matches.call_args.args[0]
+    assert isinstance(provider, resolver.PyPIProvider)
+    assert provider.sdist_server_url == "https://custom.test/simple/"
+    legacy.assert_not_called()
+
+
+def test_configured_hook_prebuilt_uses_hook_provider(
+    tmp_context: WorkContext,
+) -> None:
+    """Fresh prebuilt resolution calls the selected hook provider."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        packagesettings.PackageSettings.from_string(
+            "pkg", "source:\n  provider: hook-prebuilt\n"
+        )
+    )
+    provider = resolver.PyPIProvider(sdist_server_url="https://hook.test/simple/")
+    expected = [("https://hook.test/pkg-1.0-py3-none-any.whl", Version("1.0"))]
+    with (
+        patch.object(
+            packagesettings.HookPrebuiltResolver,
+            "resolver_provider",
+            return_value=provider,
+        ) as configured,
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver.find_all_matching_from_provider",
+            return_value=expected,
+        ) as find_matches,
+        patch(
+            "fromager.bootstrap_requirement_resolver.wheels.resolve_all_prebuilt_wheels"
+        ) as legacy,
+    ):
+        result = BootstrapRequirementResolver(tmp_context).resolve(
+            req, RequirementType.TOP_LEVEL
+        )
+
+    assert result == expected
+    configured.assert_called_once()
+    assert find_matches.call_args.args[0] is provider
+    legacy.assert_not_called()
+
+
+def test_configured_prebuilt_reuses_local_wheel_cache(
+    tmp_context: WorkContext,
+) -> None:
+    """A local wheel is resolved before the configured upstream provider."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        packagesettings.PackageSettings.from_string(
+            "pkg", "source:\n  provider: pypi-prebuilt\n"
+        )
+    )
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    expected = [("https://local.test/pkg-1.0-py3-none-any.whl", Version("1.0"))]
+    with (
+        patch(
+            "fromager.bootstrap_requirement_resolver.wheels.resolve_all_cached_wheels",
+            return_value=expected,
+        ) as cache,
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider"
+        ) as configured,
+        patch(
+            "fromager.bootstrap_requirement_resolver.wheels.resolve_all_prebuilt_wheels",
+            return_value=[],
+        ) as legacy,
+    ):
+        result = BootstrapRequirementResolver(tmp_context).resolve(
+            req, RequirementType.TOP_LEVEL
+        )
+
+    assert result == expected
+    cache.assert_called_once_with(
+        ctx=tmp_context, req=req, cache_server_url=tmp_context.wheel_server_url
+    )
+    configured.assert_not_called()
+    legacy.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "cache_error",
+    [
+        ResolverException("cache miss"),
+        requests.exceptions.ConnectionError("cache down"),
+    ],
+)
+def test_configured_prebuilt_cache_miss_uses_selected_provider(
+    tmp_context: WorkContext, cache_error: Exception
+) -> None:
+    """A local cache miss or network error falls through to the source provider."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        packagesettings.PackageSettings.from_string(
+            "pkg",
+            "source:\n  provider: pypi-prebuilt\n"
+            "  index_url: https://custom.test/simple/\n",
+        )
+    )
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    expected = [("https://custom.test/pkg-1.0-py3-none-any.whl", Version("1.0"))]
+    with (
+        patch(
+            "fromager.bootstrap_requirement_resolver.wheels.resolve_all_cached_wheels",
+            side_effect=cache_error,
+        ) as cache,
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver.find_all_matching_from_provider",
+            return_value=expected,
+        ) as find_matches,
+    ):
+        result = BootstrapRequirementResolver(tmp_context).resolve(
+            req, RequirementType.TOP_LEVEL
+        )
+
+    assert result == expected
+    cache.assert_called_once()
+    assert find_matches.call_args.args[0].sdist_server_url == (
+        "https://custom.test/simple/"
+    )
+
+
+def test_configured_prebuilt_unexpected_cache_error_propagates(
+    tmp_context: WorkContext,
+) -> None:
+    """An unexpected cache failure is not mistaken for a cache miss."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        packagesettings.PackageSettings.from_string(
+            "pkg", "source:\n  provider: pypi-prebuilt\n"
+        )
+    )
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    with (
+        patch(
+            "fromager.bootstrap_requirement_resolver.wheels.resolve_all_cached_wheels",
+            side_effect=ValueError("invalid cache response"),
+        ),
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider"
+        ) as configured,
+        pytest.raises(ValueError, match="invalid cache response"),
+    ):
+        BootstrapRequirementResolver(tmp_context).resolve(
+            req, RequirementType.TOP_LEVEL
+        )
+
+    configured.assert_not_called()
+
+
 @patch("fromager.resolver.find_all_matching_from_provider")
 def test_resolve_auto_routes_to_prebuilt(
     mock_resolve: MagicMock,
@@ -444,6 +623,7 @@ def test_resolve_auto_routes_to_prebuilt(
     # Mock package build info to return pre_built=True
     mock_pbi = MagicMock()
     mock_pbi.pre_built = True
+    mock_pbi.source_resolver = None
     mock_pbi.wheel_server_url = None
     mock_pbi.resolver_min_release_age = None
 

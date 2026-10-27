@@ -362,17 +362,18 @@ def _build(
     if prebuilt:
         if not wheel_filename:
             logger.info("downloading prebuilt wheel")
-            wheel_filename = wheels.download_wheel(
+            wheel_filename = wheels.download_prebuilt_wheel(
+                ctx=wkctx,
                 req=req,
-                wheel_url=source_download_url,
-                output_directory=wkctx.wheels_build,
+                version=resolved_version,
+                download_url=source_download_url,
+                direct_download_directory=wkctx.wheels_build,
             )
         else:
             # already downloaded prebuilt wheel
             use_exiting_wheel = True
 
-        # Run hooks for prebuilt wheels. At this point wheel_filename should
-        # be set either from _is_wheel_built() or download_wheel().
+        # Run hooks for both cached and freshly downloaded prebuilt wheels.
         hooks.run_prebuilt_wheel_hooks(
             ctx=wkctx,
             req=req,
@@ -446,11 +447,19 @@ def _build(
     root_logger.removeHandler(file_handler)
     file_handler.close()
 
-    server.update_wheel_mirror(wkctx)
+    if (
+        prebuilt
+        and pbi.source_resolver is not None
+        and wheel_filename.parent == wkctx.wheels_prebuilt
+    ):
+        server.update_wheel_mirror(wkctx, preferred_prebuilt_wheel=wheel_filename)
+    else:
+        server.update_wheel_mirror(wkctx)
 
-    # After we update the wheel mirror, the built file has
-    # moved to a new directory.
-    wheel_filename = wkctx.wheels_downloads / wheel_filename.name
+    # The mirror moves wheels from the build directory to downloads;
+    # configured prebuilt wheels stay in the prebuilt directory.
+    if wheel_filename.parent != wkctx.wheels_prebuilt:
+        wheel_filename = wkctx.wheels_downloads / wheel_filename.name
 
     return BuildSequenceEntry(
         name=canonicalize_name(req.name),
@@ -529,8 +538,8 @@ def _is_wheel_built(
             logger.info("found candidate wheel %s", url)
             try:
                 wheel_basename = downloads.extract_filename_from_url(url)
-                _, _, build_tag_from_name, wheel_tags = parse_wheel_filename(
-                    wheel_basename
+                normalized_name, _, build_tag_from_name, wheel_tags = (
+                    parse_wheel_filename(wheel_basename)
                 )
             except Exception:
                 logger.debug("could not parse candidate wheel %s", url, exc_info=True)
@@ -567,9 +576,23 @@ def _is_wheel_built(
                     continue
 
             wheel_filename: pathlib.Path | None = None
-            if wkctx.wheel_server_url and url.startswith(wkctx.wheel_server_url):
+            if wheels.is_local_wheel_url(url, wkctx.wheel_server_url):
                 logging.debug("found wheel on local server")
                 wheel_filename = wkctx.wheels_downloads / wheel_basename
+                mirror_wheel = wkctx.wheel_server_dir / normalized_name / wheel_basename
+                if mirror_wheel.is_symlink():
+                    mirror_target = mirror_wheel.resolve()
+                    if (
+                        mirror_target.parent
+                        in (
+                            wkctx.wheels_downloads,
+                            wkctx.wheels_prebuilt,
+                        )
+                        and mirror_target.is_file()
+                    ):
+                        # The mirror may point to a fresh prebuilt wheel while
+                        # an older copy remains in downloads.
+                        wheel_filename = mirror_target
                 if not wheel_filename.exists():
                     logger.info("wheel not found in local cache, preparing to download")
                     wheel_filename = None

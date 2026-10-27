@@ -470,8 +470,12 @@ class Bootstrapper:
         resolved_version: Version,
         wheel_url: str,
     ) -> tuple[pathlib.Path, pathlib.Path]:
-        result = _cache.bg_prepare_prebuilt(
-            self.ctx, req, req_type, resolved_version, wheel_url
+        result = _cache.bg_prepare_test_mode_prebuilt(
+            self.ctx,
+            req,
+            req_type,
+            resolved_version,
+            wheel_url,
         )
         assert result.wheel_filename is not None
         assert result.unpack_dir is not None

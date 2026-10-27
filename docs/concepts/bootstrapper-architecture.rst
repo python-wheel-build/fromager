@@ -16,6 +16,12 @@ Bootstrap Phase Flow
 
 Every package passes through a sequence of phases.  Source packages
 traverse the full pipeline; prebuilt wheels skip the build phases.
+``pypi-prebuilt`` and ``hook-prebuilt`` use the selected source resolver to
+download a fresh wheel in ``PrepareSource``. The legacy ``pre_built`` setting
+keeps its existing wheel download path. Both routes update the local mirror
+and record the package as prebuilt in the graph and build order.
+When a local wheel is already available, bootstrap reuses it before asking
+the selected provider to resolve a fresh wheel.
 
 .. code-block:: text
 

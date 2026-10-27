@@ -8,7 +8,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from .. import context, progress, read, sources, threading_utils, wheels
-from ..log import requirement_ctxvar
+from ..log import req_ctxvar_context
 
 logger = logging.getLogger(__name__)
 
@@ -65,54 +65,60 @@ def download_sequence(
 
     def download_one(entry: dict[str, typing.Any]) -> None:
         req = Requirement(f"{entry['dist']}=={entry['version']}")
-        token = requirement_ctxvar.set(req)
-
-        if entry["prebuilt"]:
-            if include_wheels:
-                wheels.download_wheel(req, entry["source_url"], wkctx.wheels_prebuilt)
-            else:
-                logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
-            return
-
-        if entry["source_url_type"] == "sdist":
-            try:
-                sources.download_source(
-                    ctx=wkctx,
-                    req=req,
-                    version=Version(entry["version"]),
-                    download_url=entry["source_url"],
-                )
-            except Exception as err:
-                logger.error(f"failed to download sdist for {req}: {err}")
-                if not ignore_missing_sdists:
-                    raise RuntimeError(f"Failed to download sdist for {req}") from err
-        else:
-            logger.info(
-                f"{entry['dist']}: uses a {entry['source_url_type']} downloader, skipping"
-            )
-
-        if include_wheels:
-            try:
-                if use_cache_resolution:
-                    resolved_url, _ = wheels.resolve_cached_wheel(
+        with req_ctxvar_context(req):
+            if entry["prebuilt"]:
+                if include_wheels:
+                    wheels.download_prebuilt_wheel(
                         ctx=wkctx,
                         req=req,
-                        cache_server_url=wheel_server_url,
+                        version=Version(entry["version"]),
+                        download_url=entry["source_url"],
+                        direct_download_directory=wkctx.wheels_prebuilt,
                     )
                 else:
-                    resolved_url, _ = wheels.resolve_prebuilt_wheel(
+                    logger.info(f"{entry['dist']}: uses a pre-built wheel, skipping")
+                return
+
+            if entry["source_url_type"] == "sdist":
+                try:
+                    sources.download_source(
                         ctx=wkctx,
                         req=req,
-                        wheel_server_urls=[wheel_server_url],
+                        version=Version(entry["version"]),
+                        download_url=entry["source_url"],
                     )
-                wheels.download_wheel(
-                    req=req,
-                    wheel_url=resolved_url,
-                    output_directory=wkctx.wheels_downloads,
+                except Exception as err:
+                    logger.error(f"failed to download sdist for {req}: {err}")
+                    if not ignore_missing_sdists:
+                        raise RuntimeError(
+                            f"Failed to download sdist for {req}"
+                        ) from err
+            else:
+                logger.info(
+                    f"{entry['dist']}: uses a {entry['source_url_type']} downloader, skipping"
                 )
-            except Exception as err:
-                logger.error(f"failed to download wheel for {req}: {err}")
-        requirement_ctxvar.reset(token)
+
+            if include_wheels:
+                try:
+                    if use_cache_resolution:
+                        resolved_url, _ = wheels.resolve_cached_wheel(
+                            ctx=wkctx,
+                            req=req,
+                            cache_server_url=wheel_server_url,
+                        )
+                    else:
+                        resolved_url, _ = wheels.resolve_prebuilt_wheel(
+                            ctx=wkctx,
+                            req=req,
+                            wheel_server_urls=[wheel_server_url],
+                        )
+                    wheels.download_wheel(
+                        req=req,
+                        wheel_url=resolved_url,
+                        output_directory=wkctx.wheels_downloads,
+                    )
+                except Exception as err:
+                    logger.error(f"failed to download wheel for {req}: {err}")
 
     num_items = len(build_order)
     logger.debug(
