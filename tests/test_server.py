@@ -233,3 +233,44 @@ def test_start_wheel_server_starts_local(
 
     mock_mirror.assert_called_once_with(tmp_context)
     mock_run.assert_called_once_with(tmp_context)
+
+
+@pytest.mark.parametrize(
+    ("mirror_target", "expected"),
+    [
+        ("downloads", "downloads"),
+        ("prebuilt", "prebuilt"),
+        (None, None),
+        ("outside", None),
+        ("dangling", None),
+    ],
+)
+def test_find_mirror_wheel(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+    mirror_target: str | None,
+    expected: str | None,
+) -> None:
+    """Only mirror links to an existing downloads or prebuilt wheel are returned."""
+    wheel_name = "pkg-1.0-py3-none-any.whl"
+    directories = {
+        "downloads": tmp_context.wheels_downloads,
+        "prebuilt": tmp_context.wheels_prebuilt,
+        "outside": tmp_path / "outside",
+        "dangling": tmp_context.wheels_downloads,
+    }
+    if mirror_target is not None:
+        target = directories[mirror_target] / wheel_name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if mirror_target != "dangling":
+            target.write_bytes(b"wheel")
+        mirror_wheel = tmp_context.wheel_server_dir / "pkg" / wheel_name
+        mirror_wheel.parent.mkdir(parents=True, exist_ok=True)
+        mirror_wheel.symlink_to(target)
+
+    result = server.find_mirror_wheel(tmp_context, wheel_name)
+
+    if expected is None:
+        assert result is None
+    else:
+        assert result == directories[expected] / wheel_name

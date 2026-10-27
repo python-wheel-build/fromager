@@ -258,7 +258,12 @@ def bg_prepare_prebuilt(
         direct_download_directory=ctx.wheels_prebuilt,
     )
     unpack_dir = _create_unpack_dir(ctx.work_dir, req, resolved_version)
-    if ctx.package_build_info(req).source_resolver is not None:
+    # A fresh configured download can share a filename with an older wheel
+    # in downloads/, so point the mirror at the new file. A local mirror hit
+    # is already the file the mirror serves; leave the link alone.
+    configured = ctx.package_build_info(req).source_resolver is not None
+    local_hit = wheels.is_local_wheel_url(wheel_url, ctx.wheel_server_url)
+    if configured and not local_hit:
         server.update_wheel_mirror(ctx, preferred_prebuilt_wheel=wheel_filename)
     else:
         server.update_wheel_mirror(ctx)

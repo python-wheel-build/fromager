@@ -136,9 +136,10 @@ actual path and kind without changing its default path-only output.
 Without ``--source-kind``, it keeps the legacy archive behavior.
 Configured prebuilt resolvers select the prebuilt bootstrap path. Fresh
 external wheels use their ``download()`` contract and are staged in the
-prebuilt wheel directory. Bootstrap, build, and download-sequence use the
-direct wheel downloader for local mirror URLs, so they do not rerun the
-configured download hook. Test-mode fallback also downloads directly.
+prebuilt wheel directory. For local mirror URLs, bootstrap, build, and
+download-sequence reuse the exact file the mirror serves, so they do not
+rerun the configured download hook or pick a different same-named copy.
+Test-mode fallback downloads directly.
 When a fresh configured wheel shares a filename with an older cached wheel,
 the local mirror and later build replay use the fresh staged wheel.
 Legacy build downloads still pass through the build wheel directory before

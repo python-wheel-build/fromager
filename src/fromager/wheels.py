@@ -32,6 +32,7 @@ from . import (
     requirements_file,
     resolver,
     sbom,
+    server,
     sources,
 )
 from .pkgmetadata.pep376 import verbatim_dist_name
@@ -541,8 +542,9 @@ def download_prebuilt_wheel(
 ) -> pathlib.Path:
     """Download a prebuilt wheel via its resolver or the direct wheel path.
 
-    Configured external wheels use the resolver download contract. Legacy
-    wheels and local-mirror URLs use the direct wheel downloader.
+    Configured external wheels use the resolver download contract. For a
+    local-mirror URL, configured wheels reuse the exact file the mirror
+    serves. Legacy wheels use the direct wheel downloader.
 
     .. versionadded:: 0.102.0
     """
@@ -552,9 +554,16 @@ def download_prebuilt_wheel(
             f"{req}: source resolver {source_resolver.provider!r} "
             "does not resolve prebuilt wheels"
         )
-    if source_resolver is None or is_local_wheel_url(
-        download_url, ctx.wheel_server_url
-    ):
+    if source_resolver is None:
+        return download_wheel(req, download_url, direct_download_directory)
+    if is_local_wheel_url(download_url, ctx.wheel_server_url):
+        # Reuse the exact file the local mirror serves. Fall back to the direct
+        # downloader when the local mirror has no link for this file.
+        mirror_wheel = server.find_mirror_wheel(
+            ctx, downloads.extract_filename_from_url(download_url)
+        )
+        if mirror_wheel is not None:
+            return mirror_wheel
         return download_wheel(req, download_url, direct_download_directory)
 
     downloaded: packagesettings.DownloadedSource = sources.download_source(

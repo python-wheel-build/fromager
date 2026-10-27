@@ -538,8 +538,8 @@ def _is_wheel_built(
             logger.info("found candidate wheel %s", url)
             try:
                 wheel_basename = downloads.extract_filename_from_url(url)
-                normalized_name, _, build_tag_from_name, wheel_tags = (
-                    parse_wheel_filename(wheel_basename)
+                _, _, build_tag_from_name, wheel_tags = parse_wheel_filename(
+                    wheel_basename
                 )
             except Exception:
                 logger.debug("could not parse candidate wheel %s", url, exc_info=True)
@@ -578,21 +578,12 @@ def _is_wheel_built(
             wheel_filename: pathlib.Path | None = None
             if wheels.is_local_wheel_url(url, wkctx.wheel_server_url):
                 logging.debug("found wheel on local server")
-                wheel_filename = wkctx.wheels_downloads / wheel_basename
-                mirror_wheel = wkctx.wheel_server_dir / normalized_name / wheel_basename
-                if mirror_wheel.is_symlink():
-                    mirror_target = mirror_wheel.resolve()
-                    if (
-                        mirror_target.parent
-                        in (
-                            wkctx.wheels_downloads,
-                            wkctx.wheels_prebuilt,
-                        )
-                        and mirror_target.is_file()
-                    ):
-                        # The mirror may point to a fresh prebuilt wheel while
-                        # an older copy remains in downloads.
-                        wheel_filename = mirror_target
+                # Use the file the mirror link points to; downloads/ and prebuilt/
+                # can hold different wheels with the same name. Without a link,
+                # try downloads/.
+                wheel_filename = server.find_mirror_wheel(wkctx, wheel_basename) or (
+                    wkctx.wheels_downloads / wheel_basename
+                )
                 if not wheel_filename.exists():
                     logger.info("wheel not found in local cache, preparing to download")
                     wheel_filename = None
