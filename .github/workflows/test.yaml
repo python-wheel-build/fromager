@@ -43,7 +43,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up Rust ${{ matrix.rust-version }}
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f  # master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8  # master
         with:
           toolchain: ${{ matrix.rust-version }}
 
@@ -65,7 +65,7 @@ jobs:
           COVERAGE_FILE: .coverage.unit.py${{ matrix.python-version }}.${{ matrix.os }}
 
       - name: Upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: coverage-unit-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: .coverage.*
@@ -117,7 +117,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up Rust ${{ matrix.rust-version }}
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f  # master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8  # master
         with:
           toolchain: ${{ matrix.rust-version }}
 
@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload logs for debugging
         if: ${{ failure() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: ${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: |
@@ -147,7 +147,7 @@ jobs:
             e2e-failed-*
 
       - name: Upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: coverage-e2e-${{ matrix.test-script }}-py${{ matrix.python-version }}-rs${{ matrix.rust-version }}-${{ matrix.os }}
           path: .coverage.*
@@ -180,7 +180,7 @@ jobs:
         run: python -m pip install hatch 'click!=8.3.0'
 
       - name: Download coverage data
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
         with:
           pattern: coverage-*
           merge-multiple: true
@@ -193,7 +193,7 @@ jobs:
           hatch run test:coverage report --fail-under=60
 
       - name: Upload report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           path: htmlcov
           name: htmlcov

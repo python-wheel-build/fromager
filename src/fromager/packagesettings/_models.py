@@ -100,7 +100,18 @@ class SbomSettings(pydantic.BaseModel):
     """SPDX supplier field for the wheel package (e.g. ``Organization: ExampleCo``)"""
 
     namespace: AnyUrl = AnyUrl("https://spdx.org/spdxdocs")
-    """Base URL for the SPDX documentNamespace"""
+    """Base URL for the SPDX documentNamespace
+
+    The final document namespace is
+    ``<namespace>/<name>-<version>-<uuid>.spdx.json``, where ``name``
+    and ``version`` come from the downstream purl (including any
+    ``purl`` field overrides, percent-encoded to keep the namespace a
+    valid URI) and the UUID is randomly generated per document to
+    guarantee uniqueness. The downstream purl is used because it is
+    the identity the document actually describes, keeping the document
+    header consistent with the wheel package entry. The upstream
+    version is recorded separately in the upstream purl.
+    """
 
     creators: list[str] = Field(default_factory=list)
     """Additional SPDX creator entries (e.g. ``Organization: ExampleCo``)
@@ -301,10 +312,18 @@ class PurlConfig(pydantic.BaseModel):
     """Override the purl namespace component"""
 
     name: str | None = None
-    """Override the purl name component (defaults to the package name)"""
+    """Override the purl name component (defaults to the package name)
+
+    Also determines the name used in the SBOM document name and
+    documentNamespace.
+    """
 
     version: str | None = None
-    """Override the purl version component (defaults to the resolved version)"""
+    """Override the purl version component (defaults to the resolved version)
+
+    Also determines the version used in the SBOM document name and
+    documentNamespace.
+    """
 
     repository_url: AnyUrl | None = None
     """Per-package override for the purl ``repository_url`` qualifier.
@@ -319,8 +338,9 @@ class PurlConfig(pydantic.BaseModel):
     GENERATED_FROM relationship. Used for packages sourced from
     GitHub/GitLab rather than PyPI.
 
-    When absent, the upstream purl is auto-derived from the downstream
-    purl without the ``repository_url`` qualifier.
+    When absent, the upstream purl keeps the downstream name, type, and
+    namespace but uses the resolved source version instead of a local
+    downstream version override. The ``repository_url`` qualifier is omitted.
     """
 
 
