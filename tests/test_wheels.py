@@ -9,7 +9,14 @@ from packaging.requirements import Requirement
 from packaging.tags import Tag
 from packaging.version import Version
 
-from fromager import build_environment, context, downloads, packagesettings, wheels
+from fromager import (
+    build_environment,
+    context,
+    downloads,
+    packagesettings,
+    server,
+    wheels,
+)
 from fromager.packagesettings import SbomSettings, Settings, SettingsFile, WheelSettings
 
 
@@ -81,11 +88,12 @@ def test_hook_prebuilt_download_stages_hook_result(
     default.assert_not_called()
 
 
-def test_hook_prebuilt_local_mirror_url_uses_direct_download(
+def test_hook_prebuilt_local_url_without_mirror_link_uses_direct_download(
     tmp_context: context.WorkContext,
 ) -> None:
-    """A local mirror URL does not invoke the configured download hook."""
+    """Without a mirror link, a local URL uses the direct downloader, not the hook."""
     _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    # No mirror symlink exists, so find_mirror_wheel() returns None.
     tmp_context.wheel_server_url = "https://local.test/simple/"
     req = Requirement("pkg==1.0")
     url = "https://local.test/simple/pkg/pkg-1.0-py3-none-any.whl"
@@ -176,6 +184,31 @@ def test_local_wheel_url_requires_path_boundary() -> None:
         "https://local.test/simple-other/pkg/pkg-1.0-py3-none-any.whl",
         "https://local.test/simple/",
     )
+
+
+def test_configured_prebuilt_local_url_reuses_mirrored_wheel(
+    tmp_context: context.WorkContext,
+) -> None:
+    """A local mirror URL returns the served file, not a same-named copy."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    wheel_name = "pkg-1.0-py3-none-any.whl"
+    served_wheel = tmp_context.wheels_downloads / wheel_name
+    served_wheel.write_bytes(b"served wheel")
+    server.update_wheel_mirror(tmp_context)
+    (tmp_context.wheels_prebuilt / wheel_name).write_bytes(b"other wheel")
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+
+    with patch.object(wheels, "download_wheel") as direct:
+        result = wheels.download_prebuilt_wheel(
+            ctx=tmp_context,
+            req=Requirement("pkg==1.0"),
+            version=Version("1.0"),
+            download_url=f"https://local.test/simple/pkg/{wheel_name}",
+            direct_download_directory=tmp_context.wheels_prebuilt,
+        )
+
+    assert result == served_wheel
+    direct.assert_not_called()
 
 
 def test_configured_prebuilt_rejects_other_kind(

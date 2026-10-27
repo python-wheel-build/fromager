@@ -13,7 +13,7 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 from resolvelib.resolvers import ResolverException
 
-from fromager import bootstrapper, log, sources, wheels
+from fromager import bootstrapper, log, server, sources, wheels
 from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._cache import (
     _download_wheel_from_cache,
@@ -107,7 +107,7 @@ def test_bootstrap_prebuilt_uses_configured_download(
 def test_bootstrap_configured_prebuilt_reuses_local_wheel(
     tmp_context: WorkContext,
 ) -> None:
-    """A local mirror URL bypasses the configured download hook."""
+    """A local mirror URL bypasses the download hook and the mirror switch."""
     _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
     req = Requirement("pkg==1.0")
     version = Version("1.0")
@@ -126,7 +126,38 @@ def test_bootstrap_configured_prebuilt_reuses_local_wheel(
     assert result.wheel_filename == wheel
     cached.assert_called_once_with(req, url, tmp_context.wheels_prebuilt)
     configured.assert_not_called()
-    mirror.assert_called_once_with(tmp_context, preferred_prebuilt_wheel=wheel)
+    mirror.assert_called_once_with(tmp_context)
+
+
+def test_bootstrap_configured_prebuilt_uses_mirrored_wheel(
+    tmp_context: WorkContext,
+) -> None:
+    """A local mirror hit uses and keeps serving the exact mirrored file."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    req = Requirement("pkg==1.0")
+    wheel_name = "pkg-1.0-py3-none-any.whl"
+    served_wheel = tmp_context.wheels_downloads / wheel_name
+    served_wheel.write_bytes(b"served wheel")
+    server.update_wheel_mirror(tmp_context)
+    other_wheel = tmp_context.wheels_prebuilt / wheel_name
+    other_wheel.write_bytes(b"other wheel")
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    url = f"https://local.test/simple/pkg/{wheel_name}"
+
+    with (
+        patch.object(wheels, "download_wheel", wraps=wheels.download_wheel) as direct,
+        patch.object(sources, "download_source") as configured,
+    ):
+        result = bg_prepare_prebuilt(
+            tmp_context, req, RequirementType.TOP_LEVEL, Version("1.0"), url
+        )
+
+    mirror_wheel = tmp_context.wheel_server_dir / "pkg" / wheel_name
+    assert result.wheel_filename == served_wheel
+    assert mirror_wheel.resolve() == served_wheel
+    assert mirror_wheel.read_bytes() == b"served wheel"
+    direct.assert_not_called()
+    configured.assert_not_called()
 
 
 @pytest.mark.parametrize("local_cache", [False, True])

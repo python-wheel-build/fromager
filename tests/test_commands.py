@@ -80,6 +80,35 @@ def test_build_replay_local_mirror_url_skips_download_hook(
     hooks.assert_called_once()
 
 
+def test_forced_build_local_mirror_url_uses_mirrored_wheel(
+    tmp_context: WorkContext,
+) -> None:
+    """A forced build uses and keeps serving the exact mirrored file."""
+    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    req = Requirement("pkg==1.0")
+    wheel_name = "pkg-1.0-py3-none-any.whl"
+    served_wheel = tmp_context.wheels_downloads / wheel_name
+    served_wheel.write_bytes(b"served wheel")
+    server.update_wheel_mirror(tmp_context)
+    (tmp_context.wheels_prebuilt / wheel_name).write_bytes(b"other wheel")
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    url = f"https://local.test/simple/pkg/{wheel_name}"
+
+    with (
+        patch.object(wheels, "download_wheel") as direct,
+        patch("fromager.wheels.sources.download_source") as configured,
+        patch.object(build.hooks, "run_prebuilt_wheel_hooks"),
+    ):
+        result = build._build(tmp_context, Version("1.0"), req, url, True, None)
+
+    mirror_wheel = tmp_context.wheel_server_dir / "pkg" / wheel_name
+    assert result.wheel_filename == served_wheel
+    assert mirror_wheel.resolve() == served_wheel
+    assert mirror_wheel.read_bytes() == b"served wheel"
+    direct.assert_not_called()
+    configured.assert_not_called()
+
+
 def test_fresh_configured_prebuilt_replaces_old_mirror_entry(
     tmp_context: WorkContext,
 ) -> None:

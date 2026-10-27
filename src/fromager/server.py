@@ -113,6 +113,32 @@ def update_wheel_mirror(
                 temporary_link.unlink(missing_ok=True)
 
 
+def find_mirror_wheel(
+    ctx: context.WorkContext, wheel_filename: str
+) -> pathlib.Path | None:
+    """Return the file the local mirror serves for a wheel filename.
+
+    The mirror (``wheel_server_dir``) holds ``<name>/<wheel>`` symlinks into
+    the downloads or prebuilt directory. Both can hold different wheels with
+    the same filename, so follow the link instead of guessing the folder.
+
+    Returns ``None`` when the mirror has no link to an existing wheel in
+    the downloads or prebuilt directory.
+
+    .. versionadded:: 0.102.0
+    """
+    (normalized_name, _, _, _) = parse_wheel_filename(wheel_filename)
+    mirror_wheel = ctx.wheel_server_dir / normalized_name / wheel_filename
+    if not mirror_wheel.is_symlink():
+        return None
+    target = mirror_wheel.resolve()
+    if target.parent not in (ctx.wheels_downloads, ctx.wheels_prebuilt):
+        return None
+    if not target.is_file():
+        return None
+    return target
+
+
 class SimpleHTMLIndex:
     """Simple HTML Repository API (1.0)
 
