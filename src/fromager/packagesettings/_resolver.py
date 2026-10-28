@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import enum
 import inspect
 import logging
@@ -13,7 +12,6 @@ import typing
 import pydantic
 
 from .. import downloads, overrides, resolver
-from ..candidate import Cooldown
 from ._typedefs import MODEL_CONFIG
 
 if typing.TYPE_CHECKING:
@@ -182,13 +180,6 @@ class CooldownMixin(pydantic.BaseModel):
     Positive integer: override the cooldown with this many days.
     """
 
-    @property
-    def _cooldown(self) -> Cooldown | None:
-        """Convert ``min_release_age`` to a ``Cooldown`` instance."""
-        if not self.min_release_age:
-            return None
-        return Cooldown(min_age=datetime.timedelta(days=self.min_release_age))
-
 
 class AbstractPyPIResolver(AbstractResolver, CooldownMixin):
     """Abstract base class for PyPI resolvers"""
@@ -235,7 +226,6 @@ class PyPISDistResolver(AbstractPyPIResolver):
             constraints=ctx.constraints,
             req_type=req_type,
             ignore_platform=False,
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -286,7 +276,6 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
             constraints=ctx.constraints,
             req_type=req_type,
             ignore_platform=False,
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -362,7 +351,6 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
             override_download_url=str(self.download_url).replace(
                 _VERSION_QUOTED, "{version}"
             ),
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -443,7 +431,6 @@ class PyPIGitResolver(AbstractPyPIResolver):
             req_type=req_type,
             ignore_platform=True,
             override_download_url=download_url,
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -555,7 +542,6 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
             matcher=self._get_matcher(ctx),
             req_type=req_type,
             override_download_url=override_download_url,
-            cooldown=self._cooldown,
         )
 
     def _gitlab_provider(
@@ -574,7 +560,6 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
             matcher=self._get_matcher(ctx),
             req_type=req_type,
             override_download_url=override_download_url,
-            cooldown=self._cooldown,
         )
 
 

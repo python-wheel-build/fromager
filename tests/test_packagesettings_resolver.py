@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import pathlib
 import re
 import subprocess
@@ -17,7 +16,7 @@ from packaging.version import Version
 from wheel.wheelfile import WheelFile
 
 from fromager import resolver, sources
-from fromager.candidate import Candidate, Cooldown
+from fromager.candidate import Candidate
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
     AbstractResolver,
@@ -188,19 +187,6 @@ class TestPyPISDistResolver:
         assert p.sdist_server_url == "https://pypi.test/simple"
         assert p.ignore_platform is False
         assert p.override_download_url is None
-        assert p.cooldown is None
-
-    def test_resolver_provider_cooldown(self, tmp_context: WorkContext) -> None:
-        r = PyPISDistResolver(provider="pypi-sdist", min_release_age=7)
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
-        assert isinstance(p.cooldown, Cooldown)
-        assert p.cooldown.min_age == datetime.timedelta(days=7)
-
-    def test_resolver_provider_cooldown_disabled(
-        self, tmp_context: WorkContext
-    ) -> None:
-        r = PyPISDistResolver(provider="pypi-sdist", min_release_age=0)
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert p.cooldown is None
 
     def test_cooldown_negative(self) -> None:
@@ -590,16 +576,6 @@ class TestGitHubTagDownloadResolver:
         assert p.repo == "fromager"
         assert p.override_download_url is None
         assert p.cooldown is None
-
-    def test_resolver_provider_cooldown(self, tmp_context: WorkContext) -> None:
-        r = GitHubTagDownloadResolver(
-            provider="github-tag-download",
-            project_url="https://github.com/python-wheel-build/fromager",  # type: ignore[arg-type]
-            min_release_age=14,
-        )
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
-        assert isinstance(p.cooldown, Cooldown)
-        assert p.cooldown.min_age == datetime.timedelta(days=14)
 
     def test_matcher_factory_rejects_non_callable_return(
         self, tmp_context: WorkContext

@@ -240,6 +240,34 @@ def test_get_source_provider_source_resolver_inherits_global_cooldown(
     assert provider.cooldown is global_cooldown
 
 
+def test_get_source_provider_source_resolver_zero_disables_cooldown(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Source resolver with min_release_age=0 disables the global cooldown."""
+    req = Requirement("test-pkg")
+    tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
+
+    source_resolver = packagesettings.PyPISDistResolver(
+        provider="pypi-sdist",
+        index_url=pydantic.HttpUrl("https://pypi.test/simple"),
+        min_release_age=0,
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        provider = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+        )
+
+    assert provider.cooldown is None
+
+
 def test_get_source_provider_source_resolver_toplevel_pin_bypasses_cooldown(
     tmp_context: context.WorkContext,
 ) -> None:
