@@ -120,6 +120,16 @@ Otherwise, override plugins can replace the provider for a specific package
 via the ``get_resolver_provider`` hook, after which the legacy resolver
 settings are used.
 
+A configured resolver's ``download()`` receives only the version and the
+download URL of the selected candidate. Resolution and download can run in
+different commands, and only these values are saved in ``graph.json`` and
+``build-order.json``. The URL must therefore contain everything the download
+needs, such as the git ref in ``git+https://host/repo.git@refs/tags/v1.0``.
+
+.. versionchanged:: 0.102.0
+   ``download()`` takes ``version`` and ``download_url`` instead of a
+   ``Candidate``.
+
 Hook downloads accept explicit artifact kinds and adapt legacy paths using
 profile-specific defaults. If no download hook exists, the profile selects the
 standard sdist or wheel downloader and its destination directory. Hook errors

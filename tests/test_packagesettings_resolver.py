@@ -16,7 +16,6 @@ from packaging.version import Version
 from wheel.wheelfile import WheelFile
 
 from fromager import resolver, sources
-from fromager.candidate import Candidate
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
     AbstractResolver,
@@ -67,52 +66,16 @@ def _bad_matcher_returns_bad_sig(ctx: WorkContext) -> typing.Callable[..., None]
 _REQ = Requirement("test-pkg")
 _REQ_TYPE = RequirementType.INSTALL
 _VERSION = Version("1.2.3")
-_CANDIDATE_SDIST = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://pypi.test/packages/test-pkg-1.2.3.tar.gz",
-    is_sdist=True,
+_URL_SDIST = "https://pypi.test/packages/test-pkg-1.2.3.tar.gz"
+_URL_WHEEL = "https://pypi.test/packages/test_pkg-1.2.3-py3-none-any.whl"
+_URL_TARBALL = "https://download.test/test-pkg-1.2.3.tar.gz"
+_URL_GIT = "git+https://code.test/project/repo.git@refs/tags/v1.2.3"
+_URL_GITHUB_TARBALL = "https://api.github.com/repos/org/repo/tarball/v1.2.3"
+_URL_GITHUB_CLONE = "git+https://github.com/python-wheel-build/fromager@v1.2.3"
+_URL_GITLAB_TARBALL = (
+    "https://gitlab.test/group/project/-/archive/v1.2.3/project-v1.2.3.tar.gz"
 )
-_CANDIDATE_WHEEL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://pypi.test/packages/test_pkg-1.2.3-py3-none-any.whl",
-    is_sdist=False,
-)
-_CANDIDATE_TARBALL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://download.test/test-pkg-1.2.3.tar.gz",
-)
-_CANDIDATE_GIT = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="git+https://code.test/project/repo.git@refs/tags/v1.2.3",
-)
-_CANDIDATE_GITHUB_TARBALL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://api.github.com/repos/org/repo/tarball/v1.2.3",
-    remote_tag="v1.2.3",
-)
-_CANDIDATE_GITHUB_CLONE = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="git+https://github.com/python-wheel-build/fromager@v1.2.3",
-    remote_tag="v1.2.3",
-)
-_CANDIDATE_GITLAB_TARBALL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://gitlab.test/group/project/-/archive/v1.2.3/project-v1.2.3.tar.gz",
-    remote_tag="v1.2.3",
-)
-_CANDIDATE_GITLAB_CLONE = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="git+https://gitlab.test/python-wheel-build/fromager@v1.2.3",
-    remote_tag="v1.2.3",
-)
+_URL_GITLAB_CLONE = "git+https://gitlab.test/python-wheel-build/fromager@v1.2.3"
 
 
 class _SourceWrapper(pydantic.BaseModel):
@@ -198,13 +161,13 @@ class TestPyPISDistResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected
         assert result.kind is DownloadKind.sdist
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_SDIST.url,
+            url=_URL_SDIST,
         )
 
 
@@ -240,13 +203,13 @@ class TestPyPIPrebuiltResolver:
         expected = tmp_context.wheels_prebuilt / "test_pkg-1.2.3-py3-none-any.whl"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_WHEEL)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected
         assert result.kind is DownloadKind.prebuilt_wheel
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.wheels_prebuilt,
-            url=_CANDIDATE_WHEEL.url,
+            url=_URL_WHEEL,
         )
 
 
@@ -314,14 +277,29 @@ class TestPyPIDownloadResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_TARBALL)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_TARBALL)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected
         assert result.kind is DownloadKind.tarball
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_TARBALL.url,
+            url=_URL_TARBALL,
             destination_filename="test-pkg-1.2.3.tar.gz",
+        )
+
+    @mock.patch("fromager.downloads.download_url")
+    def test_download_canonicalizes_tarball_name(
+        self, mock_dl: mock.MagicMock, tmp_context: WorkContext
+    ) -> None:
+        """Name the tarball with the canonical package name."""
+        r = _parse(self.YAML)
+
+        r.download(tmp_context, Requirement("Foo_Bar"), _VERSION, _URL_TARBALL)
+
+        mock_dl.assert_called_once_with(
+            destination_dir=tmp_context.sdists_downloads,
+            url=_URL_TARBALL,
+            destination_filename="foo-bar-1.2.3.tar.gz",
         )
 
 
@@ -385,13 +363,13 @@ class TestPyPIGitResolver:
         )
         mock_dl.return_value = expected_dest
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_GIT)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GIT)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected_dest
         assert result.kind is DownloadKind.git_checkout
         mock_dl.assert_called_once_with(
             destination_dir=expected_dest,
-            vcs_url=_CANDIDATE_GIT.url,
+            vcs_url=_URL_GIT,
         )
 
     def test_download_rejects_existing_checkout_without_cleanup(
@@ -406,7 +384,7 @@ class TestPyPIGitResolver:
         (checkout / "keep.txt").write_text("prepared")
 
         with pytest.raises(FileExistsError, match="enable cleanup"):
-            _parse(self.YAML).download(tmp_context, _REQ, _CANDIDATE_GIT)
+            _parse(self.YAML).download(tmp_context, _REQ, _VERSION, _URL_GIT)
 
         assert (checkout / "keep.txt").read_text() == "prepared"
 
@@ -421,13 +399,13 @@ class TestPyPIGitResolver:
         (checkout.parent / "build-meta.json").write_text("old")
 
         def clone(*, destination_dir: pathlib.Path, vcs_url: str) -> pathlib.Path:
-            assert vcs_url == _CANDIDATE_GIT.url
+            assert vcs_url == _URL_GIT
             destination_dir.mkdir(parents=True)
             (destination_dir / "new.txt").write_text("new")
             return destination_dir
 
         with mock.patch("fromager.downloads.download_git_source", side_effect=clone):
-            result = _parse(self.YAML).download(tmp_context, _REQ, _CANDIDATE_GIT)
+            result = _parse(self.YAML).download(tmp_context, _REQ, _VERSION, _URL_GIT)
 
         assert result == DownloadedSource(checkout, DownloadKind.git_checkout)
         assert (checkout / "new.txt").read_text() == "new"
@@ -447,7 +425,7 @@ class TestPyPIGitResolver:
         meta_file.write_text("existing metadata")
 
         with pytest.raises(FileExistsError, match="already exists"):
-            _parse(self.YAML).download(tmp_context, _REQ, _CANDIDATE_GIT)
+            _parse(self.YAML).download(tmp_context, _REQ, _VERSION, _URL_GIT)
 
         assert (checkout / "keep.txt").read_text() == "existing source"
         assert meta_file.read_text() == "existing metadata"
@@ -477,18 +455,14 @@ class TestPyPIGitResolver:
             capture_output=True,
         )
         subprocess.run(["git", "-C", str(repo), "tag", "v1.2.3"], check=True)
-        candidate = Candidate(
-            name=_REQ.name,
-            version=_VERSION,
-            url=f"git+file://{repo}@refs/tags/v1.2.3",
-        )
+        url = f"git+file://{repo}@refs/tags/v1.2.3"
         source_resolver = _parse(self.YAML)
         tmp_context.cleanup = False
         package_dir = tmp_context.work_dir / f"{_REQ.name}-{_VERSION}"
         (package_dir / "other-dir").mkdir(parents=True)
         (package_dir / "build-meta.json").write_text("stale")
 
-        downloaded = source_resolver.download(tmp_context, _REQ, candidate)
+        downloaded = source_resolver.download(tmp_context, _REQ, _VERSION, url)
         assert (package_dir / "other-dir").is_dir()
         assert (package_dir / "build-meta.json").read_text() == "stale"
         prepared = sources.prepare_source(
@@ -500,7 +474,7 @@ class TestPyPIGitResolver:
         )
         (prepared / "keep.txt").write_text("prepared")
         with pytest.raises(FileExistsError, match="already exists"):
-            source_resolver.download(tmp_context, _REQ, candidate)
+            source_resolver.download(tmp_context, _REQ, _VERSION, url)
 
         assert downloaded.kind is DownloadKind.git_checkout
         assert prepared == downloaded.path
@@ -511,7 +485,7 @@ class TestPyPIGitResolver:
         )
 
         tmp_context.cleanup = True
-        recloned = source_resolver.download(tmp_context, _REQ, candidate)
+        recloned = source_resolver.download(tmp_context, _REQ, _VERSION, url)
 
         assert recloned.path == prepared
         assert (recloned.path / ".git").is_dir()
@@ -620,13 +594,13 @@ class TestGitHubTagDownloadResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_GITHUB_TARBALL)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITHUB_TARBALL)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected
         assert result.kind is DownloadKind.tarball
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_GITHUB_TARBALL.url,
+            url=_URL_GITHUB_TARBALL,
             destination_filename="test-pkg-1.2.3.tar.gz",
         )
 
@@ -667,13 +641,13 @@ class TestGitHubTagCloneResolver:
         )
         mock_dl.return_value = expected_dest
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_GITHUB_CLONE)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITHUB_CLONE)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected_dest
         assert result.kind is DownloadKind.git_checkout
         mock_dl.assert_called_once_with(
             destination_dir=expected_dest,
-            vcs_url=_CANDIDATE_GITHUB_CLONE.url,
+            vcs_url=_URL_GITHUB_CLONE,
         )
 
 
@@ -709,13 +683,13 @@ class TestGitLabTagDownloadResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_GITLAB_TARBALL)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITLAB_TARBALL)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected
         assert result.kind is DownloadKind.tarball
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_GITLAB_TARBALL.url,
+            url=_URL_GITLAB_TARBALL,
             destination_filename="test-pkg-1.2.3.tar.gz",
         )
 
@@ -756,13 +730,13 @@ class TestGitLabTagCloneResolver:
         )
         mock_dl.return_value = expected_dest
         r = _parse(self.YAML)
-        result = r.download(tmp_context, _REQ, _CANDIDATE_GITLAB_CLONE)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITLAB_CLONE)
         assert isinstance(result, DownloadedSource)
         assert result.path == expected_dest
         assert result.kind is DownloadKind.git_checkout
         mock_dl.assert_called_once_with(
             destination_dir=expected_dest,
-            vcs_url=_CANDIDATE_GITLAB_CLONE.url,
+            vcs_url=_URL_GITLAB_CLONE,
         )
 
 
@@ -791,7 +765,7 @@ class TestNotAvailableResolver:
     def test_download(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
         with pytest.raises(ValueError, match="not available"):
-            r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+            r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
 
 
 class TestHookSDistResolver:
@@ -970,7 +944,7 @@ def test_hook_download_preserves_typed_result_and_arguments(
         if provider == "hook-sdist"
         else TestHookPrebuiltResolver.YAML
     )
-    candidate = _CANDIDATE_WHEEL if r.resolves_prebuilt_wheel else _CANDIDATE_SDIST
+    url = _URL_WHEEL if r.resolves_prebuilt_wheel else _URL_SDIST
     expected = DownloadedSource(path=tmp_context.work_dir / "artifact", kind=kind)
     captured: dict[str, object] = {}
 
@@ -996,18 +970,43 @@ def test_hook_download_preserves_typed_result_and_arguments(
         ) as find_hook,
         mock.patch.object(type(r), "_download") as fallback,
     ):
-        result = r.download(tmp_context, _REQ, candidate)
+        result = r.download(tmp_context, _REQ, _VERSION, url)
 
     assert result is expected
     assert captured == {
         "ctx": tmp_context,
         "req": _REQ,
-        "version": candidate.version,
-        "download_url": candidate.url,
+        "version": _VERSION,
+        "download_url": url,
         "sdists_downloads_dir": tmp_context.sdists_downloads,
     }
     find_hook.assert_called_once_with(_REQ.name, "download_source")
     fallback.assert_not_called()
+
+
+def test_hook_download_passes_non_url_ref_unchanged(
+    tmp_context: WorkContext,
+) -> None:
+    """Pass a bare commit SHA to the download hook as ``download_url``.
+
+    Version-map plugins store a commit SHA instead of a URL.
+    """
+    r = _parse(TestHookSDistResolver.YAML)
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    expected = DownloadedSource(
+        path=tmp_context.work_dir / "checkout", kind=DownloadKind.git_checkout
+    )
+    captured: dict[str, object] = {}
+
+    def hook(version: Version, download_url: str) -> DownloadedSource:
+        captured.update(version=version, download_url=download_url)
+        return expected
+
+    with mock.patch("fromager.overrides.find_override_method", return_value=hook):
+        result = r.download(tmp_context, _REQ, _VERSION, sha)
+
+    assert result is expected
+    assert captured == {"version": _VERSION, "download_url": sha}
 
 
 @pytest.mark.parametrize(
@@ -1039,7 +1038,7 @@ def test_hook_download_adapts_legacy_path_and_narrow_signature(
         return expected
 
     with mock.patch("fromager.overrides.find_override_method", return_value=hook):
-        result = r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
 
     assert result == DownloadedSource(path=expected, kind=kind)
 
@@ -1106,7 +1105,7 @@ def test_hook_download_rejects_invalid_results_without_fallback(
         mock.patch.object(type(r), "_download") as fallback,
         pytest.raises(error_type, match=re.escape(message)) as exc_info,
     ):
-        r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
 
     assert f"test-pkg: '{provider}' download_source hook" in str(exc_info.value)
     fallback.assert_not_called()
@@ -1138,7 +1137,7 @@ def test_hook_download_rejects_kind_incompatible_with_profile(
         mock.patch("fromager.overrides.find_override_method", return_value=hook),
         pytest.raises(ValueError, match=f"unsupported kind '{kind.value}'") as exc_info,
     ):
-        r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
 
     for allowed_kind in r.download_kinds:
         assert allowed_kind.value in str(exc_info.value)
@@ -1177,7 +1176,7 @@ def test_hook_download_requires_kind_for_unsupported_legacy_paths(
         mock.patch("fromager.overrides.find_override_method", return_value=hook),
         pytest.raises(ValueError, match="Return DownloadedSource"),
     ):
-        r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
 
 
 @pytest.mark.parametrize("provider", ["hook-sdist", "hook-prebuilt"])
@@ -1191,11 +1190,11 @@ def test_hook_download_uses_profile_default_when_hook_is_missing(
         else TestHookPrebuiltResolver.YAML
     )
     prebuilt = r.resolves_prebuilt_wheel
-    candidate = _CANDIDATE_WHEEL if prebuilt else _CANDIDATE_SDIST
+    url = _URL_WHEEL if prebuilt else _URL_SDIST
     destination = (
         tmp_context.wheels_prebuilt if prebuilt else tmp_context.sdists_downloads
     )
-    expected = destination / candidate.url.rsplit("/", 1)[1]
+    expected = destination / url.rsplit("/", 1)[1]
     kind = DownloadKind.prebuilt_wheel if prebuilt else DownloadKind.sdist
 
     with (
@@ -1203,10 +1202,10 @@ def test_hook_download_uses_profile_default_when_hook_is_missing(
         mock.patch("fromager.downloads.download_sdist", return_value=expected) as sdist,
         mock.patch("fromager.downloads.download_wheel", return_value=expected) as wheel,
     ):
-        result = r.download(tmp_context, _REQ, candidate)
+        result = r.download(tmp_context, _REQ, _VERSION, url)
 
     selected, unused = (wheel, sdist) if prebuilt else (sdist, wheel)
-    selected.assert_called_once_with(destination_dir=destination, url=candidate.url)
+    selected.assert_called_once_with(destination_dir=destination, url=url)
     unused.assert_not_called()
     assert result == DownloadedSource(path=expected, kind=kind)
 
@@ -1233,7 +1232,7 @@ def test_hook_download_chains_failure_without_fallback(
             RuntimeError, match=f"'{provider}' download_source hook failed"
         ) as exc_info,
     ):
-        r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
 
     assert exc_info.value.__cause__ is cause
     fallback.assert_not_called()
@@ -1255,7 +1254,7 @@ def test_hook_prebuilt_download_fallback_accepts_valid_wheel(
     )
 
     with mock.patch("fromager.overrides.find_override_method", return_value=None):
-        result = r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_WHEEL)
 
     assert result == DownloadedSource(path=path, kind=DownloadKind.prebuilt_wheel)
 

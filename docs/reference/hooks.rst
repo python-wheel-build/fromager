@@ -241,6 +241,9 @@ Source hooks
     evaluated, version of the package being downloaded, the download URL,
     and the output directory in which the source should be downloaded.
 
+    ``download_url`` is the value from the resolver provider. It can be a
+    ref, such as a commit SHA, instead of a URL.
+
     For packages without ``source:`` configuration, return a ``pathlib.Path``
     to the downloaded source. This legacy contract is unchanged.
 
