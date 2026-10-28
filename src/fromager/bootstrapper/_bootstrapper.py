@@ -716,7 +716,7 @@ class Bootstrapper:
             req: The requirement being added to the build order.
             version: The resolved version.
             source_url: URL from which the source distribution was obtained.
-            source_type: The kind of source (sdist, wheel, git, etc.).
+            source_type: Legacy source classification for compatibility.
             prebuilt: True if the wheel was taken from a prebuilt cache rather
                 than compiled locally.
             constraint: The version constraint active for this package, if any.
@@ -740,6 +740,9 @@ class Bootstrapper:
             "source_url": source_url,
             "source_url_type": str(source_type),
         }
+        source_resolver = self.ctx.package_build_info(req).source_resolver
+        if source_resolver is not None:
+            info["source_provider"] = source_resolver.provider
         self._build_stack.append(info)
 
     def _check_write_error(self, fut: concurrent.futures.Future[int]) -> None:

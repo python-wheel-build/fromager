@@ -1,12 +1,15 @@
 import concurrent.futures
+import io
 import json
 import pathlib
 import subprocess
+import tarfile
 import typing
 from unittest.mock import Mock, patch
 
 import click
 import pytest
+import requests_mock
 from click.testing import CliRunner
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -195,7 +198,15 @@ def test_download_sequence_replays_configured_prebuilt(
     build_order = tmp_path / "build-order.json"
     build_order.write_text(
         json.dumps(
-            [{"dist": "pkg", "version": "1.0", "prebuilt": True, "source_url": url}]
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": True,
+                    "source_url": url,
+                    "source_provider": "hook-prebuilt",
+                }
+            ]
         )
     )
     with (
@@ -225,6 +236,421 @@ def test_download_sequence_replays_configured_prebuilt(
     legacy.assert_not_called()
 
 
+@pytest.mark.parametrize("include_wheels", [False, True])
+def test_download_sequence_checks_prebuilt_provider_before_download(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+    include_wheels: bool,
+) -> None:
+    """A configured wheel download requires its recorded provider."""
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": True,
+                    "source_url": "https://pkg.test/pkg-1.0-py3-none-any.whl",
+                    "source_provider": "hook-prebuilt",
+                }
+            ]
+        )
+    )
+    args = [str(build_order), "https://index.test/simple", "--num-threads", "1"]
+    if include_wheels:
+        args.append("--include-wheels")
+
+    with patch.object(wheels, "download_prebuilt_wheel") as download:
+        result = cli_runner.invoke(
+            download_sequence.download_sequence, args, obj=tmp_context
+        )
+
+    assert (result.exit_code != 0) is include_wheels
+    if include_wheels:
+        assert "hook-prebuilt" in str(result.exception)
+    download.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("settings_yaml", "url"),
+    [
+        (
+            "source:\n  provider: pypi-sdist\n",
+            "https://pkg.test/pkg-1.0.tar.gz",
+        ),
+        (
+            "source:\n"
+            "  provider: pypi-download\n"
+            "  download_url: https://pkg.test/pkg-{version}.tar.gz\n"
+            "  download_kind: tarball\n",
+            "https://pkg.test/pkg-1.0.tar.gz",
+        ),
+        (
+            "source:\n"
+            "  provider: github-tag-download\n"
+            "  project_url: https://github.test/org/pkg\n",
+            "https://api.github.test/repos/org/pkg/tarball/v1.0",
+        ),
+        (
+            "source:\n"
+            "  provider: gitlab-tag-download\n"
+            "  project_url: https://gitlab.test/org/pkg\n",
+            "https://gitlab.test/org/pkg/-/archive/v1.0/pkg-v1.0.tar.gz",
+        ),
+    ],
+)
+def test_download_sequence_prefetches_configured_archives(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+    requests_mock: requests_mock.Mocker,
+    settings_yaml: str,
+    url: str,
+) -> None:
+    """A later resolver download reuses the archive prefetched by the command."""
+    _configure_package(tmp_context, settings_yaml)
+    source_resolver = tmp_context.package_build_info(
+        Requirement("pkg==1.0")
+    ).source_resolver
+    assert source_resolver is not None
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        metadata = b"Name: pkg\nVersion: 1.0\n"
+        member = tarfile.TarInfo("pkg-1.0/PKG-INFO")
+        member.size = len(metadata)
+        tar.addfile(member, io.BytesIO(metadata))
+    requests_mock.get(url, content=archive.getvalue())
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": url,
+                    "source_url_type": "override",
+                    "source_provider": source_resolver.provider,
+                }
+            ]
+        )
+    )
+
+    result = cli_runner.invoke(
+        download_sequence.download_sequence,
+        [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+        obj=tmp_context,
+    )
+
+    assert result.exit_code == 0, result.output
+    repeated = cli_runner.invoke(
+        download_sequence.download_sequence,
+        [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+        obj=tmp_context,
+    )
+    assert repeated.exit_code == 0, repeated.output
+    cached = tmp_context.sdists_downloads / "pkg-1.0.tar.gz"
+    assert cached.exists()
+    downloaded = source_resolver.download(
+        tmp_context, Requirement("pkg==1.0"), Version("1.0"), url
+    )
+    assert downloaded.path == cached
+    assert requests_mock.call_count == 1
+
+
+def test_download_sequence_calls_configured_git_download(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A configured Git resolver downloads even with a legacy override label."""
+    _configure_package(
+        tmp_context,
+        "source:\n"
+        "  provider: github-tag-git\n"
+        "  project_url: https://github.test/org/pkg\n",
+    )
+    url = "git+https://github.test/org/pkg@v1.0"
+    source_resolver = tmp_context.package_build_info(
+        Requirement("pkg==1.0")
+    ).source_resolver
+    assert source_resolver is not None
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": url,
+                    "source_url_type": "override",
+                    "source_provider": source_resolver.provider,
+                }
+            ]
+        )
+    )
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    with patch(
+        "fromager.downloads.download_git_source", return_value=checkout
+    ) as clone:
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    clone.assert_called_once_with(destination_dir=checkout, vcs_url=url)
+
+
+def test_download_sequence_calls_configured_hook_download(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A hook source uses its normal download result during sequence replay."""
+    _configure_package(
+        tmp_context, "source:\n  provider: hook-sdist\n  build_sdist: tarball\n"
+    )
+    url = "https://pkg.test/pkg-1.0.tar.gz"
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": url,
+                    "source_url_type": "override",
+                    "source_provider": "hook-sdist",
+                }
+            ]
+        )
+    )
+    calls: list[tuple[Version, str]] = []
+
+    def hook(version: Version, download_url: str) -> packagesettings.DownloadedSource:
+        calls.append((version, download_url))
+        return packagesettings.DownloadedSource(
+            path=tmp_context.work_dir / "pkg-1.0" / "pkg-1.0",
+            kind=packagesettings.DownloadKind.git_checkout,
+        )
+
+    with patch("fromager.overrides.find_override_method", return_value=hook):
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [(Version("1.0"), url)]
+
+
+def test_download_sequence_keeps_legacy_sdist_selection(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """Old build-order entries still prefetch through the legacy downloader."""
+    url = "https://pkg.test/pkg-1.0.tar.gz"
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": url,
+                    "source_url_type": "sdist",
+                }
+            ]
+        )
+    )
+    with patch.object(download_sequence.sources, "download_source") as download:
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    download.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        download_url=url,
+    )
+
+
+@pytest.mark.parametrize(
+    ("configured_provider", "recorded_provider", "ignore_missing"),
+    [
+        (None, "pypi-sdist", False),
+        (None, "pypi-sdist", True),
+        ("pypi-sdist", "github-tag-git", False),
+    ],
+)
+def test_download_sequence_rejects_missing_or_changed_source_provider(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+    configured_provider: str | None,
+    recorded_provider: str,
+    ignore_missing: bool,
+) -> None:
+    """A configured build order must not silently use different settings."""
+    if configured_provider is not None:
+        _configure_package(tmp_context, f"source:\n  provider: {configured_provider}\n")
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "https://pkg.test/pkg-1.0.tar.gz",
+                    "source_url_type": "override",
+                    "source_provider": recorded_provider,
+                }
+            ]
+        )
+    )
+
+    with patch.object(download_sequence.sources, "download_source") as download:
+        args = [str(build_order), "https://index.test/simple", "--num-threads", "1"]
+        if ignore_missing:
+            args.append("--ignore-missing-sdists")
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            args,
+            obj=tmp_context,
+        )
+
+    assert result.exit_code != 0
+    assert recorded_provider in str(result.exception)
+    download.assert_not_called()
+
+
+@pytest.mark.parametrize("ignore_missing", [False, True])
+def test_download_sequence_rejects_unrecorded_configured_provider(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+    ignore_missing: bool,
+) -> None:
+    """Old entries cannot use a configured resolver without provenance."""
+    _configure_package(
+        tmp_context,
+        "source:\n"
+        "  provider: github-tag-git\n"
+        "  project_url: https://github.test/org/pkg\n",
+    )
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "https://pkg.test/pkg-1.0.tar.gz",
+                    "source_url_type": "sdist",
+                }
+            ]
+        )
+    )
+    args = [str(build_order), "https://index.test/simple", "--num-threads", "1"]
+    if ignore_missing:
+        args.append("--ignore-missing-sdists")
+
+    with patch.object(download_sequence.sources, "download_source") as download:
+        result = cli_runner.invoke(
+            download_sequence.download_sequence, args, obj=tmp_context
+        )
+
+    assert isinstance(result.exception, ValueError)
+    assert "github-tag-git" in str(result.exception)
+    download.assert_not_called()
+
+
+def test_download_sequence_checks_providers_before_starting_downloads(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """A later mismatch must fail before an earlier entry downloads."""
+    _configure_package(tmp_context, "source:\n  provider: pypi-sdist\n")
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "https://pkg.test/pkg-1.0.tar.gz",
+                    "source_url_type": "override",
+                    "source_provider": "pypi-sdist",
+                },
+                {
+                    "dist": "other",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "https://pkg.test/other-1.0.tar.gz",
+                    "source_url_type": "override",
+                    "source_provider": "pypi-sdist",
+                },
+            ]
+        )
+    )
+
+    with patch.object(download_sequence.sources, "download_source") as download:
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code != 0
+    assert "other==1.0" in str(result.exception)
+    download.assert_not_called()
+
+
+def test_download_sequence_skips_test_mode_prebuilt_fallback_source(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """A runtime wheel fallback must not retry its failed source download."""
+    _configure_package(tmp_context, "source:\n  provider: pypi-sdist\n")
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "https://pkg.test/pkg-1.0.tar.gz",
+                    "source_url_type": "prebuilt",
+                    "source_provider": "pypi-sdist",
+                }
+            ]
+        )
+    )
+
+    with patch.object(download_sequence.sources, "download_source") as download:
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    download.assert_not_called()
+
+
 def test_download_sequence_local_mirror_url_skips_download_hook(
     cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
 ) -> None:
@@ -235,7 +661,15 @@ def test_download_sequence_local_mirror_url_skips_download_hook(
     build_order = tmp_path / "build-order.json"
     build_order.write_text(
         json.dumps(
-            [{"dist": "pkg", "version": "1.0", "prebuilt": True, "source_url": url}]
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": True,
+                    "source_url": url,
+                    "source_provider": "hook-prebuilt",
+                }
+            ]
         )
     )
     with (
@@ -325,6 +759,7 @@ def test_download_sequence_rejects_stale_prebuilt_flag(
                     "version": "1.0",
                     "prebuilt": True,
                     "source_url": "https://pkg.test/pkg-1.0-py3-none-any.whl",
+                    "source_provider": "pypi-sdist",
                 }
             ]
         )

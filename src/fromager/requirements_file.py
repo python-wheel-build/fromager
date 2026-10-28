@@ -30,6 +30,8 @@ class RequirementType(StrEnum):
 
 
 class SourceType(StrEnum):
+    """Legacy build-order classification, not the downloaded artifact kind."""
+
     PREBUILT = "prebuilt"
     SDIST = "sdist"
     OVERRIDE = "override"

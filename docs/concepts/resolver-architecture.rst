@@ -159,6 +159,28 @@ The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
 ``step download-source-archive --output-format json`` exposes that result's
 actual path and kind without changing its default path-only output.
 Without ``--source-kind``, it keeps the legacy archive behavior.
+``download-sequence`` calls the configured resolver's normal ``download()``
+for source entries. Before downloading, it checks ``source_provider`` against
+the current provider for each source entry and each ``prebuilt: true`` wheel
+requested with ``--include-wheels``. A missing or different provider fails
+before any downloads start. Older build orders without ``source_provider``
+still work with legacy settings; regenerate them before replaying a configured
+source. This checks the provider name, so replay should still use the same
+package settings. A runtime ``prebuilt`` entry is skipped even when the
+package has source settings.
+Built-in archive resolvers cache the resolved file for a later build. Git
+checkout resolvers clone into the work directory instead: with cleanup enabled,
+a later build removes that checkout and clones again; without cleanup, the
+later download fails because the checkout exists. Hook
+download behavior depends on the hook. Legacy packages keep the
+``source_url_type`` selection behavior. Build-order entries record the
+effective configured ``source_provider`` for provenance; the
+``source_url_type`` field remains a legacy compatibility classification, not
+the actual downloaded artifact kind.
+
+.. versionchanged:: 0.102.0
+   ``download-sequence`` uses configured source resolvers for source entries.
+
 Configured prebuilt resolvers select the prebuilt bootstrap path. Fresh
 external wheels use their ``download()`` contract and are staged in the
 prebuilt wheel directory. For local mirror URLs, bootstrap, build, and
