@@ -781,9 +781,30 @@ class AbstractHookResolver(AbstractResolver, CooldownMixin):
     supports_override_hooks: typing.ClassVar[bool] = True
     """Hook resolvers support override hooks."""
 
+    hookless_provider: typing.ClassVar[str]
+    """Profile to suggest for packages without hooks."""
+
+    def _find_resolver_hook(self, req: Requirement) -> typing.Callable | None:
+        """Return the package resolver hook, or None to resolve on the index.
+
+        Resolving on the index needs a ``download_source`` hook to get the
+        source. Raise when the package has neither hook.
+        """
+        hook = overrides.find_override_method(req.name, "get_resolver_provider")
+        if hook is None and not overrides.find_override_method(
+            req.name, "download_source"
+        ):
+            raise ValueError(
+                f"{req.name}: source resolver {self.provider!r} requires a "
+                "get_resolver_provider or download_source override hook; "
+                f"use {self.hookless_provider!r} for a package without hooks"
+            )
+        return hook
+
     def _resolver_provider_from_hook(
         self,
         *,
+        hook: typing.Callable,
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
@@ -792,14 +813,7 @@ class AbstractHookResolver(AbstractResolver, CooldownMixin):
         include_wheels: bool,
         ignore_platform: bool,
     ) -> resolver.BaseProvider:
-        """Invoke the required package resolver hook and validate its result."""
-        hook = overrides.find_override_method(req.name, "get_resolver_provider")
-        if hook is None:
-            raise ValueError(
-                f"{req.name}: source resolver {self.provider!r} requires a "
-                "get_resolver_provider override hook"
-            )
-
+        """Invoke the package resolver hook and validate its result."""
         try:
             provider = overrides.invoke(
                 hook,
@@ -903,9 +917,11 @@ class HookSDistResolver(AbstractHookResolver):
     """Call resolver_provider and download_source hook, build from source
 
     The ``hook-sdist`` provider delegates resolution and download to
-    plugin hooks. The downloaded artifact can be a source distribution,
-    a tarball, or a git checkout. Download hooks can return ``DownloadedSource``
-    with a concrete kind, or a legacy archive ``Path`` treated as an sdist.
+    plugin hooks. Either hook is optional, but not both. Without a resolver
+    hook, versions come from ``index_url``. The downloaded artifact can be a
+    source distribution, a tarball, or a git checkout. Download hooks can
+    return ``DownloadedSource`` with a concrete kind, or a legacy archive
+    ``Path`` treated as an sdist.
     Without a download hook, the resolved URL is downloaded as an sdist.
     Specify ``build_sdist`` explicitly: ``tarball`` to repack an existing
     sdist, or ``pep517`` to build from a git checkout.
@@ -929,6 +945,7 @@ class HookSDistResolver(AbstractHookResolver):
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
     )
+    hookless_provider: typing.ClassVar[str] = "pypi-sdist"
 
     def resolver_provider(
         self,
@@ -936,8 +953,24 @@ class HookSDistResolver(AbstractHookResolver):
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
     ) -> resolver.BaseProvider:
-        """Return a source provider from the package resolver hook."""
+        """Return a source provider from the resolver hook or the index.
+
+        Without a ``get_resolver_provider`` hook, find versions on
+        ``index_url`` in sdists and wheels for any platform, like
+        ``pypi-git``. The ``download_source`` hook then gets the source.
+        """
+        hook = self._find_resolver_hook(req)
+        if hook is None:
+            return resolver.PyPIProvider(
+                include_sdists=True,
+                include_wheels=True,
+                sdist_server_url=str(self.index_url),
+                constraints=ctx.constraints,
+                req_type=req_type,
+                ignore_platform=True,
+            )
         return self._resolver_provider_from_hook(
+            hook=hook,
             ctx=ctx,
             req=req,
             req_type=req_type,
@@ -964,10 +997,11 @@ class HookPrebuiltResolver(AbstractHookResolver):
     """Call resolver_provider and download_source hook, use pre-built wheel
 
     The ``hook-prebuilt`` provider delegates resolution and download to
-    plugin hooks. The downloaded artifact must be a pre-built wheel. Download
-    hooks can return ``DownloadedSource`` with kind ``prebuilt_wheel`` or a
-    legacy wheel ``Path``. Without a download hook, the resolved URL is downloaded
-    into ``ctx.wheels_prebuilt``.
+    plugin hooks. Either hook is optional, but not both. Without a resolver
+    hook, versions come from ``index_url``. The downloaded artifact must be a
+    pre-built wheel. Download hooks can return ``DownloadedSource`` with kind
+    ``prebuilt_wheel`` or a legacy wheel ``Path``. Without a download hook,
+    the resolved URL is downloaded into ``ctx.wheels_prebuilt``.
 
     Example::
 
@@ -986,6 +1020,7 @@ class HookPrebuiltResolver(AbstractHookResolver):
         {DownloadKind.prebuilt_wheel}
     )
     resolves_prebuilt_wheel: typing.ClassVar[bool] = True
+    hookless_provider: typing.ClassVar[str] = "pypi-prebuilt"
 
     def resolver_provider(
         self,
@@ -993,8 +1028,24 @@ class HookPrebuiltResolver(AbstractHookResolver):
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
     ) -> resolver.BaseProvider:
-        """Return a pre-built wheel provider from the package resolver hook."""
+        """Return a pre-built wheel provider from the resolver hook or the index.
+
+        Without a ``get_resolver_provider`` hook, find versions on
+        ``index_url`` in wheels for this platform, like ``pypi-prebuilt``.
+        The ``download_source`` hook then gets the wheel.
+        """
+        hook = self._find_resolver_hook(req)
+        if hook is None:
+            return resolver.PyPIProvider(
+                include_sdists=False,
+                include_wheels=True,
+                sdist_server_url=str(self.index_url),
+                constraints=ctx.constraints,
+                req_type=req_type,
+                ignore_platform=False,
+            )
         return self._resolver_provider_from_hook(
+            hook=hook,
             ctx=ctx,
             req=req,
             req_type=req_type,

@@ -185,6 +185,47 @@ def test_get_source_provider_hook_uses_profile_url_and_applies_cooldown(
     assert result.cooldown.min_age == datetime.timedelta(days=14)
 
 
+@patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_get_source_provider_download_only_hook_uses_index_and_cooldown(
+    find_override_method: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """A package with only a download hook resolves on the profile index."""
+    req = Requirement("test-pkg")
+
+    def download_source() -> pathlib.Path:
+        return tmp_context.work_dir / "test-pkg-1.0.tar.gz"
+
+    find_override_method.side_effect = lambda distname, method: (
+        download_source if method == "download_source" else None
+    )
+    tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
+    source_resolver = packagesettings.HookSDistResolver(
+        provider="hook-sdist",
+        build_sdist=packagesettings.BuildSDist.tarball,
+        index_url=pydantic.HttpUrl("https://profile.test/simple"),
+        min_release_age=14,
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        result = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+            req_type=RequirementType.INSTALL,
+        )
+
+    assert isinstance(result, resolver.PyPIProvider)
+    assert result.sdist_server_url == "https://profile.test/simple"
+    assert result.cooldown is not None
+    assert result.cooldown.min_age == datetime.timedelta(days=14)
+
+
 def test_get_source_provider_forwards_req_type_to_source_resolver(
     tmp_context: context.WorkContext,
 ) -> None:

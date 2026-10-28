@@ -926,6 +926,13 @@ class TestHookPrebuiltResolver:
         )
 
 
+def _parse_hook_profile(provider: str) -> SourceResolver:
+    """Parse the test YAML for the ``hook-sdist`` or ``hook-prebuilt`` profile."""
+    if provider == "hook-sdist":
+        return _parse(TestHookSDistResolver.YAML)
+    return _parse(TestHookPrebuiltResolver.YAML)
+
+
 @pytest.mark.parametrize(
     ("provider", "kind"),
     [
@@ -939,11 +946,7 @@ def test_hook_download_preserves_typed_result_and_arguments(
     tmp_context: WorkContext, provider: str, kind: DownloadKind
 ) -> None:
     """Preserve the hook's explicit kind and forward the legacy arguments."""
-    r = _parse(
-        TestHookSDistResolver.YAML
-        if provider == "hook-sdist"
-        else TestHookPrebuiltResolver.YAML
-    )
+    r = _parse_hook_profile(provider)
     url = _URL_WHEEL if r.resolves_prebuilt_wheel else _URL_SDIST
     expected = DownloadedSource(path=tmp_context.work_dir / "artifact", kind=kind)
     captured: dict[str, object] = {}
@@ -1025,11 +1028,7 @@ def test_hook_download_adapts_legacy_path_and_narrow_signature(
     tmp_context: WorkContext, provider: str, filename: str, kind: DownloadKind
 ) -> None:
     """Adapt bare paths without requiring hooks to accept every argument."""
-    r = _parse(
-        TestHookSDistResolver.YAML
-        if provider == "hook-sdist"
-        else TestHookPrebuiltResolver.YAML
-    )
+    r = _parse_hook_profile(provider)
     expected = tmp_context.work_dir / filename
 
     def hook(req: Requirement, version: Version) -> pathlib.Path:
@@ -1091,11 +1090,7 @@ def test_hook_download_rejects_invalid_results_without_fallback(
     message: str,
 ) -> None:
     """Reject malformed hook results with package and provider context."""
-    r = _parse(
-        TestHookSDistResolver.YAML
-        if provider == "hook-sdist"
-        else TestHookPrebuiltResolver.YAML
-    )
+    r = _parse_hook_profile(provider)
 
     def hook() -> object:
         return hook_result
@@ -1124,11 +1119,7 @@ def test_hook_download_rejects_kind_incompatible_with_profile(
     tmp_context: WorkContext, provider: str, kind: DownloadKind
 ) -> None:
     """Do not relabel an explicit kind to fit the selected profile."""
-    r = _parse(
-        TestHookSDistResolver.YAML
-        if provider == "hook-sdist"
-        else TestHookPrebuiltResolver.YAML
-    )
+    r = _parse_hook_profile(provider)
 
     def hook() -> DownloadedSource:
         return DownloadedSource(path=tmp_context.work_dir, kind=kind)
@@ -1158,11 +1149,7 @@ def test_hook_download_requires_kind_for_unsupported_legacy_paths(
     tmp_context: WorkContext, provider: str, filename: str, is_directory: bool
 ) -> None:
     """Require an explicit kind when a path cannot use the legacy default."""
-    r = _parse(
-        TestHookSDistResolver.YAML
-        if provider == "hook-sdist"
-        else TestHookPrebuiltResolver.YAML
-    )
+    r = _parse_hook_profile(provider)
     path = tmp_context.work_dir / filename
     if is_directory:
         path.mkdir()
@@ -1184,11 +1171,7 @@ def test_hook_download_uses_profile_default_when_hook_is_missing(
     tmp_context: WorkContext, provider: str
 ) -> None:
     """Select the correct download helper and destination without a hook."""
-    r = _parse(
-        TestHookSDistResolver.YAML
-        if provider == "hook-sdist"
-        else TestHookPrebuiltResolver.YAML
-    )
+    r = _parse_hook_profile(provider)
     prebuilt = r.resolves_prebuilt_wheel
     url = _URL_WHEEL if prebuilt else _URL_SDIST
     destination = (
@@ -1215,11 +1198,7 @@ def test_hook_download_chains_failure_without_fallback(
     tmp_context: WorkContext, provider: str
 ) -> None:
     """Preserve the hook failure and do not attempt a default download."""
-    r = _parse(
-        TestHookSDistResolver.YAML
-        if provider == "hook-sdist"
-        else TestHookPrebuiltResolver.YAML
-    )
+    r = _parse_hook_profile(provider)
     cause = OSError("download failed")
 
     def hook() -> pathlib.Path:
@@ -1286,29 +1265,112 @@ def test_hook_resolver_supports_legacy_hook_signature(
     assert result is provider
 
 
-@mock.patch("fromager.packagesettings._resolver.resolver.default_resolver_provider")
+def _find_hooks(
+    hooks: dict[str, typing.Callable[..., typing.Any]],
+) -> typing.Callable[[str, str], typing.Callable[..., typing.Any] | None]:
+    """Return a ``find_override_method`` replacement for the given hooks."""
+
+    def find(distname: str, method: str) -> typing.Callable[..., typing.Any] | None:
+        return hooks.get(method)
+
+    return find
+
+
+@pytest.mark.parametrize(
+    ("provider", "include_sdists", "ignore_platform", "kind"),
+    [
+        ("hook-sdist", True, True, DownloadKind.git_checkout),
+        ("hook-prebuilt", False, False, DownloadKind.prebuilt_wheel),
+    ],
+)
+def test_hook_resolver_uses_index_without_resolver_hook(
+    tmp_context: WorkContext,
+    provider: str,
+    include_sdists: bool,
+    ignore_platform: bool,
+    kind: DownloadKind,
+) -> None:
+    """A download-only package resolves on ``index_url`` and downloads by hook."""
+    r = _parse_hook_profile(provider)
+    expected = DownloadedSource(path=tmp_context.work_dir / "artifact", kind=kind)
+
+    def download_source() -> DownloadedSource:
+        return expected
+
+    with mock.patch(
+        "fromager.overrides.find_override_method",
+        side_effect=_find_hooks({"download_source": download_source}),
+    ):
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_WHEEL)
+
+    assert isinstance(p, resolver.PyPIProvider)
+    assert p.sdist_server_url == "https://index.test/simple"
+    assert p.include_sdists is include_sdists
+    assert p.include_wheels is True
+    assert p.ignore_platform is ignore_platform
+    assert p.req_type is _REQ_TYPE
+    assert result is expected
+
+
+@pytest.mark.parametrize("provider", ["hook-sdist", "hook-prebuilt"])
+@pytest.mark.parametrize("has_download_hook", [True, False])
+def test_hook_resolver_prefers_resolver_hook(
+    tmp_context: WorkContext,
+    provider: str,
+    has_download_hook: bool,
+) -> None:
+    """Use the resolver hook whether or not a download hook exists."""
+    r = _parse_hook_profile(provider)
+    hook_provider = resolver.GenericProvider(version_source=lambda identifier: [])
+
+    def get_resolver_provider() -> resolver.BaseProvider:
+        return hook_provider
+
+    hooks: dict[str, typing.Callable[..., typing.Any]] = {
+        "get_resolver_provider": get_resolver_provider
+    }
+    if has_download_hook:
+        hooks["download_source"] = lambda: None
+
+    with mock.patch(
+        "fromager.overrides.find_override_method", side_effect=_find_hooks(hooks)
+    ):
+        result = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    assert result is hook_provider
+
+
+@pytest.mark.parametrize(
+    ("provider", "suggested"),
+    [("hook-sdist", "pypi-sdist"), ("hook-prebuilt", "pypi-prebuilt")],
+)
+@mock.patch("fromager.packagesettings._resolver.resolver.PyPIProvider")
 @mock.patch(
     "fromager.packagesettings._resolver.overrides.find_override_method",
     return_value=None,
 )
-def test_hook_resolver_does_not_fall_back_when_hook_is_missing(
+def test_hook_resolver_requires_a_hook(
     find_override_method: mock.Mock,
-    default_resolver_provider: mock.Mock,
+    pypi_provider: mock.Mock,
     tmp_context: WorkContext,
+    provider: str,
+    suggested: str,
 ) -> None:
-    """A missing hook fails instead of selecting the default PyPI provider."""
-    resolver_model = HookSDistResolver(
-        provider="hook-sdist", build_sdist=BuildSDist.tarball
-    )
+    """A package with neither hook fails and points to the plain profile."""
+    r = _parse_hook_profile(provider)
 
-    with pytest.raises(ValueError, match="requires a get_resolver_provider"):
-        resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+    with pytest.raises(
+        ValueError,
+        match=f"get_resolver_provider or download_source.*'{suggested}'",
+    ):
+        r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
-    find_override_method.assert_called_once_with(
-        _REQ.name,
-        "get_resolver_provider",
-    )
-    default_resolver_provider.assert_not_called()
+    assert find_override_method.call_args_list == [
+        mock.call(_REQ.name, "get_resolver_provider"),
+        mock.call(_REQ.name, "download_source"),
+    ]
+    pypi_provider.assert_not_called()
 
 
 @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
