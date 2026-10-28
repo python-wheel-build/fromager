@@ -46,7 +46,6 @@ def test_get_source_provider_uses_configured_source_resolver(
         tmp_context,
         req,
         None,
-        sdist_server_url="https://caller.test/simple",
     )
     find_and_invoke.assert_not_called()
 
@@ -79,12 +78,48 @@ def test_get_source_provider_uses_pypi_sdist_source_resolver(
     assert provider.sdist_server_url == "https://pypi.test/simple"
 
 
+@pytest.mark.parametrize(
+    ("sdist_server_url", "warns"),
+    [
+        ("https://caller.test/simple", True),
+        (resolver.PYPI_SERVER_URL, False),
+        (f"{resolver.PYPI_SERVER_URL}/", False),
+    ],
+)
+def test_get_source_provider_warns_about_ignored_url(
+    tmp_context: context.WorkContext,
+    caplog: pytest.LogCaptureFixture,
+    sdist_server_url: str,
+    warns: bool,
+) -> None:
+    """Warn when a configured source resolver ignores a non-PyPI caller URL."""
+    req = Requirement("test-pkg")
+    source_resolver = packagesettings.PyPISDistResolver(
+        provider="pypi-sdist",
+        index_url=pydantic.HttpUrl("https://pypi.test/simple"),
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=sdist_server_url,
+        )
+
+    assert ("ignoring index URL" in caplog.text) is warns
+
+
 @patch("fromager.packagesettings._resolver.overrides.find_override_method")
-def test_get_source_provider_hook_forwards_url_and_applies_cooldown(
+def test_get_source_provider_hook_uses_profile_url_and_applies_cooldown(
     find_override_method: Mock,
     tmp_context: context.WorkContext,
 ) -> None:
-    """Hook providers receive the runtime URL and centralized cooldown."""
+    """Hook providers receive the profile URL and centralized cooldown."""
     req = Requirement("test-pkg")
     initial_cooldown = Cooldown(min_age=datetime.timedelta(days=1))
     provider = resolver.GenericProvider(
@@ -118,6 +153,7 @@ def test_get_source_provider_hook_forwards_url_and_applies_cooldown(
     source_resolver = packagesettings.HookSDistResolver(
         provider="hook-sdist",
         build_sdist=packagesettings.BuildSDist.tarball,
+        index_url=pydantic.HttpUrl("https://profile.test/simple"),
         min_release_age=14,
     )
 
@@ -140,7 +176,7 @@ def test_get_source_provider_hook_forwards_url_and_applies_cooldown(
         "req": req,
         "include_sdists": True,
         "include_wheels": False,
-        "sdist_server_url": "https://caller.test/simple",
+        "sdist_server_url": "https://profile.test/simple",
         "req_type": RequirementType.INSTALL,
         "ignore_platform": False,
     }
@@ -202,6 +238,34 @@ def test_get_source_provider_source_resolver_inherits_global_cooldown(
         )
 
     assert provider.cooldown is global_cooldown
+
+
+def test_get_source_provider_source_resolver_zero_disables_cooldown(
+    tmp_context: context.WorkContext,
+) -> None:
+    """Source resolver with min_release_age=0 disables the global cooldown."""
+    req = Requirement("test-pkg")
+    tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
+
+    source_resolver = packagesettings.PyPISDistResolver(
+        provider="pypi-sdist",
+        index_url=pydantic.HttpUrl("https://pypi.test/simple"),
+        min_release_age=0,
+    )
+
+    with patch.object(
+        packagesettings.PackageBuildInfo,
+        "source_resolver",
+        new_callable=PropertyMock,
+        return_value=source_resolver,
+    ):
+        provider = sources.get_source_provider(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+        )
+
+    assert provider.cooldown is None
 
 
 def test_get_source_provider_source_resolver_toplevel_pin_bypasses_cooldown(

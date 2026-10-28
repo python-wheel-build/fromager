@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import enum
 import inspect
 import logging
@@ -13,7 +12,6 @@ import typing
 import pydantic
 
 from .. import downloads, overrides, resolver
-from ..candidate import Cooldown
 from ._typedefs import MODEL_CONFIG
 
 if typing.TYPE_CHECKING:
@@ -25,6 +23,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _VERSION_QUOTED = "%7Bversion%7D"
+_PYPI_INDEX_URL = pydantic.HttpUrl("https://pypi.org/simple/")
 
 
 class BuildSDist(enum.StrEnum):
@@ -87,8 +86,6 @@ class AbstractResolver(pydantic.BaseModel):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
         """Return a resolver provider for the given requirement."""
         raise NotImplementedError
@@ -183,19 +180,12 @@ class CooldownMixin(pydantic.BaseModel):
     Positive integer: override the cooldown with this many days.
     """
 
-    @property
-    def _cooldown(self) -> Cooldown | None:
-        """Convert ``min_release_age`` to a ``Cooldown`` instance."""
-        if not self.min_release_age:
-            return None
-        return Cooldown(min_age=datetime.timedelta(days=self.min_release_age))
-
 
 class AbstractPyPIResolver(AbstractResolver, CooldownMixin):
     """Abstract base class for PyPI resolvers"""
 
     index_url: pydantic.HttpUrl = pydantic.Field(
-        default=pydantic.HttpUrl("https://pypi.org/simple/"),
+        default=_PYPI_INDEX_URL,
         description="Python Package Index URL",
     )
 
@@ -228,8 +218,6 @@ class PyPISDistResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -238,7 +226,6 @@ class PyPISDistResolver(AbstractPyPIResolver):
             constraints=ctx.constraints,
             req_type=req_type,
             ignore_platform=False,
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -281,8 +268,6 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=False,
@@ -291,7 +276,6 @@ class PyPIPrebuiltResolver(AbstractPyPIResolver):
             constraints=ctx.constraints,
             req_type=req_type,
             ignore_platform=False,
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -356,8 +340,6 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         return resolver.PyPIProvider(
             include_sdists=True,
@@ -369,7 +351,6 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
             override_download_url=str(self.download_url).replace(
                 _VERSION_QUOTED, "{version}"
             ),
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -440,8 +421,6 @@ class PyPIGitResolver(AbstractPyPIResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.PyPIProvider:
         download_url = f"git+{self.clone_url}@refs/tags/{self.tag}"
         return resolver.PyPIProvider(
@@ -452,7 +431,6 @@ class PyPIGitResolver(AbstractPyPIResolver):
             req_type=req_type,
             ignore_platform=True,
             override_download_url=download_url,
-            cooldown=self._cooldown,
         )
 
     def download(
@@ -564,7 +542,6 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
             matcher=self._get_matcher(ctx),
             req_type=req_type,
             override_download_url=override_download_url,
-            cooldown=self._cooldown,
         )
 
     def _gitlab_provider(
@@ -583,7 +560,6 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
             matcher=self._get_matcher(ctx),
             req_type=req_type,
             override_download_url=override_download_url,
-            cooldown=self._cooldown,
         )
 
 
@@ -609,8 +585,6 @@ class GitHubTagDownloadResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -652,8 +626,6 @@ class GitHubTagCloneResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitHubTagProvider:
         return self._github_provider(
             ctx=ctx,
@@ -693,8 +665,6 @@ class GitLabTagDownloadResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -736,8 +706,6 @@ class GitLabTagCloneResolver(AbstractGitSourceResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.GitLabTagProvider:
         return self._gitlab_provider(
             ctx=ctx,
@@ -766,8 +734,6 @@ class NotAvailableResolver(AbstractResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
         raise ValueError(f"package {req.name} is not available")
 
@@ -835,8 +801,6 @@ class AbstractHookResolver(AbstractResolver, CooldownMixin):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
         raise NotImplementedError
 
@@ -920,12 +884,18 @@ class HookSDistResolver(AbstractHookResolver):
     Example::
 
         provider: hook-sdist
+        index_url: https://pypi.test/simple
         build_sdist: tarball
     """
 
     provider: typing.Literal["hook-sdist"]
     build_sdist: BuildSDist
     """Source distribution build method."""
+
+    index_url: pydantic.HttpUrl = pydantic.Field(
+        default=_PYPI_INDEX_URL,
+        description="Python Package Index URL",
+    )
 
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
@@ -936,15 +906,13 @@ class HookSDistResolver(AbstractHookResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
         """Return a source provider from the package resolver hook."""
         return self._resolver_provider_from_hook(
             ctx=ctx,
             req=req,
             req_type=req_type,
-            sdist_server_url=sdist_server_url,
+            sdist_server_url=str(self.index_url),
             include_sdists=True,
             include_wheels=False,
             ignore_platform=False,
@@ -972,10 +940,15 @@ class HookPrebuiltResolver(AbstractHookResolver):
     Example::
 
         provider: hook-prebuilt
+        index_url: https://wheels.test/simple
     """
 
     provider: typing.Literal["hook-prebuilt"]
     build_sdist: None = None
+
+    index_url: pydantic.HttpUrl = pydantic.Field(
+        description="Python Package Index URL for pre-built wheels",
+    )
 
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.prebuilt_wheel}
@@ -987,15 +960,13 @@ class HookPrebuiltResolver(AbstractHookResolver):
         ctx: context.WorkContext,
         req: Requirement,
         req_type: requirements_file.RequirementType | None,
-        *,
-        sdist_server_url: str = resolver.PYPI_SERVER_URL,
     ) -> resolver.BaseProvider:
         """Return a pre-built wheel provider from the package resolver hook."""
         return self._resolver_provider_from_hook(
             ctx=ctx,
             req=req,
             req_type=req_type,
-            sdist_server_url=sdist_server_url,
+            sdist_server_url=str(self.index_url),
             include_sdists=False,
             include_wheels=True,
             ignore_platform=False,

@@ -131,21 +131,27 @@ def get_source_provider(
     """Create a provider for resolving source distributions.
 
     Returns a provider configured according to the package's resolver settings
-    (sdist/wheel inclusion, platform matching, server URL override).
+    (sdist/wheel inclusion and platform matching).
 
     Packages with a ``source:`` resolver use that resolver's provider
-    configuration. Packages without one retain the legacy override-hook and
-    ``resolver_dist`` behavior.
+    configuration and ignore the caller's URL, with a warning unless it is the
+    default PyPI URL. Packages without one retain the
+    legacy override-hook, ``resolver_dist``, and caller URL behavior.
     """
     pbi = ctx.package_build_info(req)
 
     source_resolver = pbi.source_resolver
     if source_resolver is not None:
+        if sdist_server_url.rstrip("/") != resolver.PYPI_SERVER_URL:
+            logger.warning(
+                "ignoring index URL %s; the %r source resolver uses its own index",
+                sdist_server_url,
+                source_resolver.provider,
+            )
         provider = source_resolver.resolver_provider(
             ctx,
             req,
             req_type,
-            sdist_server_url=sdist_server_url,
         )
         if req_type == RequirementType.TOP_LEVEL and resolver._has_equality_pin(req):
             provider.cooldown = None
@@ -191,7 +197,8 @@ def resolve_source(
     """
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
-        f"resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
+        f"resolving requirement {req} with constraint {constraint}; "
+        f"legacy index URL: {sdist_server_url}"
     )
 
     try:

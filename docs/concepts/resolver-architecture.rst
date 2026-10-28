@@ -102,12 +102,20 @@ CLI commands interact with providers through a common
    to PyPI. Their ``download()`` methods invoke the package's ``download_source``
    hook when present and return a validated ``DownloadedSource``.
 
+.. versionchanged:: 0.102.0
+   Configured source resolvers own their index URL and ignore caller URLs.
+   Hook profiles pass their ``index_url`` to the legacy
+   ``get_resolver_provider`` hook as ``sdist_server_url``. ``hook-sdist``
+   defaults to PyPI, while ``hook-prebuilt`` requires an explicit index.
+
 Per-package settings in YAML can select which provider to use and
 configure its parameters (index URL, tag pattern, etc.).  When a package
 has a ``source:`` resolver configured, that resolver creates the provider.
 The ``hook-sdist`` and ``hook-prebuilt`` profiles delegate provider creation
 to the package's required ``get_resolver_provider`` hook and validate that it
 returns a :class:`~fromager.resolver.BaseProvider`.
+The hook may ignore or replace the profile's index URL, but the profile's
+value is stable across Fromager commands.
 Otherwise, override plugins can replace the provider for a specific package
 via the ``get_resolver_provider`` hook, after which the legacy resolver
 settings are used.

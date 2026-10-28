@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import pathlib
 import re
 import subprocess
@@ -17,7 +16,7 @@ from packaging.version import Version
 from wheel.wheelfile import WheelFile
 
 from fromager import resolver, sources
-from fromager.candidate import Candidate, Cooldown
+from fromager.candidate import Candidate
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
     AbstractResolver,
@@ -188,19 +187,6 @@ class TestPyPISDistResolver:
         assert p.sdist_server_url == "https://pypi.test/simple"
         assert p.ignore_platform is False
         assert p.override_download_url is None
-        assert p.cooldown is None
-
-    def test_resolver_provider_cooldown(self, tmp_context: WorkContext) -> None:
-        r = PyPISDistResolver(provider="pypi-sdist", min_release_age=7)
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
-        assert isinstance(p.cooldown, Cooldown)
-        assert p.cooldown.min_age == datetime.timedelta(days=7)
-
-    def test_resolver_provider_cooldown_disabled(
-        self, tmp_context: WorkContext
-    ) -> None:
-        r = PyPISDistResolver(provider="pypi-sdist", min_release_age=0)
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert p.cooldown is None
 
     def test_cooldown_negative(self) -> None:
@@ -591,16 +577,6 @@ class TestGitHubTagDownloadResolver:
         assert p.override_download_url is None
         assert p.cooldown is None
 
-    def test_resolver_provider_cooldown(self, tmp_context: WorkContext) -> None:
-        r = GitHubTagDownloadResolver(
-            provider="github-tag-download",
-            project_url="https://github.com/python-wheel-build/fromager",  # type: ignore[arg-type]
-            min_release_age=14,
-        )
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
-        assert isinstance(p.cooldown, Cooldown)
-        assert p.cooldown.min_age == datetime.timedelta(days=14)
-
     def test_matcher_factory_rejects_non_callable_return(
         self, tmp_context: WorkContext
     ) -> None:
@@ -822,6 +798,7 @@ class TestHookSDistResolver:
     YAML = """\
         source:
           provider: hook-sdist
+          index_url: https://index.test/simple
           build_sdist: tarball
     """
 
@@ -829,6 +806,7 @@ class TestHookSDistResolver:
         r = _parse(self.YAML)
         assert isinstance(r, HookSDistResolver)
         assert r.provider == "hook-sdist"
+        assert str(r.index_url) == "https://index.test/simple"
         assert r.build_sdist is BuildSDist.tarball
         assert r.supports_override_hooks is True
         assert r.resolves_prebuilt_wheel is False
@@ -849,6 +827,13 @@ class TestHookSDistResolver:
         """Require a build method because hook artifacts need different strategies."""
         with pytest.raises(pydantic.ValidationError, match="build_sdist"):
             _parse("source:\n  provider: hook-sdist\n")
+
+    def test_default_index_url(self) -> None:
+        """Source hook profiles may use the standard PyPI index."""
+        r = _parse("source:\n  provider: hook-sdist\n  build_sdist: tarball\n")
+
+        assert isinstance(r, HookSDistResolver)
+        assert str(r.index_url) == "https://pypi.org/simple/"
 
     @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
     def test_resolver_provider(
@@ -882,12 +867,7 @@ class TestHookSDistResolver:
 
         find_override_method.return_value = hook
 
-        result = r.resolver_provider(
-            tmp_context,
-            _REQ,
-            _REQ_TYPE,
-            sdist_server_url="https://index.test/simple",
-        )
+        result = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
         assert result is provider
         assert captured == {
@@ -905,15 +885,22 @@ class TestHookPrebuiltResolver:
     YAML = """\
         source:
           provider: hook-prebuilt
+          index_url: https://index.test/simple
     """
 
     def test_parse(self) -> None:
         r = _parse(self.YAML)
         assert isinstance(r, HookPrebuiltResolver)
         assert r.provider == "hook-prebuilt"
+        assert str(r.index_url) == "https://index.test/simple"
         assert r.supports_override_hooks is True
         assert r.resolves_prebuilt_wheel is True
         assert r.download_kinds == frozenset({DownloadKind.prebuilt_wheel})
+
+    def test_index_url_required(self) -> None:
+        """Require an explicit index to avoid silently using public PyPI."""
+        with pytest.raises(pydantic.ValidationError, match="index_url"):
+            _parse("source:\n  provider: hook-prebuilt\n")
 
     @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
     def test_resolver_provider(
@@ -923,6 +910,7 @@ class TestHookPrebuiltResolver:
     ) -> None:
         r = _parse(self.YAML)
         provider = resolver.GenericProvider(version_source=lambda identifier: [])
+        captured: dict[str, object] = {}
 
         def hook(
             ctx: WorkContext,
@@ -933,18 +921,31 @@ class TestHookPrebuiltResolver:
             req_type: RequirementType | None = None,
             ignore_platform: bool = False,
         ) -> resolver.BaseProvider:
+            captured.update(
+                ctx=ctx,
+                req=req,
+                include_sdists=include_sdists,
+                include_wheels=include_wheels,
+                sdist_server_url=sdist_server_url,
+                req_type=req_type,
+                ignore_platform=ignore_platform,
+            )
             return provider
 
         find_override_method.return_value = hook
 
-        result = r.resolver_provider(
-            tmp_context,
-            _REQ,
-            _REQ_TYPE,
-            sdist_server_url="https://index.test/simple",
-        )
+        result = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
 
         assert result is provider
+        assert captured == {
+            "ctx": tmp_context,
+            "req": _REQ,
+            "include_sdists": False,
+            "include_wheels": True,
+            "sdist_server_url": "https://index.test/simple",
+            "req_type": _REQ_TYPE,
+            "ignore_platform": False,
+        }
         find_override_method.assert_called_once_with(
             _REQ.name,
             "get_resolver_provider",
@@ -1248,7 +1249,10 @@ def test_hook_prebuilt_download_fallback_accepts_valid_wheel(
             f"{wheel.dist_info_path}/METADATA",
             "Metadata-Version: 2.1\nName: test-pkg\nVersion: 1.2.3\n",
         )
-    r = HookPrebuiltResolver(provider="hook-prebuilt")
+    r = HookPrebuiltResolver(
+        provider="hook-prebuilt",
+        index_url=pydantic.HttpUrl("https://index.test/simple"),
+    )
 
     with mock.patch("fromager.overrides.find_override_method", return_value=None):
         result = r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
@@ -1327,7 +1331,10 @@ def test_hook_resolver_rejects_invalid_provider(
         return object()
 
     find_override_method.return_value = hook
-    resolver_model = HookPrebuiltResolver(provider="hook-prebuilt")
+    resolver_model = HookPrebuiltResolver(
+        provider="hook-prebuilt",
+        index_url=pydantic.HttpUrl("https://index.test/simple"),
+    )
 
     with pytest.raises(
         TypeError,
