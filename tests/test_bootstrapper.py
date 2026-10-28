@@ -54,6 +54,14 @@ def _configure_package(ctx: WorkContext, yaml_str: str) -> None:
     ctx.settings._package_settings[ps.name] = ps
 
 
+def _source_yaml(provider: str) -> str:
+    """Return package settings that select a configured source provider."""
+    yaml_str = f"source:\n  provider: {provider}\n"
+    if provider == "hook-prebuilt":
+        yaml_str += "  index_url: https://index.test/simple\n"
+    return yaml_str
+
+
 def test_phase_subclass_without_phase_attribute_raises() -> None:
     """Concrete Phase subclass missing 'phase' raises TypeError at class definition."""
     with pytest.raises(TypeError, match="must define the 'phase' class attribute"):
@@ -80,7 +88,7 @@ def test_bootstrap_prebuilt_uses_configured_download(
     tmp_context: WorkContext, provider: str
 ) -> None:
     """Bootstrap consumes the configured wheel path and updates its mirror."""
-    _configure_package(tmp_context, f"source:\n  provider: {provider}\n")
+    _configure_package(tmp_context, _source_yaml(provider))
     req = Requirement("pkg==1.0")
     version = Version("1.0")
     url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
@@ -108,7 +116,7 @@ def test_bootstrap_configured_prebuilt_reuses_local_wheel(
     tmp_context: WorkContext,
 ) -> None:
     """A local mirror URL bypasses the download hook and the mirror switch."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     version = Version("1.0")
     tmp_context.wheel_server_url = "https://local.test/simple/"
@@ -133,7 +141,7 @@ def test_bootstrap_configured_prebuilt_uses_mirrored_wheel(
     tmp_context: WorkContext,
 ) -> None:
     """A local mirror hit uses and keeps serving the exact mirrored file."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     wheel_name = "pkg-1.0-py3-none-any.whl"
     served_wheel = tmp_context.wheels_downloads / wheel_name
@@ -218,7 +226,7 @@ def test_bootstrap_records_configured_prebuilt_in_graph_and_order(
     tmp_context: WorkContext, provider: str
 ) -> None:
     """The selected source makes bootstrap skip build phases and persist its flag."""
-    _configure_package(tmp_context, f"source:\n  provider: {provider}\n")
+    _configure_package(tmp_context, _source_yaml(provider))
     bt = bootstrapper.Bootstrapper(tmp_context)
     req = Requirement("pkg==1.0")
     version = Version("1.0")

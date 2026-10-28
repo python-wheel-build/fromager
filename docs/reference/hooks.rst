@@ -138,7 +138,7 @@ Resolver hooks
     The arguments are the ``WorkContext``, the ``Requirement`` being
     evaluated, a boolean indicating whether source distributions should be
     included, a boolean indicating whether built wheels should be
-    included, and the URL for the sdist server. The hook also receives
+    included, and the URL for the package index. The hook also receives
     ``req_type`` and ``ignore_platform`` when those parameters are supported
     by its signature.
 
@@ -157,6 +157,17 @@ Resolver hooks
     filtered for compatibility. A missing hook or a return value that is not a
     :class:`~fromager.resolver.BaseProvider` is an error. Hook profiles never
     fall back to the default PyPI provider.
+
+    For a configured hook profile, ``sdist_server_url`` is the profile's
+    ``index_url``. ``hook-sdist`` defaults that field to PyPI;
+    ``hook-prebuilt`` requires it so a pass-through hook cannot silently
+    resolve public PyPI wheels. The hook may use, ignore, or replace the URL.
+    Command-line and caller URLs are ignored for configured ``source:``
+    profiles; Fromager logs a warning when it ignores a URL other than PyPI.
+
+    Other legacy calls to this hook, such as prebuilt-wheel fallback and
+    diagnostic resolution, continue to pass their existing wheel-server or
+    PyPI URLs. They are not configured source resolution.
 
     The return value must be an instance of
     :class:`~fromager.resolver.BaseProvider`.

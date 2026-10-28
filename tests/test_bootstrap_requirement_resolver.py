@@ -476,7 +476,8 @@ def test_configured_hook_prebuilt_uses_hook_provider(
     req = Requirement("pkg==1.0")
     tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
         packagesettings.PackageSettings.from_string(
-            "pkg", "source:\n  provider: hook-prebuilt\n"
+            "pkg",
+            "source:\n  provider: hook-prebuilt\n  index_url: https://index.test/simple\n",
         )
     )
     provider = resolver.PyPIProvider(sdist_server_url="https://hook.test/simple/")

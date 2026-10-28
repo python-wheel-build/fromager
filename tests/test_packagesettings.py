@@ -1259,7 +1259,10 @@ def test_pbi_source_resolver_variant_overrides_package(
     ("yaml_str", "expected"),
     [
         ("source:\n  provider: pypi-prebuilt\n", True),
-        ("source:\n  provider: hook-prebuilt\n", True),
+        (
+            "source:\n  provider: hook-prebuilt\n  index_url: https://pypi.test/simple\n",
+            True,
+        ),
         ("source:\n  provider: pypi-sdist\n", False),
         ("variants:\n  cpu:\n    pre_built: true\n", True),
     ],

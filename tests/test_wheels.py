@@ -26,12 +26,20 @@ def _configure_package(ctx: context.WorkContext, yaml_str: str) -> None:
     ctx.settings._package_settings[ps.name] = ps
 
 
+def _source_yaml(provider: str) -> str:
+    """Return package settings that select a configured source provider."""
+    yaml_str = f"source:\n  provider: {provider}\n"
+    if provider == "hook-prebuilt":
+        yaml_str += "  index_url: https://index.test/simple\n"
+    return yaml_str
+
+
 @pytest.mark.parametrize("provider", ["pypi-prebuilt", "hook-prebuilt"])
 def test_configured_prebuilt_download_uses_resolver_default(
     tmp_context: context.WorkContext, provider: str
 ) -> None:
     """Both profiles use their own default when no download hook exists."""
-    _configure_package(tmp_context, f"source:\n  provider: {provider}\n")
+    _configure_package(tmp_context, _source_yaml(provider))
     req = Requirement("pkg==1.0")
     url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
     expected = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
@@ -57,7 +65,7 @@ def test_hook_prebuilt_download_stages_hook_result(
     tmp_context: context.WorkContext,
 ) -> None:
     """Use the hook's path and make its wheel visible to the local mirror."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
     hook_path = tmp_context.work_dir / "pkg-1.0-py3-none-any.whl"
@@ -92,7 +100,7 @@ def test_hook_prebuilt_local_url_without_mirror_link_uses_direct_download(
     tmp_context: context.WorkContext,
 ) -> None:
     """Without a mirror link, a local URL uses the direct downloader, not the hook."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     # No mirror symlink exists, so find_mirror_wheel() returns None.
     tmp_context.wheel_server_url = "https://local.test/simple/"
     req = Requirement("pkg==1.0")
@@ -119,7 +127,7 @@ def test_hook_prebuilt_new_result_replaces_staged_wheel(
     tmp_context: context.WorkContext,
 ) -> None:
     """A fresh hook result replaces an older staged wheel with the same name."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     wheel_name = "pkg-1.0-py3-none-any.whl"
     hook_path = tmp_context.work_dir / wheel_name
@@ -148,7 +156,7 @@ def test_hook_prebuilt_staging_failure_preserves_existing_wheel(
     tmp_context: context.WorkContext,
 ) -> None:
     """A failed copy leaves the old staged wheel intact and removes the temp file."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     wheel_name = "pkg-1.0-py3-none-any.whl"
     hook_path = tmp_context.work_dir / wheel_name
     hook_path.write_bytes(b"new wheel")
@@ -190,7 +198,7 @@ def test_configured_prebuilt_local_url_reuses_mirrored_wheel(
     tmp_context: context.WorkContext,
 ) -> None:
     """A local mirror URL returns the served file, not a same-named copy."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     wheel_name = "pkg-1.0-py3-none-any.whl"
     served_wheel = tmp_context.wheels_downloads / wheel_name
     served_wheel.write_bytes(b"served wheel")
@@ -215,7 +223,7 @@ def test_configured_prebuilt_rejects_other_kind(
     tmp_context: context.WorkContext,
 ) -> None:
     """An invalid hook result fails without trying a different downloader."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
 
     def hook() -> packagesettings.DownloadedSource:
@@ -243,7 +251,7 @@ def test_hook_prebuilt_failure_does_not_fall_back(
     tmp_context: context.WorkContext,
 ) -> None:
     """Keep the hook failure visible and avoid the default wheel fetch."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     failure = OSError("hook download failed")
 

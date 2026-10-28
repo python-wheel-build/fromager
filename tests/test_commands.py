@@ -23,12 +23,20 @@ def _configure_package(ctx: WorkContext, yaml_str: str) -> None:
     ctx.settings._package_settings[ps.name] = ps
 
 
+def _source_yaml(provider: str) -> str:
+    """Return package settings that select a configured source provider."""
+    yaml_str = f"source:\n  provider: {provider}\n"
+    if provider == "hook-prebuilt":
+        yaml_str += "  index_url: https://index.test/simple\n"
+    return yaml_str
+
+
 @pytest.mark.parametrize("provider", ["pypi-prebuilt", "hook-prebuilt"])
 def test_build_order_replay_uses_configured_download(
     tmp_context: WorkContext, provider: str
 ) -> None:
     """A later build run selects the configured wheel download contract."""
-    _configure_package(tmp_context, f"source:\n  provider: {provider}\n")
+    _configure_package(tmp_context, _source_yaml(provider))
     req = Requirement("pkg==1.0")
     version = Version("1.0")
     url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
@@ -60,7 +68,7 @@ def test_build_replay_local_mirror_url_skips_download_hook(
     tmp_context: WorkContext,
 ) -> None:
     """Build replay downloads a local mirror URL directly and runs wheel hooks."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     tmp_context.wheel_server_url = "https://local.test/simple/"
     req = Requirement("pkg==1.0")
     url = "https://local.test/simple/pkg/pkg-1.0-py3-none-any.whl"
@@ -84,7 +92,7 @@ def test_forced_build_local_mirror_url_uses_mirrored_wheel(
     tmp_context: WorkContext,
 ) -> None:
     """A forced build uses and keeps serving the exact mirrored file."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     wheel_name = "pkg-1.0-py3-none-any.whl"
     served_wheel = tmp_context.wheels_downloads / wheel_name
@@ -113,7 +121,7 @@ def test_fresh_configured_prebuilt_replaces_old_mirror_entry(
     tmp_context: WorkContext,
 ) -> None:
     """A forced hook download makes its new wheel visible in the mirror."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     wheel_name = "pkg-1.0-py3-none-any.whl"
     old_wheel = tmp_context.wheels_downloads / wheel_name
@@ -159,7 +167,7 @@ def test_fresh_configured_prebuilt_replaces_old_mirror_entry(
 
 def test_configured_prebuilt_reuses_cached_wheel(tmp_context: WorkContext) -> None:
     """A cache hit avoids a fresh resolver download while retaining hooks."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     req = Requirement("pkg==1.0")
     version = Version("1.0")
     url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
@@ -182,7 +190,7 @@ def test_download_sequence_replays_configured_prebuilt(
     cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
 ) -> None:
     """Download sequence uses the saved URL with the selected source resolver."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
     build_order = tmp_path / "build-order.json"
     build_order.write_text(
@@ -221,7 +229,7 @@ def test_download_sequence_local_mirror_url_skips_download_hook(
     cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
 ) -> None:
     """Download replay fetches a local mirror wheel without invoking its hook."""
-    _configure_package(tmp_context, "source:\n  provider: hook-prebuilt\n")
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
     tmp_context.wheel_server_url = "https://local.test/simple/"
     url = "https://local.test/simple/pkg/pkg-1.0-py3-none-any.whl"
     build_order = tmp_path / "build-order.json"

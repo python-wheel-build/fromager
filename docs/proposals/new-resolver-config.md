@@ -145,11 +145,14 @@ variants:
 
 - The `hook-sdist` profile calls the `resolver_provider` and `download_source`
   [hooks](../reference/hooks.rst). The `resolver_provider` hook receives the
-  `req` argument for access to the current requirement. Hooks can return
-  any source artifact (sdist, tarball, or git checkout).
+  `req` argument for access to the current requirement and
+  `sdist_server_url=str(index_url)`. `index_url` defaults to PyPI. Hooks can
+  return any source artifact (sdist, tarball, or git checkout).
 
 - The `hook-prebuilt` profile is similar to `hook-sdist` but the downloaded
-  artifact must be a pre-built wheel.
+  artifact must be a pre-built wheel. Its required `index_url` replaces the
+  legacy variant `wheel_server_url`; the hook receives it as
+  `sdist_server_url` and may use, ignore, or replace it.
 
 - The `not-available` profile raises an error. It can be used to block a
   package and only enable it for a single variant.
@@ -224,11 +227,11 @@ def matcher_factory_func(
 - `download_source.destination_filename` is not needed. All sdists use
   standard `{dist_name}-{version}.tar.gz` file name
 - `resolver_dist.sdist_server_url` is replaced by `index_url` parameter.
-  All `pypi-*` profile support a custom index.
+  All `pypi-*` and `hook-*` profiles support a custom index.
 - `git_options.submodules` is not needed. Like pip, Fromager will always
   clone all submodules.
 - variant settings `wheel_server_url` and `pre_build` are replaced by
-  `pypi-prebuilt` profile
+  `pypi-prebuilt` or `hook-prebuilt` profiles
 
 ### Migration
 
