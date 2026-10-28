@@ -61,13 +61,15 @@ class BootstrapRequirementResolver:
         # All known versions for a package, accumulated across resolution
         # contexts.  Versions discovered via different specifiers or req_types
         # are merged so that later lookups see the widest set.
-        # Key: (normalized_name, pre_built)
+        # Key: (normalized_name, pre_built, candidate_scope)
         # Value: {version: url}
-        self._known_versions: dict[tuple[NormalizedName, bool], dict[Version, str]] = {}
+        self._known_versions: dict[
+            tuple[NormalizedName, bool, str], dict[Version, str]
+        ] = {}
         # Requirement rules already resolved from network/graph.
-        # Key: (str(req), pre_built)
+        # Key: (str(req), pre_built, candidate_scope)
         # Prevents redundant network calls for the same specifier.
-        self._resolved_rules: set[tuple[str, bool]] = set()
+        self._resolved_rules: set[tuple[str, bool, str]] = set()
         # Protects _known_versions and _resolved_rules for thread safety.
         self._lock = threading.Lock()
 
@@ -112,19 +114,36 @@ class BootstrapRequirementResolver:
             pbi = self.ctx.package_build_info(req)
             pre_built = pbi.pre_built
 
-        rule_key = (str(req), pre_built)
+        provider = None
+        candidate_scope = "default"
+        if not pre_built:
+            provider = sources.get_source_provider(
+                ctx=self.ctx,
+                req=req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
+                req_type=req_type,
+            )
+            candidate_scope = provider.candidate_scope
+        rule_key = (str(req), pre_built, candidate_scope)
 
         with self._lock:
             if rule_key not in self._resolved_rules:
                 # Rule not seen before — resolve from graph or network and
                 # extend the package-level known-versions cache.
-                self._resolve_and_extend(req, req_type, pre_built, parent_req)
+                self._resolve_and_extend(
+                    req,
+                    req_type,
+                    pre_built,
+                    parent_req,
+                    provider,
+                    candidate_scope,
+                )
                 self._resolved_rules.add(rule_key)
             else:
                 logger.debug(f"rule already resolved: {req}")
 
             # Filter all known versions by the current requirement specifier.
-            matching = self._get_matching_versions(req, pre_built)
+            matching = self._get_matching_versions(req, pre_built, candidate_scope)
 
         if not matching:
             return []
@@ -136,6 +155,7 @@ class BootstrapRequirementResolver:
         self,
         req: Requirement,
         pre_built: bool,
+        req_type: RequirementType | None = None,
     ) -> list[tuple[str, Version]] | None:
         """Return cached matching versions if this requirement was already resolved.
 
@@ -145,14 +165,24 @@ class BootstrapRequirementResolver:
         Args:
             req: Package requirement
             pre_built: Whether looking for prebuilt or source resolution
+            req_type: Optional type of requirement being looked up
 
         Returns:
             List of (url, version) tuples if previously resolved, None otherwise.
         """
-        rule_key = (str(req), pre_built)
+        candidate_scope = "default"
+        if not pre_built:
+            provider = sources.get_source_provider(
+                ctx=self.ctx,
+                req=req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
+                req_type=req_type,
+            )
+            candidate_scope = provider.candidate_scope
+        rule_key = (str(req), pre_built, candidate_scope)
         with self._lock:
             if rule_key in self._resolved_rules:
-                return self._get_matching_versions(req, pre_built)
+                return self._get_matching_versions(req, pre_built, candidate_scope)
         return None
 
     def _resolve_and_extend(
@@ -161,6 +191,8 @@ class BootstrapRequirementResolver:
         req_type: RequirementType,
         pre_built: bool,
         parent_req: Requirement | None,
+        provider: resolver.BaseProvider | None,
+        candidate_scope: str,
     ) -> None:
         """Resolve versions from graph/network and extend known versions cache."""
         # Try previous dependency graph
@@ -189,12 +221,13 @@ class BootstrapRequirementResolver:
             )
         else:
             # Resolve source (sdist)
-            provider = sources.get_source_provider(
-                ctx=self.ctx,
-                req=req,
-                sdist_server_url=resolver.PYPI_SERVER_URL,
-                req_type=req_type,
-            )
+            if provider is None:
+                provider = sources.get_source_provider(
+                    ctx=self.ctx,
+                    req=req,
+                    sdist_server_url=resolver.PYPI_SERVER_URL,
+                    req_type=req_type,
+                )
             max_age_cutoff = resolver._compute_max_age_cutoff(self.ctx)
             age_fallback = (
                 resolver.AgeFallback.NEWEST
@@ -215,17 +248,18 @@ class BootstrapRequirementResolver:
                 )
 
         if results:
-            key = (canonicalize_name(req.name), pre_built)
+            key = (canonicalize_name(req.name), pre_built, candidate_scope)
             versions = self._known_versions.setdefault(key, {})
             for url, version in results:
                 if version not in versions or (url and not versions[version]):
                     versions[version] = url
-            self._resolved_rules.add((str(req), pre_built))
+            self._resolved_rules.add((str(req), pre_built, candidate_scope))
 
     def get_matching_versions(
         self,
         req: Requirement,
         pre_built: bool,
+        req_type: RequirementType | None = None,
     ) -> list[tuple[str, Version]]:
         """Filter known versions by requirement specifier (thread-safe).
 
@@ -235,20 +269,31 @@ class BootstrapRequirementResolver:
         Args:
             req: Package requirement with version specifier
             pre_built: Whether looking for prebuilt or source resolution
+            req_type: Optional type of requirement being looked up
 
         Returns:
             List of (url, version) tuples matching the specifier.
         """
+        candidate_scope = "default"
+        if not pre_built:
+            provider = sources.get_source_provider(
+                ctx=self.ctx,
+                req=req,
+                sdist_server_url=resolver.PYPI_SERVER_URL,
+                req_type=req_type,
+            )
+            candidate_scope = provider.candidate_scope
         with self._lock:
-            return self._get_matching_versions(req, pre_built)
+            return self._get_matching_versions(req, pre_built, candidate_scope)
 
     def _get_matching_versions(
         self,
         req: Requirement,
         pre_built: bool,
+        candidate_scope: str = "default",
     ) -> list[tuple[str, Version]]:
         """Filter known versions (caller must hold ``self._lock``)."""
-        key = (canonicalize_name(req.name), pre_built)
+        key = (canonicalize_name(req.name), pre_built, candidate_scope)
         versions = self._known_versions.get(key, {})
         matching = [
             (url, version)

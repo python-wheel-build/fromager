@@ -2,6 +2,7 @@ import datetime
 import logging
 import re
 import typing
+from unittest.mock import MagicMock
 
 import pytest
 import requests_mock
@@ -180,7 +181,11 @@ def test_provider_cache_key_pypi(pypi_hydra_resolver: typing.Any) -> None:
 
     resolver_cache = resolver.BaseProvider.resolver_cache
     assert req.name in resolver_cache
-    assert (resolver.PyPIProvider, provider.cache_key) in resolver_cache[req.name]
+    assert (
+        resolver.PyPIProvider,
+        provider.cache_key,
+        provider.candidate_scope,
+    ) in resolver_cache[req.name]
     # mutated in place
     assert provider._get_cached_candidates(req.name) is req_cache
     assert len(provider._get_cached_candidates(req.name)) == 7
@@ -197,6 +202,49 @@ def test_provider_cache_key_gitlab(gitlab_decile_resolver: typing.Any) -> None:
 def test_provider_cache_key_github(github_fromager_resolver: typing.Any) -> None:
     provider = github_fromager_resolver.provider
     assert provider.cache_key == "python-wheel-build/fromager"
+    assert provider.candidate_scope == provider.cache_key
+
+
+def test_provider_cache_separates_candidate_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers with different candidate scopes do not share candidates."""
+    provider_a = resolver.GitLabTagProvider(
+        project_path="org/project",
+        candidate_scope="scope-a",
+    )
+    provider_b = resolver.GitLabTagProvider(
+        project_path="org/project",
+        candidate_scope="scope-b",
+    )
+    find_candidates_a = MagicMock(
+        return_value=[
+            resolver.Candidate(
+                name="example",
+                version=Version("1.0"),
+                url="https://pkg.test/example-1.0.tar.gz",
+            )
+        ]
+    )
+    find_candidates_b = MagicMock(
+        return_value=[
+            resolver.Candidate(
+                name="example",
+                version=Version("2.0"),
+                url="https://pkg.test/example-2.0.tar.gz",
+            )
+        ]
+    )
+    monkeypatch.setattr(provider_a, "find_candidates", find_candidates_a)
+    monkeypatch.setattr(provider_b, "find_candidates", find_candidates_b)
+
+    candidates_a = provider_a._find_cached_candidates("example")
+    candidates_b = provider_b._find_cached_candidates("example")
+
+    assert [candidate.version for candidate in candidates_a] == [Version("1.0")]
+    assert [candidate.version for candidate in candidates_b] == [Version("2.0")]
+    find_candidates_a.assert_called_once_with("example")
+    find_candidates_b.assert_called_once_with("example")
 
 
 def test_cache_not_overly_aggressive() -> None:
@@ -234,7 +282,11 @@ def test_cache_not_overly_aggressive() -> None:
         cache = resolver.BaseProvider.resolver_cache
         assert "numpy" in cache
         cached_candidates = cache["numpy"][
-            (resolver.PyPIProvider, "https://pypi.org/simple/")
+            (
+                resolver.PyPIProvider,
+                "https://pypi.org/simple/",
+                "https://pypi.org/simple/",
+            )
         ]
 
         # Critical: Cache should have ALL 4 versions, not just the 2 that matched numpy<2
@@ -895,7 +947,7 @@ def test_resolve_versionmap() -> None:
     cache = resolver.BaseProvider.resolver_cache
     assert "testpkg" in cache
     cached_candidates = cache["testpkg"][
-        (resolver.VersionMapProvider, "versionmap:testpkg")
+        (resolver.VersionMapProvider, "versionmap:testpkg", "versionmap:testpkg")
     ]
     assert len(cached_candidates) == 3
 

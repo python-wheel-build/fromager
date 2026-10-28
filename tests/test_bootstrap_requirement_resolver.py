@@ -104,6 +104,149 @@ def test_resolve_from_graph_no_changes(tmp_context: WorkContext) -> None:
     ) == [("", Version("5"))]
 
 
+@patch("fromager.bootstrap_requirement_resolver.sources.get_source_provider")
+def test_resolve_supports_generic_source_provider(
+    mock_get_provider: MagicMock,
+    tmp_context: WorkContext,
+) -> None:
+    """Bootstrap resolution supports documented GenericProvider overrides."""
+    mock_get_provider.return_value = resolver.GenericProvider(
+        version_source=lambda identifier: [
+            ("https://pkg.test/example-1.0.tar.gz", Version("1.0"))
+        ]
+    )
+
+    result = BootstrapRequirementResolver(tmp_context).resolve(
+        Requirement("example"),
+        RequirementType.INSTALL,
+        pre_built=False,
+    )
+
+    assert result == [("https://pkg.test/example-1.0.tar.gz", Version("1.0"))]
+
+
+def test_resolve_from_graph_falls_back_to_source(
+    tmp_context: WorkContext,
+) -> None:
+    """Resolve from a source provider when the previous graph has no match."""
+    req = Requirement("example")
+    provider = MagicMock()
+    provider.candidate_scope = "source-scope"
+
+    with (
+        patch.object(
+            BootstrapRequirementResolver, "_resolve_from_graph", return_value=None
+        ),
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            return_value=provider,
+        ) as mock_get_provider,
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            return_value=[("https://pkg.test/example-1.0.tar.gz", Version("1.0"))],
+        ) as mock_find,
+    ):
+        result = BootstrapRequirementResolver(tmp_context, DependencyGraph()).resolve(
+            req,
+            RequirementType.INSTALL,
+            pre_built=False,
+        )
+
+    assert result == [("https://pkg.test/example-1.0.tar.gz", Version("1.0"))]
+    mock_get_provider.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        sdist_server_url=resolver.PYPI_SERVER_URL,
+        req_type=RequirementType.INSTALL,
+    )
+    assert mock_find.call_args.args == (provider, req)
+
+
+def test_graph_resolution_uses_source_provider_scope(
+    tmp_context: WorkContext,
+) -> None:
+    """Use the source provider scope for graph-backed resolution caches."""
+    req = Requirement("example>=1.0")
+    provider = MagicMock()
+    provider.candidate_scope = "source-scope"
+    result = [("https://pkg.test/example-1.0.tar.gz", Version("1.0"))]
+
+    with (
+        patch.object(
+            BootstrapRequirementResolver, "_resolve_from_graph", return_value=result
+        ),
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider",
+            return_value=provider,
+        ) as mock_get_provider,
+    ):
+        bootstrap_resolver = BootstrapRequirementResolver(
+            tmp_context, DependencyGraph()
+        )
+
+        assert (
+            bootstrap_resolver.resolve(
+                req,
+                RequirementType.INSTALL,
+                pre_built=False,
+            )
+            == result
+        )
+        assert (
+            bootstrap_resolver.get_cached_resolution(
+                req,
+                pre_built=False,
+                req_type=RequirementType.INSTALL,
+            )
+            == result
+        )
+        assert (
+            bootstrap_resolver.get_matching_versions(
+                req,
+                pre_built=False,
+                req_type=RequirementType.INSTALL,
+            )
+            == result
+        )
+
+    assert bootstrap_resolver._known_versions[
+        (canonicalize_name("example"), False, "source-scope")
+    ] == {Version("1.0"): "https://pkg.test/example-1.0.tar.gz"}
+    assert mock_get_provider.call_count == 3
+
+
+@patch("fromager.bootstrap_requirement_resolver.sources.get_source_provider")
+def test_get_cached_resolution_passes_requirement_type(
+    mock_get_provider: MagicMock,
+    tmp_context: WorkContext,
+) -> None:
+    """Cached lookups derive the scope for the requested requirement type."""
+    req = Requirement("example>=1.0")
+    provider = MagicMock()
+    provider.candidate_scope = "install-scope"
+    mock_get_provider.return_value = provider
+    bootstrap_resolver = BootstrapRequirementResolver(tmp_context)
+    bootstrap_resolver._known_versions[
+        (canonicalize_name("example"), False, "install-scope")
+    ] = {Version("1.0"): "https://pkg.test/example-1.0.tar.gz"}
+    bootstrap_resolver._resolved_rules.add((str(req), False, "install-scope"))
+
+    result = bootstrap_resolver.get_cached_resolution(
+        req,
+        pre_built=False,
+        req_type=RequirementType.INSTALL,
+    )
+
+    assert result == [("https://pkg.test/example-1.0.tar.gz", Version("1.0"))]
+    mock_get_provider.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        sdist_server_url=resolver.PYPI_SERVER_URL,
+        req_type=RequirementType.INSTALL,
+    )
+
+
 def test_resolve_from_graph_install_dep_upgrade(tmp_context: WorkContext) -> None:
     """BootstrapRequirementResolver prefers top-level requirements over history."""
     resolver = BootstrapRequirementResolver(tmp_context, old_graph)

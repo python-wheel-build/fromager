@@ -584,8 +584,10 @@ def get_project_from_pypi(
 type RequirementsMap = typing.Mapping[str, typing.Iterable[Requirement]]
 type Candidates = typing.Iterable[Candidate]
 type CandidatesMap = typing.Mapping[str, Candidates]
-# {identifier: [cls, cachekey]: list[candidates]}}
-type ResolverCache = dict[str, dict[tuple[type[ExtrasProvider], str], list[Candidate]]]
+# {identifier: [cls, cachekey, candidatescope]: list[candidates]}}
+type ResolverCache = dict[
+    str, dict[tuple[type[ExtrasProvider], str, str], list[Candidate]]
+]
 type VersionSource = typing.Callable[
     [str],
     typing.Iterable[Candidate | tuple[str, str | Version]],
@@ -627,6 +629,16 @@ class BaseProvider(ExtrasProvider):
         PyPI URL, GitHub org + repo, ...
         """
         raise NotImplementedError()
+
+    @property
+    def candidate_scope(self) -> str:
+        """Return the scope in which this provider's candidates are valid.
+
+        Providers that apply a policy not represented by ``cache_key`` can
+        override this property. Bootstrap resolution uses the scope to keep
+        candidates discovered under different policies from being merged.
+        """
+        return self.cache_key
 
     def get_provider_description(self) -> str:
         """Return a human-readable description of the provider type
@@ -791,7 +803,9 @@ class BaseProvider(ExtrasProvider):
         """
         cls = type(self)
         provider_cache = cls.resolver_cache.setdefault(identifier, {})
-        candidate_cache = provider_cache.setdefault((cls, self.cache_key), [])
+        candidate_cache = provider_cache.setdefault(
+            (cls, self.cache_key, self.candidate_scope), []
+        )
         return candidate_cache
 
     def _find_cached_candidates(self, identifier: str) -> Candidates:
@@ -1119,6 +1133,11 @@ class GenericProvider(BaseProvider):
     def cache_key(self) -> str:
         raise NotImplementedError("GenericProvider does not implement caching")
 
+    @property
+    def candidate_scope(self) -> str:
+        """Return the shared scope used for bootstrap-only caching."""
+        return "default"
+
     def find_candidates(self, identifier: typing.Any) -> Candidates:
         """Find matching candidates from the version source.
 
@@ -1203,6 +1222,11 @@ class GitHubTagProvider(GenericProvider):
             key = f"{key}+{self.override_download_url}"
         return key
 
+    @property
+    def candidate_scope(self) -> str:
+        """Return the repository-specific scope for bootstrap candidates."""
+        return self.cache_key
+
     @retry_on_exception(
         exceptions=RETRYABLE_EXCEPTIONS,
         max_attempts=5,
@@ -1255,6 +1279,10 @@ class GitHubTagProvider(GenericProvider):
 class GitLabTagProvider(GenericProvider):
     """Lookup tarball and version from GitLab git tags
 
+    The ``candidate_scope`` parameter identifies the candidate policy used by
+    this provider. It is separate from ``cache_key`` so bootstrap resolution
+    can avoid merging candidates from providers with different matchers.
+
     The ``override_download_url`` parameter supports the string template variable:
     * hostname
     * project_path
@@ -1278,6 +1306,7 @@ class GitLabTagProvider(GenericProvider):
         use_resolver_cache: bool = True,
         override_download_url: str | None = None,
         cooldown: Cooldown | None = None,
+        candidate_scope: str | None = None,
     ) -> None:
         super().__init__(
             constraints=constraints,
@@ -1303,6 +1332,11 @@ class GitLabTagProvider(GenericProvider):
             f"{self.server_url}/api/v4/projects/{encoded_path}/repository/tags"
         )
         self.override_download_url = override_download_url
+        self._candidate_scope = candidate_scope
+
+    @property
+    def candidate_scope(self) -> str:
+        return self._candidate_scope or self.cache_key
 
     @property
     def cache_key(self) -> str:

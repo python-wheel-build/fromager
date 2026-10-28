@@ -28,9 +28,11 @@ def tmp_context(tmp_path: Path) -> WorkContext:
     pbi.resolver_include_sdists = True
     pbi.resolver_include_wheels = False
     pbi.resolver_ignore_platform = False
+    pbi.resolver_min_release_age = None
     pbi.resolver_sdist_server_url.return_value = "https://pypi.org/simple/"
     ctx.package_build_info.return_value = pbi
     ctx.max_release_age = None
+    ctx.cooldown = None
     return ctx
 
 
