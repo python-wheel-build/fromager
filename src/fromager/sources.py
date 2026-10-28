@@ -127,6 +127,8 @@ def get_source_provider(
     req: Requirement,
     sdist_server_url: str,
     req_type: RequirementType | None = None,
+    include_sdists: bool | None = None,
+    include_wheels: bool | None = None,
 ) -> resolver.BaseProvider:
     """Create a provider for resolving source distributions.
 
@@ -135,7 +137,9 @@ def get_source_provider(
 
     Packages with a ``source:`` resolver use that resolver's provider
     configuration. Packages without one retain the legacy override-hook and
-    ``resolver_dist`` behavior.
+    ``resolver_dist`` behavior. The inclusion arguments override legacy
+    ``resolver_dist`` settings when provided and do not affect configured
+    source resolvers.
     """
     pbi = ctx.package_build_info(req)
 
@@ -157,6 +161,10 @@ def get_source_provider(
         return provider
 
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+    if include_sdists is None:
+        include_sdists = pbi.resolver_include_sdists
+    if include_wheels is None:
+        include_wheels = pbi.resolver_include_wheels
 
     provider = typing.cast(
         resolver.BaseProvider,
@@ -166,8 +174,8 @@ def get_source_provider(
             resolver.default_resolver_provider,
             ctx=ctx,
             req=req,
-            include_sdists=pbi.resolver_include_sdists,
-            include_wheels=pbi.resolver_include_wheels,
+            include_sdists=include_sdists,
+            include_wheels=include_wheels,
             sdist_server_url=override_sdist_server_url,
             req_type=req_type,
             ignore_platform=pbi.resolver_ignore_platform,
