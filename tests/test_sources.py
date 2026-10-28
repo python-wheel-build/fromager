@@ -12,7 +12,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 from fromager import context, packagesettings, resolver, sources
-from fromager.candidate import Candidate, Cooldown
+from fromager.candidate import Cooldown
 from fromager.requirements_file import RequirementType
 
 
@@ -1057,12 +1057,12 @@ def test_download_source_uses_configured_source_resolver(
             ctx=tmp_context, req=req, version=version, download_url=download_url
         )
 
-    expected_candidate = Candidate(name=req.name, version=version, url=download_url)
     assert result == expected_result
     mock_download.assert_called_once_with(
         tmp_context,
         req,
-        expected_candidate,
+        version,
+        download_url,
         packagesettings.DownloadKind.sdist,
     )
     mock_invoke.assert_not_called()
@@ -1234,11 +1234,8 @@ def test_prepare_source_keeps_override_with_configured_resolver(
     source_resolver.download.assert_called_once_with(
         tmp_context,
         req,
-        Candidate(
-            name=req.name,
-            version=version,
-            url="git+https://code.test/org/pkg.git@v1.0",
-        ),
+        version,
+        "git+https://code.test/org/pkg.git@v1.0",
     )
     find_override_method.assert_called_once_with(req.name, "prepare_source")
     assert (checkout.parent / "build-meta.json").is_file()
