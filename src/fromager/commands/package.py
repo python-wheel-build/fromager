@@ -24,6 +24,7 @@ from .. import (
     packagesettings,
     request_session,
     resolver,
+    sources,
 )
 from ..candidate import Candidate, Cooldown
 
@@ -448,8 +449,9 @@ def _resolve_fromager(
 ) -> set[Version] | None:
     # print package build info settings (overrides)
     pbi = ctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
-    include_sdists, include_wheels = parse_distribution_option(distribution_type, pbi)
+    source_resolver = pbi.source_resolver
+    include_sdists: bool | None = None
+    include_wheels: bool | None = None
 
     if pbi.has_customizations:
         click.secho(
@@ -458,15 +460,32 @@ def _resolve_fromager(
         )
     else:
         click.secho("Package uses standard settings.")
-    click.secho(f"- sdist server url: {override_sdist_server_url}")
-    click.secho(f"- resolver includes sdists: {pbi.resolver_include_sdists}")
-    click.secho(f"- resolver includes wheels: {pbi.resolver_include_wheels}")
-    click.secho(
-        f"- using distribution type '{distribution_type.value}' (sdists: {include_sdists}, wheels: {include_wheels})"
-    )
-    click.secho(f"- wheel server url: {pbi.wheel_server_url}")
-    click.secho(f"- download url: {pbi.download_source_url(resolve_template=False)}")
-    click.secho(f"- prebuilt wheel: {pbi.pre_built}")
+    if source_resolver is not None:
+        click.secho("- source:")
+        click.secho(f"  - provider: {source_resolver.provider}")
+        click.secho(
+            f"  - resolves_prebuilt_wheel: {source_resolver.resolves_prebuilt_wheel}"
+        )
+        click.secho(
+            f"  - min_release_age: {getattr(source_resolver, 'min_release_age', None)}"
+        )
+    else:
+        override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+        include_sdists, include_wheels = parse_distribution_option(
+            distribution_type, pbi
+        )
+        click.secho(f"- sdist server url: {override_sdist_server_url}")
+        click.secho(f"- resolver includes sdists: {pbi.resolver_include_sdists}")
+        click.secho(f"- resolver includes wheels: {pbi.resolver_include_wheels}")
+        click.secho(
+            f"- using distribution type '{distribution_type.value}' "
+            f"(sdists: {include_sdists}, wheels: {include_wheels})"
+        )
+        click.secho(f"- wheel server url: {pbi.wheel_server_url}")
+        click.secho(
+            f"- download url: {pbi.download_source_url(resolve_template=False)}"
+        )
+        click.secho(f"- prebuilt wheel: {pbi.pre_built}")
     if constraint is not None:
         click.secho(
             f"- package is constrained by '--constraints-file': {constraint}.",
@@ -476,16 +495,12 @@ def _resolve_fromager(
         click.secho("- package is not constrained by '--constraints-file'")
 
     # resolve package with Fromager's resolver and settings.
-    provider = overrides.find_and_invoke(
-        req.name,
-        "get_resolver_provider",
-        resolver.default_resolver_provider,
+    provider = sources.get_source_provider(
         ctx=ctx,
         req=req,
+        sdist_server_url=sdist_server_url,
         include_sdists=include_sdists,
         include_wheels=include_wheels,
-        sdist_server_url=override_sdist_server_url,
-        ignore_platform=pbi.resolver_ignore_platform,
     )
 
     click.echo()
