@@ -142,8 +142,8 @@ Resolver hooks
     ``req_type`` and ``ignore_platform`` when those parameters are supported
     by its signature.
 
-    The ``hook-sdist`` and ``hook-prebuilt`` source profiles require this hook.
-    They pass the following keyword arguments:
+    The ``hook-sdist`` and ``hook-prebuilt`` source profiles call this hook
+    when it exists. They pass the following keyword arguments:
 
     * ``ctx``
     * ``req``
@@ -154,9 +154,17 @@ Resolver hooks
     * ``ignore_platform``
 
     Older hooks may omit newer arguments; unsupported keyword arguments are
-    filtered for compatibility. A missing hook or a return value that is not a
-    :class:`~fromager.resolver.BaseProvider` is an error. Hook profiles never
-    fall back to the default PyPI provider.
+    filtered for compatibility. A return value that is not a
+    :class:`~fromager.resolver.BaseProvider` is an error.
+
+    Without this hook, a hook profile finds versions on its ``index_url`` and
+    the ``download_source`` hook gets the artifact. A package with neither
+    hook is an error; use ``pypi-sdist`` or ``pypi-prebuilt`` instead.
+
+    .. versionchanged:: 0.102.0
+
+       ``hook-sdist`` and ``hook-prebuilt`` no longer require this hook when
+       the package has a ``download_source`` hook.
 
     For a configured hook profile, ``sdist_server_url`` is the profile's
     ``index_url``. ``hook-sdist`` defaults that field to PyPI;
@@ -275,8 +283,16 @@ Source hooks
        URL as an sdist into ``ctx.sdists_downloads``. ``hook-prebuilt`` downloads
        it as a wheel into ``ctx.wheels_prebuilt``. These defaults use the
        standard archive and wheel validation. Custom tarball URLs and git
-       downloads require a download hook. The ``get_resolver_provider`` hook
-       remains required for both profiles.
+       downloads require a download hook.
+
+       Without a ``get_resolver_provider`` hook, ``hook-sdist`` finds
+       versions on its ``index_url`` in sdists and wheels for any platform,
+       and ``hook-prebuilt`` finds them in wheels for this platform. The
+       download hook then gets the artifact. ``download_url`` is the URL of
+       a matching file on the index, which can be a wheel, so the hook
+       should get the source from its own location, such as a git tag.
+       If the hook only clones a tag, use ``pypi-git`` instead and drop
+       the hook.
 
     To migrate a raw-tarball hook to ``hook-sdist``, specify ``build_sdist``
     in YAML and return its artifact kind explicitly:

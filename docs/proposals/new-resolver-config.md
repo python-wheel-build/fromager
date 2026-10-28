@@ -147,12 +147,17 @@ variants:
   [hooks](../reference/hooks.rst). The `resolver_provider` hook receives the
   `req` argument for access to the current requirement and
   `sdist_server_url=str(index_url)`. `index_url` defaults to PyPI. Hooks can
-  return any source artifact (sdist, tarball, or git checkout).
+  return any source artifact (sdist, tarball, or git checkout). Without a
+  `resolver_provider` hook, Fromager finds versions on `index_url` in sdists
+  and wheels for any platform, and the `download_source` hook gets the
+  source. A package needs at least one of the two hooks.
 
 - The `hook-prebuilt` profile is similar to `hook-sdist` but the downloaded
   artifact must be a pre-built wheel. Its required `index_url` replaces the
   legacy variant `wheel_server_url`; the hook receives it as
-  `sdist_server_url` and may use, ignore, or replace it.
+  `sdist_server_url` and may use, ignore, or replace it. Without a
+  `resolver_provider` hook, Fromager finds versions on `index_url` in
+  wheels for this platform.
 
 - The `not-available` profile raises an error. It can be used to block a
   package and only enable it for a single variant.
