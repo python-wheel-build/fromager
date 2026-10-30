@@ -692,6 +692,8 @@ def build_sdist(
             sdist_root_dir=sdist_root_dir,
             build_dir=build_dir,
             build_env=build_env,
+            # Git checkouts keep their `.git`; keep it out of the sdist.
+            exclude_vcs=True,
         )
     elif source_resolver is None:
         sdist_file = overrides.find_and_invoke(
@@ -734,7 +736,13 @@ def default_build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
     build_dir: pathlib.Path,
+    *,
+    exclude_vcs: bool = False,
 ) -> pathlib.Path:
+    """Repack *build_dir* as an sdist.
+
+    With *exclude_vcs*, VCS metadata such as ``.git`` is left out.
+    """
     # It seems like the "correct" way to do this would be to run the
     # PEP 517 API in the source tree we have modified. However, quite
     # a few packages assume their source distribution is being built
@@ -763,6 +771,7 @@ def default_build_sdist(
             tar=sdist,
             basedir=build_dir,
             prefix=build_dir.parent,
+            exclude_vcs=exclude_vcs,
             arcname_root=f"{dist_name}-{version}",
         )
     return sdist_filename
