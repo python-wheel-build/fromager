@@ -161,7 +161,7 @@ Resolver hooks
     the ``download_source`` hook gets the artifact. A package with neither
     hook is an error; use ``pypi-sdist`` or ``pypi-prebuilt`` instead.
 
-    .. versionchanged:: 0.102.0
+    .. versionchanged:: 0.103.0
 
        ``hook-sdist`` and ``hook-prebuilt`` no longer require this hook when
        the package has a ``download_source`` hook.
@@ -255,7 +255,7 @@ Source hooks
     For packages without ``source:`` configuration, return a ``pathlib.Path``
     to the downloaded source. This legacy contract is unchanged.
 
-    .. versionchanged:: 0.96.0
+    .. versionchanged:: 0.103.0
 
        The ``hook-sdist`` and ``hook-prebuilt`` source profiles accept
        :class:`~fromager.packagesettings.DownloadedSource` with a local
@@ -352,7 +352,7 @@ Source hooks
     Git checkouts must use the double-nested package/version layout under
     ``ctx.work_dir`` so the later bootstrap and step commands can find them.
 
-    .. versionchanged:: 0.102.0
+    .. versionchanged:: 0.103.0
        Passing ``DownloadKind.git_checkout`` prepares a clean Git checkout.
 
 .. autofromagerhook:: default_build_sdist

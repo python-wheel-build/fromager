@@ -94,7 +94,7 @@ def download_source(
     Configured source resolvers receive the version and download URL.
     Legacy downloads are adapted to the sdist kind for compatibility.
 
-    .. versionchanged:: 0.102.0
+    .. versionchanged:: 0.103.0
        Return ``DownloadedSource`` instead of ``pathlib.Path``. Callers use
        its ``path`` attribute for the downloaded file.
     """
@@ -458,7 +458,7 @@ def prepare_source(
     Returns:
         Path to the prepared source root.
 
-    .. versionchanged:: 0.102.0
+    .. versionchanged:: 0.103.0
        Pass ``download_kind`` to prepare a Git checkout.
     """
     logger.info(f"preparing source for {req} from {source_filename}")
@@ -538,7 +538,7 @@ def default_prepare_git_checkout(
     Returns:
         The checkout path and ``True`` because preparation ran.
 
-    .. versionadded:: 0.102.0
+    .. versionadded:: 0.103.0
     """
     if not source_filename.is_dir() or not (source_filename / ".git").exists():
         raise ValueError(f"{source_filename} is not a Git checkout")

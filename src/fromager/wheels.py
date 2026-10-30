@@ -525,7 +525,7 @@ def download_wheel(
 def is_local_wheel_url(wheel_url: str, wheel_server_url: str | None) -> bool:
     """Return whether a wheel URL belongs to the local wheel mirror.
 
-    .. versionadded:: 0.102.0
+    .. versionadded:: 0.103.0
     """
     if not wheel_server_url:
         return False
@@ -546,7 +546,7 @@ def download_prebuilt_wheel(
     local-mirror URL, configured wheels reuse the exact file the mirror
     serves. Legacy wheels use the direct wheel downloader.
 
-    .. versionadded:: 0.102.0
+    .. versionadded:: 0.103.0
     """
     source_resolver = ctx.package_build_info(req).source_resolver
     if source_resolver is not None and not source_resolver.resolves_prebuilt_wheel:
