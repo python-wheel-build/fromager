@@ -35,6 +35,25 @@ Settings Loading Flow
 ``PackageBuildInfo`` objects are created lazily the first time a
 package is queried and cached for the rest of the run.
 
+``PackageSettings`` validates source settings when it loads each package.
+A package-level ``source`` cannot be combined with an explicitly set
+variant ``pre_built`` or ``wheel_server_url``. A variant-level ``source``
+cannot be combined with package-level ``download_source`` or
+``resolver_dist``. An explicit ``pre_built: false`` also conflicts;
+an omitted ``pre_built`` does not.
+
+``PackageBuildInfo.pre_built`` follows the selected ``source`` resolver's
+``resolves_prebuilt_wheel`` capability. Without ``source``, it reads the
+legacy variant ``pre_built`` setting. Configured prebuilt resolvers download
+fresh wheels through their ``download()`` contract; legacy prebuilt packages
+keep the wheel downloader.
+
+.. versionchanged:: 0.103.0
+   Configured prebuilt source resolvers now select the prebuilt pipeline
+   during bootstrap and later builds.
+   Source and legacy settings mixed across package and variant levels
+   now raise a validation error when package settings load.
+
 Directory Structure
 -------------------
 

@@ -1,0 +1,4 @@
+source:
+  provider: pypi-download
+  download_url: https://files.pythonhosted.org/packages/e7/c1/b210bf1071c96ecfcd24c2eeb4c828a2a24bf74b38af13896d02203b1eec/stevedore-{version}.tar.gz
+  download_kind: tarball

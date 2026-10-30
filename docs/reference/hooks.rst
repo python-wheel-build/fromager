@@ -138,10 +138,47 @@ Resolver hooks
     The arguments are the ``WorkContext``, the ``Requirement`` being
     evaluated, a boolean indicating whether source distributions should be
     included, a boolean indicating whether built wheels should be
-    included, and the URL for the sdist server.
+    included, and the URL for the package index. The hook also receives
+    ``req_type`` and ``ignore_platform`` when those parameters are supported
+    by its signature.
 
-    The return value must be an instance of a class that implements the
-    ``resolvelib.providers.AbstractProvider`` API.
+    The ``hook-sdist`` and ``hook-prebuilt`` source profiles call this hook
+    when it exists. They pass the following keyword arguments:
+
+    * ``ctx``
+    * ``req``
+    * ``include_sdists``
+    * ``include_wheels``
+    * ``sdist_server_url``
+    * ``req_type``
+    * ``ignore_platform``
+
+    Older hooks may omit newer arguments; unsupported keyword arguments are
+    filtered for compatibility. A return value that is not a
+    :class:`~fromager.resolver.BaseProvider` is an error.
+
+    Without this hook, a hook profile finds versions on its ``index_url`` and
+    the ``download_source`` hook gets the artifact. A package with neither
+    hook is an error; use ``pypi-sdist`` or ``pypi-prebuilt`` instead.
+
+    .. versionchanged:: 0.103.0
+
+       ``hook-sdist`` and ``hook-prebuilt`` no longer require this hook when
+       the package has a ``download_source`` hook.
+
+    For a configured hook profile, ``sdist_server_url`` is the profile's
+    ``index_url``. ``hook-sdist`` defaults that field to PyPI;
+    ``hook-prebuilt`` requires it so a pass-through hook cannot silently
+    resolve public PyPI wheels. The hook may use, ignore, or replace the URL.
+    Command-line and caller URLs are ignored for configured ``source:``
+    profiles; Fromager logs a warning when it ignores a URL other than PyPI.
+
+    Other legacy calls to this hook, such as prebuilt-wheel fallback and
+    diagnostic resolution, continue to pass their existing wheel-server or
+    PyPI URLs. They are not configured source resolution.
+
+    The return value must be an instance of
+    :class:`~fromager.resolver.BaseProvider`.
 
     The expectation is that it acts as an engine for any sort of package resolution
     whether it is for wheels or sources. The provider can
@@ -169,7 +206,10 @@ Resolver hooks
             return VERSIONS.items()
 
 
-        def get_resolver_provider(ctx, req, include_sdists, include_wheels, sdist_server_url):
+        def get_resolver_provider(
+                ctx, req, include_sdists, include_wheels, sdist_server_url,
+                req_type=None, ignore_platform=False,
+            ):
             return resolver.GenericProvider(version_source=_version_source, constraints=ctx.constraints)
 
     ``GenericProvider``, ``GitHubTagProvider``, and ``GitLabTagProvider`` take
@@ -198,6 +238,8 @@ Source hooks
    were removed. Define a :ref:`resolver_provider <resolver_provider_hook>` hook
    to resolve sources.
 
+.. _download_source_hook:
+
 .. autofromagerhook:: default_download_source
 
     The ``download_source()`` function is responsible for downloading the
@@ -207,19 +249,111 @@ Source hooks
     evaluated, version of the package being downloaded, the download URL,
     and the output directory in which the source should be downloaded.
 
-    The return value should be a ``pathlib.Path`` file path to the downloaded source.
+    ``download_url`` is the value from the resolver provider. It can be a
+    ref, such as a commit SHA, instead of a URL.
+
+    For packages without ``source:`` configuration, return a ``pathlib.Path``
+    to the downloaded source. This legacy contract is unchanged.
+
+    .. versionchanged:: 0.103.0
+
+       The ``hook-sdist`` and ``hook-prebuilt`` source profiles accept
+       :class:`~fromager.packagesettings.DownloadedSource` with a local
+       ``pathlib.Path`` and an explicit
+       :class:`~fromager.packagesettings.DownloadKind`:
+
+       * ``hook-sdist`` accepts ``sdist``, ``tarball``, or ``git_checkout``.
+       * ``hook-prebuilt`` accepts only ``prebuilt_wheel``.
+
+       A bare ``Path`` remains supported for legacy hooks: ``hook-sdist``
+       treats ``.tar.gz`` and ``.zip`` paths as ``sdist``; ``hook-prebuilt``
+       treats ``.whl`` paths as ``prebuilt_wheel``. Bare directories and other
+       path forms are rejected. The sdist default preserves legacy archive
+       semantics; it does not infer the artifact kind from archive contents.
+       Hooks needing tarball or git-checkout semantics must return a typed
+       result with the explicit kind. ``any_source`` and ``not_available``
+       are not valid concrete result kinds.
+
+       Invalid return types, malformed typed fields, and kinds incompatible
+       with the profile raise errors identifying the package and hook.
+       Hook exceptions are chained to a ``RuntimeError`` with that context;
+       neither failures nor invalid results trigger a fallback download.
+
+       If the download hook is absent, ``hook-sdist`` downloads the candidate
+       URL as an sdist into ``ctx.sdists_downloads``. ``hook-prebuilt`` downloads
+       it as a wheel into ``ctx.wheels_prebuilt``. These defaults use the
+       standard archive and wheel validation. Custom tarball URLs and git
+       downloads require a download hook.
+
+       Without a ``get_resolver_provider`` hook, ``hook-sdist`` finds
+       versions on its ``index_url`` in sdists and wheels for any platform,
+       and ``hook-prebuilt`` finds them in wheels for this platform. The
+       download hook then gets the artifact. ``download_url`` is the URL of
+       a matching file on the index, which can be a wheel, so the hook
+       should get the source from its own location, such as a git tag.
+       If the hook only clones a tag, use ``pypi-git`` instead and drop
+       the hook.
+
+    To migrate a raw-tarball hook to ``hook-sdist``, specify ``build_sdist``
+    in YAML and return its artifact kind explicitly:
+
+    .. code-block:: python
+
+       import pathlib
+
+       from packaging.requirements import Requirement
+       from packaging.version import Version
+
+       from fromager import downloads
+       from fromager.context import WorkContext
+       from fromager.packagesettings import DownloadedSource, DownloadKind
+
+       def download_source(
+           ctx: WorkContext,
+           req: Requirement,
+           version: Version,
+           download_url: str,
+           sdists_downloads_dir: pathlib.Path,
+       ) -> DownloadedSource:
+           """Download a raw source tarball and identify its kind."""
+           path = downloads.download_url(
+               destination_dir=sdists_downloads_dir,
+               url=download_url,
+               destination_filename=f"{req.name}-{version}.tar.gz",
+           )
+           return DownloadedSource(path=path, kind=DownloadKind.tarball)
+
+    A hook that clones sources returns the checkout directory with
+    ``kind=DownloadKind.git_checkout``. Typed results are supported through
+    the configured hook profiles; packages using legacy settings still require
+    a bare ``Path``.
+
+.. _prepare_source_hook:
 
 .. autofromagerhook:: default_prepare_source
 
-    The ``prepare_source()`` function is responsible for setting up a tree
-    of source files in a format that is ready to be built. The default
-    implementation unpacks the source archive and applies patches.
+    The ``prepare_source()`` function sets up a source tree for building. It
+    selects ``default_prepare_source()`` for archives or
+    ``default_prepare_git_checkout()`` for a Git checkout according to the
+    downloaded ``DownloadKind``. Both defaults apply patches and other project
+    preparation.
 
-    The arguments are the ``WorkContext``, the ``Requirement`` being
-    evaluated, the ``Path`` to the source archive, and the version.
+    In-process callers pass the ``path`` and ``kind`` from ``DownloadedSource``
+    to ``prepare_source()``. The Python function accepts a source ``Path`` and
+    optional ``download_kind``; path-only callers default to ``sdist``.
+    A configured ``source:`` resolver does not disable the package
+    ``prepare_source`` override. The override receives the ``WorkContext``,
+    ``Requirement``, source ``Path``, and version, but not ``download_kind``.
+    An archive-specific override can call ``sources.default_prepare_source()``;
+    a Git-specific override can call
+    ``sources.default_prepare_git_checkout()`` before its own changes.
 
-    The return value should be the ``Path`` to the root of the source tree,
-    ideally inside the ``ctx.work_dir`` directory.
+    The override returns the source root ``Path`` or a ``(Path, bool)`` pair.
+    Git checkouts must use the double-nested package/version layout under
+    ``ctx.work_dir`` so the later bootstrap and step commands can find them.
+
+    .. versionchanged:: 0.103.0
+       Passing ``DownloadKind.git_checkout`` prepares a clean Git checkout.
 
 .. autofromagerhook:: default_build_sdist
 
@@ -238,6 +372,8 @@ Source helper functions
 
 The following helper functions are available in the ``fromager.sources`` module
 for use in custom source hooks:
+
+.. autofunction:: fromager.sources.default_prepare_git_checkout
 
 .. autofunction:: fromager.sources.ensure_pkg_info
 

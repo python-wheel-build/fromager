@@ -1,6 +1,8 @@
+import concurrent.futures
 import json
 import logging
 import pathlib
+import subprocess
 import typing
 from unittest.mock import Mock, patch
 
@@ -11,7 +13,7 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 from resolvelib.resolvers import ResolverException
 
-from fromager import bootstrapper, log
+from fromager import bootstrapper, log, server, sources, wheels
 from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._cache import (
     _download_wheel_from_cache,
@@ -37,8 +39,27 @@ from fromager.bootstrapper._types import (
 from fromager.bootstrapper._work_item import WorkItem
 from fromager.context import WorkContext
 from fromager.dependency_graph import ROOT
-from fromager.packagesettings import WheelSettings
+from fromager.packagesettings import (
+    DownloadedSource,
+    DownloadKind,
+    PackageSettings,
+    WheelSettings,
+)
 from fromager.requirements_file import RequirementType, SourceType
+
+
+def _configure_package(ctx: WorkContext, yaml_str: str) -> None:
+    """Apply one package setting to the test context."""
+    ps = PackageSettings.from_string("pkg", yaml_str)
+    ctx.settings._package_settings[ps.name] = ps
+
+
+def _source_yaml(provider: str) -> str:
+    """Return package settings that select a configured source provider."""
+    yaml_str = f"source:\n  provider: {provider}\n"
+    if provider == "hook-prebuilt":
+        yaml_str += "  index_url: https://index.test/simple\n"
+    return yaml_str
 
 
 def test_phase_subclass_without_phase_attribute_raises() -> None:
@@ -60,6 +81,237 @@ def test_phase_abstract_subclass_without_phase_attribute_is_allowed() -> None:
 
     # Defining _AbstractMiddle itself must not raise.
     assert _AbstractMiddle.__abstractmethods__
+
+
+@pytest.mark.parametrize("provider", ["pypi-prebuilt", "hook-prebuilt"])
+def test_bootstrap_prebuilt_uses_configured_download(
+    tmp_context: WorkContext, provider: str
+) -> None:
+    """Bootstrap consumes the configured wheel path and updates its mirror."""
+    _configure_package(tmp_context, _source_yaml(provider))
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(wheels, "download_prebuilt_wheel", return_value=wheel) as download,
+        patch("fromager.bootstrapper._cache.server.update_wheel_mirror") as mirror,
+    ):
+        result = bg_prepare_prebuilt(
+            tmp_context, req, RequirementType.TOP_LEVEL, version, url
+        )
+
+    assert result.wheel_filename == wheel
+    download.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        version=version,
+        download_url=url,
+        direct_download_directory=tmp_context.wheels_prebuilt,
+    )
+    mirror.assert_called_once_with(tmp_context, preferred_prebuilt_wheel=wheel)
+
+
+def test_bootstrap_configured_prebuilt_reuses_local_wheel(
+    tmp_context: WorkContext,
+) -> None:
+    """A local mirror URL bypasses the download hook and the mirror switch."""
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    url = "https://local.test/simple/pkg/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(wheels, "download_wheel", return_value=wheel) as cached,
+        patch.object(sources, "download_source") as configured,
+        patch("fromager.bootstrapper._cache.server.update_wheel_mirror") as mirror,
+    ):
+        result = bg_prepare_prebuilt(
+            tmp_context, req, RequirementType.TOP_LEVEL, version, url
+        )
+
+    assert result.wheel_filename == wheel
+    cached.assert_called_once_with(req, url, tmp_context.wheels_prebuilt)
+    configured.assert_not_called()
+    mirror.assert_called_once_with(tmp_context)
+
+
+def test_bootstrap_configured_prebuilt_uses_mirrored_wheel(
+    tmp_context: WorkContext,
+) -> None:
+    """A local mirror hit uses and keeps serving the exact mirrored file."""
+    _configure_package(tmp_context, _source_yaml("hook-prebuilt"))
+    req = Requirement("pkg==1.0")
+    wheel_name = "pkg-1.0-py3-none-any.whl"
+    served_wheel = tmp_context.wheels_downloads / wheel_name
+    served_wheel.write_bytes(b"served wheel")
+    server.update_wheel_mirror(tmp_context)
+    other_wheel = tmp_context.wheels_prebuilt / wheel_name
+    other_wheel.write_bytes(b"other wheel")
+    tmp_context.wheel_server_url = "https://local.test/simple/"
+    url = f"https://local.test/simple/pkg/{wheel_name}"
+
+    with (
+        patch.object(wheels, "download_wheel", wraps=wheels.download_wheel) as direct,
+        patch.object(sources, "download_source") as configured,
+    ):
+        result = bg_prepare_prebuilt(
+            tmp_context, req, RequirementType.TOP_LEVEL, Version("1.0"), url
+        )
+
+    mirror_wheel = tmp_context.wheel_server_dir / "pkg" / wheel_name
+    assert result.wheel_filename == served_wheel
+    assert mirror_wheel.resolve() == served_wheel
+    assert mirror_wheel.read_bytes() == b"served wheel"
+    direct.assert_not_called()
+    configured.assert_not_called()
+
+
+@pytest.mark.parametrize("local_cache", [False, True])
+def test_bootstrap_prebuilt_rejects_source_only_resolver(
+    tmp_context: WorkContext, local_cache: bool
+) -> None:
+    """Do not treat a configured sdist resolver as a legacy wheel source."""
+    _configure_package(tmp_context, "source:\n  provider: pypi-sdist\n")
+    req = Requirement("pkg==1.0")
+    if local_cache:
+        tmp_context.wheel_server_url = "https://local.test/simple/"
+    url = (
+        "https://local.test/simple/pkg/pkg-1.0-py3-none-any.whl"
+        if local_cache
+        else "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    )
+    with (
+        patch.object(wheels, "download_wheel") as direct,
+        patch.object(sources, "download_source") as configured,
+        pytest.raises(ValueError, match="does not resolve prebuilt wheels"),
+    ):
+        bg_prepare_prebuilt(
+            tmp_context,
+            req,
+            RequirementType.TOP_LEVEL,
+            Version("1.0"),
+            url,
+        )
+
+    direct.assert_not_called()
+    configured.assert_not_called()
+
+
+def test_legacy_bootstrap_keeps_direct_download(tmp_context: WorkContext) -> None:
+    """Legacy bootstrap still uses the wheel downloader."""
+    _configure_package(tmp_context, "variants:\n  cpu:\n    pre_built: true\n")
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(wheels, "download_wheel", return_value=wheel) as direct,
+        patch.object(sources, "download_source") as configured,
+        patch("fromager.bootstrapper._cache.server.update_wheel_mirror") as mirror,
+    ):
+        result = bg_prepare_prebuilt(
+            tmp_context, req, RequirementType.TOP_LEVEL, version, url
+        )
+
+    assert result.wheel_filename == wheel
+    direct.assert_called_once_with(req, url, tmp_context.wheels_prebuilt)
+    configured.assert_not_called()
+    mirror.assert_called_once_with(tmp_context)
+
+
+@pytest.mark.parametrize("provider", ["pypi-prebuilt", "hook-prebuilt"])
+def test_bootstrap_records_configured_prebuilt_in_graph_and_order(
+    tmp_context: WorkContext, provider: str
+) -> None:
+    """The selected source makes bootstrap skip build phases and persist its flag."""
+    _configure_package(tmp_context, _source_yaml(provider))
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://pkg.test/pkg-1.0-py3-none-any.whl"
+    with patch.object(bt, "resolve_versions", return_value=[(url, version)]):
+        bt._resolve_and_add_top_level(req)
+
+    wi = WorkItem(
+        req=req,
+        req_type=RequirementType.TOP_LEVEL,
+        why_snapshot=[],
+        source_url=url,
+        resolved_version=version,
+    )
+    next_phases = Start(wi).run(bt)
+    assert wi.pbi_pre_built is True
+    assert len(next_phases) == 1
+    assert isinstance(next_phases[0], PrepareSource)
+    wheel = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    with (
+        patch.object(wheels, "download_prebuilt_wheel", return_value=wheel),
+        patch.object(sources, "prepare_source") as prepare_source,
+        patch("fromager.bootstrapper._cache.server.update_wheel_mirror"),
+    ):
+        background_work = next_phases[0].background_work(bt)
+        assert background_work is not None
+        prepared = background_work()
+    prepare_source.assert_not_called()
+    future: concurrent.futures.Future[typing.Any] = concurrent.futures.Future()
+    future.set_result(prepared)
+    next_phases[0].bg_future = future
+    install_phases = next_phases[0].run(bt)
+    assert len(install_phases) == 1
+    assert isinstance(install_phases[0], ProcessInstallDeps)
+    assert wi.build_result is not None
+    assert wi.build_result.source_type is SourceType.PREBUILT
+    with (
+        patch(
+            "fromager.bootstrapper._process_install_deps.hooks.run_post_bootstrap_hooks"
+        ),
+        patch(
+            "fromager.bootstrapper._process_install_deps._get_install_dependencies",
+            return_value=[],
+        ),
+        patch.object(bt, "create_unresolved_work_items", return_value=[]),
+    ):
+        install_phases[0].run(bt)
+    bt.finalize()
+
+    assert tmp_context.dependency_graph.nodes["pkg==1.0"].pre_built is True
+    build_order = json.loads(bt._build_order_filename.read_text())
+    assert build_order[0]["prebuilt"] is True
+    assert build_order[0]["source_url"] == url
+
+
+def test_test_mode_source_resolver_uses_legacy_prebuilt_fallback(
+    tmp_context: WorkContext,
+) -> None:
+    """A failed source build can use the forced legacy wheel fallback."""
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    url = "https://fallback.test/pkg-1.0-py3-none-any.whl"
+    wheel = tmp_context.wheels_prebuilt / "pkg-1.0-py3-none-any.whl"
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        PackageSettings.from_string("pkg", "source:\n  provider: pypi-sdist\n")
+    )
+    bt = bootstrapper.Bootstrapper(tmp_context, test_mode=True)
+    with (
+        patch.object(bt._resolver, "resolve", return_value=[(url, version)]),
+        patch(
+            "fromager.bootstrapper._cache.wheels.download_wheel", return_value=wheel
+        ) as legacy,
+        patch("fromager.bootstrapper._cache.server.update_wheel_mirror"),
+    ):
+        result = bt._handle_test_mode_failure(
+            req=req,
+            resolved_version=version,
+            req_type=RequirementType.TOP_LEVEL,
+            build_error=RuntimeError("source build failed"),
+        )
+
+    assert result is not None
+    assert result.source_type is SourceType.PREBUILT
+    assert result.wheel_filename == wheel
+    legacy.assert_called_once_with(req, url, tmp_context.wheels_prebuilt)
 
 
 def test_seen(tmp_context: WorkContext) -> None:
@@ -156,6 +408,35 @@ def test_build_order(tmp_context: WorkContext) -> None:
         },
     ]
     assert expected == contents
+
+
+def test_build_order_records_effective_variant_source_provider(
+    tmp_context: WorkContext,
+) -> None:
+    """Record the active variant's source provider, including prebuilt rows."""
+    _configure_package(
+        tmp_context,
+        "source:\n"
+        "  provider: pypi-sdist\n"
+        "variants:\n"
+        "  cpu:\n"
+        "    source:\n"
+        "      provider: pypi-prebuilt\n",
+    )
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.add_to_build_order(
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        source_url="https://pkg.test/pkg-1.0-py3-none-any.whl",
+        source_type=SourceType.PREBUILT,
+        prebuilt=True,
+    )
+    bt.finalize()
+
+    build_order = json.loads(bt._build_order_filename.read_text())
+
+    assert build_order[0]["source_provider"] == "pypi-prebuilt"
+    assert build_order[0]["source_url_type"] == "prebuilt"
 
 
 def test_build_order_repeats(tmp_context: WorkContext) -> None:
@@ -948,8 +1229,6 @@ def test_check_write_error_logs_on_failure(
     bt = bootstrapper.Bootstrapper(tmp_context)
 
     # Arrange: create a future that has already failed with an OSError
-    import concurrent.futures
-
     fut: concurrent.futures.Future[int] = concurrent.futures.Future()
     fut.set_exception(OSError("disk full"))
 
@@ -1007,11 +1286,13 @@ def test_bootstrap_with_single_requirement(tmp_context: WorkContext) -> None:
         return []
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(
             bt,
             "_resolve_and_add_top_level",
             return_value=("http://example.test/testpkg-1.0.tar.gz", Version("1.0")),
         ),
+        patch.object(Resolve, "background_work", return_value=None),
         patch.object(Resolve, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
@@ -1029,7 +1310,9 @@ def test_bootstrap_skips_failed_resolution(tmp_context: WorkContext) -> None:
     req = Requirement("badpkg")
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(bt, "_resolve_and_add_top_level", return_value=None),
+        patch.object(Resolve, "background_work", return_value=None),
         patch.object(Resolve, "run") as mock_run,
         patch.object(bt, "_record_stack_state"),
     ):
@@ -1051,11 +1334,13 @@ def test_bootstrap_two_requirements_both_processed(tmp_context: WorkContext) -> 
         return []
 
     with (
+        patch.object(bt, "resolve_versions", return_value=[]),
         patch.object(
             bt,
             "_resolve_and_add_top_level",
             return_value=("http://example.test/pkg-1.0.tar.gz", Version("1.0")),
         ),
+        patch.object(Resolve, "background_work", return_value=None),
         patch.object(Resolve, "run", capture_run),
         patch.object(bt, "_record_stack_state"),
     ):
@@ -1152,6 +1437,7 @@ def test_bg_prepare_source_log_prefix_includes_version(
     logging.setLogRecordFactory(log.FromagerLogRecord)
     req = Requirement("mypkg==1.2.3")
     version = Version("1.2.3")
+    source_filename = pathlib.Path("mypkg-1.2.3.tar.gz")
 
     messages: list[str] = []
     try:
@@ -1163,12 +1449,15 @@ def test_bg_prepare_source_log_prefix_includes_version(
             ),
             patch(
                 "fromager.sources.download_source",
-                return_value=pathlib.Path("mypkg-1.2.3.tar.gz"),
+                return_value=DownloadedSource(
+                    path=source_filename,
+                    kind=DownloadKind.sdist,
+                ),
             ),
             patch(
                 "fromager.sources.prepare_source",
                 return_value=pathlib.Path(tmp_context.work_dir / "mypkg-1.2.3"),
-            ),
+            ) as prepare_source,
             log.req_ctxvar_context(req, version),
         ):
             _bg_prepare_source(
@@ -1185,6 +1474,13 @@ def test_bg_prepare_source_log_prefix_includes_version(
                 for r in caplog.records
                 if r.name.startswith("fromager.bootstrapper")
             ]
+            prepare_source.assert_called_once_with(
+                ctx=tmp_context,
+                req=req,
+                source_filename=source_filename,
+                version=version,
+                download_kind=DownloadKind.sdist,
+            )
     finally:
         logging.setLogRecordFactory(old_factory)
 
@@ -1192,6 +1488,90 @@ def test_bg_prepare_source_log_prefix_includes_version(
         assert msg.startswith("mypkg-1.2.3: "), (
             f"Expected 'mypkg-1.2.3: ' prefix, got: {msg!r}"
         )
+
+
+def test_bg_prepare_source_accepts_git_checkout(tmp_context: WorkContext) -> None:
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+    checkout = tmp_context.work_dir / "mypkg-1.2.3" / "mypkg-1.2.3"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+
+    with (
+        patch(
+            "fromager.bootstrapper._cache.find_cached_wheel", return_value=(None, None)
+        ),
+        patch(
+            "fromager.sources.download_source",
+            return_value=DownloadedSource(checkout, DownloadKind.git_checkout),
+        ),
+        patch("fromager.sources.prepare_new_source") as prepare_new_source,
+    ):
+        result = _bg_prepare_source(
+            ctx=tmp_context,
+            cache_wheel_server_url=None,
+            req=req,
+            resolved_version=version,
+            source_url="git+https://code.test/org/mypkg.git@v1.2.3",
+        )
+
+    assert result.sdist_root_dir == checkout
+    prepare_new_source.assert_called_once_with(
+        ctx=tmp_context, req=req, source_root_dir=checkout, version=version
+    )
+    assert (checkout.parent / "build-meta.json").is_file()
+
+
+def test_bootstrapper_download_source_preserves_download_kind(
+    tmp_context: WorkContext,
+) -> None:
+    """Keep the artifact kind for the legacy Bootstrapper helper."""
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+    source_url = "https://pkg.test/mypkg-1.2.3.tar.gz"
+    source_filename = pathlib.Path("mypkg-1.2.3.tar.gz")
+
+    with patch(
+        "fromager.bootstrapper._bootstrapper.sources.download_source",
+        return_value=DownloadedSource(path=source_filename, kind=DownloadKind.sdist),
+    ) as download_source:
+        result = bt._download_source(req, version, source_url)
+
+    assert result == DownloadedSource(source_filename, DownloadKind.sdist)
+    download_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        version=version,
+        download_url=source_url,
+    )
+
+
+def test_bootstrapper_prepare_source_passes_download_kind(
+    tmp_context: WorkContext,
+) -> None:
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    req = Requirement("mypkg==1.2.3")
+    version = Version("1.2.3")
+    downloaded = DownloadedSource(
+        tmp_context.work_dir / "mypkg-1.2.3" / "mypkg-1.2.3",
+        DownloadKind.git_checkout,
+    )
+
+    with patch(
+        "fromager.bootstrapper._bootstrapper.sources.prepare_source",
+        return_value=downloaded.path,
+    ) as prepare_source:
+        result = bt._prepare_source(req, version, downloaded)
+
+    assert result == downloaded.path
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=req,
+        source_filename=downloaded.path,
+        version=version,
+        download_kind=DownloadKind.git_checkout,
+    )
 
 
 def test_bg_prepare_prebuilt_log_prefix_includes_version(

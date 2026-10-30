@@ -56,6 +56,16 @@ a Python module.
 See :doc:`/reference/hooks` for the complete list of hooks and their
 arguments.
 
+.. versionchanged:: 0.103.0
+
+   Configured ``hook-sdist`` and ``hook-prebuilt`` profiles support typed
+   download results with explicit artifact kinds. See :ref:`download_source_hook`
+   for the contract, legacy path defaults, and a migration example.
+
+   ``prepare_source`` selects an archive or Git default using the downloaded
+   artifact kind. Package overrides remain active. See :ref:`prepare_source_hook`
+   for their arguments and the public Git checkout helper.
+
 Global Hooks
 ------------
 

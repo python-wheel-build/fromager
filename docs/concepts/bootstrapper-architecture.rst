@@ -16,6 +16,12 @@ Bootstrap Phase Flow
 
 Every package passes through a sequence of phases.  Source packages
 traverse the full pipeline; prebuilt wheels skip the build phases.
+``pypi-prebuilt`` and ``hook-prebuilt`` use the selected source resolver to
+download a fresh wheel in ``PrepareSource``. The legacy ``pre_built`` setting
+keeps its existing wheel download path. Both routes update the local mirror
+and record the package as prebuilt in the graph and build order.
+When a local wheel is already available, bootstrap reuses it before asking
+the selected provider to resolve a fresh wheel.
 
 .. code-block:: text
 
@@ -57,7 +63,8 @@ the contract every phase must satisfy:
    * - ``Start``
      - Add to dependency graph; deduplicate already-seen packages
    * - ``PrepareSource``
-     - Download source or prebuilt wheel; read build-system deps
+     - Download source or prebuilt wheel; prepare archives or checkouts;
+       read build-system deps
    * - ``PrepareBuild``
      - Install build-system deps; discover backend and sdist deps
    * - ``Build``
@@ -66,6 +73,10 @@ the contract every phase must satisfy:
      - Run post-bootstrap hooks; extract install deps; record build order
    * - ``Complete``
      - Clean up build directories (terminal phase)
+
+.. versionchanged:: 0.103.0
+   ``PrepareSource`` passes the downloaded artifact kind through preparation,
+   so Git checkouts can be prepared without unpacking them.
 
 Each phase wraps a ``WorkItem`` dataclass that accumulates per-package
 state (resolved version, build environment, build result, etc.) as it

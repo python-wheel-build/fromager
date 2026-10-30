@@ -1,3 +1,4 @@
+import json
 import logging
 import pathlib
 
@@ -10,6 +11,7 @@ from .. import (
     clickext,
     context,
     finders,
+    packagesettings,
     server,
     sources,
     wheels,
@@ -26,17 +28,25 @@ def step() -> None:
 
 
 @step.command()
+@click.option(
+    "--output-format",
+    type=click.Choice(["path", "json"]),
+    default="path",
+    show_default=True,
+    help="Print the path or a JSON object with path and artifact kind.",
+)
 @click.argument("dist_name")
 @click.argument("dist_version", type=clickext.PackageVersion())
 @click.argument("sdist_server_url")
 @click.pass_obj
 def download_source_archive(
     wkctx: context.WorkContext,
+    output_format: str,
     dist_name: str,
     dist_version: Version,
     sdist_server_url: str,
 ) -> None:
-    """download the source code archive for one version of one package
+    """download source for one version of one package
 
     DIST_NAME is the name of a distribution
 
@@ -50,22 +60,52 @@ def download_source_archive(
     source_url, version = sources.resolve_source(
         ctx=wkctx, req=req, sdist_server_url=sdist_server_url
     )
-    filename = sources.download_source(
+    downloaded_source = sources.download_source(
         ctx=wkctx,
         req=req,
         version=version,
         download_url=source_url,
     )
     requirement_ctxvar.reset(token)
-    print(filename)
+    if output_format == "json":
+        print(
+            json.dumps(
+                {
+                    "path": str(downloaded_source.path),
+                    "kind": downloaded_source.kind.value,
+                }
+            )
+        )
+    else:
+        print(downloaded_source.path)
 
 
 @step.command()
+@click.option(
+    "--source-kind",
+    type=click.Choice(
+        [
+            packagesettings.DownloadKind.sdist.value,
+            packagesettings.DownloadKind.tarball.value,
+            packagesettings.DownloadKind.git_checkout.value,
+        ]
+    ),
+    default=packagesettings.DownloadKind.sdist.value,
+    show_default=True,
+    help="Kind returned by the source download step.",
+)
+@click.option(
+    "--source-path",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    help="Downloaded source path; Git checkouts must use the standard work directory layout.",
+)
 @click.argument("dist_name")
 @click.argument("dist_version", type=clickext.PackageVersion())
 @click.pass_obj
 def prepare_source(
     wkctx: context.WorkContext,
+    source_kind: str,
+    source_path: pathlib.Path | None,
     dist_name: str,
     dist_version: Version,
 ) -> None:
@@ -78,22 +118,35 @@ def prepare_source(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     token = requirement_ctxvar.set(req)
+    download_kind = packagesettings.DownloadKind(source_kind)
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
-    source_filename = finders.find_sdist(
-        wkctx, wkctx.sdists_downloads, req, str(dist_version)
+    checkout = (
+        wkctx.work_dir / f"{req.name}-{dist_version}" / f"{req.name}-{dist_version}"
     )
+    source_filename: pathlib.Path | None
+    if source_path is not None:
+        source_filename = source_path
+    elif download_kind is packagesettings.DownloadKind.git_checkout:
+        source_filename = checkout if checkout.is_dir() else None
+    else:
+        source_filename = finders.find_sdist(
+            wkctx, wkctx.sdists_downloads, req, str(dist_version)
+        )
     if source_filename is None:
+        if download_kind is packagesettings.DownloadKind.git_checkout:
+            raise RuntimeError(f"Cannot find Git checkout for {req} at {checkout}")
         dir_contents: list[str] = []
         for ext in ["*.tar.gz", "*.zip"]:
             dir_contents.extend(str(e) for e in wkctx.sdists_downloads.glob(ext))
         raise RuntimeError(
-            f"Cannot find sdist for {req.name} version {dist_version} in {sdists_downloads} among {dir_contents}"
+            f"Cannot find source for {req.name} version {dist_version} in {sdists_downloads} among {dir_contents}"
         )
     source_root_dir = sources.prepare_source(
         ctx=wkctx,
         req=req,
         source_filename=source_filename,
         version=dist_version,
+        download_kind=download_kind,
     )
     requirement_ctxvar.reset(token)
     print(source_root_dir)

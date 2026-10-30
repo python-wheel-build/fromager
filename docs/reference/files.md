@@ -67,6 +67,40 @@ The following example shows `build-order.json` file for the top-level dependency
 ]
 ```
 
+`source_url_type` is a legacy compatibility classification (`sdist`,
+`override`, or `prebuilt`). It does not report the artifact returned by a
+configured source resolver. Entries using `source:` also contain
+`source_provider`, the effective package or variant provider name. This names
+the configured provider even when a cached wheel avoids a source download.
+`pypi-sdist` is also labeled `override` here because it uses `source:`, even
+though its download result is an sdist.
+For example, a configured Git source is recorded as:
+
+```json
+{
+  "source_url": "git+https://github.com/example/pkg@v1.0",
+  "source_url_type": "override",
+  "source_provider": "github-tag-git"
+}
+```
+
+`download-sequence` calls the configured resolver's normal `download()` for
+these entries. Before downloading, it checks the recorded provider name for
+each source entry and each `prebuilt: true` wheel requested with `--include-wheels`.
+A missing or different provider is an error. Older build orders without
+`source_provider` still work with legacy settings; regenerate them before
+replaying a configured source. The check compares only provider names, so
+replay should still use the same package settings. Archive
+downloads can be reused from the download cache. Git downloads create a
+checkout in the work directory and are not cached for a later build. The command
+also uses `source_url_type` to skip entries that used a prebuilt fallback at
+runtime, even if source settings are configured.
+
+```{versionchanged} 0.103.0
+Configured source providers are recorded in build order, and
+`download-sequence` uses their download operation.
+```
+
 ## graph.json
 
 The `graph.json` is an output file that contains all the paths fromager can take to resolve a dependency during building the wheel. The graph represents all of the dependencies encountered during a build of a wheel collection ("collection" is a new term we're introducing). It shows the parent/child relationships of all dependencies, including the type of dependency.

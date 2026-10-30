@@ -275,3 +275,89 @@ def test_list_overrides_min_release_age(
     # test-other-pkg has no min_release_age override — should be empty
     test_other_pkg = next(item for item in data if item["package"] == "test-other-pkg")
     assert test_other_pkg["min_release_age"] == ""
+
+
+def test_list_overrides_details_source(
+    testdata_path: pathlib.Path, cli_runner: CliRunner
+) -> None:
+    """--details includes the source provider for source-config packages."""
+    overrides_dir = testdata_path / "context" / "overrides"
+    settings_file = overrides_dir / "settings.yaml"
+    settings_dir = overrides_dir / "settings"
+    patches_dir = overrides_dir / "patches"
+
+    result = cli_runner.invoke(
+        fromager,
+        [
+            "--settings-file",
+            str(settings_file),
+            "--settings-dir",
+            str(settings_dir),
+            "--patches-dir",
+            str(patches_dir),
+            "list-overrides",
+            "--details",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+
+    json_output = _extract_json_from_output(result.stdout)
+    data = json.loads(json_output)
+
+    # test-source-pkg has a source: block with a github-tag-git provider
+    test_source_pkg = next(
+        item for item in data if item["package"] == "test-source-pkg"
+    )
+    assert test_source_pkg["source"] == "github-tag-git"
+    # min_release_age is read from the source config
+    assert test_source_pkg["min_release_age"] == "14"
+    # the rocm variant resolves a prebuilt wheel through its variant source
+    assert test_source_pkg["rocm"] == "pre-built"
+
+    # legacy packages have no source config — the field is blank
+    test_other_pkg = next(item for item in data if item["package"] == "test-other-pkg")
+    assert test_other_pkg["source"] == ""
+
+
+def test_list_overrides_details_source_variant(
+    testdata_path: pathlib.Path, cli_runner: CliRunner
+) -> None:
+    """--variant does not change the package-level source column."""
+    overrides_dir = testdata_path / "context" / "overrides"
+    settings_file = overrides_dir / "settings.yaml"
+    settings_dir = overrides_dir / "settings"
+    patches_dir = overrides_dir / "patches"
+
+    result = cli_runner.invoke(
+        fromager,
+        [
+            "--variant",
+            "rocm",
+            "--settings-file",
+            str(settings_file),
+            "--settings-dir",
+            str(settings_dir),
+            "--patches-dir",
+            str(patches_dir),
+            "list-overrides",
+            "--details",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+
+    json_output = _extract_json_from_output(result.stdout)
+    data = json.loads(json_output)
+
+    test_source_pkg = next(
+        item for item in data if item["package"] == "test-source-pkg"
+    )
+    # the source column shows the package-level setting, not the rocm
+    # variant's pypi-prebuilt resolver
+    assert test_source_pkg["source"] == "github-tag-git"
+    # min_release_age comes from the variant's source resolver
+    assert test_source_pkg["min_release_age"] == "3"
+    assert test_source_pkg["rocm"] == "pre-built"

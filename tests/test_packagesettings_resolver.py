@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import datetime
+import dataclasses
+import pathlib
 import re
+import subprocess
 import textwrap
 import typing
 from unittest import mock
@@ -11,12 +13,14 @@ import pytest
 import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
+from wheel.wheelfile import WheelFile
 
-from fromager import resolver
-from fromager.candidate import Candidate, Cooldown
+from fromager import resolver, sources
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
+    AbstractResolver,
     BuildSDist,
+    DownloadedSource,
     DownloadKind,
     GitHubTagCloneResolver,
     GitHubTagDownloadResolver,
@@ -62,52 +66,16 @@ def _bad_matcher_returns_bad_sig(ctx: WorkContext) -> typing.Callable[..., None]
 _REQ = Requirement("test-pkg")
 _REQ_TYPE = RequirementType.INSTALL
 _VERSION = Version("1.2.3")
-_CANDIDATE_SDIST = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://pypi.test/packages/test-pkg-1.2.3.tar.gz",
-    is_sdist=True,
+_URL_SDIST = "https://pypi.test/packages/test-pkg-1.2.3.tar.gz"
+_URL_WHEEL = "https://pypi.test/packages/test_pkg-1.2.3-py3-none-any.whl"
+_URL_TARBALL = "https://download.test/test-pkg-1.2.3.tar.gz"
+_URL_GIT = "git+https://code.test/project/repo.git@refs/tags/v1.2.3"
+_URL_GITHUB_TARBALL = "https://api.github.com/repos/org/repo/tarball/v1.2.3"
+_URL_GITHUB_CLONE = "git+https://github.com/python-wheel-build/fromager@v1.2.3"
+_URL_GITLAB_TARBALL = (
+    "https://gitlab.test/group/project/-/archive/v1.2.3/project-v1.2.3.tar.gz"
 )
-_CANDIDATE_WHEEL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://pypi.test/packages/test_pkg-1.2.3-py3-none-any.whl",
-    is_sdist=False,
-)
-_CANDIDATE_TARBALL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://download.test/test-pkg-1.2.3.tar.gz",
-)
-_CANDIDATE_GIT = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="git+https://code.test/project/repo.git@refs/tags/v1.2.3",
-)
-_CANDIDATE_GITHUB_TARBALL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://api.github.com/repos/org/repo/tarball/v1.2.3",
-    remote_tag="v1.2.3",
-)
-_CANDIDATE_GITHUB_CLONE = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="git+https://github.com/python-wheel-build/fromager@v1.2.3",
-    remote_tag="v1.2.3",
-)
-_CANDIDATE_GITLAB_TARBALL = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="https://gitlab.test/group/project/-/archive/v1.2.3/project-v1.2.3.tar.gz",
-    remote_tag="v1.2.3",
-)
-_CANDIDATE_GITLAB_CLONE = Candidate(
-    name="test-pkg",
-    version=_VERSION,
-    url="git+https://gitlab.test/python-wheel-build/fromager@v1.2.3",
-    remote_tag="v1.2.3",
-)
+_URL_GITLAB_CLONE = "git+https://gitlab.test/python-wheel-build/fromager@v1.2.3"
 
 
 class _SourceWrapper(pydantic.BaseModel):
@@ -122,6 +90,22 @@ def _parse(raw_yaml: str) -> SourceResolver:
     data = yaml.safe_load(textwrap.dedent(raw_yaml))
     wrapper = _SourceWrapper.model_validate(data)
     return wrapper.source
+
+
+def test_resolver_requires_build_sdist_strategy() -> None:
+    """Require every resolver to declare an sdist build strategy."""
+    with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+        AbstractResolver.model_validate({"provider": "test"})
+
+
+@pytest.mark.parametrize(
+    "provider",
+    ["pypi-sdist", "pypi-prebuilt", "hook-prebuilt", "not-available"],
+)
+def test_resolver_rejects_unsupported_build_sdist_strategy(provider: str) -> None:
+    """Keep fixed resolver strategies from accepting a different build method."""
+    with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+        _parse(f"source:\n  provider: {provider}\n  build_sdist: pep517\n")
 
 
 # -- PyPI resolvers -----------------------------------------------------------
@@ -168,19 +152,6 @@ class TestPyPISDistResolver:
         assert p.override_download_url is None
         assert p.cooldown is None
 
-    def test_resolver_provider_cooldown(self, tmp_context: WorkContext) -> None:
-        r = PyPISDistResolver(provider="pypi-sdist", min_release_age=7)
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
-        assert isinstance(p.cooldown, Cooldown)
-        assert p.cooldown.min_age == datetime.timedelta(days=7)
-
-    def test_resolver_provider_cooldown_disabled(
-        self, tmp_context: WorkContext
-    ) -> None:
-        r = PyPISDistResolver(provider="pypi-sdist", min_release_age=0)
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
-        assert p.cooldown is None
-
     def test_cooldown_negative(self) -> None:
         with pytest.raises(pydantic.ValidationError, match="min_release_age"):
             PyPISDistResolver(provider="pypi-sdist", min_release_age=-1)
@@ -190,12 +161,13 @@ class TestPyPISDistResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
-        assert path == expected
-        assert kind is DownloadKind.sdist
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected
+        assert result.kind is DownloadKind.sdist
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_SDIST.url,
+            url=_URL_SDIST,
         )
 
 
@@ -231,12 +203,13 @@ class TestPyPIPrebuiltResolver:
         expected = tmp_context.wheels_prebuilt / "test_pkg-1.2.3-py3-none-any.whl"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
-        assert path == expected
-        assert kind is DownloadKind.prebuilt_wheel
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_WHEEL)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected
+        assert result.kind is DownloadKind.prebuilt_wheel
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.wheels_prebuilt,
-            url=_CANDIDATE_WHEEL.url,
+            url=_URL_WHEEL,
         )
 
 
@@ -304,13 +277,29 @@ class TestPyPIDownloadResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_TARBALL)
-        assert path == expected
-        assert kind is DownloadKind.tarball
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_TARBALL)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected
+        assert result.kind is DownloadKind.tarball
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_TARBALL.url,
+            url=_URL_TARBALL,
             destination_filename="test-pkg-1.2.3.tar.gz",
+        )
+
+    @mock.patch("fromager.downloads.download_url")
+    def test_download_canonicalizes_tarball_name(
+        self, mock_dl: mock.MagicMock, tmp_context: WorkContext
+    ) -> None:
+        """Name the tarball with the canonical package name."""
+        r = _parse(self.YAML)
+
+        r.download(tmp_context, Requirement("Foo_Bar"), _VERSION, _URL_TARBALL)
+
+        mock_dl.assert_called_once_with(
+            destination_dir=tmp_context.sdists_downloads,
+            url=_URL_TARBALL,
+            destination_filename="foo-bar-1.2.3.tar.gz",
         )
 
 
@@ -374,13 +363,135 @@ class TestPyPIGitResolver:
         )
         mock_dl.return_value = expected_dest
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_GIT)
-        assert path == expected_dest
-        assert kind is DownloadKind.git_checkout
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GIT)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected_dest
+        assert result.kind is DownloadKind.git_checkout
         mock_dl.assert_called_once_with(
             destination_dir=expected_dest,
-            vcs_url=_CANDIDATE_GIT.url,
+            vcs_url=_URL_GIT,
         )
+
+    def test_download_rejects_existing_checkout_without_cleanup(
+        self, tmp_context: WorkContext
+    ) -> None:
+        tmp_context.cleanup = False
+        checkout = (
+            tmp_context.work_dir / f"{_REQ.name}-{_VERSION}" / f"{_REQ.name}-{_VERSION}"
+        )
+        checkout.mkdir(parents=True)
+        (checkout / ".git").mkdir()
+        (checkout / "keep.txt").write_text("prepared")
+
+        with pytest.raises(FileExistsError, match="enable cleanup"):
+            _parse(self.YAML).download(tmp_context, _REQ, _VERSION, _URL_GIT)
+
+        assert (checkout / "keep.txt").read_text() == "prepared"
+
+    def test_download_cleans_checkout_before_reclone(
+        self, tmp_context: WorkContext
+    ) -> None:
+        checkout = (
+            tmp_context.work_dir / f"{_REQ.name}-{_VERSION}" / f"{_REQ.name}-{_VERSION}"
+        )
+        checkout.mkdir(parents=True)
+        (checkout / "old.txt").write_text("old")
+        (checkout.parent / "build-meta.json").write_text("old")
+
+        def clone(*, destination_dir: pathlib.Path, vcs_url: str) -> pathlib.Path:
+            assert vcs_url == _URL_GIT
+            destination_dir.mkdir(parents=True)
+            (destination_dir / "new.txt").write_text("new")
+            return destination_dir
+
+        with mock.patch("fromager.downloads.download_git_source", side_effect=clone):
+            result = _parse(self.YAML).download(tmp_context, _REQ, _VERSION, _URL_GIT)
+
+        assert result == DownloadedSource(checkout, DownloadKind.git_checkout)
+        assert (checkout / "new.txt").read_text() == "new"
+        assert not (checkout / "old.txt").exists()
+        assert not (checkout.parent / "build-meta.json").exists()
+
+    def test_download_preserves_non_checkout_on_collision(
+        self, tmp_context: WorkContext
+    ) -> None:
+        tmp_context.cleanup = False
+        checkout = (
+            tmp_context.work_dir / f"{_REQ.name}-{_VERSION}" / f"{_REQ.name}-{_VERSION}"
+        )
+        checkout.mkdir(parents=True)
+        (checkout / "keep.txt").write_text("existing source")
+        meta_file = checkout.parent / "build-meta.json"
+        meta_file.write_text("existing metadata")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            _parse(self.YAML).download(tmp_context, _REQ, _VERSION, _URL_GIT)
+
+        assert (checkout / "keep.txt").read_text() == "existing source"
+        assert meta_file.read_text() == "existing metadata"
+
+    def test_local_git_checkout_prepares_and_reclones(
+        self, tmp_context: WorkContext, tmp_path: pathlib.Path
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+        (repo / "pyproject.toml").write_text("[build-system]\nrequires = []\n")
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@pkg.test",
+                "commit",
+                "-m",
+                "Initial source",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(["git", "-C", str(repo), "tag", "v1.2.3"], check=True)
+        url = f"git+file://{repo}@refs/tags/v1.2.3"
+        source_resolver = _parse(self.YAML)
+        tmp_context.cleanup = False
+        package_dir = tmp_context.work_dir / f"{_REQ.name}-{_VERSION}"
+        (package_dir / "other-dir").mkdir(parents=True)
+        (package_dir / "build-meta.json").write_text("stale")
+
+        downloaded = source_resolver.download(tmp_context, _REQ, _VERSION, url)
+        assert (package_dir / "other-dir").is_dir()
+        assert (package_dir / "build-meta.json").read_text() == "stale"
+        prepared = sources.prepare_source(
+            ctx=tmp_context,
+            req=_REQ,
+            source_filename=downloaded.path,
+            version=_VERSION,
+            download_kind=downloaded.kind,
+        )
+        (prepared / "keep.txt").write_text("prepared")
+        with pytest.raises(FileExistsError, match="already exists"):
+            source_resolver.download(tmp_context, _REQ, _VERSION, url)
+
+        assert downloaded.kind is DownloadKind.git_checkout
+        assert prepared == downloaded.path
+        assert (prepared / ".git").is_dir()
+        assert (prepared / "keep.txt").read_text() == "prepared"
+        assert sources.read_build_meta(prepared.parent)["source-filename"] == str(
+            prepared
+        )
+
+        tmp_context.cleanup = True
+        recloned = source_resolver.download(tmp_context, _REQ, _VERSION, url)
+
+        assert recloned.path == prepared
+        assert (recloned.path / ".git").is_dir()
+        assert not (recloned.path / "keep.txt").exists()
+        assert not (package_dir / "other-dir").exists()
+        assert not (recloned.path.parent / "build-meta.json").exists()
 
 
 # -- Git source resolvers ----------------------------------------------------
@@ -440,16 +551,6 @@ class TestGitHubTagDownloadResolver:
         assert p.override_download_url is None
         assert p.cooldown is None
 
-    def test_resolver_provider_cooldown(self, tmp_context: WorkContext) -> None:
-        r = GitHubTagDownloadResolver(
-            provider="github-tag-download",
-            project_url="https://github.com/python-wheel-build/fromager",  # type: ignore[arg-type]
-            min_release_age=14,
-        )
-        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
-        assert isinstance(p.cooldown, Cooldown)
-        assert p.cooldown.min_age == datetime.timedelta(days=14)
-
     def test_matcher_factory_rejects_non_callable_return(
         self, tmp_context: WorkContext
     ) -> None:
@@ -493,12 +594,13 @@ class TestGitHubTagDownloadResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_GITHUB_TARBALL)
-        assert path == expected
-        assert kind is DownloadKind.tarball
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITHUB_TARBALL)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected
+        assert result.kind is DownloadKind.tarball
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_GITHUB_TARBALL.url,
+            url=_URL_GITHUB_TARBALL,
             destination_filename="test-pkg-1.2.3.tar.gz",
         )
 
@@ -539,12 +641,13 @@ class TestGitHubTagCloneResolver:
         )
         mock_dl.return_value = expected_dest
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_GITHUB_CLONE)
-        assert path == expected_dest
-        assert kind is DownloadKind.git_checkout
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITHUB_CLONE)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected_dest
+        assert result.kind is DownloadKind.git_checkout
         mock_dl.assert_called_once_with(
             destination_dir=expected_dest,
-            vcs_url=_CANDIDATE_GITHUB_CLONE.url,
+            vcs_url=_URL_GITHUB_CLONE,
         )
 
 
@@ -580,12 +683,13 @@ class TestGitLabTagDownloadResolver:
         expected = tmp_context.sdists_downloads / "test-pkg-1.2.3.tar.gz"
         mock_dl.return_value = expected
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_GITLAB_TARBALL)
-        assert path == expected
-        assert kind is DownloadKind.tarball
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITLAB_TARBALL)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected
+        assert result.kind is DownloadKind.tarball
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
-            url=_CANDIDATE_GITLAB_TARBALL.url,
+            url=_URL_GITLAB_TARBALL,
             destination_filename="test-pkg-1.2.3.tar.gz",
         )
 
@@ -626,12 +730,13 @@ class TestGitLabTagCloneResolver:
         )
         mock_dl.return_value = expected_dest
         r = _parse(self.YAML)
-        path, kind = r.download(tmp_context, _REQ, _CANDIDATE_GITLAB_CLONE)
-        assert path == expected_dest
-        assert kind is DownloadKind.git_checkout
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_GITLAB_CLONE)
+        assert isinstance(result, DownloadedSource)
+        assert result.path == expected_dest
+        assert result.kind is DownloadKind.git_checkout
         mock_dl.assert_called_once_with(
             destination_dir=expected_dest,
-            vcs_url=_CANDIDATE_GITLAB_CLONE.url,
+            vcs_url=_URL_GITLAB_CLONE,
         )
 
 
@@ -660,59 +765,673 @@ class TestNotAvailableResolver:
     def test_download(self, tmp_context: WorkContext) -> None:
         r = _parse(self.YAML)
         with pytest.raises(ValueError, match="not available"):
-            r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+            r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
 
 
 class TestHookSDistResolver:
     YAML = """\
         source:
           provider: hook-sdist
+          index_url: https://index.test/simple
+          build_sdist: tarball
     """
 
     def test_parse(self) -> None:
         r = _parse(self.YAML)
         assert isinstance(r, HookSDistResolver)
         assert r.provider == "hook-sdist"
+        assert str(r.index_url) == "https://index.test/simple"
+        assert r.build_sdist is BuildSDist.tarball
         assert r.supports_override_hooks is True
         assert r.resolves_prebuilt_wheel is False
         assert r.download_kinds == frozenset(
             {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
         )
 
-    def test_resolver_provider(self, tmp_context: WorkContext) -> None:
-        r = _parse(self.YAML)
-        with pytest.raises(NotImplementedError):
-            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+    @pytest.mark.parametrize("build_method", list(BuildSDist))
+    def test_build_sdist_method(self, build_method: BuildSDist) -> None:
+        """Load the hook sdist build method from YAML."""
+        r = _parse(
+            f"source:\n  provider: hook-sdist\n  build_sdist: {build_method.value}\n"
+        )
 
-    def test_download(self, tmp_context: WorkContext) -> None:
+        assert r.build_sdist is build_method
+
+    def test_build_sdist_method_required(self) -> None:
+        """Require a build method because hook artifacts need different strategies."""
+        with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+            _parse("source:\n  provider: hook-sdist\n")
+
+    def test_default_index_url(self) -> None:
+        """Source hook profiles may use the standard PyPI index."""
+        r = _parse("source:\n  provider: hook-sdist\n  build_sdist: tarball\n")
+
+        assert isinstance(r, HookSDistResolver)
+        assert str(r.index_url) == "https://pypi.org/simple/"
+
+    @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+    def test_resolver_provider(
+        self,
+        find_override_method: mock.Mock,
+        tmp_context: WorkContext,
+    ) -> None:
         r = _parse(self.YAML)
-        with pytest.raises(NotImplementedError, match="hook"):
-            r.download(tmp_context, _REQ, _CANDIDATE_SDIST)
+        provider = resolver.GenericProvider(version_source=lambda identifier: [])
+        captured: dict[str, object] = {}
+
+        def hook(
+            ctx: WorkContext,
+            req: Requirement,
+            include_sdists: bool,
+            include_wheels: bool,
+            sdist_server_url: str,
+            req_type: RequirementType | None = None,
+            ignore_platform: bool = False,
+        ) -> resolver.BaseProvider:
+            captured.update(
+                ctx=ctx,
+                req=req,
+                include_sdists=include_sdists,
+                include_wheels=include_wheels,
+                sdist_server_url=sdist_server_url,
+                req_type=req_type,
+                ignore_platform=ignore_platform,
+            )
+            return provider
+
+        find_override_method.return_value = hook
+
+        result = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+        assert result is provider
+        assert captured == {
+            "ctx": tmp_context,
+            "req": _REQ,
+            "include_sdists": True,
+            "include_wheels": False,
+            "sdist_server_url": "https://index.test/simple",
+            "req_type": _REQ_TYPE,
+            "ignore_platform": False,
+        }
 
 
 class TestHookPrebuiltResolver:
     YAML = """\
         source:
           provider: hook-prebuilt
+          index_url: https://index.test/simple
     """
 
     def test_parse(self) -> None:
         r = _parse(self.YAML)
         assert isinstance(r, HookPrebuiltResolver)
         assert r.provider == "hook-prebuilt"
+        assert str(r.index_url) == "https://index.test/simple"
         assert r.supports_override_hooks is True
         assert r.resolves_prebuilt_wheel is True
         assert r.download_kinds == frozenset({DownloadKind.prebuilt_wheel})
 
-    def test_resolver_provider(self, tmp_context: WorkContext) -> None:
-        r = _parse(self.YAML)
-        with pytest.raises(NotImplementedError):
-            r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+    def test_index_url_required(self) -> None:
+        """Require an explicit index to avoid silently using public PyPI."""
+        with pytest.raises(pydantic.ValidationError, match="index_url"):
+            _parse("source:\n  provider: hook-prebuilt\n")
 
-    def test_download(self, tmp_context: WorkContext) -> None:
+    @mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+    def test_resolver_provider(
+        self,
+        find_override_method: mock.Mock,
+        tmp_context: WorkContext,
+    ) -> None:
         r = _parse(self.YAML)
-        with pytest.raises(NotImplementedError, match="hook"):
-            r.download(tmp_context, _REQ, _CANDIDATE_WHEEL)
+        provider = resolver.GenericProvider(version_source=lambda identifier: [])
+        captured: dict[str, object] = {}
+
+        def hook(
+            ctx: WorkContext,
+            req: Requirement,
+            include_sdists: bool,
+            include_wheels: bool,
+            sdist_server_url: str,
+            req_type: RequirementType | None = None,
+            ignore_platform: bool = False,
+        ) -> resolver.BaseProvider:
+            captured.update(
+                ctx=ctx,
+                req=req,
+                include_sdists=include_sdists,
+                include_wheels=include_wheels,
+                sdist_server_url=sdist_server_url,
+                req_type=req_type,
+                ignore_platform=ignore_platform,
+            )
+            return provider
+
+        find_override_method.return_value = hook
+
+        result = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+        assert result is provider
+        assert captured == {
+            "ctx": tmp_context,
+            "req": _REQ,
+            "include_sdists": False,
+            "include_wheels": True,
+            "sdist_server_url": "https://index.test/simple",
+            "req_type": _REQ_TYPE,
+            "ignore_platform": False,
+        }
+        find_override_method.assert_called_once_with(
+            _REQ.name,
+            "get_resolver_provider",
+        )
+
+
+def _parse_hook_profile(provider: str) -> SourceResolver:
+    """Parse the test YAML for the ``hook-sdist`` or ``hook-prebuilt`` profile."""
+    if provider == "hook-sdist":
+        return _parse(TestHookSDistResolver.YAML)
+    return _parse(TestHookPrebuiltResolver.YAML)
+
+
+@pytest.mark.parametrize(
+    ("provider", "kind"),
+    [
+        ("hook-sdist", DownloadKind.sdist),
+        ("hook-sdist", DownloadKind.tarball),
+        ("hook-sdist", DownloadKind.git_checkout),
+        ("hook-prebuilt", DownloadKind.prebuilt_wheel),
+    ],
+)
+def test_hook_download_preserves_typed_result_and_arguments(
+    tmp_context: WorkContext, provider: str, kind: DownloadKind
+) -> None:
+    """Preserve the hook's explicit kind and forward the legacy arguments."""
+    r = _parse_hook_profile(provider)
+    url = _URL_WHEEL if r.resolves_prebuilt_wheel else _URL_SDIST
+    expected = DownloadedSource(path=tmp_context.work_dir / "artifact", kind=kind)
+    captured: dict[str, object] = {}
+
+    def hook(
+        ctx: WorkContext,
+        req: Requirement,
+        version: Version,
+        download_url: str,
+        sdists_downloads_dir: pathlib.Path,
+    ) -> DownloadedSource:
+        captured.update(
+            ctx=ctx,
+            req=req,
+            version=version,
+            download_url=download_url,
+            sdists_downloads_dir=sdists_downloads_dir,
+        )
+        return expected
+
+    with (
+        mock.patch(
+            "fromager.overrides.find_override_method", return_value=hook
+        ) as find_hook,
+        mock.patch.object(type(r), "_download") as fallback,
+    ):
+        result = r.download(tmp_context, _REQ, _VERSION, url)
+
+    assert result is expected
+    assert captured == {
+        "ctx": tmp_context,
+        "req": _REQ,
+        "version": _VERSION,
+        "download_url": url,
+        "sdists_downloads_dir": tmp_context.sdists_downloads,
+    }
+    find_hook.assert_called_once_with(_REQ.name, "download_source")
+    fallback.assert_not_called()
+
+
+def test_hook_download_passes_non_url_ref_unchanged(
+    tmp_context: WorkContext,
+) -> None:
+    """Pass a bare commit SHA to the download hook as ``download_url``.
+
+    Version-map plugins store a commit SHA instead of a URL.
+    """
+    r = _parse(TestHookSDistResolver.YAML)
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    expected = DownloadedSource(
+        path=tmp_context.work_dir / "checkout", kind=DownloadKind.git_checkout
+    )
+    captured: dict[str, object] = {}
+
+    def hook(version: Version, download_url: str) -> DownloadedSource:
+        captured.update(version=version, download_url=download_url)
+        return expected
+
+    with mock.patch("fromager.overrides.find_override_method", return_value=hook):
+        result = r.download(tmp_context, _REQ, _VERSION, sha)
+
+    assert result is expected
+    assert captured == {"version": _VERSION, "download_url": sha}
+
+
+@pytest.mark.parametrize(
+    ("provider", "filename", "kind"),
+    [
+        ("hook-sdist", "test-pkg-1.2.3.tar.gz", DownloadKind.sdist),
+        ("hook-sdist", "test-pkg-1.2.3.zip", DownloadKind.sdist),
+        (
+            "hook-prebuilt",
+            "test_pkg-1.2.3-py3-none-any.whl",
+            DownloadKind.prebuilt_wheel,
+        ),
+    ],
+)
+def test_hook_download_adapts_legacy_path_and_narrow_signature(
+    tmp_context: WorkContext, provider: str, filename: str, kind: DownloadKind
+) -> None:
+    """Adapt bare paths without requiring hooks to accept every argument."""
+    r = _parse_hook_profile(provider)
+    expected = tmp_context.work_dir / filename
+
+    def hook(req: Requirement, version: Version) -> pathlib.Path:
+        assert req == _REQ
+        assert version == _VERSION
+        return expected
+
+    with mock.patch("fromager.overrides.find_override_method", return_value=hook):
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
+
+    assert result == DownloadedSource(path=expected, kind=kind)
+
+
+@pytest.mark.parametrize("provider", ["hook-sdist", "hook-prebuilt"])
+@pytest.mark.parametrize(
+    ("hook_result", "error_type", "message"),
+    [
+        (None, TypeError, "expected pathlib.Path or DownloadedSource"),
+        ("not-a-path", TypeError, "expected pathlib.Path or DownloadedSource"),
+        (42, TypeError, "expected pathlib.Path or DownloadedSource"),
+        (
+            (pathlib.Path("source"), DownloadKind.sdist),
+            TypeError,
+            "expected pathlib.Path or DownloadedSource",
+        ),
+        (
+            DownloadedSource(
+                path=typing.cast(pathlib.Path, "source"), kind=DownloadKind.sdist
+            ),
+            TypeError,
+            "DownloadedSource.path must be pathlib.Path",
+        ),
+        (
+            DownloadedSource(
+                path=pathlib.Path("source"), kind=typing.cast(DownloadKind, "sdist")
+            ),
+            TypeError,
+            "DownloadedSource.kind must be DownloadKind",
+        ),
+        (
+            DownloadedSource(path=pathlib.Path("source"), kind=DownloadKind.any_source),
+            ValueError,
+            "unsupported kind 'any_source'",
+        ),
+        (
+            DownloadedSource(
+                path=pathlib.Path("source"), kind=DownloadKind.not_available
+            ),
+            ValueError,
+            "unsupported kind 'n/a'",
+        ),
+    ],
+)
+def test_hook_download_rejects_invalid_results_without_fallback(
+    tmp_context: WorkContext,
+    provider: str,
+    hook_result: object,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    """Reject malformed hook results with package and provider context."""
+    r = _parse_hook_profile(provider)
+
+    def hook() -> object:
+        return hook_result
+
+    with (
+        mock.patch("fromager.overrides.find_override_method", return_value=hook),
+        mock.patch.object(type(r), "_download") as fallback,
+        pytest.raises(error_type, match=re.escape(message)) as exc_info,
+    ):
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
+
+    assert f"test-pkg: '{provider}' download_source hook" in str(exc_info.value)
+    fallback.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("provider", "kind"),
+    [
+        ("hook-sdist", DownloadKind.prebuilt_wheel),
+        ("hook-prebuilt", DownloadKind.sdist),
+        ("hook-prebuilt", DownloadKind.tarball),
+        ("hook-prebuilt", DownloadKind.git_checkout),
+    ],
+)
+def test_hook_download_rejects_kind_incompatible_with_profile(
+    tmp_context: WorkContext, provider: str, kind: DownloadKind
+) -> None:
+    """Do not relabel an explicit kind to fit the selected profile."""
+    r = _parse_hook_profile(provider)
+
+    def hook() -> DownloadedSource:
+        return DownloadedSource(path=tmp_context.work_dir, kind=kind)
+
+    with (
+        mock.patch("fromager.overrides.find_override_method", return_value=hook),
+        pytest.raises(ValueError, match=f"unsupported kind '{kind.value}'") as exc_info,
+    ):
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
+
+    for allowed_kind in r.download_kinds:
+        assert allowed_kind.value in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("provider", "filename", "is_directory"),
+    [
+        ("hook-sdist", "checkout", True),
+        ("hook-sdist", "source.tar.gz", True),
+        ("hook-sdist", "source.tar.xz", False),
+        ("hook-sdist", "test_pkg-1.2.3-py3-none-any.whl", False),
+        ("hook-prebuilt", "test_pkg-1.2.3-py3-none-any.whl", True),
+        ("hook-prebuilt", "source.tar.gz", False),
+    ],
+)
+def test_hook_download_requires_kind_for_unsupported_legacy_paths(
+    tmp_context: WorkContext, provider: str, filename: str, is_directory: bool
+) -> None:
+    """Require an explicit kind when a path cannot use the legacy default."""
+    r = _parse_hook_profile(provider)
+    path = tmp_context.work_dir / filename
+    if is_directory:
+        path.mkdir()
+    else:
+        path.touch()
+
+    def hook() -> pathlib.Path:
+        return path
+
+    with (
+        mock.patch("fromager.overrides.find_override_method", return_value=hook),
+        pytest.raises(ValueError, match="Return DownloadedSource"),
+    ):
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
+
+
+@pytest.mark.parametrize("provider", ["hook-sdist", "hook-prebuilt"])
+def test_hook_download_uses_profile_default_when_hook_is_missing(
+    tmp_context: WorkContext, provider: str
+) -> None:
+    """Select the correct download helper and destination without a hook."""
+    r = _parse_hook_profile(provider)
+    prebuilt = r.resolves_prebuilt_wheel
+    url = _URL_WHEEL if prebuilt else _URL_SDIST
+    destination = (
+        tmp_context.wheels_prebuilt if prebuilt else tmp_context.sdists_downloads
+    )
+    expected = destination / url.rsplit("/", 1)[1]
+    kind = DownloadKind.prebuilt_wheel if prebuilt else DownloadKind.sdist
+
+    with (
+        mock.patch("fromager.overrides.find_override_method", return_value=None),
+        mock.patch("fromager.downloads.download_sdist", return_value=expected) as sdist,
+        mock.patch("fromager.downloads.download_wheel", return_value=expected) as wheel,
+    ):
+        result = r.download(tmp_context, _REQ, _VERSION, url)
+
+    selected, unused = (wheel, sdist) if prebuilt else (sdist, wheel)
+    selected.assert_called_once_with(destination_dir=destination, url=url)
+    unused.assert_not_called()
+    assert result == DownloadedSource(path=expected, kind=kind)
+
+
+@pytest.mark.parametrize("provider", ["hook-sdist", "hook-prebuilt"])
+def test_hook_download_chains_failure_without_fallback(
+    tmp_context: WorkContext, provider: str
+) -> None:
+    """Preserve the hook failure and do not attempt a default download."""
+    r = _parse_hook_profile(provider)
+    cause = OSError("download failed")
+
+    def hook() -> pathlib.Path:
+        raise cause
+
+    with (
+        mock.patch("fromager.overrides.find_override_method", return_value=hook),
+        mock.patch.object(type(r), "_download") as fallback,
+        pytest.raises(
+            RuntimeError, match=f"'{provider}' download_source hook failed"
+        ) as exc_info,
+    ):
+        r.download(tmp_context, _REQ, _VERSION, _URL_SDIST)
+
+    assert exc_info.value.__cause__ is cause
+    fallback.assert_not_called()
+
+
+def test_hook_prebuilt_download_fallback_accepts_valid_wheel(
+    tmp_context: WorkContext,
+) -> None:
+    """Use wheel validation, rather than sdist validation, for a cached wheel."""
+    path = tmp_context.wheels_prebuilt / "test_pkg-1.2.3-py3-none-any.whl"
+    with WheelFile(path, "w") as wheel:
+        wheel.writestr(
+            f"{wheel.dist_info_path}/METADATA",
+            "Metadata-Version: 2.1\nName: test-pkg\nVersion: 1.2.3\n",
+        )
+    r = HookPrebuiltResolver(
+        provider="hook-prebuilt",
+        index_url=pydantic.HttpUrl("https://index.test/simple"),
+    )
+
+    with mock.patch("fromager.overrides.find_override_method", return_value=None):
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_WHEEL)
+
+    assert result == DownloadedSource(path=path, kind=DownloadKind.prebuilt_wheel)
+
+
+@mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_hook_resolver_supports_legacy_hook_signature(
+    find_override_method: mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """Legacy five-argument resolver hooks remain compatible."""
+    provider = resolver.GenericProvider(version_source=lambda identifier: [])
+
+    def legacy_hook(
+        ctx: WorkContext,
+        req: Requirement,
+        include_sdists: bool,
+        include_wheels: bool,
+        sdist_server_url: str,
+    ) -> resolver.BaseProvider:
+        return provider
+
+    find_override_method.return_value = legacy_hook
+    resolver_model = HookSDistResolver(
+        provider="hook-sdist", build_sdist=BuildSDist.tarball
+    )
+
+    result = resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    assert result is provider
+
+
+def _find_hooks(
+    hooks: dict[str, typing.Callable[..., typing.Any]],
+) -> typing.Callable[[str, str], typing.Callable[..., typing.Any] | None]:
+    """Return a ``find_override_method`` replacement for the given hooks."""
+
+    def find(distname: str, method: str) -> typing.Callable[..., typing.Any] | None:
+        return hooks.get(method)
+
+    return find
+
+
+@pytest.mark.parametrize(
+    ("provider", "include_sdists", "ignore_platform", "kind"),
+    [
+        ("hook-sdist", True, True, DownloadKind.git_checkout),
+        ("hook-prebuilt", False, False, DownloadKind.prebuilt_wheel),
+    ],
+)
+def test_hook_resolver_uses_index_without_resolver_hook(
+    tmp_context: WorkContext,
+    provider: str,
+    include_sdists: bool,
+    ignore_platform: bool,
+    kind: DownloadKind,
+) -> None:
+    """A download-only package resolves on ``index_url`` and downloads by hook."""
+    r = _parse_hook_profile(provider)
+    expected = DownloadedSource(path=tmp_context.work_dir / "artifact", kind=kind)
+
+    def download_source() -> DownloadedSource:
+        return expected
+
+    with mock.patch(
+        "fromager.overrides.find_override_method",
+        side_effect=_find_hooks({"download_source": download_source}),
+    ):
+        p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+        result = r.download(tmp_context, _REQ, _VERSION, _URL_WHEEL)
+
+    assert isinstance(p, resolver.PyPIProvider)
+    assert p.sdist_server_url == "https://index.test/simple"
+    assert p.include_sdists is include_sdists
+    assert p.include_wheels is True
+    assert p.ignore_platform is ignore_platform
+    assert p.req_type is _REQ_TYPE
+    assert result is expected
+
+
+@pytest.mark.parametrize("provider", ["hook-sdist", "hook-prebuilt"])
+@pytest.mark.parametrize("has_download_hook", [True, False])
+def test_hook_resolver_prefers_resolver_hook(
+    tmp_context: WorkContext,
+    provider: str,
+    has_download_hook: bool,
+) -> None:
+    """Use the resolver hook whether or not a download hook exists."""
+    r = _parse_hook_profile(provider)
+    hook_provider = resolver.GenericProvider(version_source=lambda identifier: [])
+
+    def get_resolver_provider() -> resolver.BaseProvider:
+        return hook_provider
+
+    hooks: dict[str, typing.Callable[..., typing.Any]] = {
+        "get_resolver_provider": get_resolver_provider
+    }
+    if has_download_hook:
+        hooks["download_source"] = lambda: None
+
+    with mock.patch(
+        "fromager.overrides.find_override_method", side_effect=_find_hooks(hooks)
+    ):
+        result = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    assert result is hook_provider
+
+
+@pytest.mark.parametrize(
+    ("provider", "suggested"),
+    [("hook-sdist", "pypi-sdist"), ("hook-prebuilt", "pypi-prebuilt")],
+)
+@mock.patch("fromager.packagesettings._resolver.resolver.PyPIProvider")
+@mock.patch(
+    "fromager.packagesettings._resolver.overrides.find_override_method",
+    return_value=None,
+)
+def test_hook_resolver_requires_a_hook(
+    find_override_method: mock.Mock,
+    pypi_provider: mock.Mock,
+    tmp_context: WorkContext,
+    provider: str,
+    suggested: str,
+) -> None:
+    """A package with neither hook fails and points to the plain profile."""
+    r = _parse_hook_profile(provider)
+
+    with pytest.raises(
+        ValueError,
+        match=f"get_resolver_provider or download_source.*'{suggested}'",
+    ):
+        r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    assert find_override_method.call_args_list == [
+        mock.call(_REQ.name, "get_resolver_provider"),
+        mock.call(_REQ.name, "download_source"),
+    ]
+    pypi_provider.assert_not_called()
+
+
+@mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_hook_resolver_rejects_invalid_provider(
+    find_override_method: mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """Reject values that are not Fromager resolver providers."""
+
+    def hook(
+        ctx: WorkContext,
+        req: Requirement,
+        include_sdists: bool,
+        include_wheels: bool,
+        sdist_server_url: str,
+        req_type: RequirementType | None = None,
+        ignore_platform: bool = False,
+    ) -> object:
+        return object()
+
+    find_override_method.return_value = hook
+    resolver_model = HookPrebuiltResolver(
+        provider="hook-prebuilt",
+        index_url=pydantic.HttpUrl("https://index.test/simple"),
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=r"expected fromager\.resolver\.BaseProvider",
+    ):
+        resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+
+@mock.patch("fromager.packagesettings._resolver.overrides.find_override_method")
+def test_hook_resolver_chains_hook_exception(
+    find_override_method: mock.Mock,
+    tmp_context: WorkContext,
+) -> None:
+    """Add resolver context while preserving the hook exception as the cause."""
+
+    def hook(
+        ctx: WorkContext,
+        req: Requirement,
+        include_sdists: bool,
+        include_wheels: bool,
+        sdist_server_url: str,
+        req_type: RequirementType | None = None,
+        ignore_platform: bool = False,
+    ) -> resolver.BaseProvider:
+        raise ValueError("hook failure")
+
+    find_override_method.return_value = hook
+    resolver_model = HookSDistResolver(
+        provider="hook-sdist", build_sdist=BuildSDist.tarball
+    )
+
+    with pytest.raises(RuntimeError, match="hook-sdist") as exc_info:
+        resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert str(exc_info.value.__cause__) == "hook failure"
 
 
 # -- Discriminated union validation -------------------------------------------
@@ -732,3 +1451,16 @@ def test_missing_provider() -> None:
             source:
               index_url: https://pypi.test/simple
         """)
+
+
+# -- DownloadedSource ---------------------------------------------------------
+
+
+def test_downloaded_source_is_frozen() -> None:
+    ds = DownloadedSource(
+        path=pathlib.Path("/tmp/test.tar.gz"), kind=DownloadKind.sdist
+    )
+    assert ds.path == pathlib.Path("/tmp/test.tar.gz")
+    assert ds.kind is DownloadKind.sdist
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        ds.path = pathlib.Path("/other")  # type: ignore[misc]

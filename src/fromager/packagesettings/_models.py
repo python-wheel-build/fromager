@@ -16,7 +16,7 @@ from packaging.utils import canonicalize_name
 from pydantic import AnyUrl, Field, PrivateAttr, StringConstraints
 from pydantic_core import core_schema
 
-# from ._resolver import SourceResolver
+from ._resolver import SourceResolver
 from ._typedefs import (
     MODEL_CONFIG,
     BuildDirectory,
@@ -31,6 +31,11 @@ from ._typedefs import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Legacy setting names that cannot be used with `source:`.
+# Share them across the package and variant conflict checks.
+_PACKAGE_LEGACY_SOURCE_FIELDS = frozenset({"download_source", "resolver_dist"})
+_VARIANT_LEGACY_SOURCE_FIELDS = frozenset({"wheel_server_url", "pre_built"})
 
 
 class WheelSettings(pydantic.BaseModel):
@@ -542,9 +547,22 @@ class VariantInfo(pydantic.BaseModel):
     pre_built: bool = False
     """Use pre-built wheel from index server?"""
 
-    # TODO
-    # source: SourceResolver | None
-    # """Source resolver and downloader"""
+    source: SourceResolver | None = None
+    """Source resolver and downloader"""
+
+    @pydantic.model_validator(mode="after")
+    def validate_source_exclusivity(self) -> typing.Self:
+        """Validate that ``source`` is mutually exclusive with legacy fields."""
+        if self.source is None:
+            return self
+        conflicts = _VARIANT_LEGACY_SOURCE_FIELDS & self.model_fields_set
+        if conflicts:
+            raise ValueError(
+                f"'source' is mutually exclusive with legacy settings: "
+                f"{sorted(conflicts)}. Use 'source' alone or remove it "
+                f"and use the legacy settings."
+            )
+        return self
 
 
 class GitOptions(pydantic.BaseModel):
@@ -670,9 +688,8 @@ class PackageSettings(pydantic.BaseModel):
     project_override: ProjectOverride = Field(default_factory=ProjectOverride)
     """Patch project settings"""
 
-    # TODO
-    # source: SourceResolver | None
-    # """Source resolver and downloader"""
+    source: SourceResolver | None = None
+    """Source resolver and downloader"""
 
     variants: Mapping[Variant, VariantInfo] = Field(default_factory=dict)
     """Variant configuration"""
@@ -687,6 +704,40 @@ class PackageSettings(pydantic.BaseModel):
         if v is None:
             v = {}
         return v
+
+    @pydantic.model_validator(mode="after")
+    def validate_source_exclusivity(self) -> typing.Self:
+        """Validate source and legacy fields across package and variant levels."""
+        package_legacy_fields = _PACKAGE_LEGACY_SOURCE_FIELDS & self.model_fields_set
+        if self.source is not None and package_legacy_fields:
+            raise ValueError(
+                f"'source' is mutually exclusive with legacy settings: "
+                f"{sorted(package_legacy_fields)}. Use 'source' alone or remove it "
+                f"and use the legacy settings."
+            )
+
+        cross_level_conflicts: list[str] = []
+        for variant_name, variant in self.variants.items():
+            if self.source is not None:
+                variant_legacy_fields = (
+                    _VARIANT_LEGACY_SOURCE_FIELDS & variant.model_fields_set
+                )
+                cross_level_conflicts.extend(
+                    f"source and variants.{variant_name}.{field}"
+                    for field in sorted(variant_legacy_fields)
+                )
+            if variant.source is not None:
+                cross_level_conflicts.extend(
+                    f"variants.{variant_name}.source and {field}"
+                    for field in sorted(package_legacy_fields)
+                )
+
+        if cross_level_conflicts:
+            raise ValueError(
+                "source is mutually exclusive with legacy settings across "
+                "package and variant levels: " + "; ".join(cross_level_conflicts)
+            )
+        return self
 
     @classmethod
     def from_mapping(

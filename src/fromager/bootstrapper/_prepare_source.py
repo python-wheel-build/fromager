@@ -29,7 +29,7 @@ def _bg_prepare_source(
     resolved_version: Version,
     source_url: str,
 ) -> PreparedSourceData:
-    """Background-safe source download+unpack: no Bootstrapper state accessed."""
+    """Background-safe source download and preparation without Bootstrapper state."""
     # Thread-safe: _seen_requirements in the main thread prevents the same
     # package from being submitted to the thread pool more than once.
     # Paths from download_source() and prepare_source() include {name}-{version},
@@ -43,11 +43,15 @@ def _bg_prepare_source(
             sdist_root_dir=unpacked / unpacked.stem,
             cached_wheel_filename=cached_wheel,
         )
-    source_filename = sources.download_source(
+    downloaded_source = sources.download_source(
         ctx=ctx, req=req, version=resolved_version, download_url=source_url
     )
     sdist_root_dir = sources.prepare_source(
-        ctx=ctx, req=req, source_filename=source_filename, version=resolved_version
+        ctx=ctx,
+        req=req,
+        source_filename=downloaded_source.path,
+        version=resolved_version,
+        download_kind=downloaded_source.kind,
     )
     return PreparedSourceData(sdist_root_dir=sdist_root_dir)
 

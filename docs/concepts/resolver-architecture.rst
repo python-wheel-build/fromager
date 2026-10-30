@@ -43,6 +43,8 @@ the cache already contains a matching version.
 The configured wheel cache server is not a version-resolution fallback.
 After a version has been selected, the bootstrapper checks the cache
 server separately for a previously built wheel.
+For prebuilt packages, the local wheel server can supply a cached wheel
+before a fresh resolution through the selected source provider.
 
 Provider Hierarchy
 ------------------
@@ -90,10 +92,121 @@ CLI commands interact with providers through a common
        Used when versions are already known, e.g. from a prior
        resolution or a settings-provided URL template.
 
+.. versionchanged:: 0.103.0
+   Packages with ``source:`` configuration now select their provider through
+   the configured source resolver.
+   The ``hook-sdist`` and ``hook-prebuilt`` profiles create providers through
+   the package's ``get_resolver_provider`` hook when it exists. Their
+   ``download()`` methods invoke the package's ``download_source`` hook when
+   present and return a validated ``DownloadedSource``.
+   Configured source resolvers own their index URL and ignore caller URLs.
+   Hook profiles pass their ``index_url`` to the legacy
+   ``get_resolver_provider`` hook as ``sdist_server_url``. ``hook-sdist``
+   defaults to PyPI, while ``hook-prebuilt`` requires an explicit index.
+   A hook profile without a ``get_resolver_provider`` hook finds versions on
+   its ``index_url`` and uses the ``download_source`` hook.
+
+   ``find-updates`` uses the configured source resolver when a package has
+   ``source:`` settings. The source profile determines distribution types and
+   the index URL. Packages without ``source:`` settings retain the legacy
+   provider hook, distribution options, and index URL overrides.
+   Update reports ignore global and per-package release-age cooldowns so
+   recent releases remain visible with either configuration style.
+
 Per-package settings in YAML can select which provider to use and
-configure its parameters (index URL, tag pattern, etc.).  Override
-plugins can replace the provider entirely for a specific package via
-the ``get_resolver_provider`` hook.
+configure its parameters (index URL, tag pattern, etc.).  When a package
+has a ``source:`` resolver configured, that resolver creates the provider.
+The ``hook-sdist`` and ``hook-prebuilt`` profiles delegate provider creation
+to the package's ``get_resolver_provider`` hook when it exists and validate
+that it returns a :class:`~fromager.resolver.BaseProvider`.
+The hook may ignore or replace the profile's index URL, but the profile's
+value is stable across Fromager commands.
+Without that hook, the profiles find versions on ``index_url``:
+``hook-sdist`` looks at sdists and wheels for any platform, like
+``pypi-git``, and ``hook-prebuilt`` looks at wheels for this platform, like
+``pypi-prebuilt``. The package's ``download_source`` hook then gets the
+artifact. A package with neither hook is an error.
+Otherwise, override plugins can replace the provider for a specific package
+via the ``get_resolver_provider`` hook, after which the legacy resolver
+settings are used.
+
+A configured resolver's ``download()`` receives only the version and the
+download URL of the selected candidate. Resolution and download can run in
+different commands, and only these values are saved in ``graph.json`` and
+``build-order.json``. The URL must therefore contain everything the download
+needs, such as the git ref in ``git+https://host/repo.git@refs/tags/v1.0``.
+
+.. versionchanged:: 0.103.0
+   ``download()`` takes ``version`` and ``download_url`` instead of a
+   ``Candidate``.
+
+Hook downloads accept explicit artifact kinds and adapt legacy paths using
+profile-specific defaults. If no download hook exists, the profile selects the
+standard sdist or wheel downloader and its destination directory. Hook errors
+propagate with context instead of triggering a fallback. In-process callers
+pass the downloaded path and kind to preparation: ``sdist`` and ``tarball``
+are unpacked, while ``git_checkout`` uses the checkout directory. The checkout
+uses the same double-nested work directory pattern as an unpacked archive;
+the directory names can differ for normalized package names.
+The default Git preparer rejects a checkout with local changes before applying
+patches, project overrides, and Rust vendoring. Git status does not prove that the
+checkout is the original clone or preserve it after preparation. Build metadata
+is written after preparation but is not used to choose the preparation path.
+With ``--no-cleanup``, downloading to an existing checkout fails and preserves
+its files for inspection. Enable cleanup or use a new work directory to
+download and prepare a fresh checkout. Git status cannot detect changes to
+patch or settings files outside the checkout. If preparation left the checkout
+clean, a manual second ``prepare-source`` call runs the preparation steps again.
+The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
+``--source-path`` because it cannot retrieve the earlier Python download result.
+``step download-source-archive --output-format json`` exposes that result's
+actual path and kind without changing its default path-only output.
+Without ``--source-kind``, it keeps the legacy archive behavior.
+``download-sequence`` calls the configured resolver's normal ``download()``
+for source entries. Before downloading, it checks ``source_provider`` against
+the current provider for each source entry and each ``prebuilt: true`` wheel
+requested with ``--include-wheels``. A missing or different provider fails
+before any downloads start. Older build orders without ``source_provider``
+still work with legacy settings; regenerate them before replaying a configured
+source. This checks the provider name, so replay should still use the same
+package settings. A runtime ``prebuilt`` entry is skipped even when the
+package has source settings.
+Built-in archive resolvers cache the resolved file for a later build. Git
+checkout resolvers clone into the work directory instead: with cleanup enabled,
+a later build removes that checkout and clones again; without cleanup, the
+later download fails because the checkout exists. Hook
+download behavior depends on the hook. Legacy packages keep the
+``source_url_type`` selection behavior. Build-order entries record the
+effective configured ``source_provider`` for provenance; the
+``source_url_type`` field remains a legacy compatibility classification, not
+the actual downloaded artifact kind.
+
+.. versionchanged:: 0.103.0
+   ``download-sequence`` uses configured source resolvers for source entries.
+
+Configured prebuilt resolvers select the prebuilt bootstrap path. Fresh
+external wheels use their ``download()`` contract and are staged in the
+prebuilt wheel directory. For local mirror URLs, bootstrap, build, and
+download-sequence reuse the exact file the mirror serves, so they do not
+rerun the configured download hook or pick a different same-named copy.
+Test-mode fallback downloads directly.
+When a fresh configured wheel shares a filename with an older cached wheel,
+the local mirror and later build replay use the fresh staged wheel.
+Legacy build downloads still pass through the build wheel directory before
+the mirror moves them to downloads.
+See :ref:`download_source_hook` for the return contract and compatibility rules.
+
+.. versionchanged:: 0.103.0
+   Explicit ``DownloadKind.git_checkout`` results can be prepared without
+   unpacking an archive. Configured source resolvers also select the sdist
+   build method. Git checkout resolvers use PEP 517 by default; hook sdist
+   resolvers require an explicit ``build_sdist: pep517`` or
+   ``build_sdist: tarball``. PyPI sdist resolvers
+   repack a tarball. Both configured strategies take precedence over an installed
+   ``build_sdist`` override and log a warning when it is ignored. Legacy
+   settings continue to use the override. Configured prebuilt profiles use
+   their source provider after a local cache check, and local mirror URLs
+   bypass configured download hooks during replay.
 
 Version Filtering Window
 -------------------------

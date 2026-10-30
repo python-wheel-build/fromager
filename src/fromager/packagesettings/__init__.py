@@ -17,6 +17,7 @@ from ._models import (
 from ._pbi import PackageBuildInfo
 from ._resolver import (
     BuildSDist,
+    DownloadedSource,
     DownloadKind,
     GitHubTagCloneResolver,
     GitHubTagDownloadResolver,
@@ -29,6 +30,7 @@ from ._resolver import (
     PyPIGitResolver,
     PyPIPrebuiltResolver,
     PyPISDistResolver,
+    SourceResolver,
     pep440_tag_matcher,
 )
 from ._settings import Settings, SettingsFile
@@ -57,6 +59,7 @@ __all__ = (
     "BuildSDist",
     "DownloadKind",
     "DownloadSource",
+    "DownloadedSource",
     "EnvKey",
     "EnvVars",
     "ExternalCommands",
@@ -85,6 +88,7 @@ __all__ = (
     "SbomSettings",
     "Settings",
     "SettingsFile",
+    "SourceResolver",
     "Template",
     "Variant",
     "VariantChangelog",

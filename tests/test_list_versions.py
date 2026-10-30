@@ -377,6 +377,181 @@ def test_list_versions_output_file_requirements_format(
 # --ignore-per-package-overrides
 # ---------------------------------------------------------------------------
 
+_ALTERNATE_INDEX_URL = "https://alternate.test/simple/test-pkg/"
+
+
+def _invoke_with_source_settings(
+    cli_runner: CliRunner,
+    settings_dir: pathlib.Path,
+    extra_args: list[str] | None = None,
+    min_release_age: int = 0,
+) -> typing.Any:
+    """Invoke ``package list-versions`` for a package with a ``source:`` resolver.
+
+    The configured resolver uses an alternate index URL; only that URL is
+    mocked, so a request to pypi.org fails the test.
+    """
+    args: list[str] = ["--settings-dir", str(settings_dir)]
+    if min_release_age:
+        args.extend(["--min-release-age", str(min_release_age)])
+    args.extend(["package", "list-versions"])
+    if extra_args:
+        args.extend(extra_args)
+    args.append("test-pkg")
+
+    with requests_mock.Mocker() as m:
+        m.get(
+            _ALTERNATE_INDEX_URL,
+            json=_PYPI_JSON_RESPONSE,
+            headers={"Content-Type": _PYPI_SIMPLE_JSON_CONTENT_TYPE},
+        )
+        return cli_runner.invoke(fromager, args)
+
+
+def _write_source_settings(
+    settings_dir: pathlib.Path,
+    extra_source_settings: str = "",
+) -> None:
+    """Write a pypi-sdist source config using the alternate index URL."""
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "test_pkg.yaml").write_text(
+        "source:\n"
+        "  provider: pypi-sdist\n"
+        f"  index_url: {(_ALTERNATE_INDEX_URL.removesuffix('test-pkg/'))}\n"
+        + extra_source_settings
+    )
+
+
+def test_list_versions_source_config_provider(
+    cli_runner: CliRunner,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A ``source:`` package lists versions from its configured provider."""
+    settings_dir = tmp_path / "settings"
+    _write_source_settings(settings_dir)
+
+    result = _invoke_with_source_settings(cli_runner, settings_dir)
+    assert result.exit_code == 0
+    # Versions come from the alternate index, not pypi.org.
+    versions = [line.strip() for line in result.stdout.split("\n") if line.strip()]
+    assert "1.2.2" in versions
+    assert "1.3.2" in versions
+    assert "2.0.0" in versions
+
+
+def test_list_versions_source_rejects_distribution_type(
+    cli_runner: CliRunner,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An explicit --distribution-type is rejected for source-config packages."""
+    settings_dir = tmp_path / "settings"
+    _write_source_settings(settings_dir)
+
+    for dist_type in ("sdist", "wheel", "both"):
+        result = _invoke_with_source_settings(
+            cli_runner,
+            settings_dir,
+            extra_args=["--distribution-type", dist_type],
+        )
+        assert result.exit_code != 0
+        assert f"--distribution-type {dist_type}" in result.output
+        assert "source resolver" in result.output
+
+
+def test_list_versions_source_min_release_age(
+    cli_runner: CliRunner,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cooldown status uses the source resolver's min_release_age."""
+    _freeze_cooldown_bootstrap_time(monkeypatch)
+
+    settings_dir = tmp_path / "settings"
+    _write_source_settings(settings_dir, "  min_release_age: 3\n")
+
+    # The source override (3 days) wins over the global value (2 days):
+    # 2.0.0 is 2 days old, so it is blocked.
+    result = _invoke_with_source_settings(
+        cli_runner,
+        settings_dir,
+        extra_args=["--format", "json"],
+        min_release_age=2,
+    )
+    assert result.exit_code == 0
+    status_by_version = {
+        row["version"]: row["cooldown"]
+        for row in json.loads(_extract_json_from_output(result.stdout))
+    }
+    assert status_by_version["2.0.0"] == "blocked"
+    assert status_by_version["1.3.2"] == "available"
+
+    # --ignore-per-package-overrides uses the global value (2 days):
+    # 2.0.0 is exactly 2 days old, so it is available.
+    result = _invoke_with_source_settings(
+        cli_runner,
+        settings_dir,
+        extra_args=["--format", "json", "--ignore-per-package-overrides"],
+        min_release_age=2,
+    )
+    assert result.exit_code == 0
+    status_by_version = {
+        row["version"]: row["cooldown"]
+        for row in json.loads(_extract_json_from_output(result.stdout))
+    }
+    assert status_by_version["2.0.0"] == "available"
+    assert status_by_version["1.3.2"] == "available"
+
+
+def test_list_versions_source_min_release_age_zero(
+    cli_runner: CliRunner,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source min_release_age of 0 disables the cooldown."""
+    _freeze_cooldown_bootstrap_time(monkeypatch)
+
+    settings_dir = tmp_path / "settings"
+    _write_source_settings(settings_dir, "  min_release_age: 0\n")
+
+    # The source override (0) disables the cooldown entirely.
+    result = _invoke_with_source_settings(
+        cli_runner,
+        settings_dir,
+        extra_args=["--format", "json"],
+        min_release_age=_COOLDOWN_7_DAYS,
+    )
+    assert result.exit_code == 0
+    for row in json.loads(_extract_json_from_output(result.stdout)):
+        assert row["cooldown"] == ""
+
+    # --ignore-per-package-overrides restores the global cooldown.
+    result = _invoke_with_source_settings(
+        cli_runner,
+        settings_dir,
+        extra_args=["--format", "json", "--ignore-per-package-overrides"],
+        min_release_age=_COOLDOWN_7_DAYS,
+    )
+    assert result.exit_code == 0
+    status_by_version = {
+        row["version"]: row["cooldown"]
+        for row in json.loads(_extract_json_from_output(result.stdout))
+    }
+    assert status_by_version["2.0.0"] == "blocked"
+    assert status_by_version["1.3.2"] == "available"
+
+
+def _freeze_cooldown_bootstrap_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin Cooldown.bootstrap_time to _BOOTSTRAP_TIME for deterministic ages."""
+    original_init = candidate.Cooldown.__init__
+
+    def patched_init(
+        self: candidate.Cooldown, *args: typing.Any, **kwargs: typing.Any
+    ) -> None:
+        original_init(self, *args, **kwargs)
+        self.bootstrap_time = _BOOTSTRAP_TIME
+
+    monkeypatch.setattr(candidate.Cooldown, "__init__", patched_init)
+
 
 def test_list_versions_ignore_per_package_overrides(
     cli_runner: CliRunner,
@@ -389,15 +564,7 @@ def test_list_versions_ignore_per_package_overrides(
     that --ignore-per-package-overrides still shows cooldown status based
     on the global --min-release-age.
     """
-    original_init = candidate.Cooldown.__init__
-
-    def patched_init(
-        self: candidate.Cooldown, *args: typing.Any, **kwargs: typing.Any
-    ) -> None:
-        original_init(self, *args, **kwargs)
-        self.bootstrap_time = _BOOTSTRAP_TIME
-
-    monkeypatch.setattr(candidate.Cooldown, "__init__", patched_init)
+    _freeze_cooldown_bootstrap_time(monkeypatch)
 
     # Create per-package override with min_release_age=0 (exempted)
     settings_dir = tmp_path / "settings"

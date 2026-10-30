@@ -15,6 +15,7 @@ test_section "core build tests"
 run_test "build"
 run_test "build_order"
 run_test "build_steps"
+run_test "build_source_config"
 
 test_section "advanced build tests"
 run_test "build_parallel"

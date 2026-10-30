@@ -19,9 +19,12 @@ from fromager.packagesettings import (
     Package,
     PackageBuildInfo,
     PackageSettings,
+    PyPIPrebuiltResolver,
+    PyPISDistResolver,
     ResolverDist,
     Settings,
     SettingsFile,
+    SourceResolver,
     Variant,
     substitute_template,
 )
@@ -34,6 +37,7 @@ TEST_OTHER_PKG = "test-other-pkg"
 TEST_RELATED_PKG = "test-pkg-library"
 TEST_PREBUILT_PKG = "test-prebuilt-pkg"
 TEST_COOLDOWN_PKG = "test-cooldown-pkg"
+TEST_SOURCE_PKG = "test-source-pkg"
 
 FULL_EXPECTED: dict[str, typing.Any] = {
     "annotations": {
@@ -91,6 +95,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": True,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": {
@@ -99,6 +104,7 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"EGG": "spam ${EGG}", "EGG_AGAIN": "$EGG"},
             "wheel_server_url": "https://wheel.test/simple",
             "pre_built": False,
+            "source": None,
         },
         "rocm": {
             "annotations": {
@@ -107,12 +113,14 @@ FULL_EXPECTED: dict[str, typing.Any] = {
             "env": {"SPAM": ""},
             "wheel_server_url": None,
             "pre_built": True,
+            "source": None,
         },
         "cuda": {
             "annotations": None,
             "env": {},
             "wheel_server_url": None,
             "pre_built": False,
+            "source": None,
         },
     },
 }
@@ -153,6 +161,7 @@ EMPTY_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": None,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {},
 }
 
@@ -194,11 +203,13 @@ PREBUILT_PKG_EXPECTED: dict[str, typing.Any] = {
         "use_pypi_org_metadata": None,
         "min_release_age": None,
     },
+    "source": None,
     "variants": {
         "cpu": {
             "annotations": None,
             "env": {},
             "pre_built": True,
+            "source": None,
             "wheel_server_url": None,
         },
     },
@@ -542,6 +553,7 @@ def test_settings_overrides(testdata_context: context.WorkContext) -> None:
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
         TEST_COOLDOWN_PKG,
+        TEST_SOURCE_PKG,
     }
 
 
@@ -593,11 +605,14 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
         TEST_OTHER_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
+        TEST_SOURCE_PKG,
     }
     assert testdata_context.settings.list_pre_built() == {TEST_PREBUILT_PKG}
     assert testdata_context.settings.variant_changelog() == []
     testdata_context.settings.variant = Variant("rocm")
-    assert testdata_context.settings.list_pre_built() == {TEST_PKG}
+    # TEST_SOURCE_PKG's rocm variant resolves a prebuilt wheel via its
+    # variant-level `source:` resolver.
+    assert testdata_context.settings.list_pre_built() == {TEST_PKG, TEST_SOURCE_PKG}
     assert testdata_context.settings.variant_changelog() == [
         "setuptools upgraded to 82.0.0"
     ]
@@ -1153,6 +1168,282 @@ def test_filter_env(
 ) -> None:
     ec = ExternalCommands(keep_env=keep, delete_env=delete)
     assert ec.filter_env(env) == expected
+
+
+# -- source field and source_resolver PBI property ----------------------------
+
+
+def test_source_resolver_importable() -> None:
+    """``SourceResolver`` is importable from ``fromager.packagesettings``."""
+    args = typing.get_args(SourceResolver)
+    assert len(args) == 2
+    union_members = typing.get_args(args[0])
+    assert PyPISDistResolver in union_members
+    assert PyPIPrebuiltResolver in union_members
+
+
+def test_package_settings_with_source() -> None:
+    """``PackageSettings`` loads YAML with ``source:`` correctly."""
+    yaml_str = "source:\n  provider: pypi-sdist\n"
+    ps = PackageSettings.from_string("test-source-pkg", yaml_str)
+    assert ps.source is not None
+    assert isinstance(ps.source, PyPISDistResolver)
+    assert ps.source.provider == "pypi-sdist"
+
+
+def test_variant_info_with_source() -> None:
+    """``VariantInfo`` with ``source:`` works."""
+    yaml_str = "variants:\n  cpu:\n    source:\n      provider: pypi-prebuilt\n"
+    ps = PackageSettings.from_string("test-variant-source-pkg", yaml_str)
+    vi = ps.variants[Variant("cpu")]
+    assert vi.source is not None
+    assert isinstance(vi.source, PyPIPrebuiltResolver)
+
+
+def test_package_settings_without_source() -> None:
+    """``PackageSettings`` without ``source:`` has ``source=None``."""
+    ps = PackageSettings.from_default("test-pkg")
+    assert ps.source is None
+
+
+def test_pbi_source_resolver_none(tmp_path: pathlib.Path) -> None:
+    """``pbi.source_resolver`` returns ``None`` when no source configured."""
+    ps = PackageSettings.from_default("test-pkg")
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert pbi.source_resolver is None
+
+
+def test_pbi_source_resolver_package_level(tmp_path: pathlib.Path) -> None:
+    """``pbi.source_resolver`` returns package-level source."""
+    yaml_str = "source:\n  provider: pypi-sdist\n"
+    ps = PackageSettings.from_string("test-pkg", yaml_str)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert pbi.source_resolver is not None
+    assert isinstance(pbi.source_resolver, PyPISDistResolver)
+
+
+def test_pbi_source_resolver_variant_overrides_package(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``pbi.source_resolver`` returns variant source over package source."""
+    yaml_str = (
+        "source:\n"
+        "  provider: pypi-sdist\n"
+        "variants:\n"
+        "  cpu:\n"
+        "    source:\n"
+        "      provider: pypi-prebuilt\n"
+    )
+    ps = PackageSettings.from_string("test-pkg", yaml_str)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+    pbi = settings.package_build_info("test-pkg")
+    assert isinstance(pbi.source_resolver, PyPIPrebuiltResolver)
+
+
+@pytest.mark.parametrize(
+    ("yaml_str", "expected"),
+    [
+        ("source:\n  provider: pypi-prebuilt\n", True),
+        (
+            "source:\n  provider: hook-prebuilt\n  index_url: https://pypi.test/simple\n",
+            True,
+        ),
+        ("source:\n  provider: pypi-sdist\n", False),
+        ("variants:\n  cpu:\n    pre_built: true\n", True),
+    ],
+)
+def test_pbi_prebuilt_uses_selected_source_or_legacy_variant(
+    tmp_path: pathlib.Path, yaml_str: str, expected: bool
+) -> None:
+    """Read configured source capability before the legacy variant flag."""
+    ps = PackageSettings.from_string("test-pkg", yaml_str)
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+
+    assert settings.package_build_info("test-pkg").pre_built is expected
+
+
+# -- source vs legacy mutual exclusivity validation --------------------------
+
+
+@pytest.mark.parametrize(
+    "yaml_str",
+    [
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "download_source:\n  url: https://egg.test/pkg-${version}.tar.gz\n",
+            id="source-with-download-source",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n",
+            id="source-with-resolver-dist",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "download_source:\n  url: https://egg.test/pkg.tar.gz\n"
+            "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n",
+            id="source-with-both-legacy-fields",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\ndownload_source:\n",
+            id="source-with-empty-download-source",
+        ),
+    ],
+)
+def test_package_source_exclusivity_invalid(yaml_str: str) -> None:
+    """Setting ``source`` alongside legacy package fields raises."""
+    with pytest.raises(RuntimeError, match="mutually exclusive"):
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+
+
+@pytest.mark.parametrize(
+    "yaml_str",
+    [
+        pytest.param(
+            "variants:\n  cpu:\n    source:\n      provider: pypi-prebuilt\n"
+            "    wheel_server_url: https://wheel.test/simple\n",
+            id="source-with-wheel-server-url",
+        ),
+        pytest.param(
+            "variants:\n  cpu:\n    source:\n      provider: pypi-prebuilt\n"
+            "    pre_built: true\n",
+            id="source-with-pre-built",
+        ),
+    ],
+)
+def test_variant_source_exclusivity_invalid(yaml_str: str) -> None:
+    """Setting ``source`` alongside legacy variant fields raises."""
+    with pytest.raises(RuntimeError, match="mutually exclusive"):
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+
+
+@pytest.mark.parametrize(
+    ("yaml_str", "source_path", "legacy_path"),
+    [
+        pytest.param(
+            "source:\n  provider: pypi-sdist\nvariants:\n  cpu:\n    pre_built: true\n",
+            "source",
+            "variants.cpu.pre_built",
+            id="package-source-variant-pre-built",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "variants:\n  cpu:\n    pre_built: false\n",
+            "source",
+            "variants.cpu.pre_built",
+            id="package-source-variant-explicit-false",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "variants:\n  cpu:\n    wheel_server_url: https://wheel.test/simple\n",
+            "source",
+            "variants.cpu.wheel_server_url",
+            id="package-source-variant-wheel-server",
+        ),
+        pytest.param(
+            "download_source:\n  url: https://egg.test/pkg.tar.gz\n"
+            "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
+            "variants.cpu.source",
+            "download_source",
+            id="variant-source-package-download-source",
+        ),
+        pytest.param(
+            "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n"
+            "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
+            "variants.cpu.source",
+            "resolver_dist",
+            id="variant-source-package-resolver-dist",
+        ),
+    ],
+)
+def test_cross_level_source_exclusivity_invalid(
+    yaml_str: str, source_path: str, legacy_path: str
+) -> None:
+    """Reject source and legacy fields mixed across package and variant levels."""
+    with pytest.raises(RuntimeError, match="mutually exclusive") as exc_info:
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+    error_str = str(exc_info.value)
+    assert source_path in error_str
+    assert legacy_path in error_str
+
+
+def test_package_source_with_unrelated_variant_setting_valid() -> None:
+    """Omitted variant legacy fields do not conflict with package source."""
+    yaml_str = (
+        "source:\n  provider: pypi-sdist\n"
+        "variants:\n  cpu:\n    env:\n      BUILD_MODE: fast\n"
+    )
+    ps = PackageSettings.from_string("source-pkg", yaml_str)
+    assert ps.source is not None
+    assert ps.variants[Variant("cpu")].pre_built is False
+
+
+def test_legacy_only_config_valid() -> None:
+    """Legacy-only config loads without error."""
+    yaml_str = (
+        "download_source:\n  url: https://egg.test/pkg-${version}.tar.gz\n"
+        "resolver_dist:\n  sdist_server_url: https://sdist.test/simple\n"
+    )
+    ps = PackageSettings.from_string("legacy-pkg", yaml_str)
+    assert ps.source is None
+    assert ps.download_source.url is not None
+
+
+def test_source_only_config_valid() -> None:
+    """Source-only config loads without error."""
+    yaml_str = "source:\n  provider: pypi-sdist\n"
+    ps = PackageSettings.from_string("new-pkg", yaml_str)
+    assert ps.source is not None
+    assert ps.download_source.url is None
+
+
+def test_variant_legacy_only_valid() -> None:
+    """Variant with only legacy fields loads without error."""
+    yaml_str = "variants:\n  cpu:\n    pre_built: true\n    wheel_server_url: https://wheel.test/simple\n"
+    ps = PackageSettings.from_string("legacy-variant-pkg", yaml_str)
+    vi = ps.variants[Variant("cpu")]
+    assert vi.source is None
+    assert vi.pre_built is True
+
+
+def test_source_exclusivity_error_lists_fields() -> None:
+    """Error message includes the specific conflicting field names."""
+    yaml_str = (
+        "source:\n  provider: pypi-sdist\n"
+        "download_source:\n  url: https://egg.test/a.tar.gz\n"
+        "resolver_dist:\n  sdist_server_url: https://sdist.test\n"
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        PackageSettings.from_string("conflict-pkg", yaml_str)
+    error_str = str(exc_info.value)
+    assert "download_source" in error_str
+    assert "resolver_dist" in error_str
 
 
 class TestWheelSettings:
