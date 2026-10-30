@@ -70,13 +70,18 @@ def list_overrides(
         variant_info: dict[str, str] = {}
         for v in variants:
             v_info = ps.variants.get(v)
-            if v_info:
-                if v_info.pre_built:
-                    variant_info[str(v)] = "pre-built"
-                else:
-                    variant_info[str(v)] = "yes"
-            else:
+            if v_info is None:
                 variant_info[str(v)] = ""
+                continue
+
+            is_prebuilt = v_info.pre_built
+            if v_info.source is not None:
+                # A variant `source:` block replaces the legacy settings,
+                # so its resolver decides whether wheels are prebuilt
+                # (e.g. provider: pypi-prebuilt).
+                is_prebuilt = v_info.source.resolves_prebuilt_wheel
+
+            variant_info[str(v)] = "pre-built" if is_prebuilt else "yes"
 
         all_patches: PatchMap = pbi.get_all_patches()
         global_patches: list[pathlib.Path] = all_patches.get(None, [])
@@ -86,7 +91,10 @@ def list_overrides(
             [v for v in all_patches.keys() if v is not None]
         )
 
-        min_release_age = ps.resolver_dist.min_release_age
+        # Show the package-level source so the column does not change with
+        # --variant; variant-level sources appear in the variant columns.
+        source = ps.source.provider if ps.source is not None else ""
+        min_release_age = pbi.resolver_min_release_age
         min_release_age_str = (
             str(min_release_age) if min_release_age is not None else ""
         )
@@ -97,6 +105,7 @@ def list_overrides(
             row_data = {
                 "package": name,
                 "version": "",
+                "source": source,
                 "patches": patches_str,
                 "plugin_hooks": plugin_hooks_str,
                 "min_release_age": min_release_age_str,
@@ -114,6 +123,7 @@ def list_overrides(
                 row_data = {
                     "package": name,
                     "version": str(version),
+                    "source": source,
                     "patches": patches_str,
                     "plugin_hooks": plugin_hooks_str,
                     "min_release_age": min_release_age_str,
@@ -149,7 +159,7 @@ def _export_csv(
     """Export data as CSV."""
     # Define field names in the order we want them
     fieldnames = (
-        ["package", "version", "patches", "min_release_age"]
+        ["package", "version", "source", "patches", "min_release_age"]
         + variants
         + ["plugin_hooks"]
     )
@@ -176,6 +186,7 @@ def _export_table(
     table = Table(title="Package Overrides")
     table.add_column("Package", justify="left", no_wrap=True)
     table.add_column("Version", justify="left", no_wrap=True)
+    table.add_column("Source", justify="left", no_wrap=True)
     table.add_column("Patches", justify="left", no_wrap=True)
 
     table.add_column("Min Release Age (days)", justify="left", no_wrap=True)
@@ -186,7 +197,7 @@ def _export_table(
     table.add_column("Plugin", justify="left")
 
     column_keys = (
-        ["package", "version", "patches", "min_release_age"]
+        ["package", "version", "source", "patches", "min_release_age"]
         + variants
         + ["plugin_hooks"]
     )

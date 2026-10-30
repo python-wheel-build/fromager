@@ -37,6 +37,7 @@ TEST_OTHER_PKG = "test-other-pkg"
 TEST_RELATED_PKG = "test-pkg-library"
 TEST_PREBUILT_PKG = "test-prebuilt-pkg"
 TEST_COOLDOWN_PKG = "test-cooldown-pkg"
+TEST_SOURCE_PKG = "test-source-pkg"
 
 FULL_EXPECTED: dict[str, typing.Any] = {
     "annotations": {
@@ -552,6 +553,7 @@ def test_settings_overrides(testdata_context: context.WorkContext) -> None:
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
         TEST_COOLDOWN_PKG,
+        TEST_SOURCE_PKG,
     }
 
 
@@ -603,11 +605,14 @@ def test_settings_list(testdata_context: context.WorkContext) -> None:
         TEST_OTHER_PKG,
         TEST_RELATED_PKG,
         TEST_PREBUILT_PKG,
+        TEST_SOURCE_PKG,
     }
     assert testdata_context.settings.list_pre_built() == {TEST_PREBUILT_PKG}
     assert testdata_context.settings.variant_changelog() == []
     testdata_context.settings.variant = Variant("rocm")
-    assert testdata_context.settings.list_pre_built() == {TEST_PKG}
+    # TEST_SOURCE_PKG's rocm variant resolves a prebuilt wheel via its
+    # variant-level `source:` resolver.
+    assert testdata_context.settings.list_pre_built() == {TEST_PKG, TEST_SOURCE_PKG}
     assert testdata_context.settings.variant_changelog() == [
         "setuptools upgraded to 82.0.0"
     ]

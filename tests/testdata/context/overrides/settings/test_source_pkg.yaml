@@ -1,0 +1,10 @@
+source:
+    provider: github-tag-git
+    project_url: https://github.com/python-wheel-build/fromager
+    min_release_age: 14
+variants:
+    rocm:
+        source:
+            provider: pypi-prebuilt
+            index_url: https://wheel.test/simple
+            min_release_age: 3
