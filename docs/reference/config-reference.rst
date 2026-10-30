@@ -89,7 +89,7 @@ Source Resolver
    .. autoattribute:: any_source
    .. autoattribute:: not_available
 
-.. versionchanged:: 0.96.0
+.. versionchanged:: 0.103.0
 
    Configured hook downloads require a concrete result kind supported by the
    selected profile. ``any_source`` and ``not_available`` are not accepted as

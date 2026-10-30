@@ -48,11 +48,9 @@ legacy variant ``pre_built`` setting. Configured prebuilt resolvers download
 fresh wheels through their ``download()`` contract; legacy prebuilt packages
 keep the wheel downloader.
 
-.. versionchanged:: 0.102.0
+.. versionchanged:: 0.103.0
    Configured prebuilt source resolvers now select the prebuilt pipeline
    during bootstrap and later builds.
-
-.. versionchanged:: 0.102.0
    Source and legacy settings mixed across package and variant levels
    now raise a validation error when package settings load.
 

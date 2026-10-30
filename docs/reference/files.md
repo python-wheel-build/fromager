@@ -96,7 +96,7 @@ checkout in the work directory and are not cached for a later build. The command
 also uses `source_url_type` to skip entries that used a prebuilt fallback at
 runtime, even if source settings are configured.
 
-```{versionchanged} 0.102.0
+```{versionchanged} 0.103.0
 Configured source providers are recorded in build order, and
 `download-sequence` uses their download operation.
 ```

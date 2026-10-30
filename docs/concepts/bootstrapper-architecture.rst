@@ -74,7 +74,7 @@ the contract every phase must satisfy:
    * - ``Complete``
      - Clean up build directories (terminal phase)
 
-.. versionchanged:: 0.102.0
+.. versionchanged:: 0.103.0
    ``PrepareSource`` passes the downloaded artifact kind through preparation,
    so Git checkouts can be prepared without unpacking them.
 

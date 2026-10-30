@@ -56,7 +56,7 @@ class DownloadedSource:
     ``path`` is the local artifact path. ``kind`` identifies how the artifact
     should be handled; hook resolvers require a concrete, supported kind.
 
-    .. versionadded:: 0.96.0
+    .. versionadded:: 0.103.0
     """
 
     path: pathlib.Path

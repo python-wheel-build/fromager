@@ -92,17 +92,13 @@ CLI commands interact with providers through a common
        Used when versions are already known, e.g. from a prior
        resolution or a settings-provided URL template.
 
-.. versionchanged:: 0.95.0
+.. versionchanged:: 0.103.0
    Packages with ``source:`` configuration now select their provider through
    the configured source resolver.
-
-.. versionchanged:: 0.96.0
    The ``hook-sdist`` and ``hook-prebuilt`` profiles create providers through
-   the required ``get_resolver_provider`` override hook. They do not fall back
-   to PyPI. Their ``download()`` methods invoke the package's ``download_source``
-   hook when present and return a validated ``DownloadedSource``.
-
-.. versionchanged:: 0.102.0
+   the package's ``get_resolver_provider`` hook when it exists. Their
+   ``download()`` methods invoke the package's ``download_source`` hook when
+   present and return a validated ``DownloadedSource``.
    Configured source resolvers own their index URL and ignore caller URLs.
    Hook profiles pass their ``index_url`` to the legacy
    ``get_resolver_provider`` hook as ``sdist_server_url``. ``hook-sdist``
@@ -133,7 +129,7 @@ different commands, and only these values are saved in ``graph.json`` and
 ``build-order.json``. The URL must therefore contain everything the download
 needs, such as the git ref in ``git+https://host/repo.git@refs/tags/v1.0``.
 
-.. versionchanged:: 0.102.0
+.. versionchanged:: 0.103.0
    ``download()`` takes ``version`` and ``download_url`` instead of a
    ``Candidate``.
 
@@ -178,7 +174,7 @@ effective configured ``source_provider`` for provenance; the
 ``source_url_type`` field remains a legacy compatibility classification, not
 the actual downloaded artifact kind.
 
-.. versionchanged:: 0.102.0
+.. versionchanged:: 0.103.0
    ``download-sequence`` uses configured source resolvers for source entries.
 
 Configured prebuilt resolvers select the prebuilt bootstrap path. Fresh
@@ -193,7 +189,7 @@ Legacy build downloads still pass through the build wheel directory before
 the mirror moves them to downloads.
 See :ref:`download_source_hook` for the return contract and compatibility rules.
 
-.. versionchanged:: 0.102.0
+.. versionchanged:: 0.103.0
    Explicit ``DownloadKind.git_checkout`` results can be prepared without
    unpacking an archive. Configured source resolvers also select the sdist
    build method. Git checkout resolvers use PEP 517 by default; hook sdist

@@ -125,7 +125,7 @@ def find_mirror_wheel(
     Returns ``None`` when the mirror has no link to an existing wheel in
     the downloads or prebuilt directory.
 
-    .. versionadded:: 0.102.0
+    .. versionadded:: 0.103.0
     """
     (normalized_name, _, _, _) = parse_wheel_filename(wheel_filename)
     mirror_wheel = ctx.wheel_server_dir / normalized_name / wheel_filename
