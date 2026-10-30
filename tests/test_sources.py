@@ -1944,7 +1944,7 @@ def test_build_sdist_uses_configured_tarball_or_legacy_hook(
         tarball.assert_not_called()
         find_override.assert_not_called()
     else:
-        tarball.assert_called_once_with(**build_kwargs)
+        tarball.assert_called_once_with(**build_kwargs, exclude_vcs=True)
         find_and_invoke.assert_not_called()
         find_override.assert_called_once_with(req.name, "build_sdist")
         if override is not None:
@@ -2118,3 +2118,37 @@ def test_default_build_sdist_normalizes_name_and_root(
         top_levels = {name.split("/")[0] for name in names}
         assert top_levels == {"foo_bar-1.0"}
         assert "foo_bar-1.0/setup.py" in names
+
+
+@pytest.mark.parametrize("exclude_vcs", [False, True])
+def test_default_build_sdist_exclude_vcs(
+    exclude_vcs: bool,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Leave VCS metadata out of the sdist only when asked."""
+    build_dir = tmp_path / "pkg-1.0"
+    (build_dir / ".git" / "objects").mkdir(parents=True)
+    (build_dir / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (build_dir / "sub").mkdir()
+    (build_dir / "sub" / ".git").write_text("gitdir: ../.git/modules/sub\n")
+    (build_dir / "setup.py").write_text("from setuptools import setup; setup()\n")
+
+    sdist_file = sources.default_build_sdist(
+        ctx=tmp_context,
+        extra_environ={},
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        sdist_root_dir=build_dir,
+        build_env=Mock(),
+        build_dir=build_dir,
+        exclude_vcs=exclude_vcs,
+    )
+
+    with tarfile.open(sdist_file, "r:gz") as tar:
+        names = tar.getnames()
+    assert "pkg-1.0/setup.py" in names
+    has_vcs = {"pkg-1.0/.git/HEAD", "pkg-1.0/sub/.git"} <= set(names)
+    assert has_vcs is not exclude_vcs
+    if exclude_vcs:
+        assert not any("/.git" in name for name in names)
