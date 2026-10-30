@@ -24,6 +24,7 @@ from .. import (
     packagesettings,
     request_session,
     resolver,
+    sources,
 )
 from ..candidate import Candidate, Cooldown
 
@@ -151,14 +152,18 @@ def list_versions(
     - "package_name>=1.0" (versions >= 1.0)
     - "package_name==1.*" (versions matching 1.*)
 
-    This command uses the get_resolver_provider hook to retrieve a resolver
-    provider for the package in case there is a custom provider configured.
+    This command uses sources.get_source_provider() to retrieve a resolver
+    provider for the package, so both ``source:`` settings and the legacy
+    get_resolver_provider hook are honored.
 
     Distribution types:
     - "default": Use package settings for include_sdists/include_wheels
     - "sdist": Only include source distributions
     - "wheel": Only include wheels
     - "both": Include both source distributions and wheels
+
+    An explicit distribution type cannot be combined with a ``source:``
+    resolver config; version resolution follows the configured resolver.
 
     Output formats:
     - "versions": one version per line (default)
@@ -183,26 +188,32 @@ def list_versions(
         logger.info(f"Filtering versions with specifier: {req.specifier}")
 
     pbi = wkctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+
+    dist_type = DistributionType(distribution_type)
+    if pbi.source_resolver is not None and dist_type is not DistributionType.DEFAULT:
+        raise click.ClickException(
+            f"--distribution-type {dist_type.value} cannot be combined with the "
+            f"'{pbi.source_resolver.provider}' source resolver of {req.name}: "
+            "version resolution follows the source config"
+        )
 
     include_sdists, include_wheels = parse_distribution_option(
         distribution_type,
         pbi,
     )
 
-    provider = overrides.find_and_invoke(
-        req.name,
-        "get_resolver_provider",
-        resolver.default_resolver_provider,
+    provider = sources.get_source_provider(
         ctx=wkctx,
         req=req,
+        sdist_server_url=sdist_server_url,
         include_sdists=include_sdists,
         include_wheels=include_wheels,
-        sdist_server_url=override_sdist_server_url,
     )
 
     # Get all available candidates from the provider (cooldown is NOT set on
-    # the provider so we receive every version that matches the specifier).
+    # the provider so we receive every version that matches the specifier;
+    # the detail view applies the cooldown separately).
+    provider.cooldown = None
     candidates = list(
         provider.find_matches(
             identifier=req.name,

@@ -267,7 +267,18 @@ class PackageBuildInfo:
         Returns None (inherit global), 0 (disabled), or a positive integer
         (override days). The caller is responsible for converting to a
         :class:`~fromager.candidate.Cooldown` instance.
+
+        For packages with a ``source:`` resolver, the resolver's
+        ``min_release_age`` takes precedence over the legacy
+        ``resolver_dist`` setting.
         """
+        source_resolver = self.source_resolver
+        if source_resolver is not None:
+            source_min_release_age: int | None = getattr(
+                source_resolver, "min_release_age", None
+            )
+            if source_min_release_age is not None:
+                return source_min_release_age
         return self._ps.resolver_dist.min_release_age
 
     @property
