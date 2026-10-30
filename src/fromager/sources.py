@@ -68,15 +68,17 @@ def download_url(
 
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
-    source_type = SourceType.SDIST
+    """Return the legacy source classification for a build-order entry."""
     pbi = ctx.package_build_info(req)
+    if pbi.source_resolver is not None:
+        return SourceType.OVERRIDE
     if (
         overrides.find_override_method(req.name, "download_source")
         or overrides.find_override_method(req.name, "get_resolver_provider")
         or pbi.download_source_url(resolve_template=False)
     ):
-        source_type = SourceType.OVERRIDE
-    return source_type
+        return SourceType.OVERRIDE
+    return SourceType.SDIST
 
 
 @metrics.timeit(description="download source")

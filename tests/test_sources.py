@@ -834,6 +834,37 @@ def test_get_source_type_sdist(
     assert result == sources.SourceType.SDIST
 
 
+def test_get_source_type_configured_git_is_override(
+    tmp_context: context.WorkContext,
+) -> None:
+    """A configured Git source must not be labeled as an sdist."""
+    ps = packagesettings.PackageSettings.from_string(
+        "pkg",
+        "source:\n"
+        "  provider: github-tag-git\n"
+        "  project_url: https://github.test/org/pkg\n",
+    )
+    tmp_context.settings._package_settings[ps.name] = ps
+
+    result = sources.get_source_type(tmp_context, Requirement("pkg==1.0"))
+
+    assert result == sources.SourceType.OVERRIDE
+
+
+def test_get_source_type_configured_pypi_sdist_is_override(
+    tmp_context: context.WorkContext,
+) -> None:
+    """The legacy label identifies configured routing, not artifact kind."""
+    ps = packagesettings.PackageSettings.from_string(
+        "pkg", "source:\n  provider: pypi-sdist\n"
+    )
+    tmp_context.settings._package_settings[ps.name] = ps
+
+    result = sources.get_source_type(tmp_context, Requirement("pkg==1.0"))
+
+    assert result == sources.SourceType.OVERRIDE
+
+
 def test_unpack_source_tar_gz(
     tmp_context: context.WorkContext,
     tmp_path: pathlib.Path,

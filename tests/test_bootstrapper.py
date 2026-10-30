@@ -410,6 +410,35 @@ def test_build_order(tmp_context: WorkContext) -> None:
     assert expected == contents
 
 
+def test_build_order_records_effective_variant_source_provider(
+    tmp_context: WorkContext,
+) -> None:
+    """Record the active variant's source provider, including prebuilt rows."""
+    _configure_package(
+        tmp_context,
+        "source:\n"
+        "  provider: pypi-sdist\n"
+        "variants:\n"
+        "  cpu:\n"
+        "    source:\n"
+        "      provider: pypi-prebuilt\n",
+    )
+    bt = bootstrapper.Bootstrapper(tmp_context)
+    bt.add_to_build_order(
+        req=Requirement("pkg==1.0"),
+        version=Version("1.0"),
+        source_url="https://pkg.test/pkg-1.0-py3-none-any.whl",
+        source_type=SourceType.PREBUILT,
+        prebuilt=True,
+    )
+    bt.finalize()
+
+    build_order = json.loads(bt._build_order_filename.read_text())
+
+    assert build_order[0]["source_provider"] == "pypi-prebuilt"
+    assert build_order[0]["source_url_type"] == "prebuilt"
+
+
 def test_build_order_repeats(tmp_context: WorkContext) -> None:
     bt = bootstrapper.Bootstrapper(tmp_context)
     bt.add_to_build_order(
