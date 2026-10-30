@@ -106,6 +106,13 @@ CLI commands interact with providers through a common
    A hook profile without a ``get_resolver_provider`` hook finds versions on
    its ``index_url`` and uses the ``download_source`` hook.
 
+   ``find-updates`` uses the configured source resolver when a package has
+   ``source:`` settings. The source profile determines distribution types and
+   the index URL. Packages without ``source:`` settings retain the legacy
+   provider hook, distribution options, and index URL overrides.
+   Update reports ignore global and per-package release-age cooldowns so
+   recent releases remain visible with either configuration style.
+
 Per-package settings in YAML can select which provider to use and
 configure its parameters (index URL, tag pattern, etc.).  When a package
 has a ``source:`` resolver configured, that resolver creates the provider.
