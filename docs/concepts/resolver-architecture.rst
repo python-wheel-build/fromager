@@ -202,7 +202,8 @@ See :ref:`download_source_hook` for the return contract and compatibility rules.
    build method. Git checkout resolvers use PEP 517 by default; hook sdist
    resolvers require an explicit ``build_sdist: pep517`` or
    ``build_sdist: tarball``. PyPI sdist resolvers
-   repack a tarball. Both configured strategies take precedence over an installed
+   repack a tarball. A configured ``tarball`` build leaves out VCS metadata
+   such as ``.git``. Both configured strategies take precedence over an installed
    ``build_sdist`` override and log a warning when it is ignored. Legacy
    settings continue to use the override. Configured prebuilt profiles use
    their source provider after a local cache check, and local mirror URLs
