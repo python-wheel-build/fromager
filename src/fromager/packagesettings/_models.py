@@ -115,7 +115,7 @@ class SbomSettings(pydantic.BaseModel):
     """
 
     purl_type: PurlType = "pypi"
-    """Default purl type for all packages (e.g. ``pypi``, ``generic``)"""
+    """Default purl type for wheel package entries (e.g. ``pypi``, ``generic``)"""
 
     repository_url: AnyUrl | None = None
     """Default purl ``repository_url`` qualifier for all packages
@@ -333,9 +333,10 @@ class PurlConfig(pydantic.BaseModel):
     GENERATED_FROM relationship. Used for packages sourced from
     GitHub/GitLab rather than PyPI.
 
-    When absent, the upstream purl keeps the downstream name, type, and
-    namespace but uses the resolved source version instead of a local
-    downstream version override. The ``repository_url`` qualifier is omitted.
+    When absent, the upstream purl is ``pkg:pypi/<package name>@<resolved
+    version>``. Wheel-only name, type, namespace, and version overrides and
+    the global ``sbom.purl_type`` do not change it. For non-PyPI sources,
+    set ``purl.upstream`` explicitly.
     """
 
 
