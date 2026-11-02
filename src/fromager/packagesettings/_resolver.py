@@ -12,7 +12,7 @@ import typing
 import pydantic
 from packaging.utils import canonicalize_name
 
-from .. import downloads, overrides, resolver
+from .. import downloads, gitutils, overrides, resolver
 from ._typedefs import MODEL_CONFIG
 
 if typing.TYPE_CHECKING:
@@ -124,6 +124,10 @@ class AbstractResolver(pydantic.BaseModel):
         Returns the local path and the kind of artifact that was
         downloaded.  Dispatches to the appropriate download helper
         based on *download_kind*.
+
+        An existing Git checkout is reused if it is a clean clone of the
+        same repository at the same commit. Otherwise it is removed and
+        cloned again when cleanup is enabled, or rejected when it is not.
         """
         if download_kind not in self.download_kinds:
             raise ValueError(
@@ -165,14 +169,31 @@ class AbstractResolver(pydantic.BaseModel):
                 destination_dir = (
                     ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
                 )
-                if destination_dir.parent.exists():
-                    if ctx.cleanup:
-                        shutil.rmtree(destination_dir.parent)
-                    elif destination_dir.exists():
-                        raise FileExistsError(
-                            f"Git checkout {destination_dir} already exists; "
-                            "enable cleanup or use a new work directory to download it again"
+                if destination_dir.exists():
+                    # Reuse a checkout from an earlier download, for example
+                    # from download-sequence, so builds can run offline.
+                    repo_url, ref = gitutils.parse_vcs_url(download_url)
+                    mismatch = gitutils.git_checkout_mismatch(
+                        checkout_dir=destination_dir, repo_url=repo_url, ref=ref
+                    )
+                    if mismatch is None:
+                        logger.info("reusing Git checkout %s", destination_dir)
+                        return DownloadedSource(
+                            path=destination_dir, kind=download_kind
                         )
+                    if not ctx.cleanup:
+                        raise FileExistsError(
+                            f"Git checkout {destination_dir} already exists and "
+                            f"cannot be reused because {mismatch}; enable cleanup "
+                            "or use a new work directory to download it again"
+                        )
+                    logger.info(
+                        "cloning again: cannot reuse Git checkout %s because %s",
+                        destination_dir,
+                        mismatch,
+                    )
+                if destination_dir.parent.exists() and ctx.cleanup:
+                    shutil.rmtree(destination_dir.parent)
                 path = downloads.download_git_source(
                     destination_dir=destination_dir,
                     vcs_url=download_url,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import re
+import shutil
 import subprocess
 import textwrap
 import typing
@@ -303,6 +304,37 @@ class TestPyPIDownloadResolver:
         )
 
 
+def _git(repo: pathlib.Path, *args: str) -> str:
+    """Run git in *repo* with a test identity and return its output."""
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@pkg.test",
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
+def _make_tagged_repo(repo: pathlib.Path) -> pathlib.Path:
+    """Create a Git repository with one commit tagged ``v1.2.3``."""
+    repo.mkdir()
+    _git(repo, "init")
+    (repo / "pyproject.toml").write_text("[build-system]\nrequires = []\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "Initial source")
+    _git(repo, "tag", "v1.2.3")
+    return repo
+
+
 class TestPyPIGitResolver:
     YAML = """\
         source:
@@ -433,28 +465,7 @@ class TestPyPIGitResolver:
     def test_local_git_checkout_prepares_and_reclones(
         self, tmp_context: WorkContext, tmp_path: pathlib.Path
     ) -> None:
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
-        (repo / "pyproject.toml").write_text("[build-system]\nrequires = []\n")
-        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repo),
-                "-c",
-                "user.name=Test",
-                "-c",
-                "user.email=test@pkg.test",
-                "commit",
-                "-m",
-                "Initial source",
-            ],
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(["git", "-C", str(repo), "tag", "v1.2.3"], check=True)
+        repo = _make_tagged_repo(tmp_path / "repo")
         url = f"git+file://{repo}@refs/tags/v1.2.3"
         source_resolver = _parse(self.YAML)
         tmp_context.cleanup = False
@@ -492,6 +503,70 @@ class TestPyPIGitResolver:
         assert not (recloned.path / "keep.txt").exists()
         assert not (package_dir / "other-dir").exists()
         assert not (recloned.path.parent / "build-meta.json").exists()
+
+    @pytest.mark.parametrize("cleanup", [True, False])
+    def test_download_reuses_clean_checkout_offline(
+        self, tmp_context: WorkContext, tmp_path: pathlib.Path, cleanup: bool
+    ) -> None:
+        repo = _make_tagged_repo(tmp_path / "repo")
+        url = f"git+file://{repo}@refs/tags/v1.2.3"
+        source_resolver = _parse(self.YAML)
+        first = source_resolver.download(tmp_context, _REQ, _VERSION, url)
+        # Git status does not report files inside ".git".
+        marker = first.path / ".git" / "fromager-test-marker"
+        marker.write_text("first clone")
+        # Without the source repository, any clone attempt fails.
+        shutil.rmtree(repo)
+        tmp_context.cleanup = cleanup
+
+        second = source_resolver.download(tmp_context, _REQ, _VERSION, url)
+
+        assert second == first
+        assert marker.read_text() == "first clone"
+        assert (second.path / "pyproject.toml").is_file()
+
+    @pytest.mark.parametrize(
+        ("change", "reason"),
+        [
+            ("other_ref", "HEAD is not at 'refs/tags/v2.0'"),
+            ("other_repo", "cloned from a different repository"),
+        ],
+    )
+    def test_download_does_not_reuse_mismatched_checkout(
+        self,
+        tmp_context: WorkContext,
+        tmp_path: pathlib.Path,
+        change: str,
+        reason: str,
+    ) -> None:
+        repo = _make_tagged_repo(tmp_path / "repo")
+        _git(repo, "commit", "--allow-empty", "-m", "Second commit")
+        _git(repo, "tag", "v2.0")
+        source_resolver = _parse(self.YAML)
+        first = source_resolver.download(
+            tmp_context, _REQ, _VERSION, f"git+file://{repo}@refs/tags/v1.2.3"
+        )
+        marker = first.path / ".git" / "fromager-test-marker"
+        marker.write_text("first clone")
+        if change == "other_ref":
+            url = f"git+file://{repo}@refs/tags/v2.0"
+        else:
+            other_repo = tmp_path / "other-repo"
+            _git(tmp_path, "clone", str(repo), str(other_repo))
+            url = f"git+file://{other_repo}@refs/tags/v1.2.3"
+
+        tmp_context.cleanup = False
+        with pytest.raises(FileExistsError, match=re.escape(reason)):
+            source_resolver.download(tmp_context, _REQ, _VERSION, url)
+        assert marker.is_file()
+
+        tmp_context.cleanup = True
+        recloned = source_resolver.download(tmp_context, _REQ, _VERSION, url)
+
+        assert recloned.path == first.path
+        assert not marker.exists()
+        expected_head = _git(repo, "rev-parse", url.rpartition("@")[2]).strip()
+        assert _git(recloned.path, "rev-parse", "HEAD").strip() == expected_head
 
 
 # -- Git source resolvers ----------------------------------------------------

@@ -173,9 +173,12 @@ These checks compare provider names, so replay should still use the same
 package settings. ``download-sequence`` still skips downloading a runtime
 ``prebuilt`` entry even when the package has source settings.
 Built-in archive resolvers cache the resolved file for a later build. Git
-checkout resolvers clone into the work directory instead: with cleanup enabled,
-a later build removes that checkout and clones again; without cleanup, the
-later download fails because the checkout exists. Hook
+checkout resolvers clone into the work directory instead. A later build in the
+same work directory reuses that checkout if it is still a clean clone of the
+same repository at the same commit, so it can run without access to the Git
+host. It only checks local state, so a tag moved on the remote is not noticed.
+Any other existing checkout is removed and cloned again with cleanup enabled,
+and the download fails without cleanup. Hook
 download behavior depends on the hook. Legacy packages keep the
 ``source_url_type`` selection behavior. Build-order entries record the
 effective configured ``source_provider`` for provenance; the

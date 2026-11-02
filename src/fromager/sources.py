@@ -554,29 +554,8 @@ def default_prepare_git_checkout(
     """
     if not source_filename.is_dir() or not (source_filename / ".git").exists():
         raise ValueError(f"{source_filename} is not a Git checkout")
-    status_command = (
-        "git",
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=all",
-        "--ignored=matching",
-        "--ignore-submodules=none",
-    )
     try:
-        changes = external_commands.run(status_command, cwd=str(source_filename))
-        if not changes:
-            # A parent repository can hide changes inside ignored submodules.
-            changes = external_commands.run(
-                [
-                    "git",
-                    "submodule",
-                    "--quiet",
-                    "foreach",
-                    "--recursive",
-                    " ".join(status_command),
-                ],
-                cwd=str(source_filename),
-            )
+        changes = gitutils.git_checkout_changes(source_filename)
     except subprocess.CalledProcessError as err:
         raise ValueError(f"cannot inspect Git checkout {source_filename}") from err
     if changes:
