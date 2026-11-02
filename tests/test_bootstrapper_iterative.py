@@ -1405,15 +1405,14 @@ class TestIterativeBootstrapLoop:
         """RESOLVE failure for one dependency does not crash the loop."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
 
-        original_resolve_run = Resolve.run
         completed: list[str] = []
 
-        def resolve_run(
-            self: Resolve, bt_arg: bootstrapper.Bootstrapper
-        ) -> list[Phase]:
-            if str(self.work_item.req.name) == "bad-dep":
+        def resolve(
+            req: Requirement, **kwargs: typing.Any
+        ) -> list[tuple[str, Version]]:
+            if req.name == "bad-dep":
                 raise RuntimeError("Could not resolve any versions for bad-dep")
-            return original_resolve_run(self, bt_arg)
+            return [("https://pkg.test/pkg-1.0.tar.gz", Version("1.0"))]
 
         def prepare_source_run(
             self: PrepareSource, bt_arg: bootstrapper.Bootstrapper
@@ -1422,13 +1421,12 @@ class TestIterativeBootstrapLoop:
             return []
 
         with (
-            patch.object(Resolve, "run", resolve_run),
             patch.object(PrepareSource, "background_work", return_value=None),
             patch.object(PrepareSource, "run", prepare_source_run),
             patch.object(
                 bt._resolver,
                 "resolve",
-                return_value=[("url-1.0", Version("1.0"))],
+                side_effect=resolve,
             ),
             patch.object(bt, "has_been_seen", return_value=False),
         ):
