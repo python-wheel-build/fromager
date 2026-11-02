@@ -123,7 +123,9 @@ class AbstractResolver(pydantic.BaseModel):
 
         Returns the local path and the kind of artifact that was
         downloaded.  Dispatches to the appropriate download helper
-        based on *download_kind*.
+        based on *download_kind*. Sdists and tarballs are saved as
+        ``{canonical name}-{version}``. Tarballs always use ``.tar.gz``;
+        sdists use ``.zip`` if the URL ends with it, otherwise ``.tar.gz``.
 
         An existing Git checkout is reused if it is a clean clone of the
         same repository at the same commit. Otherwise it is removed and
@@ -134,26 +136,31 @@ class AbstractResolver(pydantic.BaseModel):
                 f"provider {self.provider!r} does not support download kind "
                 f"{download_kind!r}, expected one of {self.download_kinds!r}"
             )
+        # URL filenames can be missing or nonstandard (for example a
+        # "/tarball/v1.0" tag URL), so save archives as "{name}-{version}"
+        # where find_sdist() and later downloads can find them.
+        # Legacy downloads use the underscore name ("test_pkg") instead.
+        # find_sdist() accepts both, and one package cannot use both paths
+        # because mixing source: with legacy settings is rejected.
+        archive_basename = f"{canonicalize_name(req.name)}-{version}"
         match download_kind:
             case DownloadKind.sdist:
                 destination_dir = ctx.sdists_downloads
+                extension = downloads.sdist_extension_for_url(download_url)
                 path = downloads.download_sdist(
                     destination_dir=destination_dir,
                     url=download_url,
+                    destination_filename=f"{archive_basename}{extension}",
                 )
             case DownloadKind.tarball:
                 # TODO: A tarball is not a proper sdist; it should not
                 # live in sdists_downloads.  Using it here for now until
                 # a dedicated tarballs directory is introduced.
                 destination_dir = ctx.sdists_downloads
-                # GitHub tarball URLs have no usable filename in the
-                # path, so always provide a destination filename.
                 path = downloads.download_url(
                     destination_dir=destination_dir,
                     url=download_url,
-                    destination_filename=(
-                        f"{canonicalize_name(req.name)}-{version}.tar.gz"
-                    ),
+                    destination_filename=f"{archive_basename}.tar.gz",
                 )
             case DownloadKind.prebuilt_wheel:
                 destination_dir = ctx.wheels_prebuilt

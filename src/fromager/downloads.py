@@ -27,6 +27,19 @@ def extract_filename_from_url(url: str) -> str:
     return unquote(filename)
 
 
+def sdist_extension_for_url(url: str) -> str:
+    """Return the sdist extension to save *url* with.
+
+    Returns ``.zip`` if the URL's filename ends with ``.zip``, otherwise
+    ``.tar.gz``, including for a URL without a filename.
+
+    .. versionadded:: 0.103.0
+    """
+    if extract_filename_from_url(url).endswith(".zip"):
+        return ".zip"
+    return ".tar.gz"
+
+
 def download_url(
     *,
     destination_dir: pathlib.Path,
