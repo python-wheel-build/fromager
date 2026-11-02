@@ -280,10 +280,11 @@ Source hooks
        neither failures nor invalid results trigger a fallback download.
 
        If the download hook is absent, ``hook-sdist`` downloads the candidate
-       URL as an sdist into ``ctx.sdists_downloads``. ``hook-prebuilt`` downloads
-       it as a wheel into ``ctx.wheels_prebuilt``. These defaults use the
-       standard archive and wheel validation. Custom tarball URLs and git
-       downloads require a download hook.
+       URL as an sdist into ``ctx.sdists_downloads``, saved as
+       ``{canonical name}-{version}.tar.gz`` (or ``.zip``) whatever the URL's
+       filename. ``hook-prebuilt`` downloads it as a wheel into
+       ``ctx.wheels_prebuilt``. These defaults use the standard archive and
+       wheel validation. Git downloads require a download hook.
 
        Without a ``get_resolver_provider`` hook, ``hook-sdist`` finds
        versions on its ``index_url`` in sdists and wheels for any platform,

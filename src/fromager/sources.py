@@ -256,11 +256,8 @@ def default_download_source(
     if url is None:
         raise ValueError(f"Could not determine download URL for {req}")
     if destination_filename is None:
-        url_filename = downloads.extract_filename_from_url(url)
-        if url_filename.endswith(".zip"):
-            destination_filename = f"{pbi.override_module_name}-{version}.zip"
-        else:
-            destination_filename = f"{pbi.override_module_name}-{version}.tar.gz"
+        extension = downloads.sdist_extension_for_url(url)
+        destination_filename = f"{pbi.override_module_name}-{version}{extension}"
         logger.debug(
             "config has no destination_filename, use default %r", destination_filename
         )

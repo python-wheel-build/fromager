@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import pathlib
 import re
 import shutil
 import subprocess
+import tarfile
 import textwrap
 import typing
+import zipfile
 from unittest import mock
 
 import pydantic
@@ -16,7 +19,7 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 from wheel.wheelfile import WheelFile
 
-from fromager import resolver, sources
+from fromager import finders, resolver, sources
 from fromager.context import WorkContext
 from fromager.packagesettings._resolver import (
     AbstractResolver,
@@ -169,6 +172,7 @@ class TestPyPISDistResolver:
         mock_dl.assert_called_once_with(
             destination_dir=tmp_context.sdists_downloads,
             url=_URL_SDIST,
+            destination_filename="test-pkg-1.2.3.tar.gz",
         )
 
 
@@ -1262,10 +1266,91 @@ def test_hook_download_uses_profile_default_when_hook_is_missing(
     ):
         result = r.download(tmp_context, _REQ, _VERSION, url)
 
-    selected, unused = (wheel, sdist) if prebuilt else (sdist, wheel)
-    selected.assert_called_once_with(destination_dir=destination, url=url)
-    unused.assert_not_called()
+    if prebuilt:
+        wheel.assert_called_once_with(destination_dir=destination, url=url)
+        sdist.assert_not_called()
+    else:
+        sdist.assert_called_once_with(
+            destination_dir=destination,
+            url=url,
+            destination_filename="test-pkg-1.2.3.tar.gz",
+        )
+        wheel.assert_not_called()
     assert result == DownloadedSource(path=expected, kind=kind)
+
+
+def _fake_archive_download(
+    *, destination_dir: pathlib.Path, url: str, destination_filename: str
+) -> pathlib.Path:
+    """Write a small archive in place of a network download."""
+    path = destination_dir / destination_filename
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if destination_filename.endswith(".zip"):
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("pkg/setup.py", "")
+    else:
+        with tarfile.open(path, "w:gz") as tf:
+            info = tarfile.TarInfo("pkg/setup.py")
+            tf.addfile(info, io.BytesIO(b""))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("yaml_text", "url", "expected_name"),
+    [
+        pytest.param(
+            """\
+            source:
+              provider: hook-sdist
+              build_sdist: pep517
+            """,
+            _URL_GITHUB_TARBALL,
+            "test-pkg-1.2.3.tar.gz",
+            id="hook-sdist-tag-url",
+        ),
+        pytest.param(
+            """\
+            source:
+              provider: pypi-download
+              download_url: https://download.test/pkg-v{version}.tar.gz
+              download_kind: sdist
+            """,
+            "https://download.test/pkg-v1.2.3.tar.gz",
+            "test-pkg-1.2.3.tar.gz",
+            id="pypi-download-prefixed-version",
+        ),
+        pytest.param(
+            """\
+            source:
+              provider: pypi-sdist
+            """,
+            "https://pypi.test/packages/Test_Pkg-1.2.3.zip",
+            "test-pkg-1.2.3.zip",
+            id="pypi-sdist-zip",
+        ),
+    ],
+)
+def test_sdist_download_uses_standard_filename(
+    tmp_context: WorkContext, yaml_text: str, url: str, expected_name: str
+) -> None:
+    """Save sdists so ``find_sdist()`` finds them by name and version."""
+    r = _parse(yaml_text)
+
+    with (
+        mock.patch("fromager.overrides.find_override_method", return_value=None),
+        mock.patch(
+            "fromager.downloads.download_url", side_effect=_fake_archive_download
+        ),
+    ):
+        result = r.download(tmp_context, _REQ, _VERSION, url)
+
+    assert result == DownloadedSource(
+        path=tmp_context.sdists_downloads / expected_name, kind=DownloadKind.sdist
+    )
+    found = finders.find_sdist(
+        tmp_context, tmp_context.sdists_downloads, _REQ, str(_VERSION)
+    )
+    assert found == result.path
 
 
 @pytest.mark.parametrize("provider", ["hook-sdist", "hook-prebuilt"])
