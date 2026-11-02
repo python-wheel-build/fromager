@@ -1,7 +1,9 @@
 import pathlib
 import typing
+import warnings
 
 import pytest
+import pytest_socket
 from click.testing import CliRunner
 
 from fromager import context, packagesettings
@@ -9,6 +11,7 @@ from fromager.packagesettings import SbomSettings
 
 TESTDATA_PATH = pathlib.Path(__file__).parent.absolute() / "testdata"
 E2E_PATH = pathlib.Path(__file__).parent.parent.absolute() / "e2e"
+_blocked_network_attempts: set[tuple[str, str]] = set()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -23,12 +26,44 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    if config.getoption("--with-network"):
-        return
-    skip_network = pytest.mark.skip(reason="need --with-network option to run")
+    network_marker = (
+        pytest.mark.enable_socket
+        if config.getoption("--with-network")
+        else pytest.mark.skip(reason="need --with-network option to run")
+    )
     for item in items:
         if "network" in item.keywords:
-            item.add_marker(skip_network)
+            item.add_marker(network_marker)
+
+
+def pytest_warning_recorded(
+    warning_message: warnings.WarningMessage,
+    when: str,
+    nodeid: str,
+    location: tuple[str, int, str] | None,
+) -> None:
+    """Record blocked socket attempts."""
+    # pytest-socket has no warning category; assume warnings come from its module.
+    if warning_message.filename == pytest_socket.__file__:
+        _blocked_network_attempts.add((nodeid, str(warning_message.message)))
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail on blocked requests even when their exceptions were caught."""
+    # Caught socket errors and ignored background futures can leave tests passing.
+    # Fail the session if any blocked attempts were recorded.
+    if _blocked_network_attempts and exitstatus == pytest.ExitCode.OK:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """List tests that attempted unexpected network access."""
+    if not _blocked_network_attempts:
+        return
+
+    terminalreporter.write_sep("=", "unexpected network attempts")
+    for nodeid, message in sorted(_blocked_network_attempts):
+        terminalreporter.write_line(f"{nodeid}: {message}")
 
 
 @pytest.fixture
