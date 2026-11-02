@@ -196,6 +196,11 @@ except FileNotFoundError as err:
 
 ## Testing
 
+Tests block network sockets by default. Mark tests that need network access with
+`pytest.mark.network` and run them with `--with-network`. Unexpected socket
+attempts fail the session even when the application catches the blocking error.
+Unix sockets remain available for async tests.
+
 ### Structure
 
 - Place tests under `tests/`.
