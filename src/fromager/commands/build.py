@@ -35,6 +35,7 @@ from fromager import (
 )
 
 from ..log import VERBOSE_LOG_FMT, ThreadLogFilter, req_ctxvar_context
+from .build_order import check_source_providers
 
 logger = logging.getLogger(__name__)
 
@@ -177,36 +178,37 @@ def build_sequence(
 
     logger.info("reading build order from %s", build_order_file)
     with read.open_file_or_url(build_order_file) as f:
-        for entry in progress.progress(json.load(f)):
-            dist_name = entry["dist"]
-            resolved_version = Version(entry["version"])
-            source_download_url = entry["source_url"]
+        build_order = json.load(f)
+    # Check provider consistency for every entry, including prebuilt wheels.
+    check_source_providers(wkctx, build_order)
+    for entry in progress.progress(build_order):
+        dist_name = entry["dist"]
+        resolved_version = Version(entry["version"])
+        source_download_url = entry["source_url"]
 
-            req = Requirement(f"{dist_name}=={resolved_version}")
+        req = Requirement(f"{dist_name}=={resolved_version}")
 
-            with req_ctxvar_context(req, resolved_version):
-                logger.info("building %s", resolved_version)
-                entry = _build(
-                    wkctx=wkctx,
-                    resolved_version=resolved_version,
-                    req=req,
-                    source_download_url=source_download_url,
-                    force=force,
-                    cache_wheel_server_url=cache_wheel_server_url,
+        with req_ctxvar_context(req, resolved_version):
+            logger.info("building %s", resolved_version)
+            entry = _build(
+                wkctx=wkctx,
+                resolved_version=resolved_version,
+                req=req,
+                source_download_url=source_download_url,
+                force=force,
+                cache_wheel_server_url=cache_wheel_server_url,
+            )
+            if entry.prebuilt:
+                logger.info("downloaded prebuilt wheel %s", entry.wheel_filename.name)
+            elif entry.skipped:
+                logger.info(
+                    "skipping building wheel since %s already exists",
+                    entry.wheel_filename.name,
                 )
-                if entry.prebuilt:
-                    logger.info(
-                        "downloaded prebuilt wheel %s", entry.wheel_filename.name
-                    )
-                elif entry.skipped:
-                    logger.info(
-                        "skipping building wheel since %s already exists",
-                        entry.wheel_filename.name,
-                    )
-                else:
-                    logger.info("built %s", entry.wheel_filename.name)
+            else:
+                logger.info("built %s", entry.wheel_filename.name)
 
-                entries.append(entry)
+            entries.append(entry)
 
     metrics.summarize(wkctx, "Building")
 

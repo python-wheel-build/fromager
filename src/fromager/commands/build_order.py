@@ -3,10 +3,39 @@ import csv
 import json
 import pathlib
 import sys
+import typing
 
 import click
+from packaging.requirements import Requirement
 
-from .. import clickext, overrides
+from .. import clickext, context, overrides
+
+
+def check_source_providers(
+    wkctx: context.WorkContext, entries: typing.Iterable[dict[str, typing.Any]]
+) -> None:
+    """Reject build-order entries whose source provider differs from settings.
+
+    Args:
+        wkctx: Context containing the current package settings.
+        entries: Build-order entries to validate.
+
+    Raises:
+        ValueError: A recorded provider does not match current settings.
+    """
+    for entry in entries:
+        recorded_provider = entry.get("source_provider")
+        req = Requirement(f"{entry['dist']}=={entry['version']}")
+        source_resolver = wkctx.package_build_info(req).source_resolver
+        current_provider = (
+            source_resolver.provider if source_resolver is not None else None
+        )
+        if recorded_provider != current_provider:
+            raise ValueError(
+                f"{req}: build order records source provider {recorded_provider!r}, "
+                f"current settings select {current_provider!r}; "
+                "use matching settings or regenerate the build order"
+            )
 
 
 @click.group()

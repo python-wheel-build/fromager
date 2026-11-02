@@ -9,6 +9,7 @@ from packaging.version import Version
 
 from .. import context, progress, read, sources, threading_utils, wheels
 from ..log import req_ctxvar_context
+from .build_order import check_source_providers
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +56,10 @@ def download_sequence(
 
     SDIST_SERVER_URL is a PyPI-compatible index used for optional wheel lookup
 
-    Configured sources use their resolver's normal download operation. Entries
-    that download a configured source or prebuilt wheel require the recorded
-    provider to match current settings. Legacy entries retain the
-    ``source_url_type`` selection behavior.
+    Configured sources use their resolver's normal download operation. Every
+    entry requires its recorded provider to match current settings, even when
+    this command skips its URL. Legacy entries retain the ``source_url_type``
+    selection behavior.
 
     """
     # The local wheel server is a trusted cache (wheels built in this or
@@ -73,23 +74,8 @@ def download_sequence(
     with read.open_file_or_url(build_order_file) as f:
         build_order = json.load(f)
 
-    # Check recorded providers before workers can change the download cache
-    # or a Git work directory. Skipped URLs do not use a source resolver.
-    for entry in build_order:
-        if _skip_recorded_url(entry, include_wheels):
-            continue
-        recorded_provider = entry.get("source_provider")
-        req = Requirement(f"{entry['dist']}=={entry['version']}")
-        source_resolver = wkctx.package_build_info(req).source_resolver
-        current_provider = (
-            source_resolver.provider if source_resolver is not None else None
-        )
-        if recorded_provider != current_provider:
-            raise ValueError(
-                f"{req}: build order records source provider {recorded_provider!r}, "
-                f"current settings select {current_provider!r}; "
-                "use matching settings or regenerate the build order"
-            )
+    # Validate the whole order before workers alter the cache or Git work dirs.
+    check_source_providers(wkctx, build_order)
 
     def download_one(entry: dict[str, typing.Any]) -> None:
         req = Requirement(f"{entry['dist']}=={entry['version']}")
