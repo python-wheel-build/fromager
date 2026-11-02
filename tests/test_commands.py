@@ -237,13 +237,13 @@ def test_download_sequence_replays_configured_prebuilt(
 
 
 @pytest.mark.parametrize("include_wheels", [False, True])
-def test_download_sequence_checks_prebuilt_provider_before_download(
+def test_download_sequence_checks_prebuilt_provider_even_when_skipped(
     cli_runner: CliRunner,
     tmp_context: WorkContext,
     tmp_path: pathlib.Path,
     include_wheels: bool,
 ) -> None:
-    """A configured wheel download requires its recorded provider."""
+    """A prebuilt entry needs matching settings even without a download."""
     build_order = tmp_path / "build-order.json"
     build_order.write_text(
         json.dumps(
@@ -253,6 +253,7 @@ def test_download_sequence_checks_prebuilt_provider_before_download(
                     "version": "1.0",
                     "prebuilt": True,
                     "source_url": "https://pkg.test/pkg-1.0-py3-none-any.whl",
+                    "source_url_type": "prebuilt",
                     "source_provider": "hook-prebuilt",
                 }
             ]
@@ -267,9 +268,8 @@ def test_download_sequence_checks_prebuilt_provider_before_download(
             download_sequence.download_sequence, args, obj=tmp_context
         )
 
-    assert (result.exit_code != 0) is include_wheels
-    if include_wheels:
-        assert "hook-prebuilt" in str(result.exception)
+    assert isinstance(result.exception, ValueError)
+    assert "hook-prebuilt" in str(result.exception)
     download.assert_not_called()
 
 
@@ -619,6 +619,130 @@ def test_download_sequence_checks_providers_before_starting_downloads(
     download.assert_not_called()
 
 
+def test_build_sequence_rejects_mismatched_source_provider_before_build(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """A later mismatch prevents every build in the recorded order."""
+    _configure_package(tmp_context, "source:\n  provider: pypi-sdist\n")
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "other",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "https://pkg.test/other-1.0.tar.gz",
+                    "source_url_type": "sdist",
+                },
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "git+https://github.test/org/pkg.git@refs/tags/v1.0",
+                    "source_url_type": "override",
+                    "source_provider": "github-tag-git",
+                },
+            ]
+        )
+    )
+
+    with (
+        patch.object(build.server, "start_wheel_server"),
+        patch.object(build, "_build") as run_build,
+        patch.object(build.metrics, "summarize"),
+        patch.object(build, "_summary"),
+    ):
+        result = cli_runner.invoke(
+            build.build_sequence, [str(build_order)], obj=tmp_context
+        )
+
+    assert isinstance(result.exception, ValueError)
+    assert "pkg==1.0" in str(result.exception)
+    assert "github-tag-git" in str(result.exception)
+    assert "pypi-sdist" in str(result.exception)
+    run_build.assert_not_called()
+
+
+def test_build_sequence_rejects_prebuilt_entry_without_current_source_provider(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """A prebuilt entry still needs matching settings during build replay."""
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": True,
+                    "source_url": "https://pkg.test/pkg-1.0-py3-none-any.whl",
+                    "source_url_type": "prebuilt",
+                    "source_provider": "hook-prebuilt",
+                }
+            ]
+        )
+    )
+
+    with (
+        patch.object(build.server, "start_wheel_server"),
+        patch.object(build, "_build") as run_build,
+    ):
+        result = cli_runner.invoke(
+            build.build_sequence, [str(build_order)], obj=tmp_context
+        )
+
+    assert isinstance(result.exception, ValueError)
+    assert "pkg==1.0" in str(result.exception)
+    assert "hook-prebuilt" in str(result.exception)
+    assert "current settings select None" in str(result.exception)
+    run_build.assert_not_called()
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_build_sequence_accepts_matching_source_provider(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    tmp_path: pathlib.Path,
+    configured: bool,
+) -> None:
+    """Build replay accepts legacy entries and matching configured sources."""
+    if configured:
+        _configure_package(tmp_context, "source:\n  provider: pypi-sdist\n")
+    build_order = tmp_path / "build-order.json"
+    source_url = "https://pkg.test/pkg-1.0.tar.gz"
+    recorded_entry = {
+        "dist": "pkg",
+        "version": "1.0",
+        "prebuilt": False,
+        "source_url": source_url,
+        "source_url_type": "override" if configured else "sdist",
+    }
+    if configured:
+        recorded_entry["source_provider"] = "pypi-sdist"
+    build_order.write_text(json.dumps([recorded_entry]))
+    built_entry = build.BuildSequenceEntry(
+        name="pkg",
+        version=Version("1.0"),
+        prebuilt=False,
+        download_url=source_url,
+        wheel_filename=tmp_context.wheels_build / "pkg-1.0-py3-none-any.whl",
+    )
+
+    with (
+        patch.object(build.server, "start_wheel_server"),
+        patch.object(build, "_build", return_value=built_entry) as run_build,
+        patch.object(build.metrics, "summarize"),
+        patch.object(build, "_summary"),
+    ):
+        result = cli_runner.invoke(
+            build.build_sequence, [str(build_order)], obj=tmp_context
+        )
+
+    assert result.exit_code == 0, result.output
+    run_build.assert_called_once()
+
+
 def test_download_sequence_skips_test_mode_prebuilt_fallback_source(
     cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
 ) -> None:
@@ -648,6 +772,38 @@ def test_download_sequence_skips_test_mode_prebuilt_fallback_source(
         )
 
     assert result.exit_code == 0, result.output
+    download.assert_not_called()
+
+
+def test_download_sequence_rejects_mismatched_fallback_provider(
+    cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
+) -> None:
+    """A skipped fallback URL still requires matching package settings."""
+    build_order = tmp_path / "build-order.json"
+    build_order.write_text(
+        json.dumps(
+            [
+                {
+                    "dist": "pkg",
+                    "version": "1.0",
+                    "prebuilt": False,
+                    "source_url": "https://pkg.test/pkg-1.0.tar.gz",
+                    "source_url_type": "prebuilt",
+                    "source_provider": "pypi-sdist",
+                }
+            ]
+        )
+    )
+
+    with patch.object(download_sequence.sources, "download_source") as download:
+        result = cli_runner.invoke(
+            download_sequence.download_sequence,
+            [str(build_order), "https://index.test/simple", "--num-threads", "1"],
+            obj=tmp_context,
+        )
+
+    assert isinstance(result.exception, ValueError)
+    assert "pypi-sdist" in str(result.exception)
     download.assert_not_called()
 
 

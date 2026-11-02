@@ -132,7 +132,7 @@ settings are used.
 
 A configured resolver's ``download()`` receives only the version and the
 download URL of the selected candidate. Resolution and download can run in
-different commands, and only these values are saved in ``graph.json`` and
+different commands, and these values are saved in ``graph.json`` and
 ``build-order.json``. The URL must therefore contain everything the download
 needs, such as the git ref in ``git+https://host/repo.git@refs/tags/v1.0``.
 
@@ -163,14 +163,15 @@ The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
 actual path and kind without changing its default path-only output.
 Without ``--source-kind``, it keeps the legacy archive behavior.
 ``download-sequence`` calls the configured resolver's normal ``download()``
-for source entries. Before downloading, it checks ``source_provider`` against
-the current provider for each source entry and each ``prebuilt: true`` wheel
-requested with ``--include-wheels``. A missing or different provider fails
-before any downloads start. Older build orders without ``source_provider``
-still work with legacy settings; regenerate them before replaying a configured
-source. This checks the provider name, so replay should still use the same
-package settings. A runtime ``prebuilt`` entry is skipped even when the
-package has source settings.
+for source entries. Both sequence commands check each entry's recorded
+``source_provider`` against current settings, including prebuilt entries whose
+URLs ``download-sequence`` will skip. A missing or different provider fails
+before any downloads or builds start. Older build orders without
+``source_provider`` still work with legacy settings; regenerate them before
+replaying a configured source.
+These checks compare provider names, so replay should still use the same
+package settings. ``download-sequence`` still skips downloading a runtime
+``prebuilt`` entry even when the package has source settings.
 Built-in archive resolvers cache the resolved file for a later build. Git
 checkout resolvers clone into the work directory instead: with cleanup enabled,
 a later build removes that checkout and clones again; without cleanup, the
@@ -182,7 +183,7 @@ effective configured ``source_provider`` for provenance; the
 the actual downloaded artifact kind.
 
 .. versionchanged:: 0.103.0
-   ``download-sequence`` uses configured source resolvers for source entries.
+   Sequence commands check recorded providers before replaying a build order.
 
 Configured prebuilt resolvers select the prebuilt bootstrap path. Fresh
 external wheels use their ``download()`` contract and are staged in the
