@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import subprocess
 import typing
 from urllib.parse import urlparse
 
@@ -156,6 +157,94 @@ def git_clean(source_dir: pathlib.Path) -> None:
     cmd: list[str] = ["git", "clean", "-xdf"]
     logger.debug("cleaning untracked files in %s", source_dir)
     external_commands.run(cmd, cwd=str(source_dir))
+
+
+_GIT_STATUS_COMMAND: typing.Final = (
+    "git",
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--ignored=matching",
+    "--ignore-submodules=none",
+)
+
+
+def git_checkout_changes(checkout_dir: pathlib.Path) -> str:
+    """Return ``git status`` lines for local changes in a checkout.
+
+    Lists tracked, untracked, and ignored changes in *checkout_dir* and its
+    initialized submodules. Returns an empty string when there are none.
+    Raises ``subprocess.CalledProcessError`` if Git cannot inspect it.
+
+    .. versionadded:: 0.103.0
+    """
+    changes = external_commands.run(_GIT_STATUS_COMMAND, cwd=str(checkout_dir))
+    if not changes:
+        # A parent repository can hide changes inside ignored submodules.
+        changes = external_commands.run(
+            [
+                "git",
+                "submodule",
+                "--quiet",
+                "foreach",
+                "--recursive",
+                " ".join(_GIT_STATUS_COMMAND),
+            ],
+            cwd=str(checkout_dir),
+        )
+    return changes
+
+
+def git_checkout_mismatch(
+    *,
+    checkout_dir: pathlib.Path,
+    repo_url: str,
+    ref: str,
+) -> str | None:
+    """Explain why a checkout differs from a fresh clone of *repo_url* at *ref*.
+
+    Returns ``None`` when *checkout_dir* is the top of a Git checkout cloned
+    from *repo_url*, ``HEAD`` is at *ref*, all submodules are initialized at
+    their recorded commits, and there are no local changes. Otherwise returns
+    a short reason. Only local state is checked, so a tag that moved on the
+    remote after the clone is not detected.
+
+    .. versionadded:: 0.103.0
+    """
+    if not (checkout_dir / ".git").exists():
+        return "it is not a Git checkout"
+    cwd = str(checkout_dir)
+    try:
+        # Git searches parent directories when ".git" is broken.
+        toplevel = external_commands.run(
+            ["git", "rev-parse", "--show-toplevel"], cwd=cwd
+        ).strip()
+        if pathlib.Path(toplevel).resolve() != checkout_dir.resolve():
+            return "it is not the top of a Git checkout"
+        origin = external_commands.run(
+            ["git", "remote", "get-url", "origin"], cwd=cwd
+        ).strip()
+        if origin != repo_url:
+            # Do not log URLs; they can contain credentials.
+            return "it was cloned from a different repository"
+        head = external_commands.run(
+            ["git", "rev-parse", "--verify", "HEAD"], cwd=cwd
+        ).strip()
+        wanted = external_commands.run(
+            ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"], cwd=cwd
+        ).strip()
+        if head != wanted:
+            return f"HEAD is not at {ref!r}"
+        submodules = external_commands.run(
+            ["git", "submodule", "status", "--recursive"], cwd=cwd
+        )
+        if any(line.startswith(("-", "+", "U")) for line in submodules.splitlines()):
+            return "a submodule is not initialized at its recorded commit"
+        if git_checkout_changes(checkout_dir):
+            return "it has local changes"
+    except subprocess.CalledProcessError:
+        return "Git cannot inspect it"
+    return None
 
 
 def parse_vcs_url(vcs_url: str, *, require_ref: bool = True) -> tuple[str, str]:

@@ -266,9 +266,11 @@ download command's optional
 `--output-format json` prints both `path` and `kind` when a hook can return
 different artifact kinds. Its default output remains the path alone. Git
 preparation applies patches to the selected checkout itself, so use a
-disposable clone for `--source-path`. Git downloads do not reuse an existing
-checkout with `--no-cleanup`; the files remain available for inspection. Enable
-cleanup or use a new work directory to download it again.
+disposable clone for `--source-path`. Git downloads reuse an existing checkout
+only when it is a clean clone of the same repository at the same commit. Any
+other existing checkout is cloned again when cleanup is enabled. With
+`--no-cleanup` the download fails instead, so the files remain available for
+inspection. Enable cleanup or use a new work directory to download it again.
 
 The `step prepare-build` command creates a virtualenv with the build
 dependencies for building the wheel. It expects a `--wheel-server-url`
