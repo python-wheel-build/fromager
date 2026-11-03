@@ -11,6 +11,7 @@ from .. import (
     clickext,
     context,
     finders,
+    gitutils,
     packagesettings,
     server,
     sources,
@@ -120,8 +121,8 @@ def prepare_source(
     token = requirement_ctxvar.set(req)
     download_kind = packagesettings.DownloadKind(source_kind)
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
-    checkout = (
-        wkctx.work_dir / f"{req.name}-{dist_version}" / f"{req.name}-{dist_version}"
+    checkout = gitutils.git_checkout_dir(
+        work_dir=wkctx.work_dir, distribution_name=req.name, version=dist_version
     )
     source_filename: pathlib.Path | None
     if source_path is not None:

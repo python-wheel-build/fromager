@@ -509,13 +509,20 @@ class TestPyPIGitResolver:
         assert not (recloned.path.parent / "build-meta.json").exists()
 
     @pytest.mark.parametrize("cleanup", [True, False])
+    @pytest.mark.parametrize("first_name", ["test-pkg", "test_pkg"])
     def test_download_reuses_clean_checkout_offline(
-        self, tmp_context: WorkContext, tmp_path: pathlib.Path, cleanup: bool
+        self,
+        tmp_context: WorkContext,
+        tmp_path: pathlib.Path,
+        cleanup: bool,
+        first_name: str,
     ) -> None:
         repo = _make_tagged_repo(tmp_path / "repo")
         url = f"git+file://{repo}@refs/tags/v1.2.3"
         source_resolver = _parse(self.YAML)
-        first = source_resolver.download(tmp_context, _REQ, _VERSION, url)
+        first = source_resolver.download(
+            tmp_context, Requirement(first_name), _VERSION, url
+        )
         # Git status does not report files inside ".git".
         marker = first.path / ".git" / "fromager-test-marker"
         marker.write_text("first clone")
@@ -526,6 +533,9 @@ class TestPyPIGitResolver:
         second = source_resolver.download(tmp_context, _REQ, _VERSION, url)
 
         assert second == first
+        assert second.path == (
+            tmp_context.work_dir / "test-pkg-1.2.3" / "test-pkg-1.2.3"
+        )
         assert marker.read_text() == "first clone"
         assert (second.path / "pyproject.toml").is_file()
 

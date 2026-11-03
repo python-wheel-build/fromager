@@ -147,7 +147,8 @@ propagate with context instead of triggering a fallback. In-process callers
 pass the downloaded path and kind to preparation: ``sdist`` and ``tarball``
 are unpacked, while ``git_checkout`` uses the checkout directory. The checkout
 uses the same double-nested work directory pattern as an unpacked archive;
-the directory names can differ for normalized package names.
+its directory names use the canonical package name, even when the requirement
+uses another spelling.
 The default Git preparer rejects a checkout with local changes before applying
 patches, project overrides, and Rust vendoring. Git status does not prove that the
 checkout is the original clone or preserve it after preparation. Build metadata

@@ -115,6 +115,9 @@ Finder hooks
 
     The return value should be a string with the name of the source root
     directory relative to the ``ctx.work_dir`` where it was prepared.
+    For a configured Git checkout, this path uses the canonical distribution
+    name. Return the actual prepared path; an override bypasses the standard
+    source directory search.
 
 Resolver hooks
 --------------
@@ -352,6 +355,8 @@ Source hooks
     The override returns the source root ``Path`` or a ``(Path, bool)`` pair.
     Git checkouts must use the double-nested package/version layout under
     ``ctx.work_dir`` so the later bootstrap and step commands can find them.
+    Use :func:`~fromager.gitutils.git_checkout_dir` to construct this path;
+    it canonicalizes the package name before building the directory names.
 
     .. versionchanged:: 0.103.0
        Passing ``DownloadKind.git_checkout`` prepares a clean Git checkout.
@@ -371,8 +376,9 @@ Source hooks
 Source helper functions
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-The following helper functions are available in the ``fromager.sources`` module
-for use in custom source hooks:
+The following helpers are available for use in custom source hooks:
+
+.. autofunction:: fromager.gitutils.git_checkout_dir
 
 .. autofunction:: fromager.sources.default_prepare_git_checkout
 
