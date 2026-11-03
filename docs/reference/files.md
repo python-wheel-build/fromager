@@ -85,14 +85,15 @@ For example, a configured Git source is recorded as:
 ```
 
 `download-sequence` calls the configured resolver's normal `download()` for
-these entries. Before downloading, it checks the recorded provider name for
-each source entry and each `prebuilt: true` wheel requested with `--include-wheels`.
+these entries. Before downloading anything, it checks the recorded provider
+name of every entry, including prebuilt entries it will skip.
 A missing or different provider is an error. Older build orders without
 `source_provider` still work with legacy settings; regenerate them before
 replaying a configured source. The check compares only provider names, so
 replay should still use the same package settings. Archive
 downloads can be reused from the download cache. Git downloads create a
-checkout in the work directory and are not cached for a later build. The command
+checkout in the work directory. A later build in the same work directory
+reuses it if it is still a clean checkout of the same repository and ref. The command
 also uses `source_url_type` to skip entries that used a prebuilt fallback at
 runtime, even if source settings are configured.
 

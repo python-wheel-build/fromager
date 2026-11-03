@@ -153,9 +153,9 @@ The default Git preparer rejects a checkout with local changes before applying
 patches, project overrides, and Rust vendoring. Git status does not prove that the
 checkout is the original clone or preserve it after preparation. Build metadata
 is written after preparation but is not used to choose the preparation path.
-With ``--no-cleanup``, downloading to an existing checkout fails and preserves
-its files for inspection. Enable cleanup or use a new work directory to
-download and prepare a fresh checkout. Git status cannot detect changes to
+An existing checkout that cannot be reused, as described below, is cloned
+again with cleanup enabled. With ``--no-cleanup``, the download fails and
+keeps its files for inspection. Git status cannot detect changes to
 patch or settings files outside the checkout. If preparation left the checkout
 clean, a manual second ``prepare-source`` call runs the preparation steps again.
 The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
