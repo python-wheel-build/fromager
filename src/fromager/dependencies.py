@@ -350,6 +350,32 @@ def default_get_install_dependencies_of_sdist(
     return set(metadata.requires_dist)
 
 
+def get_wheel_dependency_metadata(
+    wheel_filename: pathlib.Path,
+) -> tuple[list[Requirement], list[str]]:
+    """Read (requires_dist, provides_extra) from a built wheel's METADATA.
+
+    ``requires_dist`` contains parsed Requirement objects (including their
+    environment markers) and ``provides_extra`` the declared extra names.
+    Used by the multi-version reconcile pass to classify runtime dependency
+    failures as bare or extra-only without re-running any build hooks.
+    """
+    metadata = _get_metadata_from_wheel(wheel_filename, validate=False)
+    return list(metadata.requires_dist or []), list(metadata.provides_extra or [])
+
+
+def filter_requires_dist(
+    req: Requirement, requires_dist: typing.Iterable[Requirement | str]
+) -> set[Requirement]:
+    """Filter Requires-Dist entries for the extras requested by ``req``.
+
+    Public wrapper around the marker evaluation used when install
+    dependencies are extracted, so callers classify bare vs extra-only
+    dependencies with identical semantics to the bootstrap itself.
+    """
+    return _filter_requirements(req, requires_dist)
+
+
 def parse_metadata(
     metadata_source: pathlib.Path | bytes, *, validate: bool = True
 ) -> Metadata:
