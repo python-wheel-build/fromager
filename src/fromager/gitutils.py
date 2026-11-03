@@ -1,3 +1,5 @@
+"""Helpers for cloning, checking, and locating Git source trees."""
+
 from __future__ import annotations
 
 import logging
@@ -7,6 +9,8 @@ import typing
 from urllib.parse import urlparse
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 from fromager import external_commands
 
@@ -17,6 +21,25 @@ logger = logging.getLogger(__name__)
 
 #: Default git ref (current HEAD of the default branch)
 GIT_HEAD: typing.Final = "HEAD"
+
+
+def git_checkout_dir(
+    *, work_dir: pathlib.Path, distribution_name: str, version: Version
+) -> pathlib.Path:
+    """Return the standard checkout path using the canonical distribution name.
+
+    Args:
+        work_dir: Directory that contains package work directories.
+        distribution_name: Package name in any valid spelling.
+        version: Resolved package version.
+
+    Returns:
+        Double-nested checkout path for the package and version.
+
+    .. versionadded:: 0.103.0
+    """
+    dirname = f"{canonicalize_name(distribution_name)}-{version}"
+    return work_dir / dirname / dirname
 
 
 def git_clone(

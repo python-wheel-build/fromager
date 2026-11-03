@@ -9,6 +9,7 @@ from packaging.version import Version
 
 from fromager.gitutils import (
     GIT_HEAD,
+    git_checkout_dir,
     git_checkout_mismatch,
     git_clean,
     git_clone_fast,
@@ -18,6 +19,22 @@ from fromager.gitutils import (
 needs_git_command = pytest.mark.skipif(
     shutil.which("git") is None, reason="requires 'git' command"
 )
+
+
+@pytest.mark.parametrize(
+    "distribution_name", ["zope_event", "zope.event", "Zope-Event"]
+)
+def test_git_checkout_dir_uses_canonical_name(
+    tmp_path: pathlib.Path, distribution_name: str
+) -> None:
+    """Equivalent distribution names share one checkout path."""
+    checkout = git_checkout_dir(
+        work_dir=tmp_path,
+        distribution_name=distribution_name,
+        version=Version("1.0"),
+    )
+
+    assert checkout == tmp_path / "zope-event-1.0" / "zope-event-1.0"
 
 
 def setuptools_scm_version(root_dir: pathlib.Path) -> Version:

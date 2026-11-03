@@ -89,6 +89,7 @@ def test_find_wheel_returns_none_when_only_non_wheel_files(
     [
         ("mypkg", "1.2", "mypkg-1.2", "mypkg-1.2"),
         ("oslo.messaging", "14.7.0", "oslo.messaging-14.7.0", "oslo.messaging-14.7.0"),
+        ("zope_event", "1.0", "zope-event-1.0", "zope-event-1.0"),
         ("cython", "3.0.10", "Cython-3.0.10", "Cython-3.0.10"),
         ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6", "ruamel.yaml-0.18.6"),
     ],

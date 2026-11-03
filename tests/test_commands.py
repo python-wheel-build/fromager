@@ -1085,6 +1085,32 @@ def test_step_prepare_source_prepares_clean_git_checkout(
     assert (checkout.parent / "build-meta.json").is_file()
 
 
+def test_step_prepare_source_finds_canonical_git_checkout(
+    cli_runner: CliRunner, tmp_context: WorkContext
+) -> None:
+    """Find a checkout when the CLI package name uses another spelling."""
+    checkout = tmp_context.work_dir / "test-pkg-1.0" / "test-pkg-1.0"
+    checkout.mkdir(parents=True)
+
+    with patch.object(
+        step.sources, "prepare_source", return_value=checkout
+    ) as prepare_source:
+        result = cli_runner.invoke(
+            step.step,
+            ["prepare-source", "--source-kind", "git_checkout", "test_pkg", "1.0"],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("test_pkg==1.0"),
+        source_filename=checkout,
+        version=Version("1.0"),
+        download_kind=packagesettings.DownloadKind.git_checkout,
+    )
+
+
 def test_step_prepare_source_kind_selects_checkout_over_archive(
     cli_runner: CliRunner, tmp_context: WorkContext
 ) -> None:

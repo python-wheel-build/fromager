@@ -142,7 +142,8 @@ class AbstractResolver(pydantic.BaseModel):
         # Legacy downloads use the underscore name ("test_pkg") instead.
         # find_sdist() accepts both, and one package cannot use both paths
         # because mixing source: with legacy settings is rejected.
-        archive_basename = f"{canonicalize_name(req.name)}-{version}"
+        name = canonicalize_name(req.name)
+        archive_basename = f"{name}-{version}"
         match download_kind:
             case DownloadKind.sdist:
                 destination_dir = ctx.sdists_downloads
@@ -173,8 +174,8 @@ class AbstractResolver(pydantic.BaseModel):
                 # 'work_dir / f"{name}-{version}" / "checkout"' for
                 # checkout, generate a proper sdist, then unpack to
                 # final destination?
-                destination_dir = (
-                    ctx.work_dir / f"{req.name}-{version}" / f"{req.name}-{version}"
+                destination_dir = gitutils.git_checkout_dir(
+                    work_dir=ctx.work_dir, distribution_name=name, version=version
                 )
                 if destination_dir.exists():
                     # Reuse a checkout from an earlier download, for example
