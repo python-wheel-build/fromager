@@ -258,9 +258,12 @@ private index server is more robust.
 
 The `step prepare-source` command unpacks a source archive and applies any
 patches (refer to [customization](customization.md) for details about patching).
-It defaults to the archive kind for existing scripts. For a Git checkout, pass
-`--source-kind git_checkout`. Pass `--source-path` when the downloaded source
-cannot be found at its standard location. Git checkouts must use the standard
+Without `--source-kind`, it uses the provider's only supported source kind
+(`sdist`, `tarball`, or `git_checkout`). Legacy settings and providers with
+multiple kinds default to `sdist`; prebuilt wheels are excluded from inference.
+Pass `--source-kind` when the kind cannot be inferred, such as a Git checkout
+returned by a hook. Pass `--source-path` when the downloaded source cannot be
+found at its standard location. Git checkouts must use the standard
 double-nested work directory layout so later build steps can find them. The
 download command's optional
 `--output-format json` prints both `path` and `kind` when a hook can return

@@ -915,3 +915,35 @@ class TestAgeFallback:
         mock_find.assert_called_once()
         call_kwargs = mock_find.call_args.kwargs
         assert call_kwargs["age_fallback"] == resolver.AgeFallback.ALL
+
+
+@pytest.mark.parametrize(
+    ("multiple_versions", "mode"), [(False, "single"), (True, "multiple")]
+)
+def test_resolve_warns_when_resolver_returns_no_results(
+    tmp_context: WorkContext,
+    caplog: pytest.LogCaptureFixture,
+    multiple_versions: bool,
+    mode: str,
+) -> None:
+    """Log the version mode when source resolution finds nothing."""
+    brr = BootstrapRequirementResolver(tmp_context, multiple_versions=multiple_versions)
+
+    with (
+        patch.object(brr, "_resolve_from_graph", return_value=None),
+        patch("fromager.bootstrap_requirement_resolver.sources.get_source_provider"),
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver"
+            ".find_all_matching_from_provider",
+            return_value=[],
+        ),
+    ):
+        results = brr.resolve(
+            Requirement("testpkg"),
+            RequirementType.INSTALL,
+            parent_req=None,
+            pre_built=False,
+        )
+
+    assert results == []
+    assert f"resolver returned no results ({mode} version mode)" in caplog.text

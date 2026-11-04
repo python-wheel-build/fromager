@@ -7,7 +7,7 @@ import pathlib
 import sys
 import typing
 from collections import defaultdict
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import click
 import pypi_simple
@@ -32,13 +32,21 @@ from ..candidate import Candidate, Cooldown
 logger = logging.getLogger(__name__)
 
 
-def _redact_url_credentials(url: object) -> str:
-    """Remove credentials from a URL before displaying it."""
-    url_string = str(url)
-    parsed_url = urlsplit(url_string)
-    if "@" not in parsed_url.netloc:
-        return url_string
-    return parsed_url._replace(netloc=parsed_url.netloc.rsplit("@", 1)[1]).geturl()
+def _display_url(url: object) -> str:
+    """Format a URL for display without exposing credentials.
+
+    Keep query parameter names but mask every value. Drop user info and fragments.
+    """
+    parsed_url = urlsplit(str(url))
+    netloc = parsed_url.netloc.rsplit("@", 1)[-1]
+    query = urlencode(
+        [
+            (name, "***")
+            for name, _ in parse_qsl(parsed_url.query, keep_blank_values=True)
+        ],
+        safe="*",
+    )
+    return parsed_url._replace(netloc=netloc, query=query, fragment="").geturl()
 
 
 def sdist_server_url_option(func: typing.Callable) -> typing.Callable:
@@ -490,7 +498,7 @@ def _resolve_fromager(
         for url_field in ("index_url", "project_url", "clone_url", "download_url"):
             url = getattr(source_resolver, url_field, None)
             if url is not None:
-                click.secho(f"  - {url_field}: {_redact_url_credentials(url)}")
+                click.secho(f"  - {url_field}: {_display_url(url)}")
         if distribution_type is not DistributionType.DEFAULT:
             click.secho(
                 f"- distribution type '{distribution_type.value}' is ignored "
@@ -501,16 +509,17 @@ def _resolve_fromager(
         include_sdists, include_wheels = parse_distribution_option(
             distribution_type, pbi
         )
-        click.secho(f"- sdist server url: {override_sdist_server_url}")
+        click.secho(f"- sdist server url: {_display_url(override_sdist_server_url)}")
         click.secho(f"- resolver includes sdists: {pbi.resolver_include_sdists}")
         click.secho(f"- resolver includes wheels: {pbi.resolver_include_wheels}")
         click.secho(
             f"- using distribution type '{distribution_type.value}' "
             f"(sdists: {include_sdists}, wheels: {include_wheels})"
         )
-        click.secho(f"- wheel server url: {pbi.wheel_server_url}")
+        click.secho(f"- wheel server url: {_display_url(pbi.wheel_server_url)}")
         click.secho(
-            f"- download url: {pbi.download_source_url(resolve_template=False)}"
+            "- download url: "
+            f"{_display_url(pbi.download_source_url(resolve_template=False))}"
         )
         click.secho(f"- prebuilt wheel: {pbi.pre_built}")
     if constraint is not None:

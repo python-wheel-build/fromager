@@ -228,6 +228,11 @@ class BootstrapRequirementResolver:
                     max_age_cutoff=max_age_cutoff,
                     age_fallback=age_fallback,
                 )
+                if not results:
+                    logger.warning(
+                        "resolver returned no results (%s version mode)",
+                        "multiple" if self.multiple_versions else "single",
+                    )
 
         if results:
             key = (canonicalize_name(req.name), pre_built)

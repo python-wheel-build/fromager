@@ -244,11 +244,17 @@ def git_checkout_mismatch(
         ).strip()
         if pathlib.Path(toplevel).resolve() != checkout_dir.resolve():
             return "it is not the top of a Git checkout"
-        origin = external_commands.run(
-            ["git", "remote", "get-url", "origin"], cwd=cwd
-        ).strip()
+        # Read the checkout's first stored URL without global settings or
+        # "insteadOf" rewrites. Call subprocess directly because
+        # external_commands.run() logs output, and URLs can contain credentials.
+        origin = subprocess.run(
+            ["git", "config", "--local", "--null", "--get-all", "remote.origin.url"],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.split("\0", 1)[0]
         if origin != repo_url:
-            # Do not log URLs; they can contain credentials.
             return "it was cloned from a different repository"
         head = external_commands.run(
             ["git", "rev-parse", "--verify", "HEAD"], cwd=cwd
