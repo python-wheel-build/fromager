@@ -266,7 +266,8 @@ def find_source_dir(
     name_based = f"{req.name}-{dist_version}"
     dotted_name = f"{req.name.replace('-', '.')}-{dist_version}"
 
-    candidate_bases = set(
+    # Keep the order below and drop duplicates.
+    candidate_bases = dict.fromkeys(
         [
             # First check if the file is there using the canonically
             # transformed name.
@@ -297,6 +298,10 @@ def find_source_dir(
                 # what case they have, but the pattern matched, so
                 # use the base name of the unpack directory to
                 # extend the path 1 level.
-                return dirname / dirname.name
+                source_dir = dirname / dirname.name
+                # Skip a match without a source root, such as a
+                # wheel-cache directory named with another spelling.
+                if source_dir.is_dir():
+                    return source_dir
 
     return None

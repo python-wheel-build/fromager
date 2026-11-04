@@ -86,6 +86,44 @@ def test_update_wheel_mirror_prebuilt_wheels(
     assert symlink.is_file()
 
 
+def test_update_wheel_mirror_prefers_fresh_prebuilt_wheel(
+    tmp_context: context.WorkContext,
+) -> None:
+    """An explicit fresh wheel replaces an old mirror link with the same name."""
+    wheel_name = "foo-1.0-py3-none-any.whl"
+    old_wheel = _create_fake_wheel(tmp_context.wheels_downloads, wheel_name)
+    server.update_wheel_mirror(tmp_context)
+    mirror_wheel = tmp_context.wheel_server_dir / "foo" / wheel_name
+
+    fresh_wheel = _create_fake_wheel(tmp_context.wheels_prebuilt, wheel_name)
+    server.update_wheel_mirror(tmp_context)
+    assert mirror_wheel.resolve() == old_wheel
+
+    server.update_wheel_mirror(tmp_context, preferred_prebuilt_wheel=fresh_wheel)
+    assert mirror_wheel.resolve() == fresh_wheel
+    assert old_wheel.is_file()
+
+
+def test_update_wheel_mirror_failed_relink_keeps_old_wheel(
+    tmp_context: context.WorkContext,
+) -> None:
+    """A failed atomic switch leaves the existing mirror link intact."""
+    wheel_name = "foo-1.0-py3-none-any.whl"
+    old_wheel = _create_fake_wheel(tmp_context.wheels_downloads, wheel_name)
+    server.update_wheel_mirror(tmp_context)
+    fresh_wheel = _create_fake_wheel(tmp_context.wheels_prebuilt, wheel_name)
+    mirror_wheel = tmp_context.wheel_server_dir / "foo" / wheel_name
+
+    with (
+        patch("fromager.server.os.replace", side_effect=OSError("replace failed")),
+        pytest.raises(OSError, match="replace failed"),
+    ):
+        server.update_wheel_mirror(tmp_context, preferred_prebuilt_wheel=fresh_wheel)
+
+    assert mirror_wheel.resolve() == old_wheel
+    assert not list(mirror_wheel.parent.glob(f".{wheel_name}.*"))
+
+
 def test_update_wheel_mirror_cleans_dangling_symlinks(
     tmp_context: context.WorkContext,
 ) -> None:
@@ -195,3 +233,44 @@ def test_start_wheel_server_starts_local(
 
     mock_mirror.assert_called_once_with(tmp_context)
     mock_run.assert_called_once_with(tmp_context)
+
+
+@pytest.mark.parametrize(
+    ("mirror_target", "expected"),
+    [
+        ("downloads", "downloads"),
+        ("prebuilt", "prebuilt"),
+        (None, None),
+        ("outside", None),
+        ("dangling", None),
+    ],
+)
+def test_find_mirror_wheel(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+    mirror_target: str | None,
+    expected: str | None,
+) -> None:
+    """Only mirror links to an existing downloads or prebuilt wheel are returned."""
+    wheel_name = "pkg-1.0-py3-none-any.whl"
+    directories = {
+        "downloads": tmp_context.wheels_downloads,
+        "prebuilt": tmp_context.wheels_prebuilt,
+        "outside": tmp_path / "outside",
+        "dangling": tmp_context.wheels_downloads,
+    }
+    if mirror_target is not None:
+        target = directories[mirror_target] / wheel_name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if mirror_target != "dangling":
+            target.write_bytes(b"wheel")
+        mirror_wheel = tmp_context.wheel_server_dir / "pkg" / wheel_name
+        mirror_wheel.parent.mkdir(parents=True, exist_ok=True)
+        mirror_wheel.symlink_to(target)
+
+    result = server.find_mirror_wheel(tmp_context, wheel_name)
+
+    if expected is None:
+        assert result is None
+    else:
+        assert result == directories[expected] / wheel_name

@@ -1,3 +1,4 @@
+import os
 import pathlib
 import typing
 import warnings
@@ -64,6 +65,13 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
     terminalreporter.write_sep("=", "unexpected network attempts")
     for nodeid, message in sorted(_blocked_network_attempts):
         terminalreporter.write_line(f"{nodeid}: {message}")
+
+
+@pytest.fixture(autouse=True)
+def isolate_git_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ignore the user's and system Git config, such as commit signing."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 
 @pytest.fixture

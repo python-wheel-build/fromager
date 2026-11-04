@@ -20,6 +20,7 @@ from fromager.downloads import (
     download_url,
     download_wheel,
     extract_filename_from_url,
+    sdist_extension_for_url,
 )
 
 # -- extract_filename_from_url ------------------------------------------------
@@ -35,6 +36,18 @@ from fromager.downloads import (
 )
 def test_extract_filename_from_url(url: str, expected: str) -> None:
     assert extract_filename_from_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://pkg.test/pkg-1.0.zip", ".zip"),
+        ("https://pkg.test/pkg-1.0.tar.gz", ".tar.gz"),
+        ("https://api.pkg.test/repos/org/repo/tarball/v1.0", ".tar.gz"),
+    ],
+)
+def test_sdist_extension_for_url(url: str, expected: str) -> None:
+    assert sdist_extension_for_url(url) == expected
 
 
 # -- download_url -------------------------------------------------------------

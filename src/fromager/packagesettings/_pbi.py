@@ -26,6 +26,7 @@ from ._typedefs import Annotations, PackageVersion, PatchMap, Template, Variant
 
 if typing.TYPE_CHECKING:
     from .. import build_environment
+    from ._resolver import SourceResolver
     from ._settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,10 @@ class PackageBuildInfo:
 
     @property
     def pre_built(self) -> bool:
-        """Does the variant use pre-build wheels?"""
+        """Whether the selected source or legacy variant uses prebuilt wheels."""
+        source_resolver = self.source_resolver
+        if source_resolver is not None:
+            return source_resolver.resolves_prebuilt_wheel
         vi = self._ps.variants.get(self.variant)
         if vi is not None:
             return vi.pre_built
@@ -175,6 +179,19 @@ class PackageBuildInfo:
         if vi is not None and vi.wheel_server_url is not None:
             return str(vi.wheel_server_url)
         return None
+
+    @property
+    def source_resolver(self) -> SourceResolver | None:
+        """Source resolver for the package variant.
+
+        Returns the variant-level source resolver if configured,
+        otherwise falls back to the package-level source resolver,
+        or ``None`` if neither is set.
+        """
+        vi = self._ps.variants.get(self.variant)
+        if vi is not None and vi.source is not None:
+            return vi.source
+        return self._ps.source
 
     @property
     def override_module_name(self) -> str:
@@ -250,7 +267,18 @@ class PackageBuildInfo:
         Returns None (inherit global), 0 (disabled), or a positive integer
         (override days). The caller is responsible for converting to a
         :class:`~fromager.candidate.Cooldown` instance.
+
+        For packages with a ``source:`` resolver, the resolver's
+        ``min_release_age`` takes precedence over the legacy
+        ``resolver_dist`` setting.
         """
+        source_resolver = self.source_resolver
+        if source_resolver is not None:
+            source_min_release_age: int | None = getattr(
+                source_resolver, "min_release_age", None
+            )
+            if source_min_release_age is not None:
+                return source_min_release_age
         return self._ps.resolver_dist.min_release_age
 
     @property

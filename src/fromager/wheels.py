@@ -32,6 +32,8 @@ from . import (
     requirements_file,
     resolver,
     sbom,
+    server,
+    sources,
 )
 from .pkgmetadata.pep376 import verbatim_dist_name
 
@@ -518,6 +520,72 @@ def download_wheel(
         logger.info(f"have existing wheel {wheel_filename}")
 
     return wheel_filename
+
+
+def is_local_wheel_url(wheel_url: str, wheel_server_url: str | None) -> bool:
+    """Return whether a wheel URL belongs to the local wheel mirror.
+
+    .. versionadded:: 0.103.0
+    """
+    if not wheel_server_url:
+        return False
+    return wheel_url.startswith(wheel_server_url.rstrip("/") + "/")
+
+
+def download_prebuilt_wheel(
+    *,
+    ctx: context.WorkContext,
+    req: Requirement,
+    version: Version,
+    download_url: str,
+    direct_download_directory: pathlib.Path,
+) -> pathlib.Path:
+    """Download a prebuilt wheel via its resolver or the direct wheel path.
+
+    Configured external wheels use the resolver download contract. For a
+    local-mirror URL, configured wheels reuse the exact file the mirror
+    serves. Legacy wheels use the direct wheel downloader.
+
+    .. versionadded:: 0.103.0
+    """
+    source_resolver = ctx.package_build_info(req).source_resolver
+    if source_resolver is not None and not source_resolver.resolves_prebuilt_wheel:
+        raise ValueError(
+            f"{req}: source resolver {source_resolver.provider!r} "
+            "does not resolve prebuilt wheels"
+        )
+    if source_resolver is None:
+        return download_wheel(req, download_url, direct_download_directory)
+    if is_local_wheel_url(download_url, ctx.wheel_server_url):
+        # Reuse the exact file the local mirror serves. Fall back to the direct
+        # downloader when the local mirror has no link for this file.
+        mirror_wheel = server.find_mirror_wheel(
+            ctx, downloads.extract_filename_from_url(download_url)
+        )
+        if mirror_wheel is not None:
+            return mirror_wheel
+        return download_wheel(req, download_url, direct_download_directory)
+
+    downloaded: packagesettings.DownloadedSource = sources.download_source(
+        ctx=ctx, req=req, version=version, download_url=download_url
+    )
+    wheel_path = downloaded.path
+    if wheel_path.parent != ctx.wheels_prebuilt:
+        ctx.wheels_prebuilt.mkdir(parents=True, exist_ok=True)
+        staged_path = ctx.wheels_prebuilt / wheel_path.name
+        with tempfile.NamedTemporaryFile(
+            dir=ctx.wheels_prebuilt,
+            prefix=f".tmp.{wheel_path.name}.",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = pathlib.Path(temporary_file.name)
+        try:
+            shutil.copy2(wheel_path, temporary_path)
+            os.replace(temporary_path, staged_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return staged_path
+    return wheel_path
 
 
 def get_wheel_server_urls(

@@ -7,6 +7,7 @@ import pathlib
 import sys
 import typing
 from collections import defaultdict
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import click
 import pypi_simple
@@ -24,10 +25,28 @@ from .. import (
     packagesettings,
     request_session,
     resolver,
+    sources,
 )
 from ..candidate import Candidate, Cooldown
 
 logger = logging.getLogger(__name__)
+
+
+def _display_url(url: object) -> str:
+    """Format a URL for display without exposing credentials.
+
+    Keep query parameter names but mask every value. Drop user info and fragments.
+    """
+    parsed_url = urlsplit(str(url))
+    netloc = parsed_url.netloc.rsplit("@", 1)[-1]
+    query = urlencode(
+        [
+            (name, "***")
+            for name, _ in parse_qsl(parsed_url.query, keep_blank_values=True)
+        ],
+        safe="*",
+    )
+    return parsed_url._replace(netloc=netloc, query=query, fragment="").geturl()
 
 
 def sdist_server_url_option(func: typing.Callable) -> typing.Callable:
@@ -151,14 +170,18 @@ def list_versions(
     - "package_name>=1.0" (versions >= 1.0)
     - "package_name==1.*" (versions matching 1.*)
 
-    This command uses the get_resolver_provider hook to retrieve a resolver
-    provider for the package in case there is a custom provider configured.
+    This command uses sources.get_source_provider() to retrieve a resolver
+    provider for the package, so both ``source:`` settings and the legacy
+    get_resolver_provider hook are honored.
 
     Distribution types:
     - "default": Use package settings for include_sdists/include_wheels
     - "sdist": Only include source distributions
     - "wheel": Only include wheels
     - "both": Include both source distributions and wheels
+
+    An explicit distribution type cannot be combined with a ``source:``
+    resolver config; version resolution follows the configured resolver.
 
     Output formats:
     - "versions": one version per line (default)
@@ -183,26 +206,32 @@ def list_versions(
         logger.info(f"Filtering versions with specifier: {req.specifier}")
 
     pbi = wkctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+
+    dist_type = DistributionType(distribution_type)
+    if pbi.source_resolver is not None and dist_type is not DistributionType.DEFAULT:
+        raise click.ClickException(
+            f"--distribution-type {dist_type.value} cannot be combined with the "
+            f"'{pbi.source_resolver.provider}' source resolver of {req.name}: "
+            "version resolution follows the source config"
+        )
 
     include_sdists, include_wheels = parse_distribution_option(
         distribution_type,
         pbi,
     )
 
-    provider = overrides.find_and_invoke(
-        req.name,
-        "get_resolver_provider",
-        resolver.default_resolver_provider,
+    provider = sources.get_source_provider(
         ctx=wkctx,
         req=req,
+        sdist_server_url=sdist_server_url,
         include_sdists=include_sdists,
         include_wheels=include_wheels,
-        sdist_server_url=override_sdist_server_url,
     )
 
     # Get all available candidates from the provider (cooldown is NOT set on
-    # the provider so we receive every version that matches the specifier).
+    # the provider so we receive every version that matches the specifier;
+    # the detail view applies the cooldown separately).
+    provider.cooldown = None
     candidates = list(
         provider.find_matches(
             identifier=req.name,
@@ -448,8 +477,7 @@ def _resolve_fromager(
 ) -> set[Version] | None:
     # print package build info settings (overrides)
     pbi = ctx.package_build_info(req)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
-    include_sdists, include_wheels = parse_distribution_option(distribution_type, pbi)
+    source_resolver = pbi.source_resolver
 
     if pbi.has_customizations:
         click.secho(
@@ -458,15 +486,42 @@ def _resolve_fromager(
         )
     else:
         click.secho("Package uses standard settings.")
-    click.secho(f"- sdist server url: {override_sdist_server_url}")
-    click.secho(f"- resolver includes sdists: {pbi.resolver_include_sdists}")
-    click.secho(f"- resolver includes wheels: {pbi.resolver_include_wheels}")
-    click.secho(
-        f"- using distribution type '{distribution_type.value}' (sdists: {include_sdists}, wheels: {include_wheels})"
-    )
-    click.secho(f"- wheel server url: {pbi.wheel_server_url}")
-    click.secho(f"- download url: {pbi.download_source_url(resolve_template=False)}")
-    click.secho(f"- prebuilt wheel: {pbi.pre_built}")
+    if source_resolver is not None:
+        click.secho("- source:")
+        click.secho(f"  - provider: {source_resolver.provider}")
+        click.secho(
+            f"  - resolves_prebuilt_wheel: {source_resolver.resolves_prebuilt_wheel}"
+        )
+        click.secho(
+            f"  - min_release_age: {getattr(source_resolver, 'min_release_age', None)}"
+        )
+        for url_field in ("index_url", "project_url", "clone_url", "download_url"):
+            url = getattr(source_resolver, url_field, None)
+            if url is not None:
+                click.secho(f"  - {url_field}: {_display_url(url)}")
+        if distribution_type is not DistributionType.DEFAULT:
+            click.secho(
+                f"- distribution type '{distribution_type.value}' is ignored "
+                "for configured source resolvers"
+            )
+    else:
+        override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+        include_sdists, include_wheels = parse_distribution_option(
+            distribution_type, pbi
+        )
+        click.secho(f"- sdist server url: {_display_url(override_sdist_server_url)}")
+        click.secho(f"- resolver includes sdists: {pbi.resolver_include_sdists}")
+        click.secho(f"- resolver includes wheels: {pbi.resolver_include_wheels}")
+        click.secho(
+            f"- using distribution type '{distribution_type.value}' "
+            f"(sdists: {include_sdists}, wheels: {include_wheels})"
+        )
+        click.secho(f"- wheel server url: {_display_url(pbi.wheel_server_url)}")
+        click.secho(
+            "- download url: "
+            f"{_display_url(pbi.download_source_url(resolve_template=False))}"
+        )
+        click.secho(f"- prebuilt wheel: {pbi.pre_built}")
     if constraint is not None:
         click.secho(
             f"- package is constrained by '--constraints-file': {constraint}.",
@@ -475,18 +530,28 @@ def _resolve_fromager(
     else:
         click.secho("- package is not constrained by '--constraints-file'")
 
-    # resolve package with Fromager's resolver and settings.
-    provider = overrides.find_and_invoke(
-        req.name,
-        "get_resolver_provider",
-        resolver.default_resolver_provider,
-        ctx=ctx,
-        req=req,
-        include_sdists=include_sdists,
-        include_wheels=include_wheels,
-        sdist_server_url=override_sdist_server_url,
-        ignore_platform=pbi.resolver_ignore_platform,
-    )
+    # Resolve with configured source settings or the unchanged legacy path.
+    if source_resolver is not None:
+        provider = sources.get_source_provider(
+            ctx=ctx,
+            req=req,
+            sdist_server_url=sdist_server_url,
+        )
+    else:
+        provider = overrides.find_and_invoke(
+            req.name,
+            "get_resolver_provider",
+            resolver.default_resolver_provider,
+            ctx=ctx,
+            req=req,
+            include_sdists=include_sdists,
+            include_wheels=include_wheels,
+            sdist_server_url=override_sdist_server_url,
+            ignore_platform=pbi.resolver_ignore_platform,
+        )
+
+    # Diagnostic resolution includes releases that are too recent to build.
+    provider.cooldown = None
 
     click.echo()
     click.secho(f"get_resolver_provider returns provider '{type(provider).__name__}'")
@@ -633,6 +698,10 @@ def resolve(
     about the package's resolver configuration and resolves a package in two
     way. First, it resolves with Fromager's resolver. Second, it performs a
     simple query against PyPI and compares the results.
+
+    Packages with source configuration use their configured resolver.
+    Distribution type options apply to legacy configuration. Diagnostic
+    resolution includes recent releases regardless of release-age cooldowns.
 
     Usage::
 

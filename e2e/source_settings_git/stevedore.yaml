@@ -1,0 +1,4 @@
+source:
+  provider: github-tag-git
+  project_url: https://github.com/python-wheel-build/stevedore-test-repo
+  build_sdist: pep517

@@ -25,6 +25,7 @@ def tmp_context(tmp_path: Path) -> WorkContext:
     ctx.package_build_info = MagicMock()
     pbi = MagicMock()
     pbi.pre_built = False
+    pbi.source_resolver = None
     pbi.resolver_include_sdists = True
     pbi.resolver_include_wheels = False
     pbi.resolver_ignore_platform = False

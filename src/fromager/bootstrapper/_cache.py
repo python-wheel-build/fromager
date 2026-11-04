@@ -246,9 +246,38 @@ def bg_prepare_prebuilt(
     resolved_version: Version,
     wheel_url: str,
 ) -> PreparedSourceData:
-    """Background-safe prebuilt download: no Bootstrapper state accessed."""
+    """Download a prebuilt wheel and make it available to the local mirror."""
     # Thread-safe: paths include {req.name}-{resolved_version} (unique per package),
     # mkdir uses exist_ok=True (atomic), and update_wheel_mirror() is already locked.
+    logger.info(f"using pre-built wheel for {req_type} requirement")
+    wheel_filename = wheels.download_prebuilt_wheel(
+        ctx=ctx,
+        req=req,
+        version=resolved_version,
+        download_url=wheel_url,
+        direct_download_directory=ctx.wheels_prebuilt,
+    )
+    unpack_dir = _create_unpack_dir(ctx.work_dir, req, resolved_version)
+    # A fresh configured download can share a filename with an older wheel
+    # in downloads/, so point the mirror at the new file. A local mirror hit
+    # is already the file the mirror serves; leave the link alone.
+    configured = ctx.package_build_info(req).source_resolver is not None
+    local_hit = wheels.is_local_wheel_url(wheel_url, ctx.wheel_server_url)
+    if configured and not local_hit:
+        server.update_wheel_mirror(ctx, preferred_prebuilt_wheel=wheel_filename)
+    else:
+        server.update_wheel_mirror(ctx)
+    return PreparedSourceData(wheel_filename=wheel_filename, unpack_dir=unpack_dir)
+
+
+def bg_prepare_test_mode_prebuilt(
+    ctx: context.WorkContext,
+    req: Requirement,
+    req_type: RequirementType,
+    resolved_version: Version,
+    wheel_url: str,
+) -> PreparedSourceData:
+    """Download a test-mode fallback wheel directly and update the mirror."""
     logger.info(f"using pre-built wheel for {req_type} requirement")
     wheel_filename = wheels.download_wheel(req, wheel_url, ctx.wheels_prebuilt)
     unpack_dir = _create_unpack_dir(ctx.work_dir, req, resolved_version)

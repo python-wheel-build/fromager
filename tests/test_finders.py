@@ -89,6 +89,7 @@ def test_find_wheel_returns_none_when_only_non_wheel_files(
     [
         ("mypkg", "1.2", "mypkg-1.2", "mypkg-1.2"),
         ("oslo.messaging", "14.7.0", "oslo.messaging-14.7.0", "oslo.messaging-14.7.0"),
+        ("zope_event", "1.0", "zope-event-1.0", "zope-event-1.0"),
         ("cython", "3.0.10", "Cython-3.0.10", "Cython-3.0.10"),
         ("ruamel-yaml", "0.18.6", "ruamel.yaml-0.18.6", "ruamel.yaml-0.18.6"),
     ],
@@ -111,6 +112,35 @@ def test_find_source_dir(
     req = Requirement(dist_name)
     actual = finders.find_source_dir(tmp_context, work_dir, req, version_string)
     assert str(source_dir) == str(actual)
+
+
+def test_find_source_dir_skips_match_without_source_root(
+    tmp_path: pathlib.Path, tmp_context: context.WorkContext
+) -> None:
+    """Ignore a matching directory that has no nested source root."""
+    work_dir = tmp_path
+    (work_dir / "test_pkg-1.0").mkdir()
+    source_dir = work_dir / "test-pkg-1.0" / "test-pkg-1.0"
+    source_dir.mkdir(parents=True)
+
+    actual = finders.find_source_dir(
+        tmp_context, work_dir, Requirement("test_pkg"), "1.0"
+    )
+
+    assert actual == source_dir
+
+
+def test_find_source_dir_returns_none_without_source_root(
+    tmp_path: pathlib.Path, tmp_context: context.WorkContext
+) -> None:
+    """Return None when a matching directory has no nested source root."""
+    (tmp_path / "test_pkg-1.0").mkdir()
+
+    actual = finders.find_source_dir(
+        tmp_context, tmp_path, Requirement("test_pkg"), "1.0"
+    )
+
+    assert actual is None
 
 
 def test_pypi_cache_provider() -> None:

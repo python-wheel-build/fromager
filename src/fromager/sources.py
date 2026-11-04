@@ -5,6 +5,7 @@ import json
 import logging
 import pathlib
 import shutil
+import subprocess
 import tarfile
 import typing
 import warnings
@@ -67,15 +68,17 @@ def download_url(
 
 
 def get_source_type(ctx: context.WorkContext, req: Requirement) -> SourceType:
-    source_type = SourceType.SDIST
+    """Return the legacy source classification for a build-order entry."""
     pbi = ctx.package_build_info(req)
+    if pbi.source_resolver is not None:
+        return SourceType.OVERRIDE
     if (
         overrides.find_override_method(req.name, "download_source")
         or overrides.find_override_method(req.name, "get_resolver_provider")
         or pbi.download_source_url(resolve_template=False)
     ):
-        source_type = SourceType.OVERRIDE
-    return source_type
+        return SourceType.OVERRIDE
+    return SourceType.SDIST
 
 
 @metrics.timeit(description="download source")
@@ -85,8 +88,22 @@ def download_source(
     req: Requirement,
     version: Version,
     download_url: str,
-) -> pathlib.Path:
+) -> packagesettings.DownloadedSource:
+    """Download a resolved source and return its path and artifact kind.
+
+    Configured source resolvers receive the version and download URL.
+    Legacy downloads are adapted to the sdist kind for compatibility.
+
+    .. versionchanged:: 0.103.0
+       Return ``DownloadedSource`` instead of ``pathlib.Path``. Callers use
+       its ``path`` attribute for the downloaded file.
+    """
     logger.info(f"downloading source for {req}")
+
+    pbi = ctx.package_build_info(req)
+    source_resolver = pbi.source_resolver
+    if source_resolver is not None:
+        return source_resolver.download(ctx, req, version, download_url)
 
     source_path = overrides.find_and_invoke(
         req.name,
@@ -103,7 +120,9 @@ def download_source(
         raise ValueError(
             f"expected a Path back to downloaded source. got {source_path}"
         )
-    return source_path
+    return packagesettings.DownloadedSource(
+        path=source_path, kind=packagesettings.DownloadKind.sdist
+    )
 
 
 def get_source_provider(
@@ -112,14 +131,54 @@ def get_source_provider(
     req: Requirement,
     sdist_server_url: str,
     req_type: RequirementType | None = None,
+    include_sdists: bool | None = None,
+    include_wheels: bool | None = None,
 ) -> resolver.BaseProvider:
     """Create a provider for resolving source distributions.
 
     Returns a provider configured according to the package's resolver settings
-    (sdist/wheel inclusion, platform matching, server URL override).
+    (sdist/wheel inclusion and platform matching).
+
+    *include_sdists* and *include_wheels* override the legacy package
+    settings for packages without a ``source:`` resolver; they are ignored
+    for packages with one because the resolver defines its own inclusion
+    rules.
+
+    Packages with a ``source:`` resolver use that resolver's provider
+    configuration and ignore the caller's URL, with a warning unless it is the
+    default PyPI URL. Packages without one retain the
+    legacy override-hook, ``resolver_dist``, and caller URL behavior.
     """
     pbi = ctx.package_build_info(req)
+
+    source_resolver = pbi.source_resolver
+    if source_resolver is not None:
+        if sdist_server_url.rstrip("/") != resolver.PYPI_SERVER_URL:
+            logger.warning(
+                "ignoring index URL %s; the %r source resolver uses its own index",
+                sdist_server_url,
+                source_resolver.provider,
+            )
+        provider = source_resolver.resolver_provider(
+            ctx,
+            req,
+            req_type,
+        )
+        if req_type == RequirementType.TOP_LEVEL and resolver._has_equality_pin(req):
+            provider.cooldown = None
+        else:
+            per_package_days = getattr(source_resolver, "min_release_age", None)
+            provider.cooldown = resolver._effective_cooldown(
+                ctx.cooldown, per_package_days
+            )
+        return provider
+
     override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+
+    if include_sdists is None:
+        include_sdists = pbi.resolver_include_sdists
+    if include_wheels is None:
+        include_wheels = pbi.resolver_include_wheels
 
     provider = typing.cast(
         resolver.BaseProvider,
@@ -129,8 +188,8 @@ def get_source_provider(
             resolver.default_resolver_provider,
             ctx=ctx,
             req=req,
-            include_sdists=pbi.resolver_include_sdists,
-            include_wheels=pbi.resolver_include_wheels,
+            include_sdists=include_sdists,
+            include_wheels=include_wheels,
             sdist_server_url=override_sdist_server_url,
             req_type=req_type,
             ignore_platform=pbi.resolver_ignore_platform,
@@ -154,7 +213,8 @@ def resolve_source(
     """
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
-        f"resolving requirement {req} using {sdist_server_url} with constraint {constraint}"
+        f"resolving requirement {req} with constraint {constraint}; "
+        f"legacy index URL: {sdist_server_url}"
     )
 
     try:
@@ -196,11 +256,8 @@ def default_download_source(
     if url is None:
         raise ValueError(f"Could not determine download URL for {req}")
     if destination_filename is None:
-        url_filename = downloads.extract_filename_from_url(url)
-        if url_filename.endswith(".zip"):
-            destination_filename = f"{pbi.override_module_name}-{version}.zip"
-        else:
-            destination_filename = f"{pbi.override_module_name}-{version}.tar.gz"
+        extension = downloads.sdist_extension_for_url(url)
+        destination_filename = f"{pbi.override_module_name}-{version}{extension}"
         logger.debug(
             "config has no destination_filename, use default %r", destination_filename
         )
@@ -257,6 +314,9 @@ def unpack_source(
     source_filename: pathlib.Path,
 ) -> tuple[pathlib.Path, bool]:
     """Extracts a downloaded source archive (.tar.gz or .zip file) into a standardized directory."""
+    if source_filename.is_dir():
+        raise ValueError(f"{source_filename} is a directory, not a source archive")
+
     # sdist names are less standardized and the names of the directories they
     # contain are also not very standard. Force the names into a predictable
     # form based on the override module name for the requirement.
@@ -268,6 +328,17 @@ def unpack_source(
     unpack_dir = ctx.work_dir / expected_name
     if unpack_dir.exists():
         if ctx.cleanup:
+            resolved_unpack_dir = unpack_dir.resolve()
+            # Deleting a parent can also break a path that uses ".." or a symlink.
+            source_paths = (source_filename, *source_filename.parents)
+            if any(
+                path.resolve().is_relative_to(resolved_unpack_dir)
+                for path in source_paths
+            ):
+                raise ValueError(
+                    f"source archive path {source_filename} overlaps {unpack_dir}; "
+                    "use an archive path outside the directory being cleaned"
+                )
             logger.debug("cleaning up %s", unpack_dir)
             shutil.rmtree(unpack_dir)
         else:
@@ -376,18 +447,43 @@ def prepare_source(
     req: Requirement,
     source_filename: pathlib.Path,
     version: Version,
+    download_kind: packagesettings.DownloadKind = packagesettings.DownloadKind.sdist,
 ) -> pathlib.Path:
-    """Unpack and prepare source for building.
+    """Prepare an archive or checkout according to its downloaded kind.
 
-    Calls ``find_and_invoke`` which may call a package-specific override.
-    The plugin may return a ``Path`` or a ``(Path, bool)`` tuple; both
-    forms are handled.
+    Path-only callers default to an sdist. Package-specific ``prepare_source``
+    overrides may replace the selected default, including when a source
+    resolver is configured. Overrides receive the original path-based
+    arguments and may return a ``Path`` or a ``(Path, bool)`` pair.
+    Git-specific overrides can call ``default_prepare_git_checkout()``.
+
+    Args:
+        ctx: Work context for the build.
+        req: Package requirement being prepared.
+        source_filename: Downloaded archive or checkout path.
+        version: Resolved package version.
+        download_kind: Artifact kind; defaults to an sdist.
+
+    Returns:
+        Path to the prepared source root.
+
+    .. versionchanged:: 0.103.0
+       Pass ``download_kind`` to prepare a Git checkout.
     """
     logger.info(f"preparing source for {req} from {source_filename}")
+    match download_kind:
+        case packagesettings.DownloadKind.sdist | packagesettings.DownloadKind.tarball:
+            default_fn = default_prepare_source
+        case packagesettings.DownloadKind.git_checkout:
+            default_fn = default_prepare_git_checkout
+        case _:
+            raise ValueError(
+                f"cannot prepare source with download kind {download_kind}"
+            )
     prepare_source_details = overrides.find_and_invoke(
         req.name,
         "prepare_source",
-        default_prepare_source,
+        default_fn,
         ctx=ctx,
         req=req,
         source_filename=source_filename,
@@ -414,7 +510,7 @@ def default_prepare_source(
     source_filename: pathlib.Path,
     version: Version,
 ) -> tuple[pathlib.Path, bool]:
-    """Unpack, modify, and check sdist sources
+    """Unpack an archive, then prepare newly extracted source.
 
     Calls :func:`~fromager.sources.prepare_new_source` by default.
     """
@@ -424,7 +520,58 @@ def default_prepare_source(
         version=version,
         source_filename=source_filename,
     )
-    if is_new:
+    return _prepare_source_root(
+        ctx, req, source_root_dir, version, should_prepare=is_new
+    )
+
+
+def default_prepare_git_checkout(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_filename: pathlib.Path,
+    version: Version,
+) -> tuple[pathlib.Path, bool]:
+    """Prepare a clean Git checkout in place.
+
+    Reject tracked, untracked, or ignored local changes in the checkout and its
+    initialized submodules before applying patches, project overrides, and Rust
+    vendoring. A clean status does not prove where the checkout came from or
+    that it will remain unchanged after preparation.
+
+    Args:
+        ctx: Work context for the build.
+        req: Package requirement being prepared.
+        source_filename: Path to the Git checkout.
+        version: Resolved package version.
+
+    Returns:
+        The checkout path and ``True`` because preparation ran.
+
+    .. versionadded:: 0.103.0
+    """
+    if not source_filename.is_dir() or not (source_filename / ".git").exists():
+        raise ValueError(f"{source_filename} is not a Git checkout")
+    try:
+        changes = gitutils.git_checkout_changes(source_filename)
+    except subprocess.CalledProcessError as err:
+        raise ValueError(f"cannot inspect Git checkout {source_filename}") from err
+    if changes:
+        raise ValueError(
+            f"Git checkout {source_filename} has local changes; "
+            "download a fresh checkout before preparing"
+        )
+    return _prepare_source_root(ctx, req, source_filename, version, should_prepare=True)
+
+
+def _prepare_source_root(
+    ctx: context.WorkContext,
+    req: Requirement,
+    source_root_dir: pathlib.Path,
+    version: Version,
+    should_prepare: bool,
+) -> tuple[pathlib.Path, bool]:
+    """Run requested preparation and scan the resulting source tree."""
+    if should_prepare:
         prepare_new_source(
             ctx=ctx,
             req=req,
@@ -440,7 +587,7 @@ def default_prepare_source(
             ", ".join(str(f) for f in sorted(potential_issues)),
         )
 
-    return source_root_dir, is_new
+    return source_root_dir, should_prepare
 
 
 def prepare_new_source(
@@ -455,7 +602,8 @@ def prepare_new_source(
     - apply project overrides from settings
     - vendor Rust dependencies
 
-    :func:`~default_prepare_source` runs this function when the sources are new.
+    :func:`~default_prepare_source` and
+    :func:`~default_prepare_git_checkout` run this function for new sources.
     """
     patch_source(ctx, source_root_dir, req, version)
     pyproject.apply_project_override(
@@ -476,8 +624,9 @@ def build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
-    """Build source distribution"""
+    """Build a source distribution using the configured strategy or legacy hook."""
     pbi = ctx.package_build_info(req)
+    source_resolver = pbi.source_resolver
     build_dir = pbi.build_dir(sdist_root_dir)
 
     logger.info(f"building {ctx.variant} source distribution for {req} in {build_dir}")
@@ -488,18 +637,58 @@ def build_sdist(
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
-    sdist_file: pathlib.Path = overrides.find_and_invoke(
-        req.name,
-        "build_sdist",
-        default_build_sdist,
-        ctx=ctx,
-        extra_environ=extra_environ,
-        req=req,
-        version=version,
-        sdist_root_dir=sdist_root_dir,
-        build_dir=build_dir,
-        build_env=build_env,
-    )
+    if source_resolver is not None:
+        if overrides.find_override_method(req.name, "build_sdist") is not None:
+            logger.warning(
+                "%s: ignoring build_sdist override because source.build_sdist is %s",
+                req.name,
+                source_resolver.build_sdist,
+            )
+    if (
+        source_resolver is not None
+        and source_resolver.build_sdist is packagesettings.BuildSDist.pep517
+    ):
+        sdist_file = pep517_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
+    elif (
+        source_resolver is not None
+        and source_resolver.build_sdist is packagesettings.BuildSDist.tarball
+    ):
+        sdist_file = default_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            build_env=build_env,
+            # Git checkouts keep their `.git`; keep it out of the sdist.
+            exclude_vcs=True,
+        )
+    elif source_resolver is None:
+        sdist_file = overrides.find_and_invoke(
+            req.name,
+            "build_sdist",
+            default_build_sdist,
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            build_env=build_env,
+        )
+    else:
+        raise ValueError(
+            f"{req.name}: unsupported source.build_sdist strategy "
+            f"{source_resolver.build_sdist!r}"
+        )
     logger.info(f"built source distribution {sdist_file}")
 
     # validate location and file name
@@ -523,7 +712,13 @@ def default_build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
     build_dir: pathlib.Path,
+    *,
+    exclude_vcs: bool = False,
 ) -> pathlib.Path:
+    """Repack *build_dir* as an sdist.
+
+    With *exclude_vcs*, VCS metadata such as ``.git`` is left out.
+    """
     # It seems like the "correct" way to do this would be to run the
     # PEP 517 API in the source tree we have modified. However, quite
     # a few packages assume their source distribution is being built
@@ -552,6 +747,7 @@ def default_build_sdist(
             tar=sdist,
             basedir=build_dir,
             prefix=build_dir.parent,
+            exclude_vcs=exclude_vcs,
             arcname_root=f"{dist_name}-{version}",
         )
     return sdist_filename

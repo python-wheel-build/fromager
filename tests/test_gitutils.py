@@ -1,3 +1,4 @@
+import logging
 import pathlib
 import shutil
 import subprocess
@@ -7,11 +8,34 @@ from unittest.mock import Mock, patch
 import pytest
 from packaging.version import Version
 
-from fromager.gitutils import GIT_HEAD, git_clean, git_clone_fast, parse_vcs_url
+from fromager.gitutils import (
+    GIT_HEAD,
+    git_checkout_dir,
+    git_checkout_mismatch,
+    git_clean,
+    git_clone_fast,
+    parse_vcs_url,
+)
 
 needs_git_command = pytest.mark.skipif(
     shutil.which("git") is None, reason="requires 'git' command"
 )
+
+
+@pytest.mark.parametrize(
+    "distribution_name", ["zope_event", "zope.event", "Zope-Event"]
+)
+def test_git_checkout_dir_uses_canonical_name(
+    tmp_path: pathlib.Path, distribution_name: str
+) -> None:
+    """Equivalent distribution names share one checkout path."""
+    checkout = git_checkout_dir(
+        work_dir=tmp_path,
+        distribution_name=distribution_name,
+        version=Version("1.0"),
+    )
+
+    assert checkout == tmp_path / "zope-event-1.0" / "zope-event-1.0"
 
 
 def setuptools_scm_version(root_dir: pathlib.Path) -> Version:
@@ -128,3 +152,205 @@ def test_git_clone_real(tmp_path: pathlib.Path) -> None:
 
     # detect version from .git
     assert setuptools_scm_version(tmp_path) == Version("0.73.0")
+
+
+def _git(repo: pathlib.Path, *args: str) -> str:
+    """Run git in *repo* with a test identity and local file submodules."""
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@pkg.test",
+            "-c",
+            "protocol.file.allow=always",
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
+def _make_repo(repo: pathlib.Path) -> pathlib.Path:
+    """Create a Git repository with one commit tagged ``v1.0``."""
+    repo.mkdir()
+    _git(repo, "init")
+    (repo / "README").write_text("source")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "Initial source")
+    _git(repo, "tag", "v1.0")
+    return repo
+
+
+def _clone(repo: pathlib.Path, checkout: pathlib.Path, ref: str) -> pathlib.Path:
+    """Clone *repo* to *checkout* and check out *ref* with submodules."""
+    _git(repo.parent, "clone", "--recurse-submodules", str(repo), str(checkout))
+    _git(checkout, "checkout", "--recurse-submodules", ref)
+    return checkout
+
+
+@needs_git_command
+def test_git_checkout_mismatch_accepts_clean_clone(tmp_path: pathlib.Path) -> None:
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+
+    result = git_checkout_mismatch(
+        checkout_dir=checkout, repo_url=str(repo), ref="refs/tags/v1.0"
+    )
+
+    assert result is None
+
+
+@needs_git_command
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ("untracked", "it has local changes"),
+        ("ignored", "it has local changes"),
+        ("other_ref", "HEAD is not at 'refs/tags/v1.0'"),
+        ("unknown_ref", "Git cannot inspect it"),
+        ("other_repo", "it was cloned from a different repository"),
+    ],
+)
+def test_git_checkout_mismatch_reports_reason(
+    tmp_path: pathlib.Path, change: str, reason: str
+) -> None:
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+    ref = "refs/tags/v1.0"
+    repo_url = str(repo)
+    if change == "untracked":
+        (checkout / "new.txt").write_text("new")
+    elif change == "ignored":
+        (checkout / ".git" / "info" / "exclude").write_text("build/\n")
+        (checkout / "build").mkdir()
+        (checkout / "build" / "out.txt").write_text("built")
+    elif change == "other_ref":
+        _git(checkout, "commit", "--allow-empty", "-m", "Local commit")
+    elif change == "unknown_ref":
+        ref = "refs/tags/missing"
+    else:
+        repo_url = str(tmp_path / "other-repo")
+
+    result = git_checkout_mismatch(checkout_dir=checkout, repo_url=repo_url, ref=ref)
+
+    assert result == reason
+
+
+@needs_git_command
+def test_git_checkout_mismatch_uses_stored_origin_url(
+    tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Compare the stored origin URL, not the one rewritten by insteadOf."""
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+    repo_url = "https://user:origin-secret@upstream.test/repo"
+    rewritten_url = "https://user:mirror-secret@mirror.test/repo"
+    _git(checkout, "remote", "set-url", "origin", repo_url)
+    _git(checkout, "config", f"url.{rewritten_url}.insteadOf", repo_url)
+
+    with caplog.at_level(logging.DEBUG):
+        result = git_checkout_mismatch(
+            checkout_dir=checkout, repo_url=repo_url, ref="refs/tags/v1.0"
+        )
+
+    assert "origin-secret" not in caplog.text
+    assert "mirror-secret" not in caplog.text
+    assert result is None
+
+
+@needs_git_command
+@pytest.mark.parametrize(
+    ("origin_index", "reason"),
+    [(0, None), (1, "it was cloned from a different repository")],
+)
+def test_git_checkout_mismatch_uses_first_origin_url(
+    tmp_path: pathlib.Path,
+    origin_index: int,
+    reason: str | None,
+) -> None:
+    """Compare the first stored URL even with multiple URLs and a rewrite."""
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+    origin_urls = [str(repo), "https://user:secret@other.test/repo"]
+    _git(checkout, "remote", "set-url", "--add", "origin", origin_urls[1])
+    _git(checkout, "config", "url.https://mirror.test/repo.insteadOf", origin_urls[0])
+
+    result = git_checkout_mismatch(
+        checkout_dir=checkout,
+        repo_url=origin_urls[origin_index],
+        ref="refs/tags/v1.0",
+    )
+
+    assert result == reason
+
+
+@needs_git_command
+def test_git_checkout_mismatch_ignores_global_origin_url(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Use the checkout's stored origin even when the global config sets one."""
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+    global_config = tmp_path / "gitconfig"
+    global_config.write_text(
+        '[remote "origin"]\n    url = https://global.test/other-repo\n'
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+
+    result = git_checkout_mismatch(
+        checkout_dir=checkout, repo_url=str(repo), ref="refs/tags/v1.0"
+    )
+
+    assert result is None
+
+
+@needs_git_command
+def test_git_checkout_mismatch_rejects_uninitialized_submodule(
+    tmp_path: pathlib.Path,
+) -> None:
+    sub = _make_repo(tmp_path / "sub")
+    repo = _make_repo(tmp_path / "repo")
+    _git(repo, "submodule", "add", str(sub), "sub")
+    _git(repo, "commit", "-m", "Add submodule")
+    _git(repo, "tag", "v2.0")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v2.0")
+    assert (
+        git_checkout_mismatch(
+            checkout_dir=checkout, repo_url=str(repo), ref="refs/tags/v2.0"
+        )
+        is None
+    )
+    _git(checkout, "submodule", "deinit", "--force", "sub")
+
+    result = git_checkout_mismatch(
+        checkout_dir=checkout, repo_url=str(repo), ref="refs/tags/v2.0"
+    )
+
+    assert result == "a submodule is not initialized at its recorded commit"
+
+
+@needs_git_command
+def test_git_checkout_mismatch_rejects_non_checkout(tmp_path: pathlib.Path) -> None:
+    repo = _make_repo(tmp_path / "repo")
+    plain_dir = tmp_path / "plain"
+    plain_dir.mkdir()
+    # A broken ".git" makes Git search parent directories.
+    nested = repo / "nested"
+    nested.mkdir()
+    (nested / ".git").mkdir()
+
+    plain_result = git_checkout_mismatch(
+        checkout_dir=plain_dir, repo_url=str(repo), ref="refs/tags/v1.0"
+    )
+    nested_result = git_checkout_mismatch(
+        checkout_dir=nested, repo_url=str(repo), ref="refs/tags/v1.0"
+    )
+
+    assert plain_result == "it is not a Git checkout"
+    assert nested_result == "it is not the top of a Git checkout"

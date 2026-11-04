@@ -18,6 +18,7 @@ from resolvelib.resolvers import ResolverException
 
 from .. import (
     bootstrap_requirement_resolver,
+    packagesettings,
     progress,
     sources,
     threading_utils,
@@ -469,8 +470,12 @@ class Bootstrapper:
         resolved_version: Version,
         wheel_url: str,
     ) -> tuple[pathlib.Path, pathlib.Path]:
-        result = _cache.bg_prepare_prebuilt(
-            self.ctx, req, req_type, resolved_version, wheel_url
+        result = _cache.bg_prepare_test_mode_prebuilt(
+            self.ctx,
+            req,
+            req_type,
+            resolved_version,
+            wheel_url,
         )
         assert result.wheel_filename is not None
         assert result.unpack_dir is not None
@@ -481,9 +486,9 @@ class Bootstrapper:
         req: Requirement,
         resolved_version: Version,
         source_url: str,
-    ) -> pathlib.Path:
+    ) -> packagesettings.DownloadedSource:
         """Download source for a package."""
-        result: pathlib.Path = sources.download_source(
+        result: packagesettings.DownloadedSource = sources.download_source(
             ctx=self.ctx,
             req=req,
             version=resolved_version,
@@ -495,14 +500,15 @@ class Bootstrapper:
         self,
         req: Requirement,
         resolved_version: Version,
-        source_filename: pathlib.Path,
+        downloaded_source: packagesettings.DownloadedSource,
     ) -> pathlib.Path:
         """Prepare (unpack/patch) source for building."""
         result: pathlib.Path = sources.prepare_source(
             ctx=self.ctx,
             req=req,
-            source_filename=source_filename,
+            source_filename=downloaded_source.path,
             version=resolved_version,
+            download_kind=downloaded_source.kind,
         )
         return result
 
@@ -710,7 +716,7 @@ class Bootstrapper:
             req: The requirement being added to the build order.
             version: The resolved version.
             source_url: URL from which the source distribution was obtained.
-            source_type: The kind of source (sdist, wheel, git, etc.).
+            source_type: Legacy source classification for compatibility.
             prebuilt: True if the wheel was taken from a prebuilt cache rather
                 than compiled locally.
             constraint: The version constraint active for this package, if any.
@@ -734,6 +740,9 @@ class Bootstrapper:
             "source_url": source_url,
             "source_url_type": str(source_type),
         }
+        source_resolver = self.ctx.package_build_info(req).source_resolver
+        if source_resolver is not None:
+            info["source_provider"] = source_resolver.provider
         self._build_stack.append(info)
 
     def _check_write_error(self, fut: concurrent.futures.Future[int]) -> None:

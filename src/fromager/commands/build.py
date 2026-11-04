@@ -35,6 +35,7 @@ from fromager import (
 )
 
 from ..log import VERBOSE_LOG_FMT, ThreadLogFilter, req_ctxvar_context
+from .build_order import check_source_providers
 
 logger = logging.getLogger(__name__)
 
@@ -177,36 +178,37 @@ def build_sequence(
 
     logger.info("reading build order from %s", build_order_file)
     with read.open_file_or_url(build_order_file) as f:
-        for entry in progress.progress(json.load(f)):
-            dist_name = entry["dist"]
-            resolved_version = Version(entry["version"])
-            source_download_url = entry["source_url"]
+        build_order = json.load(f)
+    # Check provider consistency for every entry, including prebuilt wheels.
+    check_source_providers(wkctx, build_order)
+    for entry in progress.progress(build_order):
+        dist_name = entry["dist"]
+        resolved_version = Version(entry["version"])
+        source_download_url = entry["source_url"]
 
-            req = Requirement(f"{dist_name}=={resolved_version}")
+        req = Requirement(f"{dist_name}=={resolved_version}")
 
-            with req_ctxvar_context(req, resolved_version):
-                logger.info("building %s", resolved_version)
-                entry = _build(
-                    wkctx=wkctx,
-                    resolved_version=resolved_version,
-                    req=req,
-                    source_download_url=source_download_url,
-                    force=force,
-                    cache_wheel_server_url=cache_wheel_server_url,
+        with req_ctxvar_context(req, resolved_version):
+            logger.info("building %s", resolved_version)
+            entry = _build(
+                wkctx=wkctx,
+                resolved_version=resolved_version,
+                req=req,
+                source_download_url=source_download_url,
+                force=force,
+                cache_wheel_server_url=cache_wheel_server_url,
+            )
+            if entry.prebuilt:
+                logger.info("downloaded prebuilt wheel %s", entry.wheel_filename.name)
+            elif entry.skipped:
+                logger.info(
+                    "skipping building wheel since %s already exists",
+                    entry.wheel_filename.name,
                 )
-                if entry.prebuilt:
-                    logger.info(
-                        "downloaded prebuilt wheel %s", entry.wheel_filename.name
-                    )
-                elif entry.skipped:
-                    logger.info(
-                        "skipping building wheel since %s already exists",
-                        entry.wheel_filename.name,
-                    )
-                else:
-                    logger.info("built %s", entry.wheel_filename.name)
+            else:
+                logger.info("built %s", entry.wheel_filename.name)
 
-                entries.append(entry)
+            entries.append(entry)
 
     metrics.summarize(wkctx, "Building")
 
@@ -362,17 +364,18 @@ def _build(
     if prebuilt:
         if not wheel_filename:
             logger.info("downloading prebuilt wheel")
-            wheel_filename = wheels.download_wheel(
+            wheel_filename = wheels.download_prebuilt_wheel(
+                ctx=wkctx,
                 req=req,
-                wheel_url=source_download_url,
-                output_directory=wkctx.wheels_build,
+                version=resolved_version,
+                download_url=source_download_url,
+                direct_download_directory=wkctx.wheels_build,
             )
         else:
             # already downloaded prebuilt wheel
             use_exiting_wheel = True
 
-        # Run hooks for prebuilt wheels. At this point wheel_filename should
-        # be set either from _is_wheel_built() or download_wheel().
+        # Run hooks for both cached and freshly downloaded prebuilt wheels.
         hooks.run_prebuilt_wheel_hooks(
             ctx=wkctx,
             req=req,
@@ -384,25 +387,26 @@ def _build(
     # If we get here and still don't have a wheel filename, then we need to
     # build the wheel.
     if not wheel_filename:
-        source_filename = sources.download_source(
+        downloaded_source = sources.download_source(
             ctx=wkctx,
             req=req,
             version=resolved_version,
             download_url=source_download_url,
         )
         logger.debug(
-            "saved sdist of version %s from %s to %s",
+            "saved source of version %s from %s to %s",
             resolved_version,
             source_download_url,
-            source_filename,
+            downloaded_source.path,
         )
 
         # Prepare source
         source_root_dir = sources.prepare_source(
             ctx=wkctx,
             req=req,
-            source_filename=source_filename,
+            source_filename=downloaded_source.path,
             version=resolved_version,
+            download_kind=downloaded_source.kind,
         )
 
         # Build environment
@@ -445,11 +449,19 @@ def _build(
     root_logger.removeHandler(file_handler)
     file_handler.close()
 
-    server.update_wheel_mirror(wkctx)
+    if (
+        prebuilt
+        and pbi.source_resolver is not None
+        and wheel_filename.parent == wkctx.wheels_prebuilt
+    ):
+        server.update_wheel_mirror(wkctx, preferred_prebuilt_wheel=wheel_filename)
+    else:
+        server.update_wheel_mirror(wkctx)
 
-    # After we update the wheel mirror, the built file has
-    # moved to a new directory.
-    wheel_filename = wkctx.wheels_downloads / wheel_filename.name
+    # The mirror moves wheels from the build directory to downloads;
+    # configured prebuilt wheels stay in the prebuilt directory.
+    if wheel_filename.parent != wkctx.wheels_prebuilt:
+        wheel_filename = wkctx.wheels_downloads / wheel_filename.name
 
     return BuildSequenceEntry(
         name=canonicalize_name(req.name),
@@ -566,9 +578,14 @@ def _is_wheel_built(
                     continue
 
             wheel_filename: pathlib.Path | None = None
-            if wkctx.wheel_server_url and url.startswith(wkctx.wheel_server_url):
+            if wheels.is_local_wheel_url(url, wkctx.wheel_server_url):
                 logging.debug("found wheel on local server")
-                wheel_filename = wkctx.wheels_downloads / wheel_basename
+                # Use the file the mirror link points to; downloads/ and prebuilt/
+                # can hold different wheels with the same name. Without a link,
+                # try downloads/.
+                wheel_filename = server.find_mirror_wheel(wkctx, wheel_basename) or (
+                    wkctx.wheels_downloads / wheel_basename
+                )
                 if not wheel_filename.exists():
                     logger.info("wheel not found in local cache, preparing to download")
                     wheel_filename = None

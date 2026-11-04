@@ -10,7 +10,7 @@ import click
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from .. import constraints, context, overrides, resolver
+from .. import constraints, context, overrides, resolver, sources
 from . import package
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,10 @@ def find_updates(
     - "csv": CSV format with "name" and "version" columns
 
     Use --output to write results to a file instead of stdout.
+
+    Packages with source configuration use their configured resolver.
+    Distribution type options apply to legacy configuration.
+    Update reports include recent releases regardless of release-age cooldowns.
     """
     # Load the constraints file
     constraint_loader = constraints.Constraints()
@@ -185,24 +189,33 @@ def _find_newer_versions(
     """Find versions that would be updates beyond the constraint for a package."""
     # Get package build info to determine distribution preferences
     pbi = wkctx.package_build_info(constraint)
-    override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
+    if pbi.source_resolver is not None:
+        provider = sources.get_source_provider(
+            ctx=wkctx,
+            req=constraint,
+            sdist_server_url=sdist_server_url,
+        )
+        # Update discovery includes releases that are too recent to build.
+        provider.cooldown = None
+    else:
+        override_sdist_server_url = pbi.resolver_sdist_server_url(sdist_server_url)
 
-    # Determine include flags based on distribution type
-    include_sdists, include_wheels = package.parse_distribution_option(
-        distribution_type, pbi
-    )
+        # Determine include flags based on distribution type
+        include_sdists, include_wheels = package.parse_distribution_option(
+            distribution_type, pbi
+        )
 
-    # Get resolver provider
-    provider = overrides.find_and_invoke(
-        constraint.name,
-        "get_resolver_provider",
-        resolver.default_resolver_provider,
-        ctx=wkctx,
-        req=constraint,
-        include_sdists=include_sdists,
-        include_wheels=include_wheels,
-        sdist_server_url=override_sdist_server_url,
-    )
+        # Get resolver provider
+        provider = overrides.find_and_invoke(
+            constraint.name,
+            "get_resolver_provider",
+            resolver.default_resolver_provider,
+            ctx=wkctx,
+            req=constraint,
+            include_sdists=include_sdists,
+            include_wheels=include_wheels,
+            sdist_server_url=override_sdist_server_url,
+        )
 
     # Create a requirement without version constraints to get all available versions
     unconstrained_req = Requirement(constraint.name)
