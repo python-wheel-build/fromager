@@ -233,6 +233,7 @@ def test_generate_sbom_upstream_ignores_wheel_purl_overrides(
 
     wheel, upstream = doc["packages"]
     assert wheel["externalRefs"][0]["referenceLocator"] == expected_wheel
+    assert upstream["name"] == "test-pkg"
     assert upstream["externalRefs"][0]["referenceLocator"] == (
         "pkg:pypi/test-pkg@0.5.5"
     )
