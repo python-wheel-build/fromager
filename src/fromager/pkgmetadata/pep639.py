@@ -6,9 +6,8 @@
 - https://spdx.org/licenses/
 """
 
-import re
-
 from license_expression import ExpressionError, LicenseExpression, get_spdx_licensing
+from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 from packaging.metadata import Metadata
 
 
@@ -62,25 +61,19 @@ def license_from_metadata_values(
 
 _SPDX = get_spdx_licensing()
 
-# SPDX idstring: letters, digits, "." and "-"
-_LICENSE_REF_RE = re.compile(r"LicenseRef-[A-Za-z0-9.\-]+")
-
 
 def _parse_spdx(text: str, *, simplify: bool = False) -> LicenseExpression:
     """Parse, validate, and simplify a SPDX license expression
 
-    ``LicenseRef-`` keys reference non-SPDX licenses (PEP 639) and may
-    appear anywhere in the expression, so they are exempt from the SPDX
-    license list check. Every other unknown key is an error.
+    `canonicalize_license_expression()` validates, so the rules match
+    PEP 639 exactly (e.g. ``LicenseRef-`` anywhere, but only SPDX
+    exceptions after ``WITH``); license-expression only builds the object.
     """
-    expr = _SPDX.parse(text, validate=False)
-    unknown = [
-        key
-        for key in _SPDX.unknown_license_keys(expr)
-        if not _LICENSE_REF_RE.fullmatch(key)
-    ]
-    if unknown:
-        raise ExpressionError(f"Unknown license key(s): {', '.join(unknown)}")
+    try:
+        canonical = canonicalize_license_expression(text)
+    except InvalidLicenseExpression as err:
+        raise ExpressionError(str(err)) from err
+    expr = _SPDX.parse(canonical, validate=False)
     if simplify:
         expr = expr.simplify()
     return expr
