@@ -17,6 +17,43 @@ def _configure_package(ctx: context.WorkContext, yaml_str: str) -> None:
     ctx.settings._package_settings[ps.name] = ps
 
 
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://pkg.test/simple/", "https://pkg.test/simple/"),
+        ("https://user:pass@pkg.test/simple/", "https://pkg.test/simple/"),
+        (
+            "https://pkg.test/archive?private_token=SECRET",
+            "https://pkg.test/archive?private_token=***",
+        ),
+        ("https://pkg.test/archive#token=SECRET", "https://pkg.test/archive"),
+        (
+            "https://user:pass@pkg.test/archive/v{version}.tar.gz?token=SECRET",
+            "https://pkg.test/archive/v{version}.tar.gz?token=***",
+        ),
+        (
+            "https://user:pass@pkg.test/archive?token=SECRET#token=SECRET",
+            "https://pkg.test/archive?token=***",
+        ),
+        (
+            "https://pkg.test/archive.tar.gz?sha=v{version}&private_token=SECRET",
+            "https://pkg.test/archive.tar.gz?sha=***&private_token=***",
+        ),
+        (
+            "https://pkg.test/archive?ref=one&ref=two&flag&empty=",
+            "https://pkg.test/archive?ref=***&ref=***&flag=***&empty=***",
+        ),
+        (
+            "https://pkg.test/archive?private%5Ftoken=SECRET%26OTHER",
+            "https://pkg.test/archive?private_token=***",
+        ),
+    ],
+)
+def test_display_url(url: str, expected: str) -> None:
+    """Keep query names while hiding user info, values, and fragments."""
+    assert package_command._display_url(url) == expected
+
+
 def test_resolve_fromager_displays_and_uses_source_config(
     tmp_context: context.WorkContext,
     capsys: pytest.CaptureFixture[str],
@@ -26,7 +63,7 @@ def test_resolve_fromager_displays_and_uses_source_config(
         tmp_context,
         "source:\n"
         "  provider: pypi-prebuilt\n"
-        "  index_url: https://index-user:index-password@pkg.test/simple/\n"
+        "  index_url: https://index-user:index-password@pkg.test/simple/?token=SECRET#fragment-secret\n"
         "  min_release_age: 7\n",
     )
     req = Requirement("pkg")
@@ -62,9 +99,11 @@ def test_resolve_fromager_displays_and_uses_source_config(
     assert "  - provider: pypi-prebuilt" in output
     assert "  - resolves_prebuilt_wheel: True" in output
     assert "  - min_release_age: 7" in output
-    assert "  - index_url: https://pkg.test/simple/" in output
+    assert "  - index_url: https://pkg.test/simple/?token=***\n" in output
     assert "index-user" not in output
     assert "index-password" not in output
+    assert "SECRET" not in output
+    assert "fragment-secret" not in output
     assert (
         "- distribution type 'sdist' is ignored for configured source resolvers"
         in output
@@ -82,22 +121,38 @@ def test_resolve_fromager_displays_and_uses_source_config(
     assert source_provider.cooldown is None
 
 
+@pytest.mark.parametrize(
+    ("credentials", "suffix"),
+    [
+        ("", ""),
+        (
+            "SECRET_USER:SECRET_PASSWORD@",
+            "?private_token=QUERY_SECRET#token=FRAGMENT_SECRET",
+        ),
+    ],
+    ids=["public", "credentials"],
+)
 def test_resolve_fromager_preserves_legacy_config_output(
     tmp_context: context.WorkContext,
     capsys: pytest.CaptureFixture[str],
+    credentials: str,
+    suffix: str,
 ) -> None:
-    """Keep legacy resolver and download settings visible."""
+    """Display legacy URLs safely while resolving with their original values."""
+    index_url = f"https://{credentials}legacy.test/simple/{suffix}"
+    wheel_url = f"https://{credentials}wheels.test/simple/{suffix}"
+    download_url = f"https://{credentials}pkg.test/pkg-${{version}}.tar.gz{suffix}"
     _configure_package(
         tmp_context,
         "download_source:\n"
-        "  url: https://pkg.test/pkg-${version}.tar.gz\n"
+        f"  url: {download_url}\n"
         "resolver_dist:\n"
-        "  sdist_server_url: https://legacy.test/simple/\n"
+        f"  sdist_server_url: {index_url}\n"
         "  include_sdists: true\n"
         "  include_wheels: false\n"
         "variants:\n"
         "  cpu:\n"
-        "    wheel_server_url: https://wheels.test/simple/\n"
+        f"    wheel_server_url: {wheel_url}\n"
         "    pre_built: false\n",
     )
     req = Requirement("pkg")
@@ -132,6 +187,21 @@ def test_resolve_fromager_preserves_legacy_config_output(
     assert "- wheel server url: https://wheels.test/simple/" in output
     assert "- download url: https://pkg.test/pkg-${version}.tar.gz" in output
     assert "- prebuilt wheel: False" in output
+    if suffix:
+        assert (
+            "- sdist server url: https://legacy.test/simple/?private_token=***\n"
+            in output
+        )
+        assert (
+            "- wheel server url: https://wheels.test/simple/?private_token=***\n"
+            in output
+        )
+        assert (
+            "- download url: https://pkg.test/pkg-${version}.tar.gz?private_token=***\n"
+            in output
+        )
+    for secret in ("SECRET_USER", "SECRET_PASSWORD", "QUERY_SECRET", "FRAGMENT_SECRET"):
+        assert secret not in output
     assert versions == {Version("1.0")}
     assert provider.cooldown is None
     find_and_invoke.assert_called_once_with(
@@ -142,6 +212,6 @@ def test_resolve_fromager_preserves_legacy_config_output(
         req=req,
         include_sdists=False,
         include_wheels=True,
-        sdist_server_url="https://legacy.test/simple/",
+        sdist_server_url=index_url,
         ignore_platform=False,
     )
