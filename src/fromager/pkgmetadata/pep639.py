@@ -6,7 +6,8 @@
 - https://spdx.org/licenses/
 """
 
-from license_expression import LicenseExpression, get_spdx_licensing
+from license_expression import ExpressionError, LicenseExpression, get_spdx_licensing
+from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 from packaging.metadata import Metadata
 
 
@@ -62,10 +63,17 @@ _SPDX = get_spdx_licensing()
 
 
 def _parse_spdx(text: str, *, simplify: bool = False) -> LicenseExpression:
-    """Parse, validate, and simplify a SPDX license expression"""
-    # LicenseRef are references to non-SPDX licenses
-    validate = not text.startswith("LicenseRef-")
-    expr = _SPDX.parse(text, validate=validate)
+    """Parse, validate, and simplify a SPDX license expression
+
+    `canonicalize_license_expression()` validates, so the rules match
+    PEP 639 exactly (e.g. ``LicenseRef-`` anywhere, but only SPDX
+    exceptions after ``WITH``); license-expression only builds the object.
+    """
+    try:
+        canonical = canonicalize_license_expression(text)
+    except InvalidLicenseExpression as err:
+        raise ExpressionError(str(err)) from err
+    expr = _SPDX.parse(canonical, validate=False)
     if simplify:
         expr = expr.simplify()
     return expr
