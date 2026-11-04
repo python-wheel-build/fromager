@@ -70,7 +70,26 @@ How It Works
    with the remaining versions. A summary of failed versions is printed at the
    end.
 
-5. **Constraints disabled** --- ``constraints.txt`` generation is
+5. **Dependent pruning** --- When a *runtime* (install) dependency of a
+   package fails to resolve or build, the dependent package has already been
+   built: fromager must build a package before it can read the wheel metadata
+   that declares its runtime dependencies. At the end of the bootstrap,
+   fromager reconciles these failures and prunes each dependent whose
+   requirement can no longer be satisfied: the package is removed from
+   ``build-order.json`` and ``graph.json``, its built wheel and sdist are
+   deleted, and it is recorded in ``partial-failures.json``. A dependent is
+   only pruned when no remaining built version of the dependency satisfies
+   its specifier *and requested extras* --- if another version of the
+   dependency built successfully, or the requested extra's own dependencies
+   are all present, the dependent is kept. Pruning cascades transitively to
+   the dependent's own dependents. A dependency that is only required
+   through an *extra* (``bar[feature] -> baz``) does not prune the shared
+   package: the bare package stays available for its other consumers, and
+   only the dependents that requested the extra are pruned. When wheel
+   metadata cannot be read (``--sdist-only`` runs), a failure cannot be
+   classified and the dependent is kept rather than pruned.
+
+6. **Constraints disabled** --- ``constraints.txt`` generation is
    **automatically skipped** because a constraints file cannot represent
    multiple versions of the same package. You do not need to pass
    ``--skip-constraints`` separately.
@@ -89,7 +108,8 @@ When ``--multiple-versions`` is active:
   dependency graph
 - ``partial-failures.json`` --- created when one or more versions fail. Each
   failure includes the package name, version, phase, exception type, and
-  message.
+  message. Packages pruned because a runtime dependency is unavailable are
+  recorded here with the phase ``pruned due to unresolved runtime dependency``.
 - ``constraints.txt`` --- **not generated**
 
 The report contains a top-level ``failures`` list. For a resolved version,

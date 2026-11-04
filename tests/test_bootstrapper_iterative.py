@@ -22,6 +22,7 @@ import concurrent.futures
 import logging
 import pathlib
 import typing
+import zipfile
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -31,6 +32,7 @@ from packaging.version import Version
 from resolvelib.resolvers import ResolverException
 
 from fromager import bootstrapper, build_environment
+from fromager.bootstrapper._bootstrapper import RuntimeDepFailureRoot
 from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._complete import Complete
 from fromager.bootstrapper._phase import Phase
@@ -2786,3 +2788,1036 @@ class TestCreateUnresolvedWorkItemsReturnType:
         assert isinstance(items[0], Resolve)
         assert items[0].work_item.req == Requirement("dep-a")
         assert items[0].work_item.req_type == RequirementType.INSTALL
+
+
+class TestRuntimeDepFailureReconcile:
+    """Pruning dependents of failed runtime dependencies (#1439).
+
+    When a runtime dependency fails to resolve or build in multi-version
+    mode, the dependent was already built (phase ordering), so it must be
+    pruned at finalize() instead of being published with unsatisfiable
+    metadata.
+    """
+
+    def _add_top_level(self, ctx: WorkContext, name: str, version: str) -> None:
+        ctx.dependency_graph.add_dependency(
+            parent_name=None,
+            parent_version=None,
+            req_type=RequirementType.TOP_LEVEL,
+            req=Requirement(name),
+            req_version=Version(version),
+            download_url=f"https://pypi.org/{name}-{version}.tar.gz",
+            pre_built=False,
+        )
+
+    def _add_install_edge(
+        self,
+        ctx: WorkContext,
+        parent_name: str,
+        parent_version: str,
+        req: str,
+        req_version: str,
+    ) -> None:
+        ctx.dependency_graph.add_dependency(
+            parent_name=canonicalize_name(parent_name),
+            parent_version=Version(parent_version),
+            req_type=RequirementType.INSTALL,
+            req=Requirement(req),
+            req_version=Version(req_version),
+            download_url=f"https://pypi.org/{req}-{req_version}.tar.gz",
+            pre_built=False,
+        )
+
+    def _add_to_build_order(
+        self, bt: bootstrapper.Bootstrapper, name: str, version: str
+    ) -> None:
+        bt.add_to_build_order(
+            req=Requirement(f"{name}=={version}"),
+            version=Version(version),
+            source_url=f"https://pypi.org/{name}-{version}.tar.gz",
+            source_type=SourceType.SDIST,
+        )
+
+    # -- capture at failure sites --
+
+    def test_resolve_failure_captures_dependent_root(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A resolve failure of an INSTALL dep records the dependent as a root."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        item = _make_resolve_item(
+            req="av>=14.0.0",
+            parent=(Requirement("foo"), Version("1.0")),
+        )
+
+        bt._handle_phase_error(item, ResolverException("found no match"))
+
+        assert len(bt._runtime_dep_failure_roots) == 1
+        root = bt._runtime_dep_failure_roots[0]
+        assert root.dependent_name == canonicalize_name("foo")
+        assert root.dependent_version == Version("1.0")
+        assert root.dep_req == Requirement("av>=14.0.0")
+
+    def test_resolve_failure_no_root_for_top_level(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A failing top-level requirement has no dependent to prune."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        item = _make_resolve_item(req="av>=14.0.0", parent=None)
+
+        bt._handle_phase_error(item, ResolverException("found no match"))
+
+        assert bt._runtime_dep_failure_roots == []
+
+    def test_resolve_failure_no_root_for_build_requirement(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A failing BUILD requirement never made the dependent installable-broken."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        item = _make_resolve_item(
+            req="setuptools>=70",
+            req_type=RequirementType.BUILD_SYSTEM,
+            parent=(Requirement("foo"), Version("1.0")),
+        )
+
+        bt._handle_phase_error(item, ResolverException("found no match"))
+
+        assert bt._runtime_dep_failure_roots == []
+
+    def test_build_failure_captures_incoming_install_edges(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A build failure of an INSTALL dep captures its dependents before
+        remove_dependency() deletes the edges."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar>=2.0", "2.0")
+
+        item = _make_build_item(req="bar>=2.0", version="2.0")
+        bt._handle_phase_error(item, ValueError("build failed"))
+
+        assert len(bt._runtime_dep_failure_roots) == 1
+        root = bt._runtime_dep_failure_roots[0]
+        assert root.dependent_name == canonicalize_name("foo")
+        assert root.dependent_version == Version("1.0")
+        assert root.dep_req == Requirement("bar>=2.0")
+        # the failed version itself is still recorded and removed as before
+        assert (canonicalize_name("bar"), "2.0") in bt._failed_versions
+
+    def test_build_failure_no_capture_for_build_requirement(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A failing BUILD requirement does not capture dependents: the
+        dependent's own build fails separately through its build env."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._add_top_level(tmp_context, "foo", "1.0")
+        tmp_context.dependency_graph.add_dependency(
+            parent_name=canonicalize_name("foo"),
+            parent_version=Version("1.0"),
+            req_type=RequirementType.BUILD_SYSTEM,
+            req=Requirement("bar"),
+            req_version=Version("2.0"),
+            download_url="https://pypi.org/bar-2.0.tar.gz",
+            pre_built=False,
+        )
+
+        item = _make_build_item(req="bar", version="2.0")
+        item.work_item.req_type = RequirementType.BUILD_SYSTEM
+        bt._handle_phase_error(item, ValueError("build failed"))
+
+        assert bt._runtime_dep_failure_roots == []
+
+    # -- reconcile at finalize --
+
+    def test_reconcile_prunes_unsatisfiable_dependent(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """The dependent is pruned when no version of the dep satisfies its
+        specifier (the av>=14 vs av==13.1.0 case)."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        # av 13.1.0 built via the top-level requirement, does not satisfy >=14
+        self._add_top_level(tmp_context, "av", "13.1.0")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._write_test_wheel(
+            tmp_context, "foo", "1.0", requires_dist=["av>=14.0.0"], provides_extra=[]
+        )
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("av>=14.0.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # pruned from the build order and the graph
+        assert all(e["dist"] != "foo" for e in bt._build_stack)
+        assert "foo==1.0" not in tmp_context.dependency_graph.nodes
+        # recorded so it lands in partial-failures.json
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+        # built artifacts deleted
+        assert not list(tmp_context.wheels_downloads.glob("foo-1.0-*.whl"))
+        # av itself is untouched
+        assert "av==13.1.0" in tmp_context.dependency_graph.nodes
+
+    def test_reconcile_keeps_dependent_with_alternative_version(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """The dependent survives when a non-failed version of the dep
+        satisfies its specifier (bar==2.0 failed, bar==1.5 built)."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._add_top_level(tmp_context, "bar", "1.5")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        bt._failed_versions[(canonicalize_name("bar"), "2.0")] = (
+            ValueError("build failed"),
+            "failed during build phase",
+        )
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bar>=1.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert len(bt._build_stack) == 1
+        assert bt._build_stack[0]["dist"] == "foo"
+        assert "foo==1.0" in tmp_context.dependency_graph.nodes
+        assert (canonicalize_name("foo"), "1.0") not in bt._failed_versions
+
+    def test_reconcile_propagates_transitively(self, tmp_context: WorkContext) -> None:
+        """A requires B, B requires C, C fails: B is pruned and A is then
+        re-evaluated against the remaining set and pruned too."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context, "bbb", "1.0", requires_dist=["ccc>=1.0"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context, "aaa", "1.0", requires_dist=["bbb>=1.0"], provides_extra=[]
+        )
+        self._add_top_level(tmp_context, "aaa", "1.0")
+        self._add_top_level(tmp_context, "bbb", "1.0")
+        self._add_install_edge(tmp_context, "aaa", "1.0", "bbb>=1.0", "1.0")
+        self._add_to_build_order(bt, "aaa", "1.0")
+        self._add_to_build_order(bt, "bbb", "1.0")
+        # ccc failed to resolve for bbb
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("bbb"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("ccc>=1.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # both bbb (direct casualty) and aaa (transitive casualty) pruned
+        assert bt._build_stack == []
+        assert "bbb==1.0" not in tmp_context.dependency_graph.nodes
+        assert "aaa==1.0" not in tmp_context.dependency_graph.nodes
+        assert (canonicalize_name("bbb"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("aaa"), "1.0") in bt._failed_versions
+
+    def test_reconcile_noop_without_multiple_versions(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Normal mode is fail-fast and never reconciles."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=False)
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("av>=14.0.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert len(bt._build_stack) == 1
+        assert "foo==1.0" in tmp_context.dependency_graph.nodes
+
+    def test_reconcile_rechecks_previously_satisfied_dependent(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A dependent that initially passed the guard is re-checked when the
+        version that satisfied it is later pruned for its own failure."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context, "bar", "1.0", requires_dist=["baz>=1.0"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context, "foo", "1.0", requires_dist=["bar>=1.0"], provides_extra=[]
+        )
+        # foo -> bar>=1.0 (satisfied by bar==1.0), bar -> baz (baz failed)
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_top_level(tmp_context, "bar", "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar>=1.0", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        self._add_to_build_order(bt, "bar", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("bar"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("baz>=1.0"),
+            )
+        )
+        # appended last so the LIFO queue checks foo first, while bar==1.0
+        # still satisfies its requirement
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bar>=1.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # bar is pruned for baz; foo must then be pruned too because the
+        # bar version that satisfied it is gone
+        assert bt._build_stack == []
+        assert "bar==1.0" not in tmp_context.dependency_graph.nodes
+        assert "foo==1.0" not in tmp_context.dependency_graph.nodes
+        assert (canonicalize_name("bar"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+
+    def test_prune_deletes_sdists_from_downloads_and_builds(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Both the downloaded archive and the rebuilt sdist are deleted."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context, "foo", "1.0", requires_dist=["av>=14.0.0"], provides_extra=[]
+        )
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        downloaded = tmp_context.sdists_downloads / "foo-1.0.tar.gz"
+        downloaded.parent.mkdir(parents=True, exist_ok=True)
+        downloaded.write_bytes(b"downloaded sdist")
+        built = tmp_context.sdists_builds / "foo-1.0.tar.gz"
+        built.parent.mkdir(parents=True, exist_ok=True)
+        built.write_bytes(b"rebuilt sdist")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("av>=14.0.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert not downloaded.exists()
+        assert not built.exists()
+
+    def test_reconcile_terminates_on_dependency_cycle(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Mutually dependent unsatisfiable packages are pruned once each and
+        the batch walk terminates."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        # aaa and bbb require each other; both requirements are unsatisfiable
+        self._write_test_wheel(
+            tmp_context, "aaa", "1.0", requires_dist=["bbb>=2.0"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context, "bbb", "1.0", requires_dist=["aaa>=2.0"], provides_extra=[]
+        )
+        self._add_top_level(tmp_context, "aaa", "1.0")
+        self._add_top_level(tmp_context, "bbb", "1.0")
+        self._add_install_edge(tmp_context, "aaa", "1.0", "bbb>=2.0", "1.0")
+        self._add_install_edge(tmp_context, "bbb", "1.0", "aaa>=2.0", "1.0")
+        self._add_to_build_order(bt, "aaa", "1.0")
+        self._add_to_build_order(bt, "bbb", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("aaa"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bbb>=2.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # aaa is pruned (no bbb>=2.0); bbb is then pruned because its
+        # requirement on aaa>=2.0 is unsatisfiable; the cycle ends there
+        # instead of re-pruning aaa forever.
+        assert bt._build_stack == []
+        assert (canonicalize_name("aaa"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("bbb"), "1.0") in bt._failed_versions
+
+    def test_reconcile_prunes_dependent_with_no_edge_to_satisfying_version(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """End-to-end review scenario: foo requires bar>=1.0; bar==2.0 fails
+        to build (capturing foo via the foo->bar==2.0 edge, which is then
+        removed); bar==1.0 is in the graph only via a top-level requirement
+        (as if foo's resolution of it was cache-filtered, so no
+        foo->bar==1.0 edge exists); baz cannot resolve for bar==1.0.
+
+        Batch 1 keeps foo (bar==1.0 satisfies bar>=1.0) and prunes
+        bar==1.0 (no baz). With no graph edge reconnecting foo to
+        bar==1.0, only retaining the satisfied root makes batch 2 re-check
+        foo and prune it.
+        """
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context, "bar", "1.0", requires_dist=["baz"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context, "foo", "1.0", requires_dist=["bar>=1.0"], provides_extra=[]
+        )
+        # top-level requirements; NO foo -> bar==1.0 install edge (the
+        # version foo's resolution never returned, e.g. cache-filtered)
+        self._add_top_level(tmp_context, "bar", "1.0")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        # foo's resolution only produced an edge to the uncached bar==2.0
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar>=1.0", "2.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        self._add_to_build_order(bt, "bar", "1.0")
+        foo_wheel = tmp_context.wheels_downloads / "foo-1.0-py3-none-any.whl"
+
+        # step 1: bar==2.0 build fails; the foo->bar==2.0 edge captures
+        # foo as a root before remove_dependency() deletes the edge
+        bt._handle_phase_error(
+            _make_build_item(req="bar>=1.0", version="2.0"), ValueError("build failed")
+        )
+        assert len(bt._runtime_dep_failure_roots) == 1
+        captured = bt._runtime_dep_failure_roots[0]
+        assert captured.dependent_name == canonicalize_name("foo")
+        assert captured.dep_req == Requirement("bar>=1.0")
+        # the failed version is recorded and removed, edge and all
+        assert (canonicalize_name("bar"), "2.0") in bt._failed_versions
+        assert "bar==2.0" not in tmp_context.dependency_graph.nodes
+        assert "foo==1.0" in tmp_context.dependency_graph.nodes
+
+        # step 2: resolving baz for bar==1.0 fails; wi.parent captures
+        # bar==1.0 as a root (no graph edge is ever created)
+        bt._handle_phase_error(
+            _make_resolve_item(req="baz", parent=(Requirement("bar"), Version("1.0"))),
+            ResolverException("found no match"),
+        )
+        assert len(bt._runtime_dep_failure_roots) == 2
+        # roots are processed in capture order: foo first, then bar
+        assert bt._runtime_dep_failure_roots[1].dependent_name == canonicalize_name(
+            "bar"
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # batch 1: foo kept (bar==1.0 satisfies bar>=1.0), bar==1.0 pruned
+        # (no baz). batch 2: foo re-checked with no bar left and pruned,
+        # despite never having had a graph edge to bar==1.0.
+        assert bt._build_stack == []
+        assert "bar==1.0" not in tmp_context.dependency_graph.nodes
+        assert "foo==1.0" not in tmp_context.dependency_graph.nodes
+        assert (canonicalize_name("bar"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+        assert not foo_wheel.exists()
+
+    @staticmethod
+    def _write_test_wheel(
+        ctx: WorkContext,
+        name: str,
+        version: str,
+        requires_dist: list[str],
+        provides_extra: list[str],
+    ) -> None:
+        """Create a minimal wheel with real METADATA for reconcile tests."""
+        wheel = ctx.wheels_downloads / f"{name}-{version}-py3-none-any.whl"
+        wheel.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "Metadata-Version: 2.1",
+            f"Name: {name}",
+            f"Version: {version}",
+        ]
+        lines += [f"Requires-Dist: {rd}" for rd in requires_dist]
+        lines += [f"Provides-Extra: {pe}" for pe in provides_extra]
+        with zipfile.ZipFile(wheel, "w") as whl:
+            whl.writestr(
+                f"{name}-{version}.dist-info/METADATA", "\n".join(lines) + "\n"
+            )
+
+    def test_feature_only_failure_keeps_bare_package(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A dependency only required through an extra does not prune the
+        shared package: bare consumers keep it, the extra's requesters are
+        pruned instead."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context,
+            "foo",
+            "1.0",
+            requires_dist=["bar[feature]>=1.0"],
+            provides_extra=[],
+        )
+        # bar[feature] requires baz; bare bar requires nothing
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=['baz; extra == "feature"'],
+            provides_extra=["feature"],
+        )
+        self._add_top_level(tmp_context, "bar", "1.0")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_top_level(tmp_context, "qux", "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar[feature]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "qux", "1.0", "bar>=1.0", "1.0")
+        for name in ("foo", "qux", "bar"):
+            self._add_to_build_order(bt, name, "1.0")
+        # baz failed to resolve while processing bar (under foo's extra)
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("bar"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("baz"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # bar is kept for its bare consumer qux; foo, whose requested extra
+        # is unsatisfiable, is pruned
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("bar"), "1.0") not in bt._failed_versions
+        assert (canonicalize_name("qux"), "1.0") not in bt._failed_versions
+        assert "bar==1.0" in tmp_context.dependency_graph.nodes
+        assert "foo==1.0" not in tmp_context.dependency_graph.nodes
+        assert {e["dist"] for e in bt._build_stack} == {"qux", "bar"}
+
+    def test_guard_rejects_version_without_extra_deps(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A version satisfying the specifier but missing the extra's own
+        dependencies does not satisfy an extras-bearing requirement."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context,
+            "foo",
+            "1.0",
+            requires_dist=["bar[feature]>=0.5"],
+            provides_extra=[],
+        )
+        # bar==0.9's feature needs baz, and baz is not in the graph
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "0.9",
+            requires_dist=['baz; extra == "feature"'],
+            provides_extra=["feature"],
+        )
+        self._add_top_level(tmp_context, "bar", "0.9")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bar[feature]>=0.5"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+        assert "foo==1.0" not in tmp_context.dependency_graph.nodes
+
+    def test_guard_prefers_version_with_satisfiable_extra(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A version satisfies an extras-bearing requirement when the extra's
+        dependencies are in the graph, regardless of which extras set the
+        version was processed under (superset-safe), and a version whose
+        extra is broken does not mask a healthy alternative version."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        # bar==0.9's feature needs baz (missing); bar==1.0's needs quux (present)
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "0.9",
+            requires_dist=['baz; extra == "feature"'],
+            provides_extra=["feature"],
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=['quux; extra == "feature"'],
+            # declares an extra beyond the requested one: the guard checks
+            # the actual required deps, not an exact extras match
+            provides_extra=["feature", "other"],
+        )
+        self._add_top_level(tmp_context, "bar", "0.9")
+        self._add_top_level(tmp_context, "bar", "1.0")
+        self._add_top_level(tmp_context, "quux", "1.0")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bar[feature]>=0.5"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert (canonicalize_name("foo"), "1.0") not in bt._failed_versions
+        assert len(bt._build_stack) == 1
+
+    def test_guard_skips_extras_check_without_wheel_metadata(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Without readable wheel metadata the extras verification is
+        skipped rather than pruning a possibly-installable dependent."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        # bar==0.9 is in the graph but has no wheel file on disk
+        self._add_top_level(tmp_context, "bar", "0.9")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bar[feature]>=0.5"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert (canonicalize_name("foo"), "1.0") not in bt._failed_versions
+        assert len(bt._build_stack) == 1
+
+    def test_feature_only_conversion_handles_compound_markers(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A dependency required through `extra == "a" or extra == "b"`
+        re-targets the requesters of both extras, and only them."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context, "foo1", "1.0", requires_dist=["bar[a]>=1.0"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context, "foo2", "1.0", requires_dist=["bar[b]>=1.0"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=['baz; extra == "a" or extra == "b"'],
+            provides_extra=["a", "b"],
+        )
+        self._add_top_level(tmp_context, "bar", "1.0")
+        for name in ("foo1", "foo2", "qux"):
+            self._add_top_level(tmp_context, name, "1.0")
+        self._add_install_edge(tmp_context, "foo1", "1.0", "bar[a]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "foo2", "1.0", "bar[b]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "qux", "1.0", "bar>=1.0", "1.0")
+        for name in ("foo1", "foo2", "qux", "bar"):
+            self._add_to_build_order(bt, name, "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("bar"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("baz"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # both extra requesters pruned, bare consumer and bar kept
+        assert (canonicalize_name("foo1"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("foo2"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("qux"), "1.0") not in bt._failed_versions
+        assert (canonicalize_name("bar"), "1.0") not in bt._failed_versions
+        assert {e["dist"] for e in bt._build_stack} == {"qux", "bar"}
+
+    def test_nested_extras_failure_prunes_only_requester(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """foo -> bar[feature] -> baz[deep] -> missing: the guard must follow
+        nested extras, so foo is pruned while bare bar, baz and their bare
+        consumers survive."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context,
+            "foo",
+            "1.0",
+            requires_dist=["bar[feature]>=1.0"],
+            provides_extra=[],
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=['baz[deep]>=1.0; extra == "feature"'],
+            provides_extra=["feature"],
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "baz",
+            "1.0",
+            requires_dist=['missing; extra == "deep"'],
+            provides_extra=["deep"],
+        )
+        for name in ("bar", "baz", "foo", "qux"):
+            self._add_top_level(tmp_context, name, "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar[feature]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "qux", "1.0", "bar>=1.0", "1.0")
+        # created when bar's processing under bar[feature] resolved baz[deep]
+        self._add_install_edge(tmp_context, "bar", "1.0", "baz[deep]>=1.0", "1.0")
+        for name in ("foo", "qux", "bar", "baz"):
+            self._add_to_build_order(bt, name, "1.0")
+        # the deepest failure: missing failed to resolve while processing
+        # baz under bar[feature]'s baz[deep] requirement
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("baz"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("missing"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # conversion keeps bare baz, re-targets baz[deep] requesters (bar),
+        # conversion keeps bare bar, re-targets bar[feature] requesters
+        # (foo), and the nested guard prunes foo
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+        for name in ("bar", "baz", "qux"):
+            assert (canonicalize_name(name), "1.0") not in bt._failed_versions
+        assert {e["dist"] for e in bt._build_stack} == {"qux", "bar", "baz"}
+
+    def test_stricter_extra_requirement_keeps_bare_package(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Bare bar requires baz>=1, bar[feature] additionally requires
+        baz>=2, and only baz==1.0 builds: the failed baz>=2 only breaks the
+        feature context, so bar and its bare consumer qux survive."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context,
+            "foo",
+            "1.0",
+            requires_dist=["bar[feature]>=1.0"],
+            provides_extra=[],
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=["baz>=1", 'baz>=2; extra == "feature"'],
+            provides_extra=["feature"],
+        )
+        for name in ("bar", "baz", "foo", "qux"):
+            self._add_top_level(tmp_context, name, "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar[feature]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "qux", "1.0", "bar>=1.0", "1.0")
+        for name in ("foo", "qux", "bar", "baz"):
+            self._add_to_build_order(bt, name, "1.0")
+        # baz>=2 failed to resolve while processing bar under foo's extra
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("bar"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("baz>=2"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # bar's bare requirement baz>=1 is still satisfiable, so only the
+        # feature requester foo is pruned
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+        for name in ("bar", "baz", "qux"):
+            assert (canonicalize_name(name), "1.0") not in bt._failed_versions
+        assert {e["dist"] for e in bt._build_stack} == {"qux", "bar", "baz"}
+
+    def test_conjunctive_bare_requirements_prune_package(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Bare bar requires both baz>=1 and baz>=2 (conjunctive
+        Requires-Dist entries), and only baz==1.0 builds: the satisfiable
+        baz>=1 must not mask the broken baz>=2, so bar and its bare
+        consumer qux are pruned."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context,
+            "foo",
+            "1.0",
+            requires_dist=["bar[feature]>=1.0"],
+            provides_extra=[],
+        )
+        self._write_test_wheel(
+            tmp_context, "qux", "1.0", requires_dist=["bar>=1.0"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=["baz>=1", "baz>=2", 'quux; extra == "feature"'],
+            provides_extra=["feature"],
+        )
+        for name in ("bar", "baz", "foo", "qux"):
+            self._add_top_level(tmp_context, name, "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar[feature]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "qux", "1.0", "bar>=1.0", "1.0")
+        for name in ("foo", "qux", "bar", "baz"):
+            self._add_to_build_order(bt, name, "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("bar"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("baz>=2"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # baz>=1 being satisfiable does not make the bare requirement
+        # healthy: baz>=2 is also a bare entry, so bar is uninstallable and
+        # pruned together with its consumers
+        for name in ("bar", "qux", "foo"):
+            assert (canonicalize_name(name), "1.0") in bt._failed_versions
+        assert (canonicalize_name("baz"), "1.0") not in bt._failed_versions
+        assert {e["dist"] for e in bt._build_stack} == {"baz"}
+
+    def test_build_failure_of_top_level_item_captures_install_dependents(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A version failing under a top-level work item still captures its
+        install-edge dependents (the package can be both top-level and a
+        dependency, like av)."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._add_top_level(tmp_context, "av", "13.1.0")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "av>=13.0", "13.1.0")
+
+        item = _make_build_item(req="av>=13.0", version="13.1.0")
+        item.work_item.req_type = RequirementType.TOP_LEVEL
+        bt._handle_phase_error(item, ValueError("build failed"))
+
+        assert len(bt._runtime_dep_failure_roots) == 1
+        root = bt._runtime_dep_failure_roots[0]
+        assert root.dependent_name == canonicalize_name("foo")
+        assert root.dep_req == Requirement("av>=13.0")
+
+    def test_converted_root_reenqueued_after_prune_is_skipped(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A converted root that is re-enqueued after its conversion (a later
+        prune collects an edge with the same requirement) is skipped, not
+        pruned: the failure only breaks extra contexts that were already
+        re-targeted."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        # bar: feature needs baz (missing); bare needs corge, whose own bare
+        # dep is missing so corge is pruned first
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=['baz; extra == "feature"', "corge>=1.0"],
+            provides_extra=["feature"],
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "corge",
+            "1.0",
+            requires_dist=["absent>=1.0"],
+            provides_extra=[],
+        )
+        # foo requires bar[feature] only through its own extra opt
+        self._write_test_wheel(
+            tmp_context,
+            "foo",
+            "1.0",
+            requires_dist=['bar[feature]>=1.0; extra == "opt"'],
+            provides_extra=["opt"],
+        )
+        # qux requires foo[opt] as a bare requirement
+        self._write_test_wheel(
+            tmp_context,
+            "qux",
+            "1.0",
+            requires_dist=["foo[opt]>=1.0"],
+            provides_extra=[],
+        )
+        for name in ("bar", "corge", "foo", "qux"):
+            self._add_top_level(tmp_context, name, "1.0")
+        self._add_install_edge(tmp_context, "qux", "1.0", "foo[opt]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "foo", "1.0", "bar[feature]>=1.0", "1.0")
+        self._add_install_edge(tmp_context, "bar", "1.0", "corge>=1.0", "1.0")
+        for name in ("bar", "corge", "foo", "qux"):
+            self._add_to_build_order(bt, name, "1.0")
+        # batch 1: bar's feature failure converts to (foo, bar[feature]);
+        # corge is pruned and enqueues (bar, corge>=1.0)
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("bar"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("baz"),
+            )
+        )
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("corge"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("absent>=1.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        # batch 2 converts (foo, bar[feature]) and prunes bar (bare corge
+        # gone), which re-enqueues (foo, bar[feature]); batch 3 must skip
+        # it instead of pruning foo, whose bare deps are unaffected
+        assert (canonicalize_name("qux"), "1.0") in bt._failed_versions
+        assert (canonicalize_name("foo"), "1.0") not in bt._failed_versions
+        assert "foo==1.0" in tmp_context.dependency_graph.nodes
+        assert any(e["dist"] == "foo" for e in bt._build_stack)
+
+    def test_successful_build_clears_stale_failure_entry(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """A version that failed earlier and is rebuilt successfully is no
+        longer treated as failed."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        bt._failed_versions[(canonicalize_name("foo"), "1.0")] = (
+            ValueError("build failed"),
+            "failed during build phase",
+        )
+
+        self._add_to_build_order(bt, "foo", "1.0")
+
+        assert (canonicalize_name("foo"), "1.0") not in bt._failed_versions
+
+    def test_guard_checks_same_name_requirements_together(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Requirements for one name under one extra must be satisfied by a
+        single version: disjoint specifiers like baz>=2 and baz<2 are not
+        installable even though each matches some version."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context,
+            "bar",
+            "1.0",
+            requires_dist=['baz>=2; extra == "feature"', 'baz<2; extra == "feature"'],
+            provides_extra=["feature"],
+        )
+        self._write_test_wheel(
+            tmp_context,
+            "foo",
+            "1.0",
+            requires_dist=["bar[feature]>=0.5"],
+            provides_extra=[],
+        )
+        # both baz versions exist, but no single one satisfies both lines
+        self._add_top_level(tmp_context, "bar", "1.0")
+        self._add_top_level(tmp_context, "baz", "1.0")
+        self._add_top_level(tmp_context, "baz", "2.0")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bar[feature]>=0.5"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert (canonicalize_name("foo"), "1.0") in bt._failed_versions
+
+    def test_unclassifiable_failure_keeps_dependent(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Without readable wheel metadata (sdist-only runs) the failure
+        cannot be classified, so the dependent is kept rather than pruned
+        on a guess."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        # foo has no wheel on disk at all
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("bar>=1.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert (canonicalize_name("foo"), "1.0") not in bt._failed_versions
+        assert len(bt._build_stack) == 1
+
+    def test_prune_deletes_prebuilt_wheels(self, tmp_context: WorkContext) -> None:
+        """Prebuilt wheel copies of pruned packages are deleted so the
+        regenerated mirror does not keep serving them."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context, "foo", "1.0", requires_dist=["av>=14.0.0"], provides_extra=[]
+        )
+        prebuilt = tmp_context.wheels_prebuilt / "foo-1.0-py3-none-any.whl"
+        prebuilt.parent.mkdir(parents=True, exist_ok=True)
+        prebuilt.write_bytes(b"prebuilt wheel")
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("av>=14.0.0"),
+            )
+        )
+
+        bt._reconcile_runtime_dep_failures()
+
+        assert not prebuilt.exists()
+
+    def test_finalize_writes_pruned_build_order_and_graph(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """finalize() runs the reconcile before writing build-order.json and
+        graph.json, so pruned packages are absent from both files."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        self._write_test_wheel(
+            tmp_context, "foo", "1.0", requires_dist=["av>=14.0.0"], provides_extra=[]
+        )
+        self._write_test_wheel(
+            tmp_context, "keep", "1.0", requires_dist=[], provides_extra=[]
+        )
+        self._add_top_level(tmp_context, "foo", "1.0")
+        self._add_top_level(tmp_context, "keep", "1.0")
+        self._add_to_build_order(bt, "foo", "1.0")
+        self._add_to_build_order(bt, "keep", "1.0")
+        bt._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name("foo"),
+                dependent_version=Version("1.0"),
+                dep_req=Requirement("av>=14.0.0"),
+            )
+        )
+
+        bt.finalize()
+
+        import json as _json
+
+        with open(tmp_context.work_dir / "build-order.json") as f:
+            build_order = _json.load(f)
+        assert {e["dist"] for e in build_order} == {"keep"}
+        with open(tmp_context.work_dir / "graph.json") as f:
+            graph = _json.load(f)
+        assert "foo==1.0" not in graph
+        assert "keep==1.0" in graph

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import contextlib
+import dataclasses
 import datetime
 import io
 import json
@@ -18,11 +19,14 @@ from resolvelib.resolvers import ResolverException
 
 from .. import (
     bootstrap_requirement_resolver,
+    dependencies,
+    finders,
     progress,
+    server,
     sources,
     threading_utils,
 )
-from ..dependency_graph import DependencyGraph
+from ..dependency_graph import DependencyGraph, DependencyNode
 from ..log import req_ctxvar_context, requirement_ctxvar
 from ..requirements_file import RequirementType, SourceType
 from . import _cache
@@ -44,6 +48,29 @@ if typing.TYPE_CHECKING:
     from .. import context
 
 logger = logging.getLogger(__name__)
+
+
+def _root_key(root: RuntimeDepFailureRoot) -> tuple[NormalizedName, str, str]:
+    """Hashable identity of a root for dedup and conversion tracking."""
+    return (root.dependent_name, str(root.dependent_version), str(root.dep_req))
+
+
+@dataclasses.dataclass(frozen=True)
+class RuntimeDepFailureRoot:
+    """A dependent package whose runtime (install) dependency failed.
+
+    Captured at the failure site while the evidence of who needed the
+    dependency still exists: from the work item's parent when resolution
+    fails (the graph never gets the edge), or from the graph's incoming
+    install edges when a build fails (before ``remove_dependency()``
+    deletes them). Captured roots are reconciled in ``finalize()`` via
+    ``_reconcile_runtime_dep_failures()``.
+    """
+
+    dependent_name: NormalizedName
+    dependent_version: Version
+    # requirement on the failed dependency, as written by the dependent
+    dep_req: Requirement
 
 
 class Bootstrapper:
@@ -125,6 +152,19 @@ class Bootstrapper:
         # Track failed versions in multiple_versions mode
         # Maps (package_name, version) -> (exception, detail)
         self._failed_versions: dict[tuple[str, str], tuple[Exception, str]] = {}
+
+        # Dependents of runtime dependencies that failed to resolve or
+        # build, captured at the failure site. Reconciled (pruned) in
+        # finalize() so unsatisfiable packages are not published. Only
+        # used in multiple_versions mode.
+        self._runtime_dep_failure_roots: list[RuntimeDepFailureRoot] = []
+
+        # Cache of (requires_dist, provides_extra) per (name, version),
+        # populated lazily during reconcile. A value of None means no
+        # readable wheel metadata was found.
+        self._reconcile_metadata_cache: dict[
+            tuple[NormalizedName, str], tuple[list[Requirement], list[str]] | None
+        ] = {}
 
     @property
     def resolver(self) -> bootstrap_requirement_resolver.BootstrapRequirementResolver:
@@ -723,6 +763,10 @@ class Bootstrapper:
         key = (canonicalize_name(req.name), str(version))
         if key in self._build_requirements:
             return
+        # A version that failed earlier and was re-processed successfully
+        # is built now: drop the stale failure entry so the reconcile pass
+        # does not treat the healthy node as unavailable.
+        self._failed_versions.pop(key, None)
         logger.info(f"adding {key} to build order")
         self._build_requirements.add(key)
         info = {
@@ -1008,6 +1052,7 @@ class Bootstrapper:
                     err,
                     f"failed during {type(item).phase} phase",
                 )
+                self._capture_runtime_dep_failure_root(wi)
                 return []
             raise err
 
@@ -1049,6 +1094,13 @@ class Bootstrapper:
                 err,
                 f"failed during {type(item).phase} phase",
             )
+            # Capture dependents while the incoming install edges still
+            # exist: remove_dependency() below deletes them. The failing
+            # work item's own req_type is irrelevant here — a version that
+            # fails under a top-level or build work item still breaks its
+            # install-edge dependents, and _capture_incoming_install_edges
+            # already filters for INSTALL edges.
+            self._capture_incoming_install_edges(pkg_name, wi.resolved_version)
             removed_nodes = self.ctx.dependency_graph.remove_dependency(
                 pkg_name, wi.resolved_version
             )
@@ -1119,6 +1171,477 @@ class Bootstrapper:
             failures_file,
         )
 
+    def _capture_runtime_dep_failure_root(self, wi: WorkItem) -> None:
+        """Record the dependent of a runtime dependency that failed to resolve.
+
+        When an INSTALL requirement fails to resolve, the graph never gets
+        the dependent -> dependency edge (edges are only created after
+        successful resolution), so the work item's parent is the only
+        witness to who needed it. Must be called before returning from the
+        Resolve error path in multiple_versions mode.
+        """
+        if wi.req_type != RequirementType.INSTALL:
+            return
+        if wi.parent is None:
+            # The failing requirement is top-level; there is no dependent
+            # whose output would become unsatisfiable.
+            return
+        parent_req, parent_version = wi.parent
+        self._runtime_dep_failure_roots.append(
+            RuntimeDepFailureRoot(
+                dependent_name=canonicalize_name(parent_req.name),
+                dependent_version=parent_version,
+                dep_req=wi.req,
+            )
+        )
+
+    def _capture_incoming_install_edges(
+        self, pkg_name: NormalizedName, version: Version
+    ) -> None:
+        """Record dependents of a runtime dependency that failed to build.
+
+        Must be called before ``remove_dependency()`` deletes the incoming
+        edges of the failed version. Only INSTALL edges matter: a build
+        requirement failure already fails the dependent's own build through
+        its own Build phase error.
+        """
+        key = f"{pkg_name}=={version}"
+        node = self.ctx.dependency_graph.nodes.get(key)
+        if node is None:
+            return
+        for edge in node.get_incoming_install_edges():
+            parent = edge.destination_node
+            self._runtime_dep_failure_roots.append(
+                RuntimeDepFailureRoot(
+                    dependent_name=parent.canonicalized_name,
+                    dependent_version=parent.version,
+                    dep_req=edge.req,
+                )
+            )
+
+    def _reconcile_runtime_dep_failures(self) -> None:
+        """Prune packages whose runtime dependencies failed (multi-version mode).
+
+        A package whose runtime dependency failed to resolve or build is
+        still built by the bootstrap loop: its build only needs build-system
+        requirements, and the dependent is always built before its runtime
+        dependencies are discovered. Without this pass the built wheel would
+        be published with metadata that the built set cannot satisfy.
+
+        Walk the captured failure roots in batches. A dependent is pruned
+        only when no remaining (non-failed) version of the dependency
+        satisfies the dependent's specifier *and requested extras*: in
+        multiple_versions mode a healthy alternative version often keeps
+        the dependent installable, and a version only satisfies an
+        extras-bearing requirement when the extra's own dependencies are
+        present in the graph.
+
+        A failed dependency that is only required through an extra of the
+        dependent (``bar[feature] -> baz``) does not prune the dependent:
+        the bare package remains installable for its other consumers.
+        Instead the requesters of that extra are re-targeted with
+        synthetic roots and pruned if no version satisfies the
+        extra-bearing requirement.
+
+        Whenever a batch prunes something, the next batch re-checks both
+        the dependents of the pruned packages (discovered from their
+        incoming install edges) and every root that was satisfied earlier,
+        so a requirement is re-examined when the version satisfying it
+        disappears; batches continue until one neither prunes nor
+        enqueues anything. Each prune permanently removes graph nodes and
+        each root is converted at most once, so the walk terminates.
+
+        Pruning removes the package (and its orphaned descendants) from the
+        build order and the dependency graph, deletes its built artifacts,
+        and records it in ``partial-failures.json``, so downstream consumers
+        (build-parallel, sdist onboarding, publishing) never see it.
+        """
+        if not self.multiple_versions or not self._runtime_dep_failure_roots:
+            return
+
+        pruned_any = False
+        converted: set[tuple[NormalizedName, str, str]] = set()
+        pending = list(dict.fromkeys(self._runtime_dep_failure_roots))
+        while pending:
+            next_pending: list[RuntimeDepFailureRoot] = []
+            satisfied: list[RuntimeDepFailureRoot] = []
+            pruned_in_batch = False
+            for root in pending:
+                if self._is_runtime_dep_satisfied(root):
+                    logger.info(
+                        "multi-version: %s==%s keeps a satisfiable version of its "
+                        "runtime dependency %s, not pruning",
+                        root.dependent_name,
+                        root.dependent_version,
+                        root.dep_req,
+                    )
+                    satisfied.append(root)
+                    continue
+                root_key = _root_key(root)
+                if root_key in converted:
+                    # already converted: the failure only breaks extra
+                    # contexts and the requesters were re-targeted. Skip
+                    # rather than prune — genuinely new breakage arrives
+                    # through its own requirement-specific root.
+                    continue
+                synthetic = self._convert_feature_only_root(root)
+                if synthetic is not None:
+                    # feature-only failure: keep the dependent and
+                    # re-target the requesters of the extra
+                    converted.add(root_key)
+                    next_pending.extend(synthetic)
+                    continue
+                next_pending.extend(self._prune_runtime_dep_dependent(root))
+                pruned_in_batch = True
+                pruned_any = True
+            if not pruned_in_batch and not next_pending:
+                break
+            # Retain satisfied roots for reconsideration whenever a batch
+            # prunes something: a root whose dependency was satisfied by a
+            # version resolved for another dependent (resolve failures never
+            # create a graph edge to the dependent, so pruning that version
+            # does not re-enqueue it) may become unsatisfiable now.
+            pending = list(dict.fromkeys(satisfied + next_pending))
+
+        if pruned_any:
+            # Regenerate the local wheel mirror so deleted wheels are no
+            # longer served to later builds.
+            server.update_wheel_mirror(self.ctx)
+
+    def _is_runtime_dep_satisfied(self, root: RuntimeDepFailureRoot) -> bool:
+        """Return True if a non-failed version satisfies specifier and extras."""
+        return self._requirement_installable(root.dep_req, frozenset())
+
+    def _requirement_installable(
+        self,
+        req: Requirement,
+        visited: frozenset[tuple[NormalizedName, str, frozenset[str]]],
+    ) -> bool:
+        """Return True if a non-failed graph node satisfies the requirement."""
+        return self._requirement_group_installable(
+            canonicalize_name(req.name), [req], visited
+        )
+
+    def _requirements_installable(
+        self,
+        reqs: typing.Iterable[Requirement],
+        visited: frozenset[tuple[NormalizedName, str, frozenset[str]]],
+    ) -> bool:
+        """Return True if all requirements hold, with one version per name.
+
+        Installers resolve a single version per package name, so
+        requirements for the same name are grouped and one non-failed node
+        must satisfy every specifier in the group (plus the group's
+        combined extras). Checking lines independently would accept
+        disjoint specifiers like ``baz>=2`` and ``baz<2`` that no single
+        version can satisfy.
+        """
+        groups: dict[NormalizedName, list[Requirement]] = {}
+        for req in reqs:
+            groups.setdefault(canonicalize_name(req.name), []).append(req)
+        return all(
+            self._requirement_group_installable(name, group, visited)
+            for name, group in groups.items()
+        )
+
+    def _requirement_group_installable(
+        self,
+        name: NormalizedName,
+        group: list[Requirement],
+        visited: frozenset[tuple[NormalizedName, str, frozenset[str]]],
+    ) -> bool:
+        """Return True if one non-failed node satisfies the whole group.
+
+        Checks every specifier in ``group`` against the same node version
+        and, for the group's combined extras, the extra's own dependencies
+        recursively (an extra can depend on another extras-bearing
+        requirement, e.g. ``bar[feature] -> baz[deep]``). ``visited`` holds
+        the (name, version, extras) checks currently in progress and
+        breaks dependency cycles by treating a revisited check as
+        satisfied.
+        """
+        extras: set[str] = set()
+        for req in group:
+            extras |= set(req.extras)
+        extras_req = (
+            Requirement(f"{name}[{','.join(sorted(extras))}]") if extras else None
+        )
+        for node in self.ctx.dependency_graph.get_nodes_by_name(name):
+            if (node.canonicalized_name, str(node.version)) in self._failed_versions:
+                continue
+            if not all(req.specifier.contains(node.version) for req in group):
+                continue
+            if extras_req is not None and not self._extras_requirements_satisfied(
+                extras_req, node, visited
+            ):
+                continue
+            return True
+        return False
+
+    def _extras_requirements_satisfied(
+        self,
+        dep_req: Requirement,
+        node: DependencyNode,
+        visited: frozenset[tuple[NormalizedName, str, frozenset[str]]],
+    ) -> bool:
+        """Check that the extra's own dependencies are installable.
+
+        A graph node is version-keyed and extras-agnostic, so a version
+        built for a bare requirement does not by itself satisfy an
+        extras-bearing requirement: the dependencies the extra pulls in
+        must also be available, including their own nested extras. Wheel
+        metadata is read from the built wheel; when no readable metadata
+        exists (sdist-only builds, or a wheel already deleted), the check
+        is skipped to avoid pruning a dependent that may be installable.
+        """
+        check_key = (
+            node.canonicalized_name,
+            str(node.version),
+            frozenset(dep_req.extras),
+        )
+        if check_key in visited:
+            # dependency cycle through the same (version, extras) pair:
+            # the mutual requirements are present, treat as satisfied
+            return True
+        metadata = self._dependency_metadata(node.canonicalized_name, node.version)
+        if metadata is None:
+            return True
+        requires_dist, _provides_extra = metadata
+        deps = dependencies.filter_requires_dist(dep_req, requires_dist)
+        return self._requirements_installable(deps, visited | {check_key})
+
+    def _dependency_metadata(
+        self, name: NormalizedName, version: Version
+    ) -> tuple[list[Requirement], list[str]] | None:
+        """Return cached (requires_dist, provides_extra) for a built wheel."""
+        key = (name, str(version))
+        if key in self._reconcile_metadata_cache:
+            return self._reconcile_metadata_cache[key]
+        req = Requirement(f"{name}=={version}")
+        wheel = finders.find_wheel(self.ctx.wheels_downloads, req, str(version))
+        if wheel is None:
+            wheel = finders.find_wheel(self.ctx.wheels_prebuilt, req, str(version))
+        metadata: tuple[list[Requirement], list[str]] | None = None
+        if wheel is not None:
+            try:
+                metadata = dependencies.get_wheel_dependency_metadata(wheel)
+            except Exception as err:
+                logger.debug(
+                    "multi-version: could not read metadata of %s==%s from %s: %s",
+                    name,
+                    version,
+                    wheel,
+                    err,
+                )
+        self._reconcile_metadata_cache[key] = metadata
+        return metadata
+
+    def _convert_feature_only_root(
+        self, root: RuntimeDepFailureRoot
+    ) -> list[RuntimeDepFailureRoot] | None:
+        """Re-target a failure that only breaks extra contexts to the
+        requesters of those extras.
+
+        The dependent is pruned only when its *bare* requirement for the
+        failed dependency is itself unsatisfiable: a bare requirement
+        applies to every install of the package, so the package is
+        unusable for all of its consumers. When the bare requirement is
+        absent or still satisfiable (e.g. bare ``baz>=1`` while the failed
+        ``baz>=2`` came from an extra), only the extras whose own
+        requirement for that dependency is unsatisfiable are broken, and
+        their requesters are re-targeted with synthetic roots instead.
+
+        Returns None when the dependent should be pruned (its bare
+        requirement for the failed dependency is unsatisfiable), and an
+        empty list when the failure cannot be classified from wheel
+        metadata — the dependent is kept, since pruning requires positive
+        evidence that the bare requirement is broken.
+        """
+        dependent_key = f"{root.dependent_name}=={root.dependent_version}"
+        node = self.ctx.dependency_graph.nodes.get(dependent_key)
+        if node is None:
+            return None
+        metadata = self._dependency_metadata(
+            root.dependent_name, root.dependent_version
+        )
+        if metadata is None:
+            # no readable wheel metadata (sdist-only runs, deleted wheels):
+            # we cannot establish that the bare requirement is broken, so
+            # keep the dependent rather than prune on a guess
+            logger.info(
+                "multi-version: no readable wheel metadata for %s; keeping it "
+                "and skipping reconciliation of %s",
+                dependent_key,
+                root.dep_req,
+            )
+            return []
+        requires_dist, provides_extra = metadata
+        dep_name = canonicalize_name(root.dep_req.name)
+
+        bare_req = Requirement(dependent_key)
+        bare_for_name = [
+            dep
+            for dep in dependencies.filter_requires_dist(bare_req, requires_dist)
+            if canonicalize_name(dep.name) == dep_name
+        ]
+        if bare_for_name and not self._requirement_group_installable(
+            dep_name, bare_for_name, frozenset()
+        ):
+            # a bare requirement for this dependency is broken: bare
+            # Requires-Dist entries are conjunctive and must be satisfied
+            # by a single version, so the package is unusable for every
+            # consumer, prune it
+            return None
+
+        # the bare package is unaffected; find the extras whose own
+        # requirement for the failed dependency is unsatisfiable
+        affected: set[str] = set()
+        for extra in provides_extra:
+            extra_req = Requirement(
+                f"{root.dependent_name}[{extra}]=={root.dependent_version}"
+            )
+            extra_for_name = [
+                dep
+                for dep in dependencies.filter_requires_dist(extra_req, requires_dist)
+                if canonicalize_name(dep.name) == dep_name
+            ]
+            if extra_for_name and not self._requirement_group_installable(
+                dep_name, extra_for_name, frozenset()
+            ):
+                affected.add(extra)
+        if not affected:
+            # the failure is not attributable to the bare requirement or to
+            # any declared extra; keep the dependent rather than prune on a
+            # guess
+            logger.info(
+                "multi-version: cannot attribute failed runtime dependency %s "
+                "of %s to a bare requirement or extra; keeping it",
+                root.dep_req,
+                dependent_key,
+            )
+            return []
+
+        # re-target the dependents that requested one of the affected extras
+        synthetic: list[RuntimeDepFailureRoot] = []
+        for edge in node.get_incoming_install_edges():
+            if set(edge.req.extras) & affected:
+                parent = edge.destination_node
+                synthetic.append(
+                    RuntimeDepFailureRoot(
+                        dependent_name=parent.canonicalized_name,
+                        dependent_version=parent.version,
+                        dep_req=edge.req,
+                    )
+                )
+        logger.info(
+            "multi-version: runtime dependency %s of %s only breaks extras "
+            "%s; keeping %s and re-checking its requesters",
+            root.dep_req,
+            dependent_key,
+            sorted(affected),
+            dependent_key,
+        )
+        return synthetic
+
+    def _prune_runtime_dep_dependent(
+        self, root: RuntimeDepFailureRoot
+    ) -> list[RuntimeDepFailureRoot]:
+        """Prune one casualty and return its dependents for the next batch.
+
+        Record the casualty in partial-failures.json, drop it (and its
+        orphaned descendants) from the build order and the graph, and
+        delete its built artifacts.
+        """
+        dependent_key = f"{root.dependent_name}=={root.dependent_version}"
+        if (root.dependent_name, str(root.dependent_version)) in self._failed_versions:
+            # Already failed on its own or pruned in an earlier batch;
+            # its dependents were queued when it was pruned.
+            return []
+
+        node = self.ctx.dependency_graph.nodes.get(dependent_key)
+
+        # Collect the casualty's own dependents before removing it from
+        # the graph, while its incoming install edges still exist.
+        dependents: list[RuntimeDepFailureRoot] = []
+        if node is not None:
+            for edge in node.get_incoming_install_edges():
+                parent = edge.destination_node
+                dependents.append(
+                    RuntimeDepFailureRoot(
+                        dependent_name=parent.canonicalized_name,
+                        dependent_version=parent.version,
+                        dep_req=edge.req,
+                    )
+                )
+
+        # Record the casualty so it lands in partial-failures.json.
+        self._record_failed_version(
+            Requirement(dependent_key),
+            str(root.dependent_version),
+            ResolverException(
+                f"runtime dependency {root.dep_req} is not available in the built set"
+            ),
+            "pruned due to unresolved runtime dependency",
+        )
+
+        # Drop the casualty (and its orphaned descendants, returned by
+        # remove_dependency) from the buffered build order and the graph.
+        removed_nodes = self.ctx.dependency_graph.remove_dependency(
+            root.dependent_name, root.dependent_version
+        )
+        removed_keys = {(n.canonicalized_name, str(n.version)) for n in removed_nodes}
+        removed_keys.add((root.dependent_name, str(root.dependent_version)))
+        for removed_key in removed_keys:
+            self._build_requirements.discard(removed_key)
+        self._build_stack = [
+            entry
+            for entry in self._build_stack
+            if (entry["dist"], entry["version"]) not in removed_keys
+        ]
+
+        # Delete built artifacts so the local wheelhouse and mirror do not
+        # carry wheels that can never be installed. Prebuilt wheel copies
+        # are deleted too: update_wheel_mirror() serves them from
+        # ctx.wheels_prebuilt, so leaving them would keep the poisoned
+        # wheel on the local index (the remote cache is untouched and a
+        # later run simply re-downloads).
+        for name, version_str in sorted(removed_keys):
+            req = Requirement(f"{name}=={version_str}")
+            deleted: list[pathlib.Path] = []
+            for wheel_dir in (self.ctx.wheels_downloads, self.ctx.wheels_prebuilt):
+                for wheel in finders.find_wheels(wheel_dir, req, version_str):
+                    wheel.unlink(missing_ok=True)
+                    deleted.append(wheel)
+            sdist = finders.find_sdist(
+                self.ctx, self.ctx.sdists_downloads, req, version_str
+            )
+            if sdist is not None:
+                sdist.unlink(missing_ok=True)
+                deleted.append(sdist)
+            # A source build can leave both the downloaded archive in
+            # sdists_downloads and the rebuilt sdist in sdists_builds;
+            # clean both locations independently.
+            sdist = finders.find_sdist(
+                self.ctx, self.ctx.sdists_builds, req, version_str
+            )
+            if sdist is not None:
+                sdist.unlink(missing_ok=True)
+                deleted.append(sdist)
+            if deleted:
+                logger.warning(
+                    "multi-version: deleted artifacts of pruned %s==%s: %s",
+                    name,
+                    version_str,
+                    ", ".join(str(p.name) for p in deleted),
+                )
+        logger.warning(
+            "multi-version: pruned %s because its runtime dependency %s "
+            "is not available in the built set",
+            dependent_key,
+            root.dep_req,
+        )
+        return dependents
+
     def finalize(self) -> int:
         """Finalize bootstrap and return exit code.
 
@@ -1139,6 +1662,11 @@ class Bootstrapper:
             # Already-running futures still complete naturally.
             self._bg_pool.shutdown(wait=True, cancel_futures=True)
             self._bg_pool = None
+
+        # Prune packages whose runtime dependencies failed before writing
+        # the build order and graph, so downstream consumers (build-parallel,
+        # sdist onboarding, publishing) never see unsatisfiable wheels.
+        self._reconcile_runtime_dep_failures()
 
         # Write build-order once at the end (data was buffered in _build_stack)
         with open(self._build_order_filename, "w") as f:
