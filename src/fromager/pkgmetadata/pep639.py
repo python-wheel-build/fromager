@@ -6,7 +6,9 @@
 - https://spdx.org/licenses/
 """
 
-from license_expression import LicenseExpression, get_spdx_licensing
+import re
+
+from license_expression import ExpressionError, LicenseExpression, get_spdx_licensing
 from packaging.metadata import Metadata
 
 
@@ -60,12 +62,25 @@ def license_from_metadata_values(
 
 _SPDX = get_spdx_licensing()
 
+# SPDX idstring: letters, digits, "." and "-"
+_LICENSE_REF_RE = re.compile(r"LicenseRef-[A-Za-z0-9.\-]+")
+
 
 def _parse_spdx(text: str, *, simplify: bool = False) -> LicenseExpression:
-    """Parse, validate, and simplify a SPDX license expression"""
-    # LicenseRef are references to non-SPDX licenses
-    validate = not text.startswith("LicenseRef-")
-    expr = _SPDX.parse(text, validate=validate)
+    """Parse, validate, and simplify a SPDX license expression
+
+    ``LicenseRef-`` keys reference non-SPDX licenses (PEP 639) and may
+    appear anywhere in the expression, so they are exempt from the SPDX
+    license list check. Every other unknown key is an error.
+    """
+    expr = _SPDX.parse(text, validate=False)
+    unknown = [
+        key
+        for key in _SPDX.unknown_license_keys(expr)
+        if not _LICENSE_REF_RE.fullmatch(key)
+    ]
+    if unknown:
+        raise ExpressionError(f"Unknown license key(s): {', '.join(unknown)}")
     if simplify:
         expr = expr.simplify()
     return expr
