@@ -1,4 +1,5 @@
 import pytest
+from license_expression import ExpressionError
 from packaging.metadata import Metadata, RawMetadata
 
 from fromager.pkgmetadata import (
@@ -82,6 +83,9 @@ def test_project_urls_from_metadata(
     ["metadata", "expected"],
     [
         [md("MIT AND MIT or MIT"), "MIT"],
+        # LicenseRef is valid anywhere in a PEP 639 expression
+        [md("MIT OR LicenseRef-Proprietary"), "LicenseRef-Proprietary OR MIT"],
+        [md("LicenseRef-Proprietary"), "LicenseRef-Proprietary"],
         [md(license="MIT License"), "MIT"],
         [md(license="MIT and PSF-2.0"), "MIT AND PSF-2.0"],
         [md(license="BSD 3-Clause License"), "BSD-3-Clause"],
@@ -107,6 +111,10 @@ def test_license_from_metadata(metadata: Metadata, expected: str) -> None:
     [
         (None, None, None),
         (None, "invalid", None),
+        # a leading LicenseRef must not disable validation of other keys
+        ("LicenseRef-Foo OR Apache 2", None, None),
+        # SPDX idstrings only allow letters, digits, "." and "-"
+        ("LicenseRef-a_b", None, None),
         (None, None, ["License :: OSI Approved :: BSD License"]),
         # classifiers with no entry that maps to SPDX (see issue #1372)
         (None, None, ["Programming Language :: Python :: 3"]),
@@ -127,7 +135,7 @@ def test_license_from_metadata_errors(
     license: str | None,
     classifiers: list[str] | None,
 ) -> None:
-    with pytest.raises((ValueError, ExceptionGroup)):
+    with pytest.raises((ValueError, ExceptionGroup, ExpressionError)):
         license_from_metadata_values(
             license_expression=license_expression,
             license_text=license,
