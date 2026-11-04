@@ -15,6 +15,7 @@ test_section "configuration tests"
 run_test "build_settings"
 run_test "override"
 run_test "extra_metadata"
+run_test "sbom_licenses"
 run_test "lint_requirements"
 
 finish_suite

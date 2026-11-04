@@ -1,0 +1,3 @@
+sbom:
+  supplier: "Organization: ExampleCo"
+  namespace: "https://sbom.test"
