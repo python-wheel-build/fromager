@@ -314,10 +314,15 @@ class PurlConfig(pydantic.BaseModel):
     """
 
     version: str | None = None
-    """Override the purl version component (defaults to the resolved version)
+    """Override the purl version component (defaults to the wheel version)
 
     Also determines the version used in the SBOM document name and
     documentNamespace.
+
+    .. versionchanged:: 0.102.0
+       The default is now the version of the built wheel, including any
+       local version added by a patch, instead of the resolved upstream
+       version.
     """
 
     repository_url: AnyUrl | None = None

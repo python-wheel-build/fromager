@@ -91,6 +91,7 @@ def generate_sbom(
     ctx: context.WorkContext,
     req: Requirement,
     version: Version,
+    wheel_version: Version | None = None,
 ) -> dict[str, typing.Any]:
     """Generate a minimal SPDX 2.3 JSON document for a wheel.
 
@@ -101,6 +102,13 @@ def generate_sbom(
     The document name and namespace are derived from the downstream
     purl (including any ``purl`` field overrides), so the document
     identity always matches the wheel package entry it describes.
+
+    ``version`` is the resolved upstream version. ``wheel_version`` is
+    the version of the wheel actually built, which may differ when a
+    patch adds a local version (e.g. ``1.2.3+local.1``). The wheel
+    package entry, its purl, and the document identity use
+    ``wheel_version`` when given; the upstream package entry always
+    uses ``version``.
     """
     sbom_settings = ctx.settings.sbom_settings
     if sbom_settings is None:
@@ -116,7 +124,7 @@ def generate_sbom(
 
     downstream = _build_downstream_purl(
         name=name,
-        version=version,
+        version=wheel_version or version,
         pbi=pbi,
         sbom_settings=sbom_settings,
     )
@@ -134,7 +142,7 @@ def generate_sbom(
     # so the namespace is always a valid URI, even when purl overrides
     # contain URI-hostile characters.
     doc_name = downstream.name
-    doc_version = downstream.version or str(version)
+    doc_version = downstream.version or str(wheel_version or version)
     namespace = (
         f"{sbom_settings.namespace!s}/{quote(doc_name, safe='')}"
         f"-{quote(doc_version, safe='')}-{uuid.uuid4()}.spdx.json"

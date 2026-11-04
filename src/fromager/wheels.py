@@ -320,6 +320,10 @@ def add_extra_metadata_to_wheels(
                 ctx=ctx,
                 req=req,
                 version=version,
+                # dist_version comes from the wheel filename and includes
+                # any local version added by a patch, so the SBOM
+                # identifies the wheel that actually contains it
+                wheel_version=dist_version,
             )
             sbom.write_sbom(sbom=sbom_doc, dist_info_dir=dist_info_dir)
 

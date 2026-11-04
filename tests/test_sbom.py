@@ -174,6 +174,58 @@ def test_generate_sbom_upstream_uses_source_version_without_upstream_override(
     _validate_spdx(doc)
 
 
+def test_generate_sbom_wheel_version_used_without_purl_override(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify the wheel entry uses the actual wheel version automatically.
+
+    When a patch adds a local version, the SBOM must identify the built
+    wheel without requiring a per-package ``purl.version`` override.
+    """
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.5.5"),
+        version=Version("0.5.5"),
+        wheel_version=Version("0.5.5+local.1"),
+    )
+
+    assert doc["name"] == "test-pkg-0.5.5+local.1"
+    wheel, upstream = doc["packages"]
+    assert wheel["versionInfo"] == "0.5.5+local.1"
+    assert wheel["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@0.5.5%2Blocal.1"
+    )
+    # Upstream still identifies the resolved source release
+    assert upstream["versionInfo"] == "0.5.5"
+    assert upstream["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@0.5.5"
+    )
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_purl_version_override_wins_over_wheel_version(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify an explicit purl.version override still takes precedence."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(),
+        package_overrides={"purl": {"version": "0.5.5+corp.1"}},
+    )
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.5.5"),
+        version=Version("0.5.5"),
+        wheel_version=Version("0.5.5+local.1"),
+    )
+
+    wheel = doc["packages"][0]
+    assert wheel["versionInfo"] == "0.5.5+corp.1"
+    assert doc["name"] == "test-pkg-0.5.5+corp.1"
+    _validate_spdx(doc)
+
+
 def test_generate_sbom_namespace_is_unique_per_document(
     tmp_path: pathlib.Path,
 ) -> None:
