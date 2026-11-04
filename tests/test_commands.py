@@ -1163,6 +1163,94 @@ def test_step_prepare_source_defaults_to_archive_kind(
     )
 
 
+@pytest.mark.parametrize("provider", ["pypi-git", "github-tag-git", "gitlab-tag-git"])
+def test_step_prepare_source_defaults_to_checkout_for_git_provider(
+    cli_runner: CliRunner, tmp_context: WorkContext, provider: str
+) -> None:
+    """Use the Git checkout when the provider only clones Git repositories."""
+    source_options = (
+        "  clone_url: https://git.test/org/pkg.git\n  tag: 'v{version}'\n"
+        if provider == "pypi-git"
+        else "  project_url: https://git.test/org/pkg\n"
+    )
+    _configure_package(
+        tmp_context,
+        f"source:\n  provider: {provider}\n" + source_options,
+    )
+    checkout = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    checkout.mkdir(parents=True)
+
+    with patch.object(
+        step.sources, "prepare_source", return_value=checkout
+    ) as prepare_source:
+        result = cli_runner.invoke(
+            step.step, ["prepare-source", "pkg", "1.0"], obj=tmp_context
+        )
+
+    assert result.exit_code == 0, result.output
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        source_filename=checkout,
+        version=Version("1.0"),
+        download_kind=packagesettings.DownloadKind.git_checkout,
+    )
+
+
+@pytest.mark.parametrize("provider", ["github-tag-download", "gitlab-tag-download"])
+def test_step_prepare_source_defaults_to_tarball_for_download_provider(
+    cli_runner: CliRunner, tmp_context: WorkContext, provider: str
+) -> None:
+    """Infer tarball for providers that only download repository archives."""
+    _configure_package(
+        tmp_context,
+        f"source:\n  provider: {provider}\n  project_url: https://git.test/org/pkg\n",
+    )
+    archive = tmp_context.sdists_downloads / "pkg-1.0.tar.gz"
+    archive.write_bytes(b"archive")
+    source_root = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+
+    with patch.object(
+        step.sources, "prepare_source", return_value=source_root
+    ) as prepare_source:
+        result = cli_runner.invoke(
+            step.step, ["prepare-source", "pkg", "1.0"], obj=tmp_context
+        )
+
+    assert result.exit_code == 0, result.output
+    prepare_source.assert_called_once_with(
+        ctx=tmp_context,
+        req=Requirement("pkg==1.0"),
+        source_filename=archive,
+        version=Version("1.0"),
+        download_kind=packagesettings.DownloadKind.tarball,
+    )
+
+
+@pytest.mark.parametrize(
+    "source_yaml",
+    [
+        "source:\n  provider: pypi-sdist\n",
+        "source:\n  provider: hook-sdist\n  build_sdist: tarball\n",
+        "source:\n  provider: pypi-download\n"
+        "  download_url: https://pkg.test/pkg-{version}.tar.gz\n"
+        "  download_kind: tarball\n",
+        "source:\n  provider: pypi-prebuilt\n",
+        "source:\n  provider: hook-prebuilt\n  index_url: https://pkg.test/simple/\n",
+    ],
+    ids=["sdist", "hook-source", "mixed-archives", "prebuilt", "hook-prebuilt"],
+)
+def test_default_source_kind_keeps_archive_fallback(
+    tmp_context: WorkContext, source_yaml: str
+) -> None:
+    """Keep sdist when no unique source kind can be inferred, including wheels."""
+    _configure_package(tmp_context, source_yaml)
+
+    result = step._default_source_kind(tmp_context, Requirement("pkg==1.0"))
+
+    assert result is packagesettings.DownloadKind.sdist
+
+
 def test_step_prepare_source_accepts_explicit_hook_path(
     cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
 ) -> None:

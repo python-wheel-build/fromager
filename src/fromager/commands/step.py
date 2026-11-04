@@ -81,6 +81,23 @@ def download_source_archive(
         print(downloaded_source.path)
 
 
+def _default_source_kind(
+    wkctx: context.WorkContext, req: Requirement
+) -> packagesettings.DownloadKind:
+    """Return the source kind to use when ``--source-kind`` is not given.
+
+    Use the provider's only supported source kind. Legacy settings, providers
+    with multiple kinds, and prebuilt profiles keep the ``sdist`` default.
+    """
+    source_resolver = wkctx.package_build_info(req).source_resolver
+    kinds = (
+        source_resolver.download_kinds if source_resolver is not None else frozenset()
+    )
+    if len(kinds) == 1 and packagesettings.DownloadKind.prebuilt_wheel not in kinds:
+        return next(iter(kinds))
+    return packagesettings.DownloadKind.sdist
+
+
 @step.command()
 @click.option(
     "--source-kind",
@@ -91,9 +108,11 @@ def download_source_archive(
             packagesettings.DownloadKind.git_checkout.value,
         ]
     ),
-    default=packagesettings.DownloadKind.sdist.value,
-    show_default=True,
-    help="Kind returned by the source download step.",
+    default=None,
+    help=(
+        "Kind returned by the source download step. Defaults to the provider's "
+        "only supported source kind, otherwise sdist. Prebuilt wheels are excluded."
+    ),
 )
 @click.option(
     "--source-path",
@@ -105,7 +124,7 @@ def download_source_archive(
 @click.pass_obj
 def prepare_source(
     wkctx: context.WorkContext,
-    source_kind: str,
+    source_kind: str | None,
     source_path: pathlib.Path | None,
     dist_name: str,
     dist_version: Version,
@@ -119,7 +138,10 @@ def prepare_source(
     """
     req = Requirement(f"{dist_name}=={dist_version}")
     token = requirement_ctxvar.set(req)
-    download_kind = packagesettings.DownloadKind(source_kind)
+    if source_kind is not None:
+        download_kind = packagesettings.DownloadKind(source_kind)
+    else:
+        download_kind = _default_source_kind(wkctx, req)
     sdists_downloads = pathlib.Path(wkctx.sdists_repo) / "downloads"
     checkout = gitutils.git_checkout_dir(
         work_dir=wkctx.work_dir, distribution_name=req.name, version=dist_version

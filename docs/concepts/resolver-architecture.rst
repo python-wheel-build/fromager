@@ -162,7 +162,10 @@ The separate ``step prepare-source`` invocation accepts ``--source-kind`` and
 ``--source-path`` because it cannot retrieve the earlier Python download result.
 ``step download-source-archive --output-format json`` exposes that result's
 actual path and kind without changing its default path-only output.
-Without ``--source-kind``, it keeps the legacy archive behavior.
+Without ``--source-kind``, it uses the provider's only supported source kind:
+``sdist``, ``tarball``, or ``git_checkout``. Legacy settings and providers with
+multiple kinds keep the ``sdist`` default. Prebuilt wheels are not source kinds
+and are excluded from inference.
 ``download-sequence`` calls the configured resolver's normal ``download()``
 for source entries. Both sequence commands check each entry's recorded
 ``source_provider`` against current settings, including prebuilt entries whose

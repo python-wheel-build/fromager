@@ -1,3 +1,4 @@
+import logging
 import pathlib
 import shutil
 import subprocess
@@ -239,6 +240,74 @@ def test_git_checkout_mismatch_reports_reason(
     result = git_checkout_mismatch(checkout_dir=checkout, repo_url=repo_url, ref=ref)
 
     assert result == reason
+
+
+@needs_git_command
+def test_git_checkout_mismatch_uses_stored_origin_url(
+    tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Compare the stored origin URL, not the one rewritten by insteadOf."""
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+    repo_url = "https://user:origin-secret@upstream.test/repo"
+    rewritten_url = "https://user:mirror-secret@mirror.test/repo"
+    _git(checkout, "remote", "set-url", "origin", repo_url)
+    _git(checkout, "config", f"url.{rewritten_url}.insteadOf", repo_url)
+
+    with caplog.at_level(logging.DEBUG):
+        result = git_checkout_mismatch(
+            checkout_dir=checkout, repo_url=repo_url, ref="refs/tags/v1.0"
+        )
+
+    assert "origin-secret" not in caplog.text
+    assert "mirror-secret" not in caplog.text
+    assert result is None
+
+
+@needs_git_command
+@pytest.mark.parametrize(
+    ("origin_index", "reason"),
+    [(0, None), (1, "it was cloned from a different repository")],
+)
+def test_git_checkout_mismatch_uses_first_origin_url(
+    tmp_path: pathlib.Path,
+    origin_index: int,
+    reason: str | None,
+) -> None:
+    """Compare the first stored URL even with multiple URLs and a rewrite."""
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+    origin_urls = [str(repo), "https://user:secret@other.test/repo"]
+    _git(checkout, "remote", "set-url", "--add", "origin", origin_urls[1])
+    _git(checkout, "config", "url.https://mirror.test/repo.insteadOf", origin_urls[0])
+
+    result = git_checkout_mismatch(
+        checkout_dir=checkout,
+        repo_url=origin_urls[origin_index],
+        ref="refs/tags/v1.0",
+    )
+
+    assert result == reason
+
+
+@needs_git_command
+def test_git_checkout_mismatch_ignores_global_origin_url(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Use the checkout's stored origin even when the global config sets one."""
+    repo = _make_repo(tmp_path / "repo")
+    checkout = _clone(repo, tmp_path / "checkout", "refs/tags/v1.0")
+    global_config = tmp_path / "gitconfig"
+    global_config.write_text(
+        '[remote "origin"]\n    url = https://global.test/other-repo\n'
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+
+    result = git_checkout_mismatch(
+        checkout_dir=checkout, repo_url=str(repo), ref="refs/tags/v1.0"
+    )
+
+    assert result is None
 
 
 @needs_git_command
