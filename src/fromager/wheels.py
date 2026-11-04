@@ -13,6 +13,7 @@ import zipfile
 
 import elfdeps
 import tomlkit
+from packaging.metadata import parse_email
 from packaging.requirements import Requirement
 from packaging.tags import Tag
 from packaging.utils import (
@@ -48,6 +49,13 @@ FROMAGER_BUILD_SETTINGS = "fromager-build-settings"
 FROMAGER_ELF_PROVIDES = "fromager-elf-provides.txt"
 FROMAGER_ELF_REQUIRES = "fromager-elf-requires.txt"
 FROMAGER_BUILD_REQ_PREFIX = "fromager"
+# core metadata fields the SBOM license is derived from, keyed by the
+# lowercased names parse_email() reports, mapped to their header spelling
+_LICENSE_METADATA_FIELDS = {
+    "license": "License",
+    "license-expression": "License-Expression",
+    "classifier": "Classifier",
+}
 
 
 def _validate_build_tag_segments(segments: list[str]) -> None:
@@ -318,10 +326,32 @@ def add_extra_metadata_to_wheels(
 
         sbom_settings = ctx.settings.sbom_settings
         if sbom_settings is not None:
+            metadata_file = dist_info_dir / "METADATA"
+            if not metadata_file.is_file():
+                raise FileNotFoundError(
+                    f"{wheel_file.name} has no {dist_info_dir.name}/METADATA"
+                )
+            # Raw parsing: validated `Metadata` access raises on invalid
+            # upstream values, which must not fail the build.
+            raw_metadata, unparsed = parse_email(metadata_file.read_bytes())
+            unparsed_license_fields = [
+                _LICENSE_METADATA_FIELDS[name]
+                for name in unparsed
+                if name in _LICENSE_METADATA_FIELDS
+            ]
+            if unparsed_license_fields:
+                logger.warning(
+                    "%s: cannot parse license metadata field(s) %s; "
+                    "SBOM license information will be incomplete",
+                    req.name,
+                    ", ".join(unparsed_license_fields),
+                )
             sbom_doc = sbom.generate_sbom(
                 ctx=ctx,
                 req=req,
                 version=version,
+                metadata=raw_metadata,
+                unparsed_fields=unparsed_license_fields,
                 # dist_version comes from the wheel filename and includes
                 # any local version added by a patch, so the SBOM
                 # identifies the wheel that actually contains it

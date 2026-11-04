@@ -6,6 +6,7 @@ embedding in the ``.dist-info/sboms/`` directory of built wheels.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import json
 import logging
@@ -13,13 +14,17 @@ import pathlib
 import re
 import typing
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from urllib.parse import quote
 
 from packageurl import PackageURL
+from packaging.metadata import RawMetadata
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
+
+from .pkgmetadata import DeclaredLicense, declared_license_from_raw_metadata
 
 if typing.TYPE_CHECKING:
     from . import context
@@ -28,6 +33,99 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SBOM_FILENAME = "fromager.spdx.json"
+
+_LICENSE_COMMENT = (
+    "License inherited from the upstream project's declared Python package "
+    "metadata ({source}) and not independently verified by fromager; it may "
+    "be imprecise or incomplete."
+)
+_UNMAPPED_COMMENT = " No unambiguous SPDX mapping for: {raw}."
+_NO_LICENSE_COMMENT = (
+    "No license information found in the upstream project's declared Python "
+    "package metadata."
+)
+_UNREADABLE_LICENSE_COMMENT = (
+    "License information could not be read from the upstream project's "
+    "declared Python package metadata."
+)
+_UNPARSED_COMMENT = " Unparseable fields: {names}."
+# Full license texts can be tens of KB; the comment only quotes the start.
+_COMMENT_RAW_MAX = 200
+_UPSTREAM_REF_COMMENT = (
+    "Declared in the upstream project's {source}: {raw}. The license text is "
+    "not available in the package metadata."
+)
+# characters allowed in SPDX ids (SPDX 2.3, idstring)
+_SPDX_IDSTRING_CHARS = r"A-Za-z0-9.\-"
+_LICENSE_REF_RE = re.compile(rf"LicenseRef-[{_SPDX_IDSTRING_CHARS}]+")
+
+
+def _license_ref_id(raw: str) -> str:
+    """Build a stable LicenseRef id for a declaration without an SPDX id.
+
+    The slug keeps the id readable and the hash keeps it unique, so
+    rebuilds produce the same id and SBOMs stay diff-clean.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", raw.lower()).strip("-")[:40].rstrip("-")
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+    return f"LicenseRef-{slug}-{digest}" if slug else f"LicenseRef-{digest}"
+
+
+def _quote_for_comment(raw: str) -> str:
+    """Shorten a declaration to one line for ``licenseComments``."""
+    flat = raw.replace("\n", "; ")
+    if len(flat) > _COMMENT_RAW_MAX:
+        return flat[:_COMMENT_RAW_MAX] + "..."
+    return flat
+
+
+def _license_fields(
+    declared: DeclaredLicense | None,
+    unparsed_fields: Iterable[str],
+) -> tuple[dict[str, str], list[dict[str, str]]]:
+    """Build SPDX package license fields and extracted licensing infos.
+
+    fromager does not audit licenses, so ``licenseConcluded`` is always
+    ``NOASSERTION`` and the comment says the value is inherited from
+    upstream. Every ``LicenseRef`` used must be declared in the document.
+    A ``LicenseRef`` fromager generates quotes the raw declaration as its
+    text. One that upstream named has no license text in the metadata, so
+    its text is ``NOASSERTION`` and a comment says where it was declared.
+    """
+    extracted: list[dict[str, str]] = []
+    names = ", ".join(unparsed_fields)
+    if declared is None:
+        license_declared = "NOASSERTION"
+        # unreadable fields may hold a license, so do not claim there is none
+        comment = _UNREADABLE_LICENSE_COMMENT if names else _NO_LICENSE_COMMENT
+    else:
+        comment = _LICENSE_COMMENT.format(source=declared.source)
+        if declared.spdx is None:
+            license_declared = _license_ref_id(declared.raw)
+            comment += _UNMAPPED_COMMENT.format(raw=_quote_for_comment(declared.raw))
+            extracted = [{"licenseId": license_declared, "extractedText": declared.raw}]
+        else:
+            license_declared = declared.spdx
+            ref_comment = _UPSTREAM_REF_COMMENT.format(
+                source=declared.source, raw=_quote_for_comment(declared.raw)
+            )
+            extracted = [
+                {
+                    "licenseId": ref,
+                    "name": ref.removeprefix("LicenseRef-"),
+                    "extractedText": "NOASSERTION",
+                    "comment": ref_comment,
+                }
+                for ref in dict.fromkeys(_LICENSE_REF_RE.findall(declared.spdx))
+            ]
+    if names:
+        comment += _UNPARSED_COMMENT.format(names=names)
+    fields = {
+        "licenseDeclared": license_declared,
+        "licenseConcluded": "NOASSERTION",
+        "licenseComments": comment,
+    }
+    return fields, extracted
 
 
 def _spdx_id(kind: str, name: str, version: str, doc_suffix: str) -> str:
@@ -40,7 +138,7 @@ def _spdx_id(kind: str, name: str, version: str, doc_suffix: str) -> str:
     data. SPDX ids only allow letters, digits, ``.`` and ``-``.
     """
     spdx_id = f"SPDXRef-{kind}-{name}-{version}-{doc_suffix}"
-    return re.sub(r"[^A-Za-z0-9.\-]+", "-", spdx_id)
+    return re.sub(rf"[^{_SPDX_IDSTRING_CHARS}]+", "-", spdx_id)
 
 
 def _build_downstream_purl(
@@ -100,13 +198,19 @@ def generate_sbom(
     ctx: context.WorkContext,
     req: Requirement,
     version: Version,
+    metadata: RawMetadata,
     wheel_version: Version | None = None,
+    unparsed_fields: Iterable[str] = (),
 ) -> dict[str, typing.Any]:
     """Generate a minimal SPDX 2.3 JSON document for a wheel.
 
     The document contains the downstream wheel as the primary package,
     the upstream source as a second package, and DESCRIBES /
     GENERATED_FROM relationships.
+
+    Both packages carry the license declared in the wheel's core
+    *metadata*. *unparsed_fields* names license fields that could not be
+    read, so the SBOM does not claim they are absent.
 
     The document name and namespace are derived from the downstream
     purl (including any ``purl`` field overrides), so the document
@@ -122,6 +226,9 @@ def generate_sbom(
     Package SPDX ids include a per-document suffix and are not predictable,
     so consumers should find the wheel package through the document's
     DESCRIBES relationship rather than by a fixed id.
+
+    .. versionchanged:: 0.104.0
+       ``metadata`` is required, and both packages carry license fields.
     """
     sbom_settings = ctx.settings.sbom_settings
     if sbom_settings is None:
@@ -166,12 +273,17 @@ def generate_sbom(
     wheel_id = _spdx_id("wheel", doc_name, doc_version, doc_suffix)
     upstream_id = _spdx_id("upstream", upstream.name, upstream_version, doc_suffix)
 
+    license_fields, extracted_licenses = _license_fields(
+        declared_license_from_raw_metadata(metadata), unparsed_fields
+    )
+
     wheel_entry: dict[str, typing.Any] = {
         "SPDXID": wheel_id,
         "name": doc_name,
         "versionInfo": doc_version,
         "downloadLocation": "NOASSERTION",
         "supplier": sbom_settings.supplier,
+        **license_fields,
         "externalRefs": [
             {
                 "referenceCategory": "PACKAGE-MANAGER",
@@ -187,6 +299,7 @@ def generate_sbom(
         "versionInfo": upstream_version,
         "downloadLocation": "NOASSERTION",
         "supplier": "NOASSERTION",
+        **license_fields,
         "externalRefs": [
             {
                 "referenceCategory": "PACKAGE-MANAGER",
@@ -220,6 +333,8 @@ def generate_sbom(
             },
         ],
     }
+    if extracted_licenses:
+        doc["hasExtractedLicensingInfos"] = extracted_licenses
     return doc
 
 
