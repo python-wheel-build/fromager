@@ -78,7 +78,7 @@ Source Resolver
    .. autoattribute:: tarball
    .. autoattribute:: hook
 
-.. versionadded:: 0.103.0
+.. versionadded:: 0.104.0
 
    Set ``build_sdist: hook`` to use the package's custom sdist builder.
    The hook must be installed. This option is only available for source

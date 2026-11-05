@@ -35,7 +35,7 @@ class BuildSDist(enum.StrEnum):
     hook = "hook"
     """Call the package's ``build_sdist`` override hook.
 
-    .. versionadded:: 0.103.0
+    .. versionadded:: 0.104.0
     """
 
 

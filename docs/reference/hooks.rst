@@ -374,7 +374,7 @@ Source hooks
     installed before it runs. Use it to generate files or pack a directory
     other than the wheel build directory.
 
-    .. versionchanged:: 0.103.0
+    .. versionchanged:: 0.104.0
 
        With ``source:``, set ``build_sdist: hook`` to call this hook.
        A missing hook is an error. The ``pep517`` and ``tarball`` methods

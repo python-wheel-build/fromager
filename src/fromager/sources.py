@@ -629,7 +629,7 @@ def build_sdist(
     ``source.build_sdist: hook`` requires a package override. Configured
     ``pep517`` and ``tarball`` strategies take precedence over overrides.
 
-    .. versionchanged:: 0.103.0
+    .. versionchanged:: 0.104.0
        Configured source profiles can select the ``build_sdist`` override.
     """
     pbi = ctx.package_build_info(req)
@@ -728,7 +728,7 @@ def default_build_sdist(
     exclude it when ``source:`` is configured, and retain it otherwise.
     Explicit booleans override this policy.
 
-    .. versionchanged:: 0.103.0
+    .. versionchanged:: 0.104.0
        With ``exclude_vcs=None``, exclude VCS metadata when the effective
        package or variant has ``source:`` configured; retain it otherwise.
     """
