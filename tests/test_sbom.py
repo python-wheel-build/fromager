@@ -1,5 +1,6 @@
 import json
 import pathlib
+import re
 import typing
 import uuid
 from unittest.mock import patch
@@ -391,14 +392,97 @@ def test_generate_sbom_relationships(tmp_path: pathlib.Path) -> None:
         version=Version("0.1.0"),
     )
 
+    wheel_id, upstream_id = (p["SPDXID"] for p in doc["packages"])
     rels = doc["relationships"]
     assert len(rels) == 2
     assert rels[0]["spdxElementId"] == "SPDXRef-DOCUMENT"
     assert rels[0]["relationshipType"] == "DESCRIBES"
-    assert rels[0]["relatedSpdxElement"] == "SPDXRef-wheel"
-    assert rels[1]["spdxElementId"] == "SPDXRef-wheel"
+    assert rels[0]["relatedSpdxElement"] == wheel_id
+    assert rels[1]["spdxElementId"] == wheel_id
     assert rels[1]["relationshipType"] == "GENERATED_FROM"
-    assert rels[1]["relatedSpdxElement"] == "SPDXRef-upstream"
+    assert rels[1]["relatedSpdxElement"] == upstream_id
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_spdx_ids_name_package_and_document(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify package SPDX ids carry name, version, and a document suffix."""
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    fixed_uuid = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    with patch("fromager.sbom.uuid.uuid4", return_value=fixed_uuid):
+        doc = sbom.generate_sbom(
+            ctx=ctx,
+            req=Requirement("test==0.1.0"),
+            version=Version("0.1.0"),
+        )
+
+    assert [p["SPDXID"] for p in doc["packages"]] == [
+        "SPDXRef-wheel-test-0.1.0-12345678",
+        "SPDXRef-upstream-test-0.1.0-12345678",
+    ]
+    _validate_spdx(doc)
+
+
+def test_generate_sbom_spdx_ids_differ_between_packages(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify SBOMs of different wheels share no package SPDX ids.
+
+    Tools such as syft merge packages from several SBOMs by SPDX id, so
+    shared ids would attribute one wheel's data to another. Both documents
+    get the same UUID so only the name and version can keep the ids apart.
+    """
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    fixed_uuid = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    with patch("fromager.sbom.uuid.uuid4", return_value=fixed_uuid):
+        docs = [
+            sbom.generate_sbom(ctx=ctx, req=Requirement(req), version=Version(ver))
+            for req, ver in [("idna==3.6", "3.6"), ("packaging==26.3", "26.3")]
+        ]
+
+    ids = [{p["SPDXID"] for p in doc["packages"]} for doc in docs]
+    assert ids[0].isdisjoint(ids[1])
+
+
+def test_generate_sbom_spdx_ids_differ_between_documents(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify two SBOMs of the same package share no package SPDX ids.
+
+    Two builds of one version (e.g. for different variants) can carry
+    different data; shared ids would let tools merge them into one package.
+    """
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    docs = [
+        sbom.generate_sbom(
+            ctx=ctx, req=Requirement("idna==3.6"), version=Version("3.6")
+        )
+        for _ in range(2)
+    ]
+
+    ids = [{p["SPDXID"] for p in doc["packages"]} for doc in docs]
+    assert ids[0].isdisjoint(ids[1])
+
+
+def test_generate_sbom_spdx_ids_are_sanitized(tmp_path: pathlib.Path) -> None:
+    """Verify characters SPDX ids do not allow are replaced."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(),
+        package_overrides={"purl": {"version": "0.5.5+local.1"}},
+    )
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.5.5"),
+        version=Version("0.5.5"),
+    )
+
+    wheel_id, upstream_id = (p["SPDXID"] for p in doc["packages"])
+    assert re.fullmatch(
+        r"SPDXRef-wheel-test-pkg-0\.5\.5-local\.1-[0-9a-f]{8}", wheel_id
+    )
+    assert re.fullmatch(r"SPDXRef-upstream-test-pkg-0\.5\.5-[0-9a-f]{8}", upstream_id)
     _validate_spdx(doc)
 
 

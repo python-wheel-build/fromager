@@ -10,6 +10,7 @@ import importlib.metadata
 import json
 import logging
 import pathlib
+import re
 import typing
 import uuid
 from datetime import UTC, datetime
@@ -27,6 +28,19 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SBOM_FILENAME = "fromager.spdx.json"
+
+
+def _spdx_id(kind: str, name: str, version: str, doc_suffix: str) -> str:
+    """Build a package SPDX id unique to this package and document.
+
+    SPDX ids only need to be unique within a document, but tools that read
+    several SBOMs (e.g. syft scanning an environment) merge packages by id.
+    Name and version keep different wheels apart; the per-document suffix
+    keeps apart two builds of the same version that may carry different
+    data. SPDX ids only allow letters, digits, ``.`` and ``-``.
+    """
+    spdx_id = f"SPDXRef-{kind}-{name}-{version}-{doc_suffix}"
+    return re.sub(r"[^A-Za-z0-9.\-]+", "-", spdx_id)
 
 
 def _build_downstream_purl(
@@ -109,6 +123,10 @@ def generate_sbom(
     package entry, its purl, and the document identity use
     ``wheel_version`` when given; the upstream package entry always
     uses ``version``.
+
+    Package SPDX ids include a per-document suffix and are not predictable,
+    so consumers should find the wheel package through the document's
+    DESCRIBES relationship rather than by a fixed id.
     """
     sbom_settings = ctx.settings.sbom_settings
     if sbom_settings is None:
@@ -143,13 +161,19 @@ def generate_sbom(
     # contain URI-hostile characters.
     doc_name = downstream.name
     doc_version = downstream.version or str(wheel_version or version)
+    doc_uuid = uuid.uuid4()
     namespace = (
         f"{sbom_settings.namespace!s}/{quote(doc_name, safe='')}"
-        f"-{quote(doc_version, safe='')}-{uuid.uuid4()}.spdx.json"
+        f"-{quote(doc_version, safe='')}-{doc_uuid}.spdx.json"
     )
 
+    upstream_version = upstream.version or str(version)
+    doc_suffix = doc_uuid.hex[:8]
+    wheel_id = _spdx_id("wheel", doc_name, doc_version, doc_suffix)
+    upstream_id = _spdx_id("upstream", upstream.name, upstream_version, doc_suffix)
+
     wheel_entry: dict[str, typing.Any] = {
-        "SPDXID": "SPDXRef-wheel",
+        "SPDXID": wheel_id,
         "name": doc_name,
         "versionInfo": doc_version,
         "downloadLocation": "NOASSERTION",
@@ -164,9 +188,9 @@ def generate_sbom(
     }
 
     upstream_entry: dict[str, typing.Any] = {
-        "SPDXID": "SPDXRef-upstream",
+        "SPDXID": upstream_id,
         "name": upstream.name,
-        "versionInfo": upstream.version or str(version),
+        "versionInfo": upstream_version,
         "downloadLocation": "NOASSERTION",
         "supplier": "NOASSERTION",
         "externalRefs": [
@@ -193,12 +217,12 @@ def generate_sbom(
             {
                 "spdxElementId": "SPDXRef-DOCUMENT",
                 "relationshipType": "DESCRIBES",
-                "relatedSpdxElement": "SPDXRef-wheel",
+                "relatedSpdxElement": wheel_id,
             },
             {
-                "spdxElementId": "SPDXRef-wheel",
+                "spdxElementId": wheel_id,
                 "relationshipType": "GENERATED_FROM",
-                "relatedSpdxElement": "SPDXRef-upstream",
+                "relatedSpdxElement": upstream_id,
             },
         ],
     }
