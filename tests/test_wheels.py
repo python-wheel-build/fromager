@@ -1,3 +1,4 @@
+import json
 import pathlib
 import typing
 import zipfile
@@ -401,7 +402,12 @@ def test_log_existing_sboms_when_absent(
 def test_add_extra_metadata_generates_sbom_when_enabled(
     mock_run: Mock, tmp_path: pathlib.Path
 ) -> None:
-    """Verify SBOM is generated in .dist-info/sboms/ when sbom settings are configured."""
+    """Verify SBOM is generated in .dist-info/sboms/ when sbom settings are configured.
+
+    The wheel carries a local version (as added by a patch) while the
+    resolved version has none, so the SBOM must describe the wheel it
+    is embedded in, not the upstream release.
+    """
     sbom_ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
     sbom_ctx.setup()
     req = Requirement("test_pkg==1.0.0")
@@ -409,29 +415,30 @@ def test_add_extra_metadata_generates_sbom_when_enabled(
 
     wheel_dir = tmp_path / "wheel_build"
     wheel_dir.mkdir()
-    wheel_file = wheel_dir / "test_pkg-1.0.0-py3-none-any.whl"
+    wheel_file = wheel_dir / "test_pkg-1.0.0+local.1-py3-none-any.whl"
 
     with zipfile.ZipFile(wheel_file, "w") as zf:
         zf.writestr("test_pkg/__init__.py", "")
         zf.writestr(
-            "test_pkg-1.0.0.dist-info/METADATA",
-            "Name: test_pkg\nVersion: 1.0.0\n",
+            "test_pkg-1.0.0+local.1.dist-info/METADATA",
+            "Name: test_pkg\nVersion: 1.0.0+local.1\n",
         )
         zf.writestr(
-            "test_pkg-1.0.0.dist-info/WHEEL",
+            "test_pkg-1.0.0+local.1.dist-info/WHEEL",
             "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
         )
 
     mock_run.return_value = ""
 
     # Create the repacked wheel that wheel pack would produce
-    repacked = wheel_dir / "test_pkg-1.0.0-0-py3-none-any.whl"
+    repacked = wheel_dir / "test_pkg-1.0.0+local.1-0-py3-none-any.whl"
 
     sdist_dir = tmp_path / "sdist"
     sdist_dir.mkdir()
 
     # Capture the wheel contents before repack by inspecting what wheel pack receives
     captured_contents: list[str] = []
+    captured_sbom: dict[str, typing.Any] = {}
 
     def fake_run(cmd: list[str], **kwargs: object) -> str:
         # wheel pack is called with the unpacked dir as second arg
@@ -439,6 +446,13 @@ def test_add_extra_metadata_generates_sbom_when_enabled(
         for f in unpacked_dir.rglob("*"):
             if f.is_file():
                 captured_contents.append(str(f.relative_to(unpacked_dir)))
+        sbom_file = (
+            unpacked_dir
+            / "test_pkg-1.0.0+local.1.dist-info"
+            / "sboms"
+            / ("fromager.spdx.json")
+        )
+        captured_sbom.update(json.loads(sbom_file.read_text()))
         repacked.touch()
         return ""
 
@@ -455,6 +469,19 @@ def test_add_extra_metadata_generates_sbom_when_enabled(
 
     # Verify the SBOM file was added to the unpacked wheel before repacking
     assert any("sboms/fromager.spdx.json" in c for c in captured_contents)
+
+    # The SBOM must identify the wheel with its local version
+    assert captured_sbom["name"] == "test-pkg-1.0.0+local.1"
+    wheel_entry, upstream_entry = captured_sbom["packages"]
+    assert wheel_entry["versionInfo"] == "1.0.0+local.1"
+    assert wheel_entry["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@1.0.0%2Blocal.1"
+    )
+    # The upstream entry still identifies the resolved source release
+    assert upstream_entry["versionInfo"] == "1.0.0"
+    assert upstream_entry["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@1.0.0"
+    )
 
 
 def test_download_wheel_unquotes_url_encoded_filenames(tmp_path: pathlib.Path) -> None:
