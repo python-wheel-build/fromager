@@ -123,6 +123,10 @@ def generate_sbom(
     package entry, its purl, and the document identity use
     ``wheel_version`` when given; the upstream package entry always
     uses ``version``.
+
+    Package SPDX ids include a per-document suffix and are not predictable,
+    so consumers should find the wheel package through the document's
+    DESCRIBES relationship rather than by a fixed id.
     """
     sbom_settings = ctx.settings.sbom_settings
     if sbom_settings is None:

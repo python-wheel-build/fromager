@@ -421,6 +421,7 @@ def test_generate_sbom_spdx_ids_name_package_and_document(
         "SPDXRef-wheel-test-0.1.0-12345678",
         "SPDXRef-upstream-test-0.1.0-12345678",
     ]
+    _validate_spdx(doc)
 
 
 def test_generate_sbom_spdx_ids_differ_between_packages(
@@ -429,13 +430,16 @@ def test_generate_sbom_spdx_ids_differ_between_packages(
     """Verify SBOMs of different wheels share no package SPDX ids.
 
     Tools such as syft merge packages from several SBOMs by SPDX id, so
-    shared ids would attribute one wheel's data to another.
+    shared ids would attribute one wheel's data to another. Both documents
+    get the same UUID so only the name and version can keep the ids apart.
     """
     ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
-    docs = [
-        sbom.generate_sbom(ctx=ctx, req=Requirement(req), version=Version(ver))
-        for req, ver in [("idna==3.6", "3.6"), ("packaging==26.3", "26.3")]
-    ]
+    fixed_uuid = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    with patch("fromager.sbom.uuid.uuid4", return_value=fixed_uuid):
+        docs = [
+            sbom.generate_sbom(ctx=ctx, req=Requirement(req), version=Version(ver))
+            for req, ver in [("idna==3.6", "3.6"), ("packaging==26.3", "26.3")]
+        ]
 
     ids = [{p["SPDXID"] for p in doc["packages"]} for doc in docs]
     assert ids[0].isdisjoint(ids[1])
