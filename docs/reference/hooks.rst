@@ -361,17 +361,47 @@ Source hooks
     .. versionchanged:: 0.103.0
        Passing ``DownloadKind.git_checkout`` prepares a clean Git checkout.
 
+.. _build_sdist_hook:
+
 .. autofromagerhook:: default_build_sdist
 
-    The ``build_sdist()`` function is responsible for creating a new source
-    distribution from the prepared source tree and placing it in
-    ``ctx.sdists_build``.  The dist name and version of the sdist file must
-    match the ``Requirement`` and ``Version``.
+    The ``build_sdist()`` hook packs prepared sources into an sdist and returns
+    its ``Path``. The file must exist in ``ctx.sdists_builds`` and match the
+    requested package name and version.
 
-    The arguments are the ``WorkContext``, the ``Requirement`` being evaluated, and the
-    `Path` to the root of the source tree.
+    The hook receives ``ctx``, ``extra_environ``, ``req``, ``version``,
+    ``sdist_root_dir``, ``build_env``, and ``build_dir``. Build dependencies are
+    installed before it runs. Use it to generate files or pack a directory
+    other than the wheel build directory.
 
-    The return value is the ``Path`` to the newly created source distribution.
+    .. versionchanged:: 0.103.0
+
+       With ``source:``, set ``build_sdist: hook`` to call this hook.
+       A missing hook is an error. The ``pep517`` and ``tarball`` methods
+       skip installed hooks with a warning. Without ``source:``, Fromager
+       uses the hook when present, or the default otherwise.
+
+    For a package downloaded as a tarball:
+
+    .. code-block:: yaml
+
+       build_dir: python
+       source:
+         provider: pypi-download
+         download_url: https://sources.example/project-{version}.tar.gz
+         download_kind: tarball
+         build_sdist: hook
+
+    Any profile that builds from source can use this option. The
+    ``hook-sdist`` profile still needs a resolver or download hook.
+
+    With ``source:`` configured, ``default_build_sdist()`` excludes VCS metadata
+    such as ``.git`` by default, including when called by a hook. Pass
+    ``exclude_vcs=False`` to include it explicitly. Without ``source:``, the
+    helper retains VCS metadata by default; pass ``exclude_vcs=True`` to omit it.
+
+    Hooks that create archives directly choose their contents and must omit
+    VCS metadata themselves.
 
 Source helper functions
 ~~~~~~~~~~~~~~~~~~~~~~~

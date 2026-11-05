@@ -28,8 +28,15 @@ _PYPI_INDEX_URL = pydantic.HttpUrl("https://pypi.org/simple/")
 
 
 class BuildSDist(enum.StrEnum):
+    """Source distribution build method."""
+
     pep517 = "pep517"
     tarball = "tarball"
+    hook = "hook"
+    """Call the package's ``build_sdist`` override hook.
+
+    .. versionadded:: 0.103.0
+    """
 
 
 class DownloadKind(enum.StrEnum):
@@ -71,10 +78,14 @@ class AbstractResolver(pydantic.BaseModel):
     provider: str
 
     build_sdist: BuildSDist | None
-    """Sdist build strategy; None for resolvers that do not build from source."""
+    """Sdist build strategy; None for resolvers that do not build from source.
+
+    ``hook`` requires a package ``build_sdist`` override independently of
+    the profile's resolver and download hooks.
+    """
 
     supports_override_hooks: typing.ClassVar[bool] = False
-    """Does resolver support override hooks?"""
+    """Does resolver support resolution and download override hooks?"""
 
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset()
     """Set of download kinds this resolver can return."""
@@ -250,7 +261,9 @@ class PyPISDistResolver(AbstractPyPIResolver):
 
     # It is not safe to use PEP 517 to re-generate a source distribution.
     # Some PEP 517 backends require VCS to generate correct sdist.
-    build_sdist: typing.Literal[BuildSDist.tarball] = BuildSDist.tarball
+    build_sdist: typing.Literal[BuildSDist.tarball, BuildSDist.hook] = (
+        BuildSDist.tarball
+    )
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset({DownloadKind.sdist})
 
     def resolver_provider(
@@ -362,7 +375,9 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
     URL must contain '{version}' template string.
     """
 
-    build_sdist: typing.Literal[BuildSDist.tarball] = BuildSDist.tarball
+    build_sdist: typing.Literal[BuildSDist.tarball, BuildSDist.hook] = (
+        BuildSDist.tarball
+    )
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.sdist, DownloadKind.tarball}
     )
@@ -808,7 +823,7 @@ class AbstractHookResolver(AbstractResolver, CooldownMixin):
     """Abstract base class for hook-based resolvers"""
 
     supports_override_hooks: typing.ClassVar[bool] = True
-    """Hook resolvers support override hooks."""
+    """Hook resolvers support resolution and download override hooks."""
 
     hookless_provider: typing.ClassVar[str]
     """Profile to suggest for packages without hooks."""
@@ -953,7 +968,8 @@ class HookSDistResolver(AbstractHookResolver):
     ``Path`` treated as an sdist.
     Without a download hook, the resolved URL is downloaded as an sdist.
     Specify ``build_sdist`` explicitly: ``tarball`` to repack an existing
-    sdist, or ``pep517`` to build from a git checkout.
+    sdist, ``pep517`` to build from a git checkout, or ``hook`` to call
+    the package's ``build_sdist`` override.
 
     Example::
 
