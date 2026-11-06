@@ -95,6 +95,8 @@ def test_project_urls_from_metadata(
         [md(license="MIT and PSF-2.0"), "MIT AND PSF-2.0"],
         [md(license="BSD 3-Clause License"), "BSD-3-Clause"],
         [md(classifiers=["License :: OSI Approved :: MIT License"]), "MIT"],
+        # OSI-approved zlib License, not zlib/libpng with Acknowledgement
+        [md(classifiers=["License :: OSI Approved :: zlib/libpng License"]), "Zlib"],
         [
             md(
                 classifiers=[
@@ -117,6 +119,12 @@ def test_license_from_metadata(metadata: Metadata, expected: str) -> None:
         (None, None, None),
         (None, "invalid", None),
         (None, None, ["License :: OSI Approved :: BSD License"]),
+        # "v3" does not say -only or -or-later, like the GPLv3 classifier
+        (
+            None,
+            None,
+            ["License :: OSI Approved :: GNU Affero General Public License v3"],
+        ),
         # classifiers with no entry that maps to SPDX (see issue #1372)
         (None, None, ["Programming Language :: Python :: 3"]),
         (None, None, ["License :: OSI Approved"]),
