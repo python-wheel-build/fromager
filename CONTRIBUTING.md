@@ -9,6 +9,7 @@ Fromager thrives on practical, well-tested contributions. This guide summarizes 
 - [Quick Start](#quick-start)
 - [Coding Standards](#coding-standards)
 - [Testing](#testing)
+- [Resolver Branch Backports](#resolver-branch-backports)
 - [Commit Guidelines](#commit-guidelines)
 - [Before Submitting](#before-submitting)
 - [Design Patterns Used in Fromager](#design-patterns-used-in-fromager)
@@ -227,6 +228,24 @@ hatch run test:test tests/test_context.py        # Specific file
 hatch run test:test --log-level DEBUG            # Verbose output
 hatch run test:coverage-report                   # Coverage summary
 ```
+
+---
+
+## Resolver Branch Backports
+
+Mergify cherry-picks PRs merged into `main` after the
+[baseline sync #1367](https://github.com/python-wheel-build/fromager/pull/1367)
+into backport PRs for `new-resolver-config`, using its GitHub App without a personal
+token. Maintainers review and manually merge them after applicable CI passes,
+merging dependent backports in source order.
+
+Resolve conflicts and remove the `conflicts` label before merging. To request a
+missing backport, check for an existing PR, then comment
+`@mergifyio backport new-resolver-config` on the merged source PR.
+
+Direct pushes and unsupported merge histories need manual backports. Cherry-picks
+create new commits, so Git may still report the branch as behind `main`. Remove
+the backport rule when the feature branch is retired.
 
 ---
 
