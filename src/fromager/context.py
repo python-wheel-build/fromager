@@ -154,7 +154,11 @@ class WorkContext:
         req_list: list[str] = sorted(set(req.name for req in reqs))
         logger.debug("invalidate uv cache for %s", req_list)
         cmd.extend(req_list)
-        external_commands.run(cmd, extra_environ=extra_environ)
+        external_commands.run(
+            cmd,
+            extra_environ=extra_environ,
+            env_filter=self.settings.external_commands,
+        )
 
     def package_build_info(
         self, package: str | packagesettings.Package | Requirement
