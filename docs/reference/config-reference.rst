@@ -76,6 +76,13 @@ Source Resolver
 
    .. autoattribute:: pep517
    .. autoattribute:: tarball
+   .. autoattribute:: hook
+
+.. versionadded:: 0.104.0
+
+   Set ``build_sdist: hook`` to use the package's custom sdist builder.
+   The hook must be installed. This option is only available for source
+   builds. See :ref:`build_sdist_hook` for details and an example.
 
 .. autoclass:: DownloadedSource
    :members: path, kind

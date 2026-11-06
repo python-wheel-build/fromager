@@ -66,6 +66,9 @@ arguments.
    artifact kind. Package overrides remain active. See :ref:`prepare_source_hook`
    for their arguments and the public Git checkout helper.
 
+   With ``source:`` configured, set ``build_sdist: hook`` to use the package's
+   custom sdist builder. See :ref:`build_sdist_hook` for details.
+
 Global Hooks
 ------------
 

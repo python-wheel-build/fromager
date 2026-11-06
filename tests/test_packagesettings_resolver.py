@@ -1607,6 +1607,57 @@ def test_hook_resolver_chains_hook_exception(
 # -- Discriminated union validation -------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "profile_yaml",
+    [
+        TestPyPISDistResolver.YAML,
+        TestPyPIDownloadResolver.YAML,
+        TestPyPIGitResolver.YAML,
+        TestGitHubTagDownloadResolver.YAML,
+        TestGitHubTagCloneResolver.YAML,
+        TestGitLabTagDownloadResolver.YAML,
+        TestGitLabTagCloneResolver.YAML,
+        TestHookSDistResolver.YAML,
+    ],
+    ids=[
+        "pypi-sdist",
+        "pypi-download",
+        "pypi-git",
+        "github-tag-download",
+        "github-tag-git",
+        "gitlab-tag-download",
+        "gitlab-tag-git",
+        "hook-sdist",
+    ],
+)
+def test_source_profiles_accept_build_sdist_hook(profile_yaml: str) -> None:
+    """Allow source profiles to select a build hook independently of acquisition."""
+    data = yaml.safe_load(textwrap.dedent(profile_yaml))
+    data["source"]["build_sdist"] = "hook"
+
+    source = _SourceWrapper.model_validate(data).source
+
+    assert source.build_sdist is BuildSDist.hook
+
+
+@pytest.mark.parametrize(
+    "profile_yaml",
+    [
+        TestPyPIPrebuiltResolver.YAML,
+        TestHookPrebuiltResolver.YAML,
+        TestNotAvailableResolver.YAML,
+    ],
+    ids=["pypi-prebuilt", "hook-prebuilt", "not-available"],
+)
+def test_non_source_profiles_reject_build_sdist_hook(profile_yaml: str) -> None:
+    """Prebuilt and unavailable profiles cannot select an sdist build hook."""
+    data = yaml.safe_load(textwrap.dedent(profile_yaml))
+    data["source"]["build_sdist"] = "hook"
+
+    with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+        _SourceWrapper.model_validate(data)
+
+
 def test_invalid_provider() -> None:
     with pytest.raises(pydantic.ValidationError):
         _parse("""\

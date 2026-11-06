@@ -212,17 +212,25 @@ Building the Sdist
    Git checkouts can be prepared directly. Configured source resolvers
    also select the sdist build method.
 
-For source builds, the configured resolver selects one of two methods:
+For source builds, ``source.build_sdist`` selects the build method:
 
 - ``pep517`` calls the package's build backend. Git checkout resolvers
   default to it.
 - ``tarball`` repacks the prepared source without VCS metadata such as
   ``.git``. PyPI sdist resolvers default to it.
+- ``hook`` calls the package's custom ``build_sdist`` hook. It can generate
+  files or choose which directory to pack. A missing hook is an error.
 
-``hook-sdist`` requires an explicit ``build_sdist: pep517`` or
-``build_sdist: tarball`` setting. A configured method takes precedence
-over a ``build_sdist`` override and logs a warning when the override is
-ignored; packages without ``source:`` keep using the override.
+``hook-sdist`` requires an explicit build method. Other profiles that build
+from source can also select ``hook``. The ``pep517`` and ``tarball`` methods
+skip installed build hooks with a warning. Without ``source:``, Fromager
+uses the hook when present, or the default otherwise.
+
+Hooks that delegate to ``default_build_sdist()`` inherit its default VCS
+exclusion for configured source profiles. An explicit ``exclude_vcs`` value
+overrides this policy. Hooks that create archives directly choose their contents.
+
+See :ref:`build_sdist_hook` for the arguments, archive rules, and an example.
 
 Replaying a Build Order
 -----------------------
