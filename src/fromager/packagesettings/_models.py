@@ -92,6 +92,19 @@ class SbomSettings(pydantic.BaseModel):
         repository_url: "https://example.com/simple"
         creators:
           - "Organization: ExampleCo"
+
+    Both package entries in the SBOM carry ``licenseDeclared`` from the
+    license the built wheel declares in its ``METADATA``. Sources are tried
+    in order: ``License-Expression``, unambiguous license classifiers, then
+    a ``License`` value that is an exact SPDX expression or a known common
+    spelling. Anything else is recorded as a ``LicenseRef-`` id with the raw
+    declaration in ``hasExtractedLicensingInfos``. ``licenseConcluded`` is
+    always ``NOASSERTION`` because fromager does not audit licenses, and
+    ``licenseComments`` says the value is inherited from upstream. A built
+    wheel without ``METADATA`` fails when SBOMs are enabled.
+
+    .. versionchanged:: 0.104.0
+       Populate SBOM license fields from wheel metadata.
     """
 
     model_config = MODEL_CONFIG

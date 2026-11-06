@@ -6,9 +6,13 @@
 - https://spdx.org/licenses/
 """
 
+import dataclasses
+import enum
+import inspect
+
 from license_expression import ExpressionError, LicenseExpression, get_spdx_licensing
 from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
-from packaging.metadata import Metadata
+from packaging.metadata import Metadata, RawMetadata
 
 
 def license_from_metadata(metadata: Metadata) -> LicenseExpression:
@@ -32,7 +36,9 @@ def license_from_metadata_values(
     2. Fall back to *license_text*. Perform some unambiguous translatons
        (e.g. ``Apache 2`` to ``Apache-2.0``) and attempt to parse the string
        as SPDX license expression.
-    3. Finally fall back to trove classifiers.
+    3. Finally fall back to trove classifiers. Several mapped classifiers
+       are joined with ``AND``; `declared_license_from_raw_metadata()`
+       treats them as ambiguous instead.
 
     Raises an exception if license is missing, ambiguous, or not a valid
     SPDX license expression.
@@ -57,6 +63,108 @@ def license_from_metadata_values(
             errors.append(e)
 
     raise ExceptionGroup("unable to detect license", errors)
+
+
+class LicenseSource(enum.StrEnum):
+    """Core metadata field a declared license was taken from"""
+
+    LICENSE_EXPRESSION = "License-Expression"
+    CLASSIFIERS = "License classifiers"
+    LICENSE = "License"
+
+
+@dataclasses.dataclass(frozen=True)
+class DeclaredLicense:
+    """License as declared in a package's core metadata
+
+    ``raw`` keeps the declaration (license classifiers joined by newlines)
+    so it can be quoted when ``spdx`` is ``None``, which means it has no
+    unambiguous SPDX mapping.
+    """
+
+    source: LicenseSource
+    raw: str
+    spdx: str | None
+
+
+def declared_license_from_raw_metadata(
+    metadata: RawMetadata,
+) -> DeclaredLicense | None:
+    """Detect the declared license for SBOMs without guessing
+
+    Unlike `license_from_metadata_values()`, this never raises and reports
+    an ambiguous declaration instead of guessing an SPDX id, so the caller
+    can record it verbatim. Sources are tried in the order agreed in
+    issue #1378: ``License-Expression``, unambiguous license classifiers,
+    then free text that is an exact SPDX expression or a curated mapping.
+    Without a clean mapping, the first declaration present is returned
+    with ``spdx=None``, preferring free text over ambiguous classifiers
+    because it is usually more specific. Classifiers that name more than
+    one license are ambiguous here, while `license_from_metadata_values()`
+    joins them with ``AND``.
+
+    Returns ``None`` when the metadata declares no license at all.
+    """
+    expression = _declared_value(metadata.get("license_expression", "").strip())
+    text = _declared_value(inspect.cleandoc(metadata.get("license", "")).strip())
+    classifiers = [
+        c for c in metadata.get("classifiers", []) if c.startswith("License ::")
+    ]
+    joined_classifiers = "\n".join(classifiers)
+
+    canonical_expression = _canonical_spdx(expression) if expression else None
+    if expression and canonical_expression:
+        return DeclaredLicense(
+            LicenseSource.LICENSE_EXPRESSION, expression, canonical_expression
+        )
+    classifier_spdx = _single_classifier_license(classifiers)
+    if classifier_spdx:
+        return DeclaredLicense(
+            LicenseSource.CLASSIFIERS, joined_classifiers, classifier_spdx
+        )
+    if text:
+        text_spdx = _strict_text_to_spdx(text)
+        if text_spdx is not None:
+            return DeclaredLicense(LicenseSource.LICENSE, text, text_spdx)
+
+    if expression:
+        return DeclaredLicense(LicenseSource.LICENSE_EXPRESSION, expression, None)
+    if text:
+        return DeclaredLicense(LicenseSource.LICENSE, text, None)
+    if classifiers:
+        return DeclaredLicense(LicenseSource.CLASSIFIERS, joined_classifiers, None)
+    return None
+
+
+# license classifiers that do not name a license
+_NON_LICENSE_CLASSIFIERS = frozenset(
+    {"License :: DFSG approved", "License :: OSI Approved"}
+)
+
+
+def _single_classifier_license(classifiers: list[str]) -> str | None:
+    """SPDX id of the license classifiers if they name exactly one license
+
+    Several different licenses may mean a choice (OR) or a combination
+    (AND); classifiers cannot say which, so that is not guessed.
+    """
+    mapped: set[str] = set()
+    for classifier in classifiers:
+        if classifier in _NON_LICENSE_CLASSIFIERS:
+            continue
+        # ambiguous, or a license classifier missing from the table
+        spdx = _TROVE_SPDX.get(classifier)
+        if spdx is None:
+            return None
+        mapped.add(spdx)
+    return mapped.pop() if len(mapped) == 1 else None
+
+
+def _declared_value(value: str) -> str | None:
+    """Treat empty values and the legacy setuptools ``UNKNOWN`` as absent"""
+    if not value or value.casefold() == "unknown":
+        return None
+    return value
 
 
 _SPDX = get_spdx_licensing()
@@ -104,6 +212,30 @@ def _license_text_to_spdx(text: str) -> LicenseExpression:
     except Exception:
         pass
     raise ValueError(text[:100])
+
+
+def _canonical_spdx(text: str) -> str | None:
+    """Canonical form of a valid SPDX expression, else ``None``
+
+    Uses the same validation build backends apply to ``License-Expression``
+    (PEP 639). Unlike the license library, it rejects shorthands such as
+    ``GPL`` and ``WITH`` misuse, and keeps deprecated SPDX ids as written.
+    """
+    try:
+        return canonicalize_license_expression(text)
+    except InvalidLicenseExpression:
+        return None
+
+
+def _strict_text_to_spdx(text: str) -> str | None:
+    """Map free text only when the mapping is certain, else ``None``
+
+    Free text must be a curated mapping or a valid SPDX expression;
+    anything else would overstate what upstream declared.
+    """
+    if text in _LICENSE_STRING_TO_SPDX:
+        return _canonical_spdx(_LICENSE_STRING_TO_SPDX[text])
+    return _canonical_spdx(text)
 
 
 # unambiguous text to SPDX

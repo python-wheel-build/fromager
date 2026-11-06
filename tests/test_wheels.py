@@ -1,4 +1,5 @@
 import json
+import logging
 import pathlib
 import typing
 import zipfile
@@ -823,3 +824,98 @@ class TestGetBuildTag:
         )
         assert result == ()
         assert calls == []
+
+
+def _sbom_of_built_wheel(
+    tmp_path: pathlib.Path, metadata: bytes | None
+) -> dict[str, typing.Any]:
+    """Run `add_extra_metadata_to_wheels()` on a fake wheel, return its SBOM.
+
+    *metadata* is the wheel's METADATA file, or ``None`` to omit it.
+    """
+    sbom_ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    sbom_ctx.setup()
+    wheel_dir = tmp_path / "wheel_build"
+    wheel_dir.mkdir()
+    wheel_file = wheel_dir / "test_pkg-1.0.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel_file, "w") as zf:
+        zf.writestr("test_pkg/__init__.py", "")
+        if metadata is not None:
+            zf.writestr("test_pkg-1.0.0.dist-info/METADATA", metadata)
+        zf.writestr(
+            "test_pkg-1.0.0.dist-info/WHEEL",
+            "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        )
+    sdist_dir = tmp_path / "sdist"
+    sdist_dir.mkdir()
+    captured: dict[str, typing.Any] = {}
+
+    def fake_run(cmd: list[str], **kwargs: object) -> str:
+        # wheel pack receives the unpacked wheel directory
+        sbom_file = (
+            pathlib.Path(cmd[2]) / "test_pkg-1.0.0.dist-info/sboms/fromager.spdx.json"
+        )
+        captured.update(json.loads(sbom_file.read_text()))
+        (wheel_dir / "test_pkg-1.0.0-0-py3-none-any.whl").touch()
+        return ""
+
+    with patch("fromager.external_commands.run", side_effect=fake_run):
+        wheels.add_extra_metadata_to_wheels(
+            ctx=sbom_ctx,
+            req=Requirement("test_pkg==1.0.0"),
+            version=Version("1.0.0"),
+            extra_environ={},
+            sdist_root_dir=sdist_dir,
+            wheel_file=wheel_file,
+        )
+    return captured
+
+
+def test_add_extra_metadata_sbom_includes_license(tmp_path: pathlib.Path) -> None:
+    """Verify the SBOM license comes from the wheel's own METADATA.
+
+    The expression is invalid and the metadata version too old for it, so
+    validating `Metadata` access would fail; classifiers must be used.
+    """
+    doc = _sbom_of_built_wheel(
+        tmp_path,
+        b"Metadata-Version: 2.1\nName: test_pkg\nVersion: 1.0.0\n"
+        b"License-Expression: Apache 2\n"
+        b"Classifier: License :: OSI Approved :: MIT License\n",
+    )
+
+    for package in doc["packages"]:
+        assert package["licenseDeclared"] == "MIT"
+    assert "(License classifiers)" in doc["packages"][0]["licenseComments"]
+
+
+def test_add_extra_metadata_sbom_unparsed_license_field(
+    tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify unreadable license fields are not reported as absent."""
+    with caplog.at_level(logging.WARNING):
+        doc = _sbom_of_built_wheel(
+            tmp_path,
+            b"Metadata-Version: 2.4\nName: test_pkg\nVersion: 1.0.0\n"
+            b"License-Expression: MIT\nLicense-Expression: BSD-3-Clause\n",
+        )
+
+    package = doc["packages"][0]
+    assert package["licenseDeclared"] == "NOASSERTION"
+    assert package["licenseComments"] == (
+        "License information could not be read from the upstream project's "
+        "declared Python package metadata. Unparseable fields: License-Expression."
+    )
+    assert any(
+        "test_pkg" in r.getMessage() and "License-Expression" in r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+    )
+
+
+def test_add_extra_metadata_sbom_missing_metadata_fails(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify a wheel without METADATA fails instead of a misleading SBOM."""
+    with pytest.raises(FileNotFoundError, match="METADATA"):
+        _sbom_of_built_wheel(tmp_path, None)
