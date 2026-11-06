@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -8,13 +9,17 @@ import platform
 import re
 import subprocess
 import sys
+import tempfile
 import typing
+from email.parser import Parser
 from io import TextIOWrapper
 
 from packaging.requirements import Requirement
+from packaging.tags import Tag, parse_tag
+from packaging.utils import BuildTag, NormalizedName, parse_wheel_filename
 from packaging.version import Version
 
-from . import dependencies, external_commands, metrics, resolver
+from . import dependencies, external_commands, metrics, resolver, wheels
 from .requirements_file import RequirementType
 
 if typing.TYPE_CHECKING:
@@ -35,6 +40,53 @@ _uv_missing_dependency_pattern = re.compile(
     )""",
     flags=re.VERBOSE,
 )
+
+
+class _InstallationWheelView:
+    """Reuse links within one worker, refreshing selection before each install."""
+
+    def __init__(self, work_dir: pathlib.Path) -> None:
+        self._temporary = tempfile.TemporaryDirectory(
+            prefix="install-wheels-", dir=work_dir
+        )
+        self.path = pathlib.Path(self._temporary.name)
+        self._links: dict[str, pathlib.Path] = {}
+        self._identities: dict[
+            str, tuple[NormalizedName, Version, BuildTag, frozenset[Tag]]
+        ] = {}
+
+    def update(self, ctx: context.WorkContext) -> None:
+        """Refresh changed links without caching settings or hook results."""
+        desired: dict[str, pathlib.Path] = {}
+        seen: set[str] = set()
+        for source in (ctx.wheels_downloads, ctx.wheels_prebuilt):
+            for path in sorted(source.glob("*.whl")):
+                seen.add(path.name)
+                identity = self._identities.get(path.name)
+                if identity is None:
+                    identity = parse_wheel_filename(path.name)
+                    self._identities[path.name] = identity
+                name, version, actual_tag, wheel_tags = identity
+                pbi = ctx.package_build_info(name)
+                if not pbi.pre_built and pbi.get_build_number(version) is not None:
+                    expected = wheels.get_build_tag(
+                        ctx=ctx,
+                        req=Requirement(name),
+                        version=version,
+                        wheel_tags=wheel_tags,
+                    )
+                    if actual_tag != expected:
+                        continue
+                desired.setdefault(path.name, path)
+        for filename, target in self._links.items():
+            if desired.get(filename) != target:
+                (self.path / filename).unlink()
+        for filename, target in desired.items():
+            if self._links.get(filename) != target:
+                (self.path / filename).symlink_to(target)
+        self._links = desired
+        for filename in self._identities.keys() - seen:
+            del self._identities[filename]
 
 
 class MissingDependency(Exception):  # noqa: N818
@@ -212,6 +264,30 @@ class BuildEnvironment:
         )
         logger.info("created build environment in %s", self.path)
 
+    @contextlib.contextmanager
+    def _installation_wheel_args(self, explicit: bool) -> typing.Iterator[list[str]]:
+        """Expose permitted local builds, or preserve legacy source arguments."""
+        if not explicit:
+            yield self._ctx.pip_wheel_server_args
+            return
+
+        view: _InstallationWheelView | None = getattr(
+            self._ctx._installation_wheel_views, "view", None
+        )
+        if view is None:
+            logger.info(
+                "Explicit build numbers in loaded settings enable local-only "
+                "dependency installation for all packages, including unrelated "
+                "versions. --wheel-server-url is not used for installation; "
+                "all required wheels must be available locally."
+            )
+            view = _InstallationWheelView(self._ctx.work_dir)
+            self._ctx._installation_wheel_views.view = view
+        view.update(self._ctx)
+        # uv treats build tags as preferences, not constraints. Keep other
+        # builds out of its candidate set, including its installed/cache state.
+        yield ["--no-index", "--offline", "--find-links", str(view.path), "--reinstall"]
+
     def install(self, reqs: typing.Iterable[Requirement]) -> None:
         if not reqs:
             return
@@ -227,19 +303,47 @@ class BuildEnvironment:
             ":all:",
         ]
         cmd.extend(self._ctx.pip_constraint_args)
-        cmd.extend(self._ctx.pip_wheel_server_args)
-        cmd.extend(str(req) for req in reqs)
+        explicit = self._ctx.settings.has_explicit_build_numbers
+        with self._installation_wheel_args(explicit) as source_args:
+            cmd.extend(source_args)
+            cmd.extend(str(req) for req in reqs)
 
-        self.run(
-            cmd,
-            cwd=str(self.path.parent),
-            network_isolation=False,
-        )
+            self.run(
+                cmd,
+                cwd=str(self.path.parent),
+                network_isolation=False,
+            )
+        if explicit:
+            self._validate_installed_build_numbers()
         logger.info(
             "installed dependencies %s into build environment in %s",
             reqs,
             self.path,
         )
+
+    def _validate_installed_build_numbers(self) -> None:
+        """Fail before compilation if direct references bypass the filtered source."""
+        for name, raw_version, raw_wheel in self._installed_distributions():
+            version = Version(raw_version)
+            pbi = self._ctx.package_build_info(name)
+            if pbi.pre_built or pbi.get_build_number(version) is None:
+                continue
+            metadata = Parser().parsestr(raw_wheel or "")
+            tags = frozenset(
+                tag for value in metadata.get_all("Tag", []) for tag in parse_tag(value)
+            )
+            expected = wheels.get_build_tag(
+                ctx=self._ctx, req=Requirement(name), version=version, wheel_tags=tags
+            )
+            assert expected  # Explicit counters, including zero, are non-empty.
+            expected_text = f"{expected[0]}{expected[1]}"
+            match = re.fullmatch(r"([0-9]+)(.*)", metadata.get("Build") or "")
+            actual: BuildTag = (int(match[1]), match[2]) if match else ()
+            if not tags or actual != expected:
+                raise ValueError(
+                    f"{name}=={version}: installed wheel build {metadata.get('Build')!r} "
+                    f"does not match explicit build {expected_text!r}"
+                )
 
     def get_sysconfig_path(self, name: str) -> str:
         """Get ``sysconfig.get_path(name)`` in environment"""
@@ -255,18 +359,25 @@ class BuildEnvironment:
 
     def get_distributions(self) -> typing.Mapping[str, Version]:
         """Get a mapping of installed package names and their versions in the build env"""
-        lines = [
-            "import sys,json",
-            "from importlib.metadata import distributions",
-            "json.dump({d.name: d.version for d in distributions()}, sys.stdout)",
-        ]
-        result = self.run([str(self.python), "-c", "; ".join(lines)])
+        mapping = {
+            name: Version(version)
+            for name, version, _ in self._installed_distributions()
+        }
+        return dict(sorted(mapping.items()))
+
+    def _installed_distributions(self) -> list[tuple[str, str, str | None]]:
+        """Read distribution identities and wheel metadata in the build env."""
+        script = (
+            "import json,sys; from importlib.metadata import distributions; "
+            "json.dump([(d.name, d.version, d.read_text('WHEEL')) "
+            "for d in distributions()], sys.stdout)"
+        )
+        result = self.run([str(self.python), "-c", script])
         try:
-            mapping = json.loads(result.strip())
-        except Exception:
+            return typing.cast(list[tuple[str, str, str | None]], json.loads(result))
+        except json.JSONDecodeError:
             logger.exception("failed to de-serialize JSON: %s", result)
             raise
-        return {name: Version(version) for name, version in sorted(mapping.items())}
 
 
 @metrics.timeit(description="prepare build environment")
