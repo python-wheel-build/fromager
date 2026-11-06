@@ -24,10 +24,11 @@ Fromager thrives on practical, well-tested contributions. This guide summarizes 
 
 - Python 3.12 or newer
 
-- `hatch` for environment and task management
+- `hatch` 1.18.0 or newer for environment and task management (enforced via
+  `tool.hatch.requires-hatch`; needed for the `dependency-groups` env key)
 
   ```bash
-  pip install hatch
+  pip install 'hatch>=1.18.0'
   # or
   pipx install hatch  # recommended
   ```
