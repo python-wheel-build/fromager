@@ -180,7 +180,8 @@ _TROVE_SPDX: dict[str, str | None] = {
     "License :: OSI Approved :: European Union Public Licence 1.0 (EUPL 1.0)": "EUPL-1.0",
     "License :: OSI Approved :: European Union Public Licence 1.1 (EUPL 1.1)": "EUPL-1.1",
     "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)": "EUPL-1.2",
-    "License :: OSI Approved :: GNU Affero General Public License v3": "AGPL-3.0-only",
+    # ambiguous, see PEP 639
+    "License :: OSI Approved :: GNU Affero General Public License v3": None,
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)": "AGPL-3.0-or-later",
     # multiple versions
     "License :: OSI Approved :: GNU Free Documentation License (FDL)": None,
@@ -234,7 +235,8 @@ _TROVE_SPDX: dict[str, str | None] = {
     "License :: OSI Approved :: Zero-Clause BSD (0BSD)": "0BSD",
     # multiple versions: ZPL-1.1, ZPL-2.0, ZPL-2.1
     "License :: OSI Approved :: Zope Public License": None,
-    "License :: OSI Approved :: zlib/libpng License": "zlib-acknowledgement",
+    # zlib-acknowledgement is a different license that is not OSI approved
+    "License :: OSI Approved :: zlib/libpng License": "Zlib",
     "License :: Other/Proprietary License": None,
     "License :: Public Domain": None,
     "License :: Repoze Public License": None,
