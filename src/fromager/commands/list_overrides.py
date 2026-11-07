@@ -74,10 +74,10 @@ def list_overrides(
                 variant_info[str(v)] = ""
                 continue
 
-            source = v_info.source if v_info.source is not None else ps.source
+            variant_source = v_info.source if v_info.source is not None else ps.source
             is_prebuilt = (
-                source.resolves_prebuilt_wheel
-                if source is not None
+                variant_source.resolves_prebuilt_wheel
+                if variant_source is not None
                 else v_info.pre_built
             )
 
