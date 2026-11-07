@@ -74,12 +74,12 @@ def list_overrides(
                 variant_info[str(v)] = ""
                 continue
 
-            is_prebuilt = v_info.pre_built
-            if v_info.source is not None:
-                # A variant `source:` block replaces the legacy settings,
-                # so its resolver decides whether wheels are prebuilt
-                # (e.g. provider: pypi-prebuilt).
-                is_prebuilt = v_info.source.resolves_prebuilt_wheel
+            source = v_info.source if v_info.source is not None else ps.source
+            is_prebuilt = (
+                source.resolves_prebuilt_wheel
+                if source is not None
+                else v_info.pre_built
+            )
 
             variant_info[str(v)] = "pre-built" if is_prebuilt else "yes"
 
