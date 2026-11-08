@@ -44,9 +44,12 @@ class MissingDependency(Exception):  # noqa: N818
         req_type: RequirementType,
         req: Requirement | str | None,
         all_reqs: typing.Iterable[Requirement],
+        earlier_reqs: typing.Iterable[Requirement] = (),
     ):
-        self.all_reqs = all_reqs
-        resolutions = []
+        earlier_reqs = tuple(earlier_reqs)
+        all_reqs = tuple(all_reqs)
+        self.all_reqs = earlier_reqs + all_reqs
+        resolutions = [f"{r} (earlier bound)" for r in earlier_reqs]
         for r in all_reqs:
             try:
                 _, version = resolver.resolve(
@@ -369,7 +372,8 @@ def _safe_install(
             ctx,
             dep_req_type,
             req_info,
-            build_env._installed_requirements + deps,
+            deps,
+            earlier_reqs=build_env._installed_requirements,
         ) from err
 
     logger.info("installed %s requirements %s", dep_req_type, deps)

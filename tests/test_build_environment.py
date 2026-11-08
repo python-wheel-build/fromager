@@ -48,7 +48,7 @@ def test_failed_later_install_reports_earlier_bounds(tmp_path: pathlib.Path) -> 
     )
     with (
         patch.object(env, "run", side_effect=[None, failure]),
-        patch("fromager.resolver.resolve", return_value=("", Version("81"))),
+        patch("fromager.resolver.resolve", return_value=("", Version("81"))) as resolve,
     ):
         build_environment._safe_install(
             ctx,
@@ -66,10 +66,12 @@ def test_failed_later_install_reports_earlier_bounds(tmp_path: pathlib.Path) -> 
                 RequirementType.BUILD_BACKEND,
             )
 
+    assert resolve.call_count == 1
     assert [str(req) for req in exc.value.all_reqs] == [
         "setuptools<82",
         "setuptools>=82",
     ]
+    assert "setuptools<82 (earlier bound)" in str(exc.value)
     assert [str(req) for req in env._installed_requirements] == ["setuptools<82"]
 
 
