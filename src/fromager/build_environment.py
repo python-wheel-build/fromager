@@ -93,6 +93,7 @@ class BuildEnvironment:
         self._ctx = ctx
         self._req = req
         self._sdist_root_dir = sdist_root_dir
+        self._installed_requirements: tuple[Requirement, ...] = ()
         # abiflags adds 't' for free-threaded (nogil) builds
         self.path = sdist_root_dir.parent.absolute().joinpath(
             f"build-{platform.python_version()}{sys.abiflags}"
@@ -213,8 +214,11 @@ class BuildEnvironment:
         logger.info("created build environment in %s", self.path)
 
     def install(self, reqs: typing.Iterable[Requirement]) -> None:
+        reqs = tuple(reqs)
         if not reqs:
             return
+
+        all_reqs = self._installed_requirements + reqs
 
         # UV does not compile byte code by default
         cmd = [
@@ -228,13 +232,14 @@ class BuildEnvironment:
         ]
         cmd.extend(self._ctx.pip_constraint_args)
         cmd.extend(self._ctx.pip_wheel_server_args)
-        cmd.extend(str(req) for req in reqs)
+        cmd.extend(str(req) for req in all_reqs)
 
         self.run(
             cmd,
             cwd=str(self.path.parent),
             network_isolation=False,
         )
+        self._installed_requirements = all_reqs
         logger.info(
             "installed dependencies %s into build environment in %s",
             reqs,
@@ -347,6 +352,7 @@ def _safe_install(
     deps: typing.Iterable[Requirement],
     dep_req_type: RequirementType,
 ) -> None:
+    deps = tuple(deps)
     if not deps:
         return
     logger.debug("installing %s %s", dep_req_type, deps)
@@ -363,7 +369,7 @@ def _safe_install(
             ctx,
             dep_req_type,
             req_info,
-            deps,
+            build_env._installed_requirements + deps,
         ) from err
 
     logger.info("installed %s requirements %s", dep_req_type, deps)
