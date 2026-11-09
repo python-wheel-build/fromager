@@ -5,6 +5,7 @@ import typing
 import uuid
 from unittest.mock import patch
 
+import pytest
 from conftest import make_sbom_ctx
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -197,8 +198,43 @@ def test_generate_sbom_wheel_version_used_without_purl_override(
     assert wheel["externalRefs"][0]["referenceLocator"] == (
         "pkg:pypi/test-pkg@0.5.5%2Blocal.1"
     )
-    # Upstream still identifies the resolved source release
     assert upstream["versionInfo"] == "0.5.5"
+    assert upstream["externalRefs"][0]["referenceLocator"] == (
+        "pkg:pypi/test-pkg@0.5.5"
+    )
+    _validate_spdx(doc)
+
+
+@pytest.mark.parametrize(
+    ("package_purl", "sbom_type", "expected_wheel"),
+    [
+        ({"name": "test-pkg-corp"}, "pypi", "pkg:pypi/test-pkg-corp@0.5.5"),
+        ({"type": "generic"}, "pypi", "pkg:generic/test-pkg@0.5.5"),
+        ({"namespace": "acme"}, "pypi", "pkg:pypi/acme/test-pkg@0.5.5"),
+        ({}, "generic", "pkg:generic/test-pkg@0.5.5"),
+    ],
+)
+def test_generate_sbom_upstream_ignores_wheel_purl_overrides(
+    tmp_path: pathlib.Path,
+    package_purl: dict[str, str],
+    sbom_type: str,
+    expected_wheel: str,
+) -> None:
+    """Wheel-only purl settings must not rewrite the source identity."""
+    ctx = make_sbom_ctx(
+        tmp_path,
+        sbom_settings=SbomSettings(purl_type=sbom_type),
+        package_overrides={"purl": package_purl},
+    )
+    doc = sbom.generate_sbom(
+        ctx=ctx,
+        req=Requirement("test-pkg==0.5.5"),
+        version=Version("0.5.5"),
+    )
+
+    wheel, upstream = doc["packages"]
+    assert wheel["externalRefs"][0]["referenceLocator"] == expected_wheel
+    assert upstream["name"] == "test-pkg"
     assert upstream["externalRefs"][0]["referenceLocator"] == (
         "pkg:pypi/test-pkg@0.5.5"
     )
@@ -298,9 +334,9 @@ def test_generate_sbom_purl_field_overrides(tmp_path: pathlib.Path) -> None:
     assert wheel["externalRefs"][0]["referenceLocator"] == (
         "pkg:generic/custom-name@1.0.0"
     )
-    # Field overrides carry through to upstream (without qualifiers)
+    # Wheel field overrides must not change the resolved source identity.
     assert upstream["externalRefs"][0]["referenceLocator"] == (
-        "pkg:generic/custom-name@1.0.0"
+        "pkg:pypi/test-pkg@1.0.0"
     )
     # Document identity follows the purl name override
     assert doc["name"] == "custom-name-1.0.0"
