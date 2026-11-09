@@ -947,3 +947,32 @@ def test_resolve_warns_when_resolver_returns_no_results(
 
     assert results == []
     assert f"resolver returned no results ({mode} version mode)" in caplog.text
+
+
+def test_resolve_rejects_missing_build_sdist_hook_before_resolution(
+    tmp_context: WorkContext,
+) -> None:
+    """Fail a source build without its selected sdist hook before resolving."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        packagesettings.PackageSettings.from_string(
+            "pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+        )
+    )
+    bt_resolver = BootstrapRequirementResolver(tmp_context)
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=None),
+        patch.object(bt_resolver, "_resolve_from_graph") as from_graph,
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver.find_all_matching_from_provider"
+        ) as find_matches,
+    ):
+        with pytest.raises(
+            ValueError,
+            match=r"pkg: source\.build_sdist='hook' requires a callable",
+        ):
+            bt_resolver.resolve(req, RequirementType.TOP_LEVEL)
+
+    from_graph.assert_not_called()
+    find_matches.assert_not_called()

@@ -361,17 +361,44 @@ Source hooks
     .. versionchanged:: 0.103.0
        Passing ``DownloadKind.git_checkout`` prepares a clean Git checkout.
 
+.. _build_sdist_hook:
+
 .. autofromagerhook:: default_build_sdist
 
-    The ``build_sdist()`` function is responsible for creating a new source
-    distribution from the prepared source tree and placing it in
-    ``ctx.sdists_build``.  The dist name and version of the sdist file must
-    match the ``Requirement`` and ``Version``.
+    Pack the prepared sources into an sdist file. Return its ``Path``.
+    The file must exist in ``ctx.sdists_builds`` and match the package
+    name and version.
 
-    The arguments are the ``WorkContext``, the ``Requirement`` being evaluated, and the
-    `Path` to the root of the source tree.
+    The hook receives ``ctx``, ``extra_environ``, ``req``, ``version``,
+    ``sdist_root_dir``, ``build_env``, and ``build_dir``. Use it to
+    generate files or to pack a directory other than the wheel build
+    directory.
 
-    The return value is the ``Path`` to the newly created source distribution.
+    The hook needs its build dependencies installed. ``step build-sdist``
+    does not install them. Run ``step prepare-build`` first.
+
+    .. versionchanged:: 0.104.0
+
+       To use this hook with ``source:``, set ``build_sdist: hook``:
+
+       .. code-block:: yaml
+
+          build_dir: python
+          source:
+            provider: pypi-download
+            download_url: https://sources.example/project-{version}.tar.gz
+            download_kind: tarball
+            build_sdist: hook
+
+       The hook must be installed. Without it, the build fails before
+       download. ``pep517`` and ``tarball`` ignore the hook and log a
+       warning. Packages without ``source:`` use the hook when it exists.
+
+       Any profile that builds from source can select ``hook``.
+       ``hook-sdist`` still needs a resolver or download hook.
+
+    A hook that builds its own archive picks what goes in it. It must
+    leave out VCS metadata such as ``.git`` itself.
 
 Source helper functions
 ~~~~~~~~~~~~~~~~~~~~~~~

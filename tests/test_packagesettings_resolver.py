@@ -104,7 +104,7 @@ def test_resolver_requires_build_sdist_strategy() -> None:
 
 @pytest.mark.parametrize(
     "provider",
-    ["pypi-sdist", "pypi-prebuilt", "hook-prebuilt", "not-available"],
+    ["pypi-prebuilt", "hook-prebuilt", "not-available"],
 )
 def test_resolver_rejects_unsupported_build_sdist_strategy(provider: str) -> None:
     """Keep fixed resolver strategies from accepting a different build method."""
@@ -136,6 +136,18 @@ class TestPyPISDistResolver:
     def test_default_index_url(self) -> None:
         r = PyPISDistResolver(provider="pypi-sdist")
         assert str(r.index_url) == "https://pypi.org/simple/"
+
+    def test_parse_explicit_pep517(self) -> None:
+        """Allow opting into PEP 517 for a downloaded sdist."""
+        r = _parse(
+            """\
+                source:
+                  provider: pypi-sdist
+                  index_url: https://pypi.test/simple
+                  build_sdist: pep517
+            """
+        )
+        assert r.build_sdist is BuildSDist.pep517
 
     def test_cooldown_override(self) -> None:
         r = PyPISDistResolver(provider="pypi-sdist", min_release_age=7)
@@ -239,6 +251,20 @@ class TestPyPIDownloadResolver:
         assert r.resolves_prebuilt_wheel is False
         assert r.download_kind == DownloadKind.tarball
         assert r.download_kinds == frozenset({DownloadKind.sdist, DownloadKind.tarball})
+
+    def test_parse_explicit_pep517(self) -> None:
+        """Allow opting into PEP 517 for a custom source archive."""
+        r = _parse(
+            """\
+                source:
+                  provider: pypi-download
+                  index_url: https://pypi.test/simple
+                  download_url: https://download.test/pkg-{version}.tar.gz
+                  download_kind: tarball
+                  build_sdist: pep517
+            """
+        )
+        assert r.build_sdist is BuildSDist.pep517
 
     def test_download_kind_sdist(self) -> None:
         r = _parse("""\
@@ -1605,6 +1631,57 @@ def test_hook_resolver_chains_hook_exception(
 
 
 # -- Discriminated union validation -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "profile_yaml",
+    [
+        TestPyPISDistResolver.YAML,
+        TestPyPIDownloadResolver.YAML,
+        TestPyPIGitResolver.YAML,
+        TestGitHubTagDownloadResolver.YAML,
+        TestGitHubTagCloneResolver.YAML,
+        TestGitLabTagDownloadResolver.YAML,
+        TestGitLabTagCloneResolver.YAML,
+        TestHookSDistResolver.YAML,
+    ],
+    ids=[
+        "pypi-sdist",
+        "pypi-download",
+        "pypi-git",
+        "github-tag-download",
+        "github-tag-git",
+        "gitlab-tag-download",
+        "gitlab-tag-git",
+        "hook-sdist",
+    ],
+)
+def test_source_profiles_accept_build_sdist_hook(profile_yaml: str) -> None:
+    """Allow source profiles to select a build hook independently of acquisition."""
+    data = yaml.safe_load(textwrap.dedent(profile_yaml))
+    data["source"]["build_sdist"] = "hook"
+
+    source = _SourceWrapper.model_validate(data).source
+
+    assert source.build_sdist is BuildSDist.hook
+
+
+@pytest.mark.parametrize(
+    "profile_yaml",
+    [
+        TestPyPIPrebuiltResolver.YAML,
+        TestHookPrebuiltResolver.YAML,
+        TestNotAvailableResolver.YAML,
+    ],
+    ids=["pypi-prebuilt", "hook-prebuilt", "not-available"],
+)
+def test_non_source_profiles_reject_build_sdist_hook(profile_yaml: str) -> None:
+    """Prebuilt and unavailable profiles cannot select an sdist build hook."""
+    data = yaml.safe_load(textwrap.dedent(profile_yaml))
+    data["source"]["build_sdist"] = "hook"
+
+    with pytest.raises(pydantic.ValidationError, match="build_sdist"):
+        _SourceWrapper.model_validate(data)
 
 
 def test_invalid_provider() -> None:

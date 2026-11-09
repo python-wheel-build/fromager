@@ -165,6 +165,10 @@ class BootstrapRequirementResolver:
         parent_req: Requirement | None,
     ) -> None:
         """Resolve versions from graph/network and extend known versions cache."""
+        if not pre_built:
+            # Fail before resolving or downloading a source build that cannot
+            # produce an sdist.
+            sources.require_build_sdist_hook(ctx=self.ctx, req=req)
         # Try previous dependency graph
         cached_resolution = self._resolve_from_graph(
             req=req,

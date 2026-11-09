@@ -13,6 +13,7 @@ from fromager import build_environment, context
 from fromager.packagesettings import (
     Annotations,
     BuildDirectory,
+    BuildSDist,
     EnvVars,
     ExternalCommands,
     GitOptions,
@@ -1258,6 +1259,34 @@ def test_pbi_source_resolver_variant_overrides_package(
     )
     pbi = settings.package_build_info("test-pkg")
     assert isinstance(pbi.source_resolver, PyPIPrebuiltResolver)
+
+
+def test_settings_lookups_do_not_check_build_sdist_hook(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Listing settings works when an unused package lacks its selected hook."""
+    hook_pkg = PackageSettings.from_string(
+        "hook-pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    other_pkg = PackageSettings.from_string("other-pkg", "env:\n  VALUE: set\n")
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[hook_pkg, other_pkg],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+
+    with patch(
+        "fromager.overrides.find_override_method", return_value=None
+    ) as find_override:
+        pre_built = settings.list_pre_built()
+        pbi = settings.package_build_info("hook-pkg")
+
+    assert pre_built == set()
+    assert pbi.source_resolver is not None
+    assert pbi.source_resolver.build_sdist is BuildSDist.hook
+    find_override.assert_not_called()
 
 
 @pytest.mark.parametrize(

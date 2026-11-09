@@ -212,17 +212,36 @@ Building the Sdist
    Git checkouts can be prepared directly. Configured source resolvers
    also select the sdist build method.
 
-For source builds, the configured resolver selects one of two methods:
+For source builds, ``source.build_sdist`` selects one of three methods:
 
-- ``pep517`` calls the package's build backend. Git checkout resolvers
-  default to it.
+- ``pep517`` builds the sdist with the package's build backend.
+  Git checkout resolvers default to it.
 - ``tarball`` repacks the prepared source without VCS metadata such as
-  ``.git``. PyPI sdist resolvers default to it.
+  ``.git``. Archive-based resolvers default to it.
+- ``hook`` runs the package's ``build_sdist`` override hook, which can
+  generate files or choose which directory to pack.
 
-``hook-sdist`` requires an explicit ``build_sdist: pep517`` or
-``build_sdist: tarball`` setting. A configured method takes precedence
-over a ``build_sdist`` override and logs a warning when the override is
-ignored; packages without ``source:`` keep using the override.
+The choice follows these rules:
+
+- ``hook`` requires an installed, callable hook. The build fails before
+  downloading anything if it is missing.
+- A configured ``pep517`` or ``tarball`` skips an installed hook with a
+  warning.
+- Without ``source:``, the hook runs when present; otherwise the default
+  method is used.
+- ``hook-sdist`` has no default and always needs an explicit setting.
+
+With ``source:`` configured, ``default_build_sdist()`` leaves VCS metadata
+out of the archive. Pass ``exclude_vcs=False`` to keep it. Hooks that build
+their own archives choose their own contents.
+
+See :ref:`build_sdist_hook` for the hook's arguments and an example.
+
+.. versionchanged:: 0.104.0
+
+   ``source.build_sdist: hook`` enables package overrides for configured
+   source profiles, and ``default_build_sdist()`` excludes VCS metadata
+   by default for them.
 
 Replaying a Build Order
 -----------------------
