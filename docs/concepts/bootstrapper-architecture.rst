@@ -82,7 +82,7 @@ Each phase wraps a ``WorkItem`` dataclass that accumulates per-package
 state (resolved version, build environment, build result, etc.) as it
 moves through the pipeline.
 
-.. versionchanged:: 0.103.0
+.. versionchanged:: 0.104.0
    Later build dependency installs retain explicit requirements from earlier
    phases within the same build environment. A backend or sdist dependency that
    conflicts with an earlier build-system bound fails resolution instead of
