@@ -25,6 +25,22 @@ the first match:
 2. `CI_JOB_TOKEN` environment variable
 3. `GITLAB_PRIVATE_TOKEN` environment variable
 
+**Other hosts**, including private wheel indexes, use HTTP Basic authentication
+from an exact netrc `machine` entry over HTTPS. The netrc `default` entry is
+never used by this fallback, and HTTP URLs do not receive fallback credentials.
+Registered authentication callbacks take precedence, including callbacks that
+return no credentials. Explicit headers and request-specific authentication
+also take precedence.
+
+Fallback results, including missing credentials, are cached per scheme and host
+for the lifetime of the session. Create a new session after changing netrc
+credentials.
+
+```{versionchanged} 0.104.0
+Restore cached netrc Basic authentication for hosts without a registered
+authentication callback, limited to exact `machine` entries over HTTPS.
+```
+
 ## netrc
 
 The [requests](https://requests.readthedocs.io) library, `pip`, and
@@ -33,6 +49,12 @@ specified by setting the `NETRC` environment variable. Note that
 `git` uses libcurl for HTTPS transport and libcurl only supports the
 `NETRC` variable since [8.16.0](https://curl.se/ch/8.16.0.html)
 (2025-09-10). Older versions only read `$HOME/.netrc`.
+
+For example, to authenticate to a private wheel index:
+
+```text
+machine wheels.example login reader password secret
+```
 
 For example, to authenticate to a GitLab package registry with a
 [personal access token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html#create-a-personal-access-token):
