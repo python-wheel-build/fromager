@@ -86,6 +86,13 @@ Source Resolver
 
    .. autoattribute:: pep517
    .. autoattribute:: tarball
+   .. autoattribute:: hook
+
+.. versionchanged:: 0.104.0
+
+   ``pypi-sdist`` and ``pypi-download`` accept an explicit
+   ``build_sdist: pep517``. Their default remains ``tarball`` because some
+   build backends require VCS metadata that source archives do not contain.
 
 .. autoclass:: DownloadedSource
    :members: path, kind

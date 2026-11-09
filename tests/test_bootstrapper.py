@@ -1496,6 +1496,69 @@ def test_bg_prepare_source_accepts_git_checkout(tmp_context: WorkContext) -> Non
     assert (checkout.parent / "build-meta.json").is_file()
 
 
+def _select_build_sdist_hook(ctx: WorkContext) -> None:
+    """Configure ``pkg`` to build its sdist with the ``build_sdist`` hook."""
+    ps = PackageSettings.from_string(
+        "pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    ctx.settings._package_settings[ps.name] = ps
+
+
+def test_bg_prepare_source_rejects_missing_build_sdist_hook_before_download(
+    tmp_context: WorkContext,
+) -> None:
+    """Fail before downloading a source that cannot produce an sdist."""
+    _select_build_sdist_hook(tmp_context)
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=None),
+        patch(
+            "fromager.bootstrapper._cache.find_cached_wheel", return_value=(None, None)
+        ),
+        patch("fromager.sources.download_source") as download_source,
+    ):
+        with pytest.raises(
+            ValueError, match=r"pkg: source\.build_sdist='hook' requires a callable"
+        ):
+            _bg_prepare_source(
+                ctx=tmp_context,
+                cache_wheel_server_url=None,
+                req=Requirement("pkg==1.0"),
+                resolved_version=Version("1.0"),
+                source_url="https://pkg.test/pkg-1.0.tar.gz",
+            )
+
+    download_source.assert_not_called()
+
+
+def test_bg_prepare_source_uses_cached_wheel_without_build_sdist_hook(
+    tmp_context: WorkContext,
+) -> None:
+    """Use a cached wheel without the hook, because no sdist is built."""
+    _select_build_sdist_hook(tmp_context)
+    cached_wheel = tmp_context.wheels_downloads / "pkg-1.0-py3-none-any.whl"
+    unpacked = tmp_context.work_dir / "pkg-1.0"
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=None),
+        patch(
+            "fromager.bootstrapper._cache.find_cached_wheel",
+            return_value=(cached_wheel, unpacked),
+        ),
+        patch("fromager.sources.download_source") as download_source,
+    ):
+        result = _bg_prepare_source(
+            ctx=tmp_context,
+            cache_wheel_server_url=None,
+            req=Requirement("pkg==1.0"),
+            resolved_version=Version("1.0"),
+            source_url="https://pkg.test/pkg-1.0.tar.gz",
+        )
+
+    assert result.cached_wheel_filename == cached_wheel
+    download_source.assert_not_called()
+
+
 def test_bootstrapper_download_source_preserves_download_kind(
     tmp_context: WorkContext,
 ) -> None:

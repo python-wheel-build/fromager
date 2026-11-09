@@ -14,8 +14,9 @@ from unittest import mock
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.version import Version
 
-from fromager import bootstrapper, context
+from fromager import bootstrapper, context, packagesettings
 
 
 class TestBootstrapperInitialization:
@@ -295,3 +296,41 @@ class TestBootstrapExceptionHandling:
         ):
             with pytest.raises(RuntimeError, match="Version resolution failed"):
                 bt.bootstrap([req])
+
+    def test_missing_build_sdist_hook_uses_prebuilt_fallback(
+        self, tmp_context: context.WorkContext
+    ) -> None:
+        """A missing sdist hook is a build failure, so test mode tries a prebuilt wheel."""
+        ps = packagesettings.PackageSettings.from_string(
+            "pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+        )
+        tmp_context.settings._package_settings[ps.name] = ps
+        bt = bootstrapper.Bootstrapper(ctx=tmp_context, test_mode=True)
+
+        with (
+            mock.patch("fromager.overrides.find_override_method", return_value=None),
+            mock.patch.object(
+                bt._resolver,
+                "resolve",
+                return_value=[("https://pkg.test/pkg-1.0.tar.gz", Version("1.0"))],
+            ),
+            mock.patch(
+                "fromager.bootstrapper._cache.find_cached_wheel",
+                return_value=(None, None),
+            ),
+            mock.patch("fromager.sources.download_source") as download_source,
+            mock.patch.object(
+                bt, "_handle_test_mode_failure", return_value=None
+            ) as fallback,
+        ):
+            bt.bootstrap([Requirement("pkg==1.0")])
+
+        download_source.assert_not_called()
+        fallback.assert_called_once()
+        assert isinstance(fallback.call_args.kwargs["build_error"], ValueError)
+        assert len(bt.failed_packages) == 1
+        failure = bt.failed_packages[0]
+        assert failure["package"] == "pkg"
+        assert failure["version"] == "1.0"
+        assert failure["failure_type"] == "bootstrap"
+        assert "requires a callable" in failure["exception_message"]

@@ -947,3 +947,28 @@ def test_resolve_warns_when_resolver_returns_no_results(
 
     assert results == []
     assert f"resolver returned no results ({mode} version mode)" in caplog.text
+
+
+def test_resolve_does_not_check_build_sdist_hook(
+    tmp_context: WorkContext,
+) -> None:
+    """Resolve without the selected sdist hook; the build checks it later."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name("pkg")] = (
+        packagesettings.PackageSettings.from_string(
+            "pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+        )
+    )
+    bt_resolver = BootstrapRequirementResolver(tmp_context)
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=None),
+        patch.object(bt_resolver, "_resolve_from_graph", return_value=None),
+        patch(
+            "fromager.bootstrap_requirement_resolver.resolver.find_all_matching_from_provider",
+            return_value=[("https://pkg.test/pkg-1.0.tar.gz", Version("1.0"))],
+        ),
+    ):
+        results = bt_resolver.resolve(req, RequirementType.TOP_LEVEL)
+
+    assert results == [("https://pkg.test/pkg-1.0.tar.gz", Version("1.0"))]

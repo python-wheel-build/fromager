@@ -39,6 +39,8 @@ def build_sdist(
     version: Version,
     build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
+    """Build the sdist through the PEP 517 backend, like a custom hook would."""
+    logger.info("build_sdist override hook invoked for %s", req.name)
     return sources.pep517_build_sdist(
         ctx=ctx,
         extra_environ=extra_environ,

@@ -43,6 +43,8 @@ def _bg_prepare_source(
             sdist_root_dir=unpacked / unpacked.stem,
             cached_wheel_filename=cached_wheel,
         )
+    # Fail before downloading a source that cannot produce an sdist.
+    sources.require_build_sdist_hook(ctx=ctx, req=req)
     downloaded_source = sources.download_source(
         ctx=ctx, req=req, version=resolved_version, download_url=source_url
     )

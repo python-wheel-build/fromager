@@ -174,6 +174,11 @@ hook and `source` settings, then at least one `source` setting (top-level or
 variant) must use `provider: hook-sdist` or `provider: hook-prebuilt`. The
 rule ensures that the hooks are used.
 
+Set `build_sdist: hook` under `source` to use the package's custom sdist
+builder with any profile that builds from source. A missing hook is an
+error. `pep517` and `tarball` skip the hook with a warning. Packages
+without `source` keep their existing hook behavior.
+
 ### git clone
 
 Git cloning uses the more efficient `git_clone_fast` function. Like pip's
