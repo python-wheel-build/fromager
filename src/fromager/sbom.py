@@ -647,6 +647,25 @@ def _purl_to_spdx_id(sbom: dict[str, typing.Any]) -> dict[str, str]:
     return purls
 
 
+def _described_spdx_id(sbom: dict[str, typing.Any]) -> str | None:
+    """Return the SPDX id of the package the document describes (the wheel).
+
+    Package SPDX ids are not predictable, so the wheel is found through the
+    document's DESCRIBES relationship.
+    """
+    relationships = sbom.get("relationships")
+    if not isinstance(relationships, list):
+        return None
+    for relationship in relationships:
+        if (
+            isinstance(relationship, dict)
+            and relationship.get("spdxElementId") == "SPDXRef-DOCUMENT"
+            and relationship.get("relationshipType") == "DESCRIBES"
+        ):
+            return _cyclonedx_string(relationship.get("relatedSpdxElement"))
+    return None
+
+
 def _add_spdx_relationship(
     sbom: dict[str, typing.Any],
     relationship: tuple[str, str, str],
@@ -694,6 +713,11 @@ def merge_cyclonedx_sboms(
     if not sboms_dir.is_dir():
         return
 
+    wheel_spdx_id = _described_spdx_id(sbom)
+    if wheel_spdx_id is None:
+        logger.warning("SBOM has no DESCRIBES relationship; skipping CycloneDX merge")
+        return
+
     purl_to_spdx_id = _purl_to_spdx_id(sbom)
     identity_to_spdx_id: dict[str, str] = {}
     packages = sbom.setdefault("packages", [])
@@ -738,7 +762,7 @@ def merge_cyclonedx_sboms(
             purl = _cyclonedx_spdx_purl(component)
             spdx_id: str | None
             if is_root and _is_python_wheel_root(component, name, version):
-                spdx_id = "SPDXRef-wheel"
+                spdx_id = wheel_spdx_id
                 if purl:
                     purl_to_spdx_id[purl] = spdx_id
             else:
@@ -761,10 +785,10 @@ def merge_cyclonedx_sboms(
                     _merge_cyclonedx_package(package, component)
 
             identity_to_spdx_id[identity] = spdx_id
-            if spdx_id != "SPDXRef-wheel":
+            if spdx_id != wheel_spdx_id:
                 _add_spdx_relationship(
                     sbom,
-                    ("SPDXRef-wheel", "CONTAINS", spdx_id),
+                    (wheel_spdx_id, "CONTAINS", spdx_id),
                 )
 
 
