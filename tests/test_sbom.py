@@ -865,6 +865,7 @@ def test_merge_cyclonedx_sbom_imports_packages_and_relationships(
         version=Version("1.2.3"),
         metadata=_metadata(),
     )
+    wheel_id = sbom._described_spdx_id(document)
     sboms_dir = tmp_path / "sboms"
     _write_cyclonedx_sbom(sboms_dir, "example.cyclonedx.json")
 
@@ -889,8 +890,8 @@ def test_merge_cyclonedx_sbom_imports_packages_and_relationships(
         )
         for relationship in document["relationships"]
     }
-    assert ("SPDXRef-wheel", "CONTAINS", spdx_ids["example"]) in relationships
-    assert ("SPDXRef-wheel", "CONTAINS", spdx_ids["serde"]) in relationships
+    assert (wheel_id, "CONTAINS", spdx_ids["example"]) in relationships
+    assert (wheel_id, "CONTAINS", spdx_ids["serde"]) in relationships
     assert not any(
         relationship_type == "DEPENDS_ON" for _, relationship_type, _ in relationships
     )
@@ -975,6 +976,7 @@ def test_merge_cyclonedx_sboms_maps_python_root_to_wheel(
         version=Version("12.3.0"),
         metadata=_metadata(),
     )
+    wheel_id = sbom._described_spdx_id(document)
     sboms_dir = tmp_path / "sboms"
     auditwheel = {
         "bomFormat": "CycloneDX",
@@ -1022,7 +1024,7 @@ def test_merge_cyclonedx_sboms_maps_python_root_to_wheel(
         )
         for relationship in document["relationships"]
     }
-    assert ("SPDXRef-wheel", "CONTAINS", rpm["SPDXID"]) in relationships
+    assert (wheel_id, "CONTAINS", rpm["SPDXID"]) in relationships
     assert not any(
         relationship_type == "DEPENDS_ON" for _, relationship_type, _ in relationships
     )
@@ -1043,10 +1045,9 @@ def test_merge_cyclonedx_sboms_maps_python_root_with_purl_version_override(
         req=Requirement("test-pkg==0.5.5"),
         version=Version("0.5.5"),
     )
+    wheel_id = sbom._described_spdx_id(document)
     wheel = next(
-        package
-        for package in document["packages"]
-        if package["SPDXID"] == "SPDXRef-wheel"
+        package for package in document["packages"] if package["SPDXID"] == wheel_id
     )
     assert wheel["versionInfo"] == "0.5.5+local.1"
     root_purl = "pkg:pypi/test-pkg@0.5.5"
@@ -1104,6 +1105,7 @@ def test_merge_cyclonedx_sboms_does_not_map_unrelated_python_root_to_wheel(
         version=Version("12.3.0"),
         metadata=_metadata(),
     )
+    wheel_id = sbom._described_spdx_id(document)
     root_purl = "pkg:pypi/unrelated@2.0"
     dependency_purl = "pkg:rpm/almalinux/libXau@1.0.9-3.el8"
     cyclonedx = {
@@ -1141,7 +1143,7 @@ def test_merge_cyclonedx_sboms_does_not_map_unrelated_python_root_to_wheel(
 
     packages = {package["name"]: package for package in document["packages"]}
     assert {"unrelated", "libXau"} <= packages.keys()
-    assert packages["unrelated"]["SPDXID"] != "SPDXRef-wheel"
+    assert packages["unrelated"]["SPDXID"] != wheel_id
     relationships = {
         (
             relationship["spdxElementId"],
@@ -1151,12 +1153,12 @@ def test_merge_cyclonedx_sboms_does_not_map_unrelated_python_root_to_wheel(
         for relationship in document["relationships"]
     }
     assert (
-        "SPDXRef-wheel",
+        wheel_id,
         "CONTAINS",
         packages["unrelated"]["SPDXID"],
     ) in relationships
     assert (
-        "SPDXRef-wheel",
+        wheel_id,
         "CONTAINS",
         packages["libXau"]["SPDXID"],
     ) in relationships
@@ -1177,6 +1179,7 @@ def test_merge_cyclonedx_sboms_imports_nested_components(
         version=Version("1.2.3"),
         metadata=_metadata(),
     )
+    wheel_id = sbom._described_spdx_id(document)
     root_purl = "pkg:cargo/example@1.0.0?download_url=file://."
     target_purl = "pkg:cargo/example-target@1.0.0?download_url=file://../target"
     nested_purl = "pkg:cargo/example-nested@1.0.0"
@@ -1247,7 +1250,7 @@ def test_merge_cyclonedx_sboms_imports_nested_components(
     }
     for package_name in ("example", "example-target", "example-nested"):
         assert (
-            "SPDXRef-wheel",
+            wheel_id,
             "CONTAINS",
             packages[package_name]["SPDXID"],
         ) in relationships
