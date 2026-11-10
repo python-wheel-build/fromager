@@ -1044,6 +1044,7 @@ def test_merge_cyclonedx_sboms_maps_python_root_with_purl_version_override(
         ctx=ctx,
         req=Requirement("test-pkg==0.5.5"),
         version=Version("0.5.5"),
+        metadata=_metadata(),
     )
     wheel_id = sbom._described_spdx_id(document)
     wheel = next(
@@ -1313,6 +1314,8 @@ def test_merge_cyclonedx_sboms_ignores_invalid_and_other_formats(
     sboms_dir.mkdir()
     (sboms_dir / "not-an-sbom.json").write_text('{"format": "other"}')
     (sboms_dir / "broken.json").write_text("{")
+    (sboms_dir / "latin1.json").write_bytes(b'{"name": "caf\xe9"}')
+    (sboms_dir / "nested.json").write_text("[" * 1_000_000 + "]" * 1_000_000)
 
     with caplog.at_level("WARNING", logger="fromager.sbom"):
         sbom.merge_cyclonedx_sboms(
@@ -1320,5 +1323,176 @@ def test_merge_cyclonedx_sboms_ignores_invalid_and_other_formats(
         )
 
     assert len(document["packages"]) == 2
-    assert "could not read" in caplog.text
+    for filename in ("broken.json", "latin1.json", "nested.json"):
+        assert f"could not read SBOM file {sboms_dir / filename}" in caplog.text
     _validate_spdx(document)
+
+
+def _merge_components(
+    tmp_path: pathlib.Path,
+    components: list[dict[str, typing.Any]],
+    *,
+    root: dict[str, typing.Any] | None = None,
+    req: str = "example-pkg==1.2.3",
+    wheel_version: str = "1.2.3",
+) -> dict[str, typing.Any]:
+    """Merge one CycloneDX document into a fresh SBOM and return the SBOM."""
+    requirement = Requirement(req)
+    ctx = make_sbom_ctx(tmp_path, sbom_settings=SbomSettings())
+    document = sbom.generate_sbom(
+        ctx=ctx,
+        req=requirement,
+        version=Version(str(next(iter(requirement.specifier)).version)),
+        wheel_version=Version(wheel_version),
+        metadata=_metadata(),
+    )
+    cyclonedx: dict[str, typing.Any] = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "components": components,
+    }
+    if root is not None:
+        cyclonedx["metadata"] = {"component": root}
+    sboms_dir = tmp_path / "sboms"
+    sboms_dir.mkdir(exist_ok=True)
+    (sboms_dir / "tool.cdx.json").write_text(json.dumps(cyclonedx))
+    sbom.merge_cyclonedx_sboms(
+        sbom=document,
+        sboms_dir=sboms_dir,
+        name=requirement.name,
+        version=wheel_version,
+    )
+    return document
+
+
+def test_merge_cyclonedx_sboms_maps_purl_only_root_to_wheel(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A root without name/version fields matches the wheel by its purl."""
+    root = {"type": "library", "purl": "pkg:pypi/example-pkg@1.2.3"}
+    serde = {"type": "library", "name": "serde", "purl": "pkg:cargo/serde@1.0.0"}
+
+    document = _merge_components(tmp_path, [serde], root=root)
+
+    assert [package["name"] for package in document["packages"][2:]] == ["serde"]
+    _validate_spdx(document)
+
+
+def test_merge_cyclonedx_sboms_never_merges_into_upstream_entry(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A root whose purl equals the upstream purl stays a separate package.
+
+    The wheel has a local version, so the root does not match the wheel and
+    its build-reported metadata must not land on the upstream entry.
+    """
+    root = {
+        "type": "library",
+        "name": "example-pkg",
+        "version": "1.2.3",
+        "purl": "pkg:pypi/example-pkg@1.2.3",
+        "hashes": [{"alg": "SHA-256", "content": "a" * 64}],
+        "licenses": [{"expression": "MIT"}],
+    }
+
+    document = _merge_components(tmp_path, [], root=root, wheel_version="1.2.3+local.1")
+
+    _wheel, upstream, imported = document["packages"]
+    assert "checksums" not in upstream
+    assert upstream["licenseDeclared"] == "NOASSERTION"
+    assert imported["SPDXID"].startswith("SPDXRef-cyclonedx-")
+    contains = {
+        relationship["relatedSpdxElement"]
+        for relationship in document["relationships"]
+        if relationship["relationshipType"] == "CONTAINS"
+    }
+    assert contains == {imported["SPDXID"]}
+    _validate_spdx(document)
+
+
+def test_merge_cyclonedx_sboms_skips_excluded_subtree(tmp_path: pathlib.Path) -> None:
+    """Children of an excluded component are not shipped either."""
+    excluded = {
+        "type": "library",
+        "name": "build-tool",
+        "purl": "pkg:cargo/build-tool@1.0.0",
+        "scope": "excluded",
+        "components": [
+            {"type": "library", "name": "child", "purl": "pkg:cargo/child@1.0.0"}
+        ],
+    }
+
+    document = _merge_components(tmp_path, [excluded])
+
+    assert len(document["packages"]) == 2
+
+
+def test_merge_cyclonedx_sboms_deduplicates_by_canonical_purl(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The same purl with differently ordered qualifiers is one package."""
+    components = [
+        {"type": "library", "name": "serde", "purl": "pkg:cargo/serde@1.0.0?b=2&a=1"},
+        {"type": "library", "name": "serde", "purl": "pkg:cargo/serde@1.0.0?a=1&b=2"},
+    ]
+
+    document = _merge_components(tmp_path, components)
+
+    serde = [package for package in document["packages"] if package["name"] == "serde"]
+    assert len(serde) == 1
+    assert serde[0]["externalRefs"][0]["referenceLocator"] == (
+        "pkg:cargo/serde@1.0.0?a=1&b=2"
+    )
+
+
+def test_merge_cyclonedx_sboms_drops_invalid_purl(tmp_path: pathlib.Path) -> None:
+    """An unparseable purl is not emitted as a purl locator."""
+    component = {"type": "library", "name": "broken", "purl": "not-a-purl"}
+
+    document = _merge_components(tmp_path, [component])
+
+    broken = document["packages"][2]
+    assert broken["name"] == "broken"
+    assert "externalRefs" not in broken
+    _validate_spdx(document)
+
+
+def test_cyclonedx_license_expression_groups_lowercase_or() -> None:
+    """Lowercase operators are canonicalized and grouped too."""
+    component = {
+        "licenses": [
+            {"expression": "MIT or Apache-2.0"},
+            {"expression": "BSD-3-Clause"},
+        ]
+    }
+
+    assert (
+        sbom._cyclonedx_license_expression(component)
+        == "(MIT OR Apache-2.0) AND BSD-3-Clause"
+    )
+
+
+def test_cyclonedx_license_expression_keeps_license_ref() -> None:
+    """LicenseRef- identifiers are valid SPDX and must be kept."""
+    component = {"licenses": [{"expression": "MIT AND LicenseRef-Proprietary-1.0"}]}
+
+    assert (
+        sbom._cyclonedx_license_expression(component)
+        == "MIT AND LicenseRef-Proprietary-1.0"
+    )
+
+
+def test_cyclonedx_checksums_normalizes_case_and_checks_length() -> None:
+    """SPDX requires lowercase hex of the exact digest length."""
+    component = {
+        "hashes": [
+            {"alg": "SHA-256", "content": "A" * 64},
+            {"alg": "SHA-1", "content": "b" * 64},
+            {"alg": "MD5", "content": "c" * 32},
+        ]
+    }
+
+    assert sbom._cyclonedx_checksums(component) == [
+        {"algorithm": "SHA256", "checksumValue": "a" * 64},
+        {"algorithm": "MD5", "checksumValue": "c" * 32},
+    ]

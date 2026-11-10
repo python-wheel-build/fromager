@@ -18,8 +18,8 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from urllib.parse import quote
 
-from license_expression import ExpressionError, get_spdx_licensing
 from packageurl import PackageURL
+from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 from packaging.metadata import RawMetadata
 from packaging.requirements import Requirement
 from packaging.utils import NormalizedName, canonicalize_name
@@ -340,6 +340,7 @@ def generate_sbom(
 
 
 _CYCLONEDX_HASH_TO_SPDX = {
+    "MD5": "MD5",
     "SHA-1": "SHA1",
     "SHA-224": "SHA224",
     "SHA-256": "SHA256",
@@ -352,12 +353,26 @@ _CYCLONEDX_HASH_TO_SPDX = {
     "BLAKE2B-256": "BLAKE2b-256",
     "BLAKE2B-384": "BLAKE2b-384",
     "BLAKE2B-512": "BLAKE2b-512",
+    # BLAKE3 is omitted: spdx-tools requires at least 256 hex digits, while
+    # CycloneDX BLAKE3 hashes are usually 64.
 }
 
-# Reused across components; parsing SPDX license expressions is relatively costly.
-_SPDX_LICENSING = get_spdx_licensing()
+# SPDX 2.3 checksum values are lowercase hex digits of the digest length.
+_SPDX_CHECKSUM_HEX_LENGTHS = {
+    "MD5": 32,
+    "SHA1": 40,
+    "SHA224": 56,
+    "SHA256": 64,
+    "SHA384": 96,
+    "SHA512": 128,
+    "SHA3-256": 64,
+    "SHA3-384": 96,
+    "SHA3-512": 128,
+    "BLAKE2b-256": 64,
+    "BLAKE2b-384": 96,
+    "BLAKE2b-512": 128,
+}
 
-# SPDX checksum values must be lowercase or uppercase hexadecimal digits.
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
 
@@ -372,19 +387,29 @@ def _cyclonedx_component_purl(component: dict[str, typing.Any]) -> str | None:
 
 
 def _cyclonedx_spdx_purl(component: dict[str, typing.Any]) -> str | None:
+    """Return the component's purl in canonical form, or None if it is invalid.
+
+    Round-tripping through `PackageURL` keeps the same package spelled with
+    different qualifier order from becoming two SPDX packages. Local file
+    ``download_url`` qualifiers are dropped.
+    """
     purl = _cyclonedx_component_purl(component)
     if purl is None:
         return None
     try:
         parsed_purl = PackageURL.from_string(purl)
     except ValueError:
-        return purl
+        logger.warning(
+            "component %s has an invalid purl %r; ignoring it",
+            component.get("name"),
+            purl,
+        )
+        return None
 
     qualifiers = dict(parsed_purl.qualifiers or {})
     download_url = qualifiers.get("download_url")
-    if download_url is None or not download_url.startswith("file://"):
-        return purl
-    del qualifiers["download_url"]
+    if download_url is not None and download_url.startswith("file://"):
+        del qualifiers["download_url"]
     return PackageURL(
         type=parsed_purl.type,
         namespace=parsed_purl.namespace,
@@ -398,6 +423,13 @@ def _cyclonedx_spdx_purl(component: dict[str, typing.Any]) -> str | None:
 def _iter_cyclonedx_components(
     component: dict[str, typing.Any],
 ) -> typing.Iterator[dict[str, typing.Any]]:
+    """Yield *component* and its nested components.
+
+    Components with ``excluded`` scope are not shipped, so they are skipped
+    together with everything nested under them.
+    """
+    if _cyclonedx_string(component.get("scope")) == "excluded":
+        return
     yield component
     nested_components = component.get("components")
     if not isinstance(nested_components, list):
@@ -416,6 +448,7 @@ def _versions_match(left: str, right: str) -> bool:
 
 def _is_python_wheel_root(
     component: dict[str, typing.Any],
+    purl: str | None,
     name: str,
     version: str,
 ) -> bool:
@@ -424,15 +457,12 @@ def _is_python_wheel_root(
     The root is matched against the real package identity (*name* and
     *version* of the built wheel), not the SPDX wheel entry, because
     ``purl`` overrides change the entry but not what the build tool
-    reports.
+    reports. *purl* is the component's canonical purl. The component's
+    ``name`` and ``version`` fields are optional, but must match if present.
     """
-    purl = _cyclonedx_component_purl(component)
     if purl is None:
         return False
-    try:
-        parsed_purl = PackageURL.from_string(purl)
-    except ValueError:
-        return False
+    parsed_purl = PackageURL.from_string(purl)
     if (
         parsed_purl.type != "pypi"
         or parsed_purl.name is None
@@ -442,19 +472,20 @@ def _is_python_wheel_root(
 
     component_name = _cyclonedx_string(component.get("name"))
     component_version = _cyclonedx_string(component.get("version"))
-    if component_name is None or component_version is None:
-        return False
-
     return (
         canonicalize_name(parsed_purl.name) == canonicalize_name(name)
         and _versions_match(parsed_purl.version, version)
-        and canonicalize_name(component_name) == canonicalize_name(name)
-        and _versions_match(component_version, version)
+        and (
+            component_name is None
+            or canonicalize_name(component_name) == canonicalize_name(name)
+        )
+        and (component_version is None or _versions_match(component_version, version))
     )
 
 
-def _cyclonedx_component_identity(component: dict[str, typing.Any]) -> str:
-    purl = _cyclonedx_spdx_purl(component)
+def _cyclonedx_component_identity(
+    component: dict[str, typing.Any], purl: str | None
+) -> str:
     if purl:
         return f"purl:{purl}"
 
@@ -468,8 +499,7 @@ def _cyclonedx_component_identity(component: dict[str, typing.Any]) -> str:
     )
 
 
-def _cyclonedx_spdx_id(component: dict[str, typing.Any]) -> str:
-    identity = _cyclonedx_component_identity(component)
+def _cyclonedx_spdx_id(identity: str) -> str:
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
     return f"SPDXRef-cyclonedx-{digest}"
 
@@ -492,8 +522,9 @@ def _cyclonedx_license_expression(
                 expression = _cyclonedx_string(license_info.get("id"))
         if not expression:
             continue
-        if _valid_spdx_expression(expression):
-            expressions.append(expression)
+        canonical = _canonical_spdx_expression(expression)
+        if canonical is not None:
+            expressions.append(canonical)
         else:
             logger.warning(
                 "component %s has an invalid SPDX license expression %r; skipping it",
@@ -505,19 +536,22 @@ def _cyclonedx_license_expression(
         return None
     # Parenthesize OR expressions before joining: SPDX gives AND higher
     # precedence than OR, so an ungrouped OR would weaken the declaration.
+    # Canonical expressions always spell the operator in uppercase.
     return " AND ".join(
         f"({expression})" if " OR " in expression else expression
         for expression in expressions
     )
 
 
-def _valid_spdx_expression(expression: str) -> bool:
-    """Return True if *expression* is a valid SPDX license expression."""
+def _canonical_spdx_expression(expression: str) -> str | None:
+    """Return *expression* in canonical SPDX form, or None if it is invalid.
+
+    Uses the PEP 639 rules, which allow ``LicenseRef-`` identifiers.
+    """
     try:
-        _SPDX_LICENSING.parse(expression, validate=True)
-    except ExpressionError:
-        return False
-    return True
+        return canonicalize_license_expression(expression)
+    except InvalidLicenseExpression:
+        return None
 
 
 def _cyclonedx_checksums(
@@ -538,23 +572,28 @@ def _cyclonedx_checksums(
         normalized_algorithm = _CYCLONEDX_HASH_TO_SPDX.get(algorithm.upper())
         if normalized_algorithm is None:
             continue
-        if not _HEX_RE.fullmatch(content):
+        if (
+            not _HEX_RE.fullmatch(content)
+            or len(content) != _SPDX_CHECKSUM_HEX_LENGTHS[normalized_algorithm]
+        ):
             logger.warning(
-                "component %s has a non-hexadecimal %s checksum %r; skipping it",
+                "component %s has an invalid %s checksum %r; skipping it",
                 _cyclonedx_component_purl(component) or component.get("name"),
                 normalized_algorithm,
                 content,
             )
             continue
-        checksums.append({"algorithm": normalized_algorithm, "checksumValue": content})
+        checksums.append(
+            {"algorithm": normalized_algorithm, "checksumValue": content.lower()}
+        )
     return checksums
 
 
 def _cyclonedx_package(
     component: dict[str, typing.Any],
     spdx_id: str,
+    purl: str | None,
 ) -> dict[str, typing.Any]:
-    purl = _cyclonedx_spdx_purl(component)
     name = (
         _cyclonedx_string(component.get("name"))
         or purl
@@ -623,30 +662,6 @@ def _merge_cyclonedx_package(
         package["comment"] = f"CycloneDX scope: {scope}"
 
 
-def _purl_to_spdx_id(sbom: dict[str, typing.Any]) -> dict[str, str]:
-    purls: dict[str, str] = {}
-    packages = sbom.get("packages")
-    if not isinstance(packages, list):
-        return purls
-
-    for package in packages:
-        if not isinstance(package, dict):
-            continue
-        spdx_id = _cyclonedx_string(package.get("SPDXID"))
-        external_refs = package.get("externalRefs")
-        if not spdx_id or not isinstance(external_refs, list):
-            continue
-        for external_ref in external_refs:
-            if not isinstance(external_ref, dict):
-                continue
-            if external_ref.get("referenceType") != "purl":
-                continue
-            purl = _cyclonedx_string(external_ref.get("referenceLocator"))
-            if purl:
-                purls[purl] = spdx_id
-    return purls
-
-
 def _described_spdx_id(sbom: dict[str, typing.Any]) -> str | None:
     """Return the SPDX id of the package the document describes (the wheel).
 
@@ -664,32 +679,6 @@ def _described_spdx_id(sbom: dict[str, typing.Any]) -> str | None:
         ):
             return _cyclonedx_string(relationship.get("relatedSpdxElement"))
     return None
-
-
-def _add_spdx_relationship(
-    sbom: dict[str, typing.Any],
-    relationship: tuple[str, str, str],
-) -> None:
-    relationships = sbom.setdefault("relationships", [])
-    if not isinstance(relationships, list):
-        return
-    existing = {
-        (
-            item.get("spdxElementId"),
-            item.get("relationshipType"),
-            item.get("relatedSpdxElement"),
-        )
-        for item in relationships
-        if isinstance(item, dict)
-    }
-    if relationship not in existing:
-        relationships.append(
-            {
-                "spdxElementId": relationship[0],
-                "relationshipType": relationship[1],
-                "relatedSpdxElement": relationship[2],
-            }
-        )
 
 
 def merge_cyclonedx_sboms(
@@ -718,11 +707,16 @@ def merge_cyclonedx_sboms(
         logger.warning("SBOM has no DESCRIBES relationship; skipping CycloneDX merge")
         return
 
-    purl_to_spdx_id = _purl_to_spdx_id(sbom)
-    identity_to_spdx_id: dict[str, str] = {}
     packages = sbom.setdefault("packages", [])
-    if not isinstance(packages, list):
+    relationships = sbom.setdefault("relationships", [])
+    if not isinstance(packages, list) or not isinstance(relationships, list):
         return
+    # Only packages created by this merge are reused for duplicates, so
+    # build-reported metadata never lands on fromager's own wheel or
+    # upstream entries.
+    imported: dict[str, dict[str, typing.Any]] = {}
+    # Identities of build tool roots recognized as the wheel itself.
+    wheel_identities: set[str] = set()
 
     for sbom_path in sorted(sboms_dir.iterdir()):
         if not sbom_path.is_file() or sbom_path.name == SBOM_FILENAME:
@@ -730,7 +724,12 @@ def merge_cyclonedx_sboms(
         try:
             with sbom_path.open(encoding="utf-8") as sbom_file:
                 cyclonedx = json.load(sbom_file)
-        except (OSError, json.JSONDecodeError) as err:
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            RecursionError,
+        ) as err:
             logger.warning("could not read SBOM file %s: %s", sbom_path, err)
             continue
 
@@ -755,41 +754,30 @@ def merge_cyclonedx_sboms(
                     )
 
         for component, is_root in components:
-            if _cyclonedx_string(component.get("scope")) == "excluded":
+            purl = _cyclonedx_spdx_purl(component)
+            identity = _cyclonedx_component_identity(component, purl)
+            if is_root and _is_python_wheel_root(component, purl, name, version):
+                wheel_identities.add(identity)
+                continue
+            if identity in wheel_identities:
                 continue
 
-            identity = _cyclonedx_component_identity(component)
-            purl = _cyclonedx_spdx_purl(component)
-            spdx_id: str | None
-            if is_root and _is_python_wheel_root(component, name, version):
-                spdx_id = wheel_spdx_id
-                if purl:
-                    purl_to_spdx_id[purl] = spdx_id
-            else:
-                spdx_id = identity_to_spdx_id.get(identity)
-                if purl:
-                    mapped_spdx_id = purl_to_spdx_id.get(purl)
-                    if mapped_spdx_id is not None:
-                        spdx_id = mapped_spdx_id
-                if spdx_id is None:
-                    spdx_id = _cyclonedx_spdx_id(component)
-                    packages.append(_cyclonedx_package(component, spdx_id))
-                    if purl:
-                        purl_to_spdx_id[purl] = spdx_id
-                else:
-                    package = next(
-                        package
-                        for package in packages
-                        if package.get("SPDXID") == spdx_id
-                    )
-                    _merge_cyclonedx_package(package, component)
+            package = imported.get(identity)
+            if package is not None:
+                _merge_cyclonedx_package(package, component)
+                continue
 
-            identity_to_spdx_id[identity] = spdx_id
-            if spdx_id != wheel_spdx_id:
-                _add_spdx_relationship(
-                    sbom,
-                    (wheel_spdx_id, "CONTAINS", spdx_id),
-                )
+            spdx_id = _cyclonedx_spdx_id(identity)
+            package = _cyclonedx_package(component, spdx_id, purl)
+            imported[identity] = package
+            packages.append(package)
+            relationships.append(
+                {
+                    "spdxElementId": wheel_spdx_id,
+                    "relationshipType": "CONTAINS",
+                    "relatedSpdxElement": spdx_id,
+                }
+            )
 
 
 def write_sbom(
