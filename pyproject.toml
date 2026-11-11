@@ -250,13 +250,13 @@ dependencies = [
 ]
 [tool.hatch.envs.lint.scripts]
 check = [
-  "ruff check src tests",
-  "ruff format --check src tests",
+  "ruff check src tests e2e",
+  "ruff format --check src tests e2e",
   "python ./e2e/mergify_lint.py",
 ]
 fix = [
-  "ruff format src tests docs",
-  "ruff check --fix src tests docs",
+  "ruff format src tests e2e docs",
+  "ruff check --fix src tests e2e docs",
 ]
 precommit = "pre-commit run --all-files"
 install-hooks = "pre-commit install"
