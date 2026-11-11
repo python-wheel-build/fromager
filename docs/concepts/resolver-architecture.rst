@@ -44,6 +44,10 @@ For each requirement rule, it tries in order:
 New results are merged into the session cache and filtered by the
 current requirement.
 
+Previous source URLs must be Git URLs when the selected resolver requires
+Git checkouts. Incompatible entries raise an error; bootstrap without
+``--previous-bootstrap-file`` after changing source providers.
+
 Two cases need separate handling:
 
 - **Direct-reference URL requirements**, including Git URLs, are rejected.
@@ -79,8 +83,15 @@ their common ``find_matches()`` method.
 - ``GitHubTagProvider`` and ``GitLabTagProvider`` query repository tags
   and parse versions from tag names. GitLab also reports timestamps for
   age filtering.
-- ``VersionMapProvider`` uses an existing version-to-URL mapping, such
-  as results from an earlier resolution or a URL template.
+- With ``clone_url``, ``VersionMapProvider`` maps versions to full Git commit IDs
+  or ``refs/...`` paths, such as ``abad1deaabad1deaabad1deaabad1deaabad1dea`` or
+  ``refs/tags/v1.2``. Candidate URLs combine the repository URL and ref as
+  ``git+https://host.example/repo.git@refs/tags/v1.2``, which the Git
+  downloader uses to clone and check out the selected ref. Without
+  ``clone_url``, mapped values pass through unchanged for plugin hooks.
+
+.. versionchanged:: 0.104.0
+   ``VersionMapProvider`` accepts a separate ``clone_url`` for mapped Git refs.
 
 Selecting a Provider
 --------------------
@@ -95,6 +106,17 @@ resolver creates the provider and owns the index URL; caller-supplied
 index URLs are ignored. Without ``source:``, Fromager uses the legacy
 resolver settings and the package's ``get_resolver_provider`` override
 when present.
+
+.. versionadded:: 0.104.0
+   The ``versionmap-git`` profile accepts a ``versionmap`` of version
+   strings to Git refs and a separate HTTPS or SSH ``clone_url``.
+
+``versionmap-git`` selects the highest mapped version matching the
+requirement and constraints, then clones the repository at its mapped ref.
+The resolved URL includes the ref for build-order replay. Use full commit IDs
+for reproducible replay; named refs can move between builds. The ``build_sdist``
+setting defaults to ``pep517`` and also accepts ``tarball`` and ``hook``.
+See :class:`~fromager.packagesettings.VersionMapGitResolver` for an example.
 
 Hook Profiles
 ~~~~~~~~~~~~~
@@ -337,7 +359,8 @@ Per-Package Configuration
 -------------------------
 
 Package settings files (YAML) configure the resolver for each package
-independently: resolver type (PyPI, GitHub tags, GitLab tags, hook-based,
-or blocked), index URL, cooldown, tag pattern, and override plugins.
+independently: resolver type (PyPI, GitHub tags, GitLab tags, mapped Git
+refs, hook-based, or blocked), index URL, cooldown, tag pattern, and
+override plugins.
 
 See :doc:`package-settings` for how settings are loaded and merged.

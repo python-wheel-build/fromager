@@ -244,6 +244,7 @@ def test_git_source_clones(mock_clone: Mock, tmp_path: pathlib.Path) -> None:
         output_dir=dest,
         repo_url="https://github.test/org/repo.git",
         ref="refs/tags/v1.0",
+        remote_name="origin",
     )
 
 
