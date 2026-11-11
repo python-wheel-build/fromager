@@ -31,6 +31,7 @@ from ._resolver import (
     PyPIPrebuiltResolver,
     PyPISDistResolver,
     SourceResolver,
+    VersionMapGitResolver,
     pep440_tag_matcher,
 )
 from ._settings import Settings, SettingsFile
@@ -93,6 +94,7 @@ __all__ = (
     "Variant",
     "VariantChangelog",
     "VariantInfo",
+    "VersionMapGitResolver",
     "WheelSettings",
     "default_update_extra_environ",
     "get_extra_environ",

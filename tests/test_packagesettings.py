@@ -26,6 +26,7 @@ from fromager.packagesettings import (
     SettingsFile,
     SourceResolver,
     Variant,
+    VersionMapGitResolver,
     substitute_template,
 )
 from fromager.packagesettings._models import DeleteEnvPattern, KeepEnvPattern
@@ -1180,6 +1181,7 @@ def test_source_resolver_importable() -> None:
     union_members = typing.get_args(args[0])
     assert PyPISDistResolver in union_members
     assert PyPIPrebuiltResolver in union_members
+    assert VersionMapGitResolver in union_members
 
 
 def test_package_settings_with_source() -> None:
@@ -1189,6 +1191,39 @@ def test_package_settings_with_source() -> None:
     assert ps.source is not None
     assert isinstance(ps.source, PyPISDistResolver)
     assert ps.source.provider == "pypi-sdist"
+
+
+@pytest.mark.parametrize("variant_source", [False, True])
+def test_package_settings_with_versionmap_source(
+    tmp_path: pathlib.Path, variant_source: bool
+) -> None:
+    """Select mapped Git sources from package or variant settings."""
+    source = {
+        "provider": "versionmap-git",
+        "clone_url": "https://git.test/project/repo.git",
+        "versionmap": {"1.0": "abad1dea", "1.1": "refs/tags/1.1"},
+    }
+    data = (
+        {"variants": {"cpu": {"source": source}}}
+        if variant_source
+        else {"source": source}
+    )
+    ps = PackageSettings.model_validate(
+        {"name": "test-pkg", "has_config": True, **data}
+    )
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+
+    pbi = settings.package_build_info("test-pkg")
+
+    assert isinstance(pbi.source_resolver, VersionMapGitResolver)
+    assert pbi.source_resolver.versionmap == source["versionmap"]
+    assert pbi.pre_built is False
 
 
 def test_variant_info_with_source() -> None:

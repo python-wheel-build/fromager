@@ -14,13 +14,16 @@ from unittest import mock
 
 import pydantic
 import pytest
+import resolvelib
 import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 from wheel.wheelfile import WheelFile
 
-from fromager import finders, resolver, sources
+from fromager import finders, packagesettings, resolver, sources
 from fromager.context import WorkContext
+from fromager.log import req_ctxvar_context
+from fromager.packagesettings import VersionMapGitResolver
 from fromager.packagesettings._resolver import (
     AbstractResolver,
     BuildSDist,
@@ -384,11 +387,16 @@ class TestPyPIGitResolver:
                 tag="latest",
             )
 
-    def test_clone_url_rejects_http(self) -> None:
-        with pytest.raises(pydantic.ValidationError):
+    @pytest.mark.parametrize(
+        "clone_url",
+        ["http://git.test/repo.git", "https://git.test", "https://git.test/"],
+    )
+    def test_invalid_clone_url(self, clone_url: str) -> None:
+        """Reject unsupported schemes and missing repository paths."""
+        with pytest.raises(pydantic.ValidationError, match="clone_url"):
             PyPIGitResolver(
                 provider="pypi-git",
-                clone_url="http://github.com/org/repo.git",  # type: ignore[arg-type]
+                clone_url=pydantic.AnyUrl(clone_url),
                 tag="v{version}",
             )
 
@@ -581,6 +589,196 @@ class TestPyPIGitResolver:
         assert not marker.exists()
         expected_head = _git(repo, "rev-parse", url.rpartition("@")[2]).strip()
         assert _git(recloned.path, "rev-parse", "HEAD").strip() == expected_head
+
+
+class TestVersionMapGitResolver:
+    """Cover configuration, version selection, and mapped Git checkouts."""
+
+    YAML = """\
+        source:
+          provider: versionmap-git
+          clone_url: https://git.test/project/repo.git
+          build_sdist: pep517
+          versionmap:
+            '1.0': abad1dea
+            '1.1': refs/tags/1.1
+    """
+
+    def test_parse(self) -> None:
+        """Load the issue's example with refs separate from the clone URL."""
+        r = _parse(self.YAML)
+
+        assert isinstance(r, VersionMapGitResolver)
+        assert str(r.clone_url) == "https://git.test/project/repo.git"
+        assert r.versionmap == {"1.0": "abad1dea", "1.1": "refs/tags/1.1"}
+        assert r.build_sdist is BuildSDist.pep517
+        assert r.download_kinds == frozenset({DownloadKind.git_checkout})
+        assert r.resolves_prebuilt_wheel is False
+        assert r.supports_override_hooks is False
+
+    def test_default_build_sdist_strategy(self) -> None:
+        """Default Git source builds to PEP 517."""
+        r = _parse(self.YAML.replace("          build_sdist: pep517\n", ""))
+
+        assert r.build_sdist is BuildSDist.pep517
+
+    @pytest.mark.parametrize(
+        ("requirement", "constraint", "version", "ref"),
+        [
+            ("test-pkg", None, "1.1", "refs/tags/1.1"),
+            ("test-pkg==1.0", None, "1.0", "abad1dea"),
+            ("test-pkg", "test-pkg<1.1", "1.0", "abad1dea"),
+        ],
+    )
+    def test_resolver_provider(
+        self,
+        tmp_context: WorkContext,
+        requirement: str,
+        constraint: str | None,
+        version: str,
+        ref: str,
+    ) -> None:
+        """Select mapped refs using both requirements and constraints."""
+        r = _parse(self.YAML)
+        if constraint:
+            tmp_context.constraints.add_constraint(constraint)
+        req = Requirement(requirement)
+
+        p = r.resolver_provider(tmp_context, req, _REQ_TYPE)
+        results = resolver.find_all_matching_from_provider(p, req)
+
+        assert isinstance(p, resolver.VersionMapProvider)
+        assert p.package_name == req.name
+        assert p.clone_url == "https://git.test/project/repo.git"
+        assert p.version_map["1.0"] == "abad1dea"
+        assert p.req_type is _REQ_TYPE
+        assert results[0] == (f"git+{p.clone_url}@{ref}", Version(version))
+
+    def test_resolver_no_match(self, tmp_context: WorkContext) -> None:
+        """Fail when no configured version matches the requirement."""
+        req = Requirement("test-pkg>=2")
+        p = _parse(self.YAML).resolver_provider(tmp_context, req, None)
+
+        with pytest.raises(resolvelib.resolvers.ResolverException):
+            resolver.find_all_matching_from_provider(p, req)
+
+    @pytest.mark.parametrize(
+        "clone_url",
+        ["https://git.test/project/repo.git", "ssh://git@git.test/project/repo.git"],
+    )
+    def test_clone_url(self, clone_url: str) -> None:
+        """Accept HTTPS and SSH repository URLs."""
+        r = _parse(self.YAML.replace("https://git.test/project/repo.git", clone_url))
+
+        assert isinstance(r, VersionMapGitResolver)
+        assert str(r.clone_url) == clone_url
+
+    @pytest.mark.parametrize(
+        "clone_url",
+        ["http://git.test/repo.git", "https://git.test", "https://git.test/"],
+    )
+    def test_invalid_clone_url(self, clone_url: str) -> None:
+        """Reject unsupported schemes and missing repository paths."""
+        with pytest.raises(pydantic.ValidationError, match="clone_url"):
+            _parse(self.YAML.replace("https://git.test/project/repo.git", clone_url))
+
+    @pytest.mark.parametrize(
+        "versionmap",
+        [
+            {},
+            {"latest": "abad1dea"},
+            {"1.0": ""},
+            {"1.0": "https://pkg.test/source.tar.gz"},
+            {"1.0": "ref with spaces"},
+            {"1.0": "refs/tags/release\n1.0"},
+            {"1.0": "refs/tags/release@1.0"},
+            {"1.0": "refs/tags/release#1.0"},
+            {"1.0": "refs/tags/release?1.0"},
+        ],
+    )
+    def test_invalid_versionmap(self, versionmap: dict[str, str]) -> None:
+        """Reject invalid versions and refs that cannot form checkout URLs."""
+        with pytest.raises(pydantic.ValidationError, match="versionmap"):
+            VersionMapGitResolver(
+                provider="versionmap-git",
+                clone_url=pydantic.AnyUrl("https://git.test/project/repo.git"),
+                versionmap=versionmap,
+            )
+
+    @mock.patch("fromager.downloads.download_git_source")
+    def test_download_uses_recorded_url(
+        self, mock_dl: mock.MagicMock, tmp_context: WorkContext
+    ) -> None:
+        """Replay the resolved URL even when the configuration's ref differs."""
+        expected = tmp_context.work_dir / "test-pkg-1.0" / "test-pkg-1.0"
+        mock_dl.return_value = expected
+        url = "git+https://git.test/project/repo.git@refs/tags/recorded"
+
+        result = _parse(self.YAML).download(tmp_context, _REQ, Version("1.0"), url)
+
+        assert result == DownloadedSource(expected, DownloadKind.git_checkout)
+        mock_dl.assert_called_once_with(destination_dir=expected, vcs_url=url)
+
+    @pytest.mark.parametrize("use_commit", [True, False], ids=["commit", "tag"])
+    def test_configured_source_checks_out_mapped_ref(
+        self,
+        tmp_context: WorkContext,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        use_commit: bool,
+    ) -> None:
+        """Resolve YAML settings, check out an older ref, and prepare its source."""
+        repo = _make_tagged_repo(tmp_path / "repo")
+        commit = _git(repo, "rev-parse", "HEAD").strip()
+        (repo / "new.txt").write_text("newer commit")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "New source")
+        ref = commit if use_commit else "refs/tags/v1.2.3"
+        # Resolve the configured HTTPS URL against a local repository offline.
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+        monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{repo.as_uri()}.insteadOf")
+        monkeypatch.setenv("GIT_CONFIG_VALUE_0", "https://git.test/project/repo.git")
+        ps = packagesettings.PackageSettings.from_string(
+            _REQ.name,
+            f"""\
+source:
+  provider: versionmap-git
+  clone_url: https://git.test/project/repo.git
+  versionmap:
+    '1.2.3': {ref}
+    '2.0': HEAD
+""",
+        )
+        tmp_context.settings = packagesettings.Settings(
+            settings=packagesettings.SettingsFile(),
+            package_settings=[ps],
+            variant=tmp_context.variant,
+            patches_dir=tmp_path / "patches",
+            max_jobs=1,
+        )
+        tmp_context.constraints.add_constraint("test-pkg<2")
+
+        with req_ctxvar_context(_REQ):
+            url, version = sources.resolve_source(
+                ctx=tmp_context, req=_REQ, sdist_server_url=resolver.PYPI_SERVER_URL
+            )
+            downloaded = sources.download_source(
+                ctx=tmp_context, req=_REQ, version=version, download_url=url
+            )
+            prepared = sources.prepare_source(
+                ctx=tmp_context,
+                req=_REQ,
+                version=version,
+                source_filename=downloaded.path,
+                download_kind=downloaded.kind,
+            )
+
+        assert version == _VERSION
+        assert url == f"git+https://git.test/project/repo.git@{ref}"
+        assert downloaded.kind is DownloadKind.git_checkout
+        assert prepared == downloaded.path
+        assert _git(prepared, "rev-parse", "HEAD").strip() == commit
+        assert not (prepared / "new.txt").exists()
 
 
 # -- Git source resolvers ----------------------------------------------------
