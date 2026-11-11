@@ -103,7 +103,7 @@ variants:
       clone_url: https://git.example/viking/viking.git
       build_sdist: pep517
       versionmap:
-        '1.0': abad1dea
+        '1.0': abad1deaabad1deaabad1deaabad1deaabad1dea
         '1.1': refs/tags/1.1
   camelot:
     source:

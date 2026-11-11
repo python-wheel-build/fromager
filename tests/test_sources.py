@@ -1836,8 +1836,13 @@ def test_prepare_source_plugin_returns_bad_tuple(
             download_kind=packagesettings.DownloadKind.tarball,
             build_sdist=packagesettings.BuildSDist.pep517,
         ),
+        packagesettings.VersionMapGitResolver(
+            provider="versionmap-git",
+            clone_url=pydantic.AnyUrl("https://git.test/pkg.git"),
+            versionmap={"1.0": "refs/tags/v1.0"},
+        ),
     ],
-    ids=["git-clone", "hook-source", "pypi-sdist", "pypi-download"],
+    ids=["git-clone", "hook-source", "pypi-sdist", "pypi-download", "versionmap-git"],
 )
 @pytest.mark.parametrize("has_override", [False, True])
 def test_build_sdist_uses_pep517_for_configured_source(
@@ -1846,6 +1851,7 @@ def test_build_sdist_uses_pep517_for_configured_source(
         | packagesettings.HookSDistResolver
         | packagesettings.PyPISDistResolver
         | packagesettings.PyPIDownloadResolver
+        | packagesettings.VersionMapGitResolver
     ),
     has_override: bool,
     tmp_context: context.WorkContext,
@@ -1988,6 +1994,36 @@ def test_build_sdist_uses_pep517_for_configured_source(
             True,
             False,
             id="variant-tarball",
+        ),
+        pytest.param(
+            "source:\n"
+            "  provider: versionmap-git\n"
+            "  clone_url: https://git.test/pkg.git\n"
+            "  versionmap: {'1.0': 'refs/tags/v1.0'}\n"
+            "  build_sdist: tarball\n",
+            False,
+            False,
+            id="versionmap-git-tarball",
+        ),
+        pytest.param(
+            "source:\n"
+            "  provider: versionmap-git\n"
+            "  clone_url: https://git.test/pkg.git\n"
+            "  versionmap: {'1.0': 'refs/tags/v1.0'}\n"
+            "  build_sdist: tarball\n",
+            True,
+            False,
+            id="versionmap-git-tarball-override",
+        ),
+        pytest.param(
+            "source:\n"
+            "  provider: versionmap-git\n"
+            "  clone_url: https://git.test/pkg.git\n"
+            "  versionmap: {'1.0': 'refs/tags/v1.0'}\n"
+            "  build_sdist: hook\n",
+            True,
+            True,
+            id="versionmap-git-hook",
         ),
     ],
 )
