@@ -1,0 +1,3 @@
+source:
+  provider: hook-prebuilt
+  index_url: https://pypi.org/simple/

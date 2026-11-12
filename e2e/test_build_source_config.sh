@@ -6,7 +6,8 @@
 #
 # The git profile resolves stevedore tags on GitHub and builds from a
 # git checkout. The archive profile resolves on PyPI and downloads a
-# tarball from a URL template.
+# tarball from a URL template. The hook profiles use installed plugins
+# to resolve a source archive and download a prebuilt wheel.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
@@ -140,5 +141,84 @@ expect_file "$WHEEL"
 expect_file "$BUILT_SDIST"
 expect_file "sdists-repo/downloads/${DIST}-${VERSION}.tar.gz"
 expect_ignored_index_url "$OUTDIR/build-archive.log"
+
+# 5. Bootstrap with a hook-sdist resolver supplied by an installed plugin.
+pip install "$SCRIPTDIR/github_override_example"
+remove_dist
+fromager \
+    $NETWORK_ISOLATION \
+    --log-file="$OUTDIR/bootstrap-hook-sdist.log" \
+    --sdists-repo="$OUTDIR/sdists-repo" \
+    --wheels-repo="$OUTDIR/wheels-repo" \
+    --work-dir="$OUTDIR/work-dir" \
+    --settings-dir="$SCRIPTDIR/source_settings_hook_sdist" \
+    bootstrap "${DIST}==${VERSION}"
+
+expect_file "$WHEEL"
+expect_file "$BUILT_SDIST"
+if ! grep -q "stevedore: found get_resolver_provider override" "$OUTDIR/bootstrap-hook-sdist.log"; then
+  echo "FAIL: hook-sdist did not use the resolver hook" 1>&2
+  pass=false
+fi
+
+if ! python3 - "$OUTDIR/work-dir/build-order.json" "$DIST" "$VERSION" <<'EOF'
+import json
+import sys
+
+path, dist, version = sys.argv[1:]
+with open(path) as f:
+    entries = [e for e in json.load(f) if e["dist"] == dist]
+assert len(entries) == 1, entries
+entry = entries[0]
+assert entry["version"] == version, entry
+assert entry["source_provider"] == "hook-sdist", entry
+assert entry["source_url_type"] == "override", entry
+assert entry["prebuilt"] is False, entry
+assert entry["source_url"].startswith(
+    "https://github.com/python-wheel-build/stevedore-test-repo/archive/refs/tags/"
+), entry
+EOF
+then
+  echo "FAIL: build order does not record the hook-sdist source" 1>&2
+  pass=false
+fi
+
+# 6. Bootstrap a hook-prebuilt wheel without an existing wheel cache.
+pip install "$SCRIPTDIR/fromager_hooks"
+fromager \
+    --log-file="$OUTDIR/bootstrap-hook-prebuilt.log" \
+    --sdists-repo="$OUTDIR/sdists-repo" \
+    --wheels-repo="$OUTDIR/hook-wheels-repo" \
+    --work-dir="$OUTDIR/hook-work-dir" \
+    --settings-dir="$SCRIPTDIR/source_settings_hook_prebuilt" \
+    bootstrap "setuptools==75.8.0"
+
+expect_file "hook-wheels-repo/prebuilt/setuptools-75.8.0-py3-none-any.whl"
+if ! grep -q "download_source hook downloading setuptools==75.8.0" "$OUTDIR/bootstrap-hook-prebuilt.log"; then
+  echo "FAIL: hook-prebuilt did not call the download hook" 1>&2
+  pass=false
+fi
+
+if ! python3 - "$OUTDIR/hook-work-dir/build-order.json" <<'EOF'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    entries = [e for e in json.load(f) if e["dist"] == "setuptools"]
+assert len(entries) == 1, entries
+entry = entries[0]
+assert entry["version"] == "75.8.0", entry
+assert entry["source_provider"] == "hook-prebuilt", entry
+assert entry["source_url_type"] == "prebuilt", entry
+assert entry["prebuilt"] is True, entry
+assert entry["source_url"].startswith("https://files.pythonhosted.org/"), entry
+assert entry["source_url"].split("#")[0].endswith(
+    "/setuptools-75.8.0-py3-none-any.whl"
+), entry
+EOF
+then
+  echo "FAIL: build order does not record the hook-prebuilt wheel" 1>&2
+  pass=false
+fi
 
 $pass

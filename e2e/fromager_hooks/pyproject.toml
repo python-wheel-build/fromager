@@ -29,3 +29,6 @@ dependencies = []
 post_build = "package_plugins.hooks:after_build_wheel"
 prebuilt_wheel = "package_plugins.hooks:after_prebuilt_wheel"
 post_bootstrap = "package_plugins.hooks:after_bootstrap"
+
+[project.entry-points."fromager.project_overrides"]
+setuptools = "package_plugins.hooks"
