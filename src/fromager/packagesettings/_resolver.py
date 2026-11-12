@@ -603,7 +603,7 @@ class AbstractGitSourceResolver(AbstractResolver, CooldownMixin):
             raise ValueError(f"Empty path in {self.project_url}")
         return resolver.GitLabTagProvider(
             project_path=self.project_url.path.lstrip("/"),
-            server_url=f"https://{self.project_url.host}:{self.project_url.port}",
+            server_url=f"https://{self.project_url.host}:{self.project_url.port or 443}",
             constraints=ctx.constraints,
             matcher=self._get_matcher(ctx),
             req_type=req_type,

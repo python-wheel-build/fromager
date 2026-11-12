@@ -11,6 +11,7 @@ import click
 import pytest
 import requests_mock
 from click.testing import CliRunner
+from conftest import _configure_package, _source_yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -18,20 +19,6 @@ from fromager import packagesettings, server, wheels
 from fromager.commands import bootstrap, build, download_sequence, step
 from fromager.context import WorkContext
 from fromager.log import requirement_ctxvar
-
-
-def _configure_package(ctx: WorkContext, yaml_str: str) -> None:
-    """Apply one package setting to the test context."""
-    ps = packagesettings.PackageSettings.from_string("pkg", yaml_str)
-    ctx.settings._package_settings[ps.name] = ps
-
-
-def _source_yaml(provider: str) -> str:
-    """Return package settings that select a configured source provider."""
-    yaml_str = f"source:\n  provider: {provider}\n"
-    if provider == "hook-prebuilt":
-        yaml_str += "  index_url: https://index.test/simple\n"
-    return yaml_str
 
 
 @pytest.mark.parametrize("provider", ["pypi-prebuilt", "hook-prebuilt"])
