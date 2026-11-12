@@ -1804,13 +1804,20 @@ def test_prepare_source_plugin_returns_bad_tuple(
         packagesettings.HookSDistResolver(
             provider="hook-sdist", build_sdist=packagesettings.BuildSDist.pep517
         ),
+        packagesettings.VersionMapGitResolver(
+            provider="versionmap-git",
+            clone_url=pydantic.AnyUrl("https://git.test/pkg.git"),
+            versionmap={"1.0": "refs/tags/v1.0"},
+        ),
     ],
-    ids=["git-clone", "hook-source"],
+    ids=["git-clone", "hook-source", "versionmap-git"],
 )
 @pytest.mark.parametrize("has_override", [False, True])
 def test_build_sdist_uses_pep517_for_configured_source(
     source_resolver: (
-        packagesettings.GitHubTagCloneResolver | packagesettings.HookSDistResolver
+        packagesettings.GitHubTagCloneResolver
+        | packagesettings.HookSDistResolver
+        | packagesettings.VersionMapGitResolver
     ),
     has_override: bool,
     tmp_context: context.WorkContext,
@@ -1876,14 +1883,21 @@ def test_build_sdist_uses_pep517_for_configured_source(
             project_url=pydantic.HttpUrl("https://github.test/org/pkg"),
             build_sdist=packagesettings.BuildSDist.tarball,
         ),
+        packagesettings.VersionMapGitResolver(
+            provider="versionmap-git",
+            clone_url=pydantic.AnyUrl("https://git.test/pkg.git"),
+            versionmap={"1.0": "refs/tags/v1.0"},
+            build_sdist=packagesettings.BuildSDist.tarball,
+        ),
     ],
-    ids=["legacy", "hook-source", "configured-tarball"],
+    ids=["legacy", "hook-source", "configured-tarball", "versionmap-git"],
 )
 @pytest.mark.parametrize("has_override", [False, True])
 def test_build_sdist_uses_configured_tarball_or_legacy_hook(
     source_resolver: (
         packagesettings.HookSDistResolver
         | packagesettings.GitHubTagCloneResolver
+        | packagesettings.VersionMapGitResolver
         | None
     ),
     has_override: bool,

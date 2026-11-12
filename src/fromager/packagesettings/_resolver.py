@@ -11,13 +11,14 @@ import typing
 
 import pydantic
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 from .. import downloads, gitutils, overrides, resolver
+from ..versionmap import VersionMap
 from ._typedefs import MODEL_CONFIG
 
 if typing.TYPE_CHECKING:
     from packaging.requirements import Requirement
-    from packaging.version import Version
 
     from .. import context, requirements_file
 
@@ -25,6 +26,15 @@ logger = logging.getLogger(__name__)
 
 _VERSION_QUOTED = "%7Bversion%7D"
 _PYPI_INDEX_URL = pydantic.HttpUrl("https://pypi.org/simple/")
+
+
+def _validate_git_clone_url(value: pydantic.AnyUrl) -> pydantic.AnyUrl:
+    """Require an HTTPS or SSH repository URL with a non-root path."""
+    if value.scheme not in {"https", "ssh"}:
+        raise ValueError(f"invalid scheme in url {value}")
+    if not value.path or value.path == "/":
+        raise ValueError(f"url {value} has an empty path")
+    return value
 
 
 class BuildSDist(enum.StrEnum):
@@ -106,8 +116,8 @@ class AbstractResolver(pydantic.BaseModel):
         *download_url* must contain everything the download needs, such as
         the git ref in ``git+https://host/repo.git@refs/tags/v1.0``. It is
         passed to download hooks unchanged and is not validated, so it can be
-        a ref instead of a URL, such as a commit SHA from a
-        ``VersionMapProvider``.
+        a ref instead of a URL when a custom resolver and download hook
+        use that convention.
         """
         raise NotImplementedError
 
@@ -455,11 +465,8 @@ class PyPIGitResolver(AbstractPyPIResolver):
     @pydantic.field_validator("clone_url", mode="after")
     @classmethod
     def validate_clone_url(cls, value: pydantic.AnyUrl) -> pydantic.AnyUrl:
-        if value.scheme not in {"https", "ssh"}:
-            raise ValueError(f"invalid scheme in url {value}")
-        if not value.path:
-            raise ValueError(f"url {value} has an empty path")
-        return value
+        """Validate the repository's clone URL."""
+        return _validate_git_clone_url(value)
 
     def resolver_provider(
         self,
@@ -486,6 +493,86 @@ class PyPIGitResolver(AbstractPyPIResolver):
         download_url: str,
     ) -> DownloadedSource:
         """Clone a git repository at a specific tag."""
+        return self._download(
+            ctx, req, version, download_url, DownloadKind.git_checkout
+        )
+
+
+class VersionMapGitResolver(AbstractResolver):
+    """Resolve mapped versions and clone the repository at their Git refs.
+
+    ``versionmap`` associates PEP 440 versions with commit IDs or ref paths.
+    ``clone_url`` identifies the repository. Build the sdist using
+    ``build_sdist``, which defaults to PEP 517.
+
+    Example::
+
+       provider: versionmap-git
+       clone_url: https://git.example/project/repo.git
+       build_sdist: pep517
+       versionmap:
+         '1.0': abad1dea
+         '1.1': refs/tags/1.1
+
+    .. versionadded:: 0.104.0
+    """
+
+    provider: typing.Literal["versionmap-git"]
+
+    download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
+        {DownloadKind.git_checkout}
+    )
+
+    clone_url: pydantic.AnyUrl
+    """Repository clone URL using HTTPS or SSH."""
+
+    versionmap: dict[str, str] = pydantic.Field(min_length=1)
+    """Nonempty mapping of version strings to Git refs, without download URLs."""
+
+    build_sdist: BuildSDist = BuildSDist.pep517
+    """Source distribution build method."""
+
+    @pydantic.field_validator("clone_url", mode="after")
+    @classmethod
+    def validate_clone_url(cls, value: pydantic.AnyUrl) -> pydantic.AnyUrl:
+        """Validate the repository's clone URL."""
+        return _validate_git_clone_url(value)
+
+    @pydantic.field_validator("versionmap", mode="after")
+    @classmethod
+    def validate_versionmap(cls, value: dict[str, str]) -> dict[str, str]:
+        """Validate versions and refs before constructing checkout URLs."""
+        for version, ref in value.items():
+            Version(version)
+            if not ref or any(c.isspace() or c in "@?#:" for c in ref):
+                raise ValueError(f"invalid Git ref for version {version!r}: {ref!r}")
+        return value
+
+    def resolver_provider(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        req_type: requirements_file.RequirementType | None,
+    ) -> resolver.VersionMapProvider:
+        """Return a provider using the mapped refs and current constraints."""
+        return resolver.VersionMapProvider(
+            version_map=VersionMap(
+                {Version(version): ref for version, ref in self.versionmap.items()}
+            ),
+            package_name=req.name,
+            clone_url=str(self.clone_url),
+            constraints=ctx.constraints,
+            req_type=req_type,
+        )
+
+    def download(
+        self,
+        ctx: context.WorkContext,
+        req: Requirement,
+        version: Version,
+        download_url: str,
+    ) -> DownloadedSource:
+        """Clone the repository at the ref recorded in the resolved URL."""
         return self._download(
             ctx, req, version, download_url, DownloadKind.git_checkout
         )
@@ -1102,6 +1189,7 @@ SourceResolver = typing.Annotated[
     | PyPIPrebuiltResolver
     | PyPIDownloadResolver
     | PyPIGitResolver
+    | VersionMapGitResolver
     | GitHubTagCloneResolver
     | GitHubTagDownloadResolver
     | GitLabTagCloneResolver

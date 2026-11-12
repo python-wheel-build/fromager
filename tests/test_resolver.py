@@ -12,6 +12,7 @@ from packaging.version import Version
 
 from fromager import constraints, resolver
 from fromager.__main__ import main as fromager
+from fromager.versionmap import VersionMap
 
 _hydra_core_simple_response = """
 <!DOCTYPE html>
@@ -868,18 +869,19 @@ def test_resolve_generic() -> None:
 
 
 def test_resolve_versionmap() -> None:
-    from fromager.versionmap import VersionMap
-
+    """Resolve the newest mapped version to its repository and git ref."""
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
-            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+            "1.2": "abad1dea",
+            "1.3": "refs/tags/v1.3",
+            "1.4.1": "refs/tags/v1.4.1",
         }
     )
 
     provider = resolver.VersionMapProvider(
-        version_map=version_map, package_name="testpkg"
+        version_map=version_map,
+        package_name="testpkg",
+        clone_url="https://git.test/pkg.git",
     )
     reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
@@ -889,25 +891,24 @@ def test_resolve_versionmap() -> None:
 
     candidate = result.mapping["testpkg"]
     assert str(candidate.version) == "1.4.1"
-    assert candidate.url == "https://example.com/pkg-1.4.1.tar.gz"
+    assert candidate.url == "git+https://git.test/pkg.git@refs/tags/v1.4.1"
 
     # VersionMapProvider uses resolver cache by default
     cache = resolver.BaseProvider.resolver_cache
     assert "testpkg" in cache
     cached_candidates = cache["testpkg"][
-        (resolver.VersionMapProvider, "versionmap:testpkg")
+        (resolver.VersionMapProvider, provider.cache_key)
     ]
     assert len(cached_candidates) == 3
 
 
 def test_resolve_versionmap_with_constraint() -> None:
-    from fromager.versionmap import VersionMap
-
+    """Apply constraints before selecting a mapped git ref."""
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
-            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+            "1.2": "abad1dea",
+            "1.3": "refs/tags/v1.3",
+            "1.4.1": "refs/tags/v1.4.1",
         }
     )
 
@@ -915,7 +916,10 @@ def test_resolve_versionmap_with_constraint() -> None:
     c.add_constraint("testpkg<1.4")
 
     provider = resolver.VersionMapProvider(
-        version_map=version_map, package_name="testpkg", constraints=c
+        version_map=version_map,
+        package_name="testpkg",
+        clone_url="https://git.test/pkg.git",
+        constraints=c,
     )
     reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
@@ -925,27 +929,72 @@ def test_resolve_versionmap_with_constraint() -> None:
 
     candidate = result.mapping["testpkg"]
     assert str(candidate.version) == "1.3"
-    assert candidate.url == "https://example.com/pkg-1.3.tar.gz"
+    assert candidate.url == "git+https://git.test/pkg.git@refs/tags/v1.3"
 
 
 def test_resolve_versionmap_no_match() -> None:
-    from fromager.versionmap import VersionMap
-
+    """Reject requirements with no mapped version."""
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
+            "1.2": "abad1dea",
+            "1.3": "refs/tags/v1.3",
         }
     )
 
     provider = resolver.VersionMapProvider(
-        version_map=version_map, package_name="testpkg"
+        version_map=version_map,
+        package_name="testpkg",
+        clone_url="https://git.test/pkg.git",
     )
     reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
 
     with pytest.raises(resolvelib.resolvers.ResolverException):
         rslvr.resolve([Requirement("testpkg>=2.0")])
+
+
+def test_resolve_versionmap_cache_separates_repositories() -> None:
+    """Keep cached URLs scoped to the configured Git repository."""
+    version_map = VersionMap({"1.2": "refs/tags/v1.2"})
+    req = Requirement("testpkg")
+    for clone_url in ("https://git.test/pkg.git", "https://mirror.test/pkg.git"):
+        provider = resolver.VersionMapProvider(
+            version_map=version_map, package_name=req.name, clone_url=clone_url
+        )
+
+        results = resolver.find_all_matching_from_provider(provider, req)
+
+        assert results == [(f"git+{clone_url}@refs/tags/v1.2", Version("1.2"))]
+
+
+def test_resolve_versionmap_without_package_name() -> None:
+    """Resolve without caching when no package name is configured."""
+    provider = resolver.VersionMapProvider(
+        version_map=VersionMap({"1.2": "abad1dea"}),
+        package_name=None,
+        clone_url="https://git.test/pkg.git",
+    )
+
+    results = resolver.find_all_matching_from_provider(provider, Requirement("testpkg"))
+
+    assert results == [("git+https://git.test/pkg.git@abad1dea", Version("1.2"))]
+    assert not resolver.BaseProvider.resolver_cache
+
+
+def test_resolve_versionmap_cache_separates_maps() -> None:
+    """Use each configured map when the package and clone URL are unchanged."""
+    for ref in ("abad1dea", "refs/tags/v1.2"):
+        provider = resolver.VersionMapProvider(
+            version_map=VersionMap({"1.2": ref}),
+            package_name="testpkg",
+            clone_url="https://git.test/pkg.git",
+        )
+
+        results = resolver.find_all_matching_from_provider(
+            provider, Requirement("testpkg")
+        )
+
+        assert results == [(f"git+https://git.test/pkg.git@{ref}", Version("1.2"))]
 
 
 _gitlab_submodlib_repo_response = """
