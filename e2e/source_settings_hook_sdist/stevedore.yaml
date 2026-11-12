@@ -1,0 +1,6 @@
+source:
+  provider: hook-sdist
+  build_sdist: tarball
+# GitHub archives have no git metadata for pbr to determine the version.
+env:
+  PBR_VERSION: "${__version__}"
