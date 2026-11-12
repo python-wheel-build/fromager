@@ -764,7 +764,7 @@ class TestGitLabTagDownloadResolver:
         p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.GitLabTagProvider)
         assert p.project_path == "python-wheel-build/fromager"
-        assert "gitlab.test" in p.server_url
+        assert p.server_url == "https://gitlab.test:443"
         assert p.override_download_url is None
 
     @mock.patch("fromager.downloads.download_url")
@@ -807,7 +807,7 @@ class TestGitLabTagCloneResolver:
         p = r.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
         assert isinstance(p, resolver.GitLabTagProvider)
         assert p.project_path == "python-wheel-build/fromager"
-        assert "gitlab.test" in p.server_url
+        assert p.server_url == "https://gitlab.test:443"
         assert p.override_download_url == (
             "git+https://gitlab.test/python-wheel-build/fromager@{tagname}"
         )

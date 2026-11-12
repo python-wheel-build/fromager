@@ -502,6 +502,34 @@ def test_list_versions_source_min_release_age(
     assert status_by_version["1.3.2"] == "available"
 
 
+def test_list_versions_source_inherits_global_min_release_age(
+    cli_runner: CliRunner,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source config without min_release_age inherits the global cooldown."""
+    _freeze_cooldown_bootstrap_time(monkeypatch)
+
+    settings_dir = tmp_path / "settings"
+    _write_source_settings(settings_dir)
+
+    # No source override, so the global value (3 days) applies: 2.0.0 is
+    # 2 days old and blocked, while 1.3.2 is 11 days old and available.
+    result = _invoke_with_source_settings(
+        cli_runner,
+        settings_dir,
+        extra_args=["--format", "json"],
+        min_release_age=3,
+    )
+    assert result.exit_code == 0
+    status_by_version = {
+        row["version"]: row["cooldown"]
+        for row in json.loads(_extract_json_from_output(result.stdout))
+    }
+    assert status_by_version["2.0.0"] == "blocked"
+    assert status_by_version["1.3.2"] == "available"
+
+
 def test_list_versions_source_min_release_age_zero(
     cli_runner: CliRunner,
     tmp_path: pathlib.Path,
