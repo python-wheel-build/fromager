@@ -361,3 +361,39 @@ def test_list_overrides_details_source_variant(
     # min_release_age comes from the variant's source resolver
     assert test_source_pkg["min_release_age"] == "3"
     assert test_source_pkg["rocm"] == "pre-built"
+
+
+def test_list_overrides_variant_inherits_package_source(
+    testdata_path: pathlib.Path, cli_runner: CliRunner, tmp_path: pathlib.Path
+) -> None:
+    """An unconfigured variant uses the package's prebuilt source provider."""
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "inherited_source.yaml").write_text(
+        "source:\n"
+        "  provider: pypi-prebuilt\n"
+        "variants:\n"
+        "  cpu:\n"
+        "    env:\n"
+        '      FOO: "1"\n'
+    )
+    settings_file = testdata_path / "context" / "overrides" / "settings.yaml"
+
+    result = cli_runner.invoke(
+        fromager,
+        [
+            "--settings-file",
+            str(settings_file),
+            "--settings-dir",
+            str(settings_dir),
+            "list-overrides",
+            "--details",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(_extract_json_from_output(result.stdout))
+    package = next(row for row in data if row["package"] == "inherited-source")
+    assert package["cpu"] == "pre-built"
