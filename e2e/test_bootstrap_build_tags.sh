@@ -114,3 +114,56 @@ if ! grep -q "added extra metadata and build tag" "$LOGFILE"; then
 fi
 
 $pass
+
+# Explicit numbers override both changelogs and rebuild in a reused repository.
+mkdir -p "$OUTDIR/explicit-build-settings"
+cat > "$OUTDIR/explicit-global-settings.yaml" <<EOF
+changelog:
+  cpu:
+    - Imported variant change
+EOF
+for counter in 0 1; do
+  cat > "$OUTDIR/explicit-build-settings/stevedore.yaml" <<EOF
+build_number:
+  "5.2.0": $counter
+changelog:
+  "5.2.0":
+    - First imported change
+    - Second imported change
+EOF
+
+  LOGFILE="$OUTDIR/explicit-build-$counter.log"
+  fromager \
+    --log-file="$LOGFILE" \
+    --error-log-file="$OUTDIR/fromager-errors.log" \
+    --sdists-repo="$OUTDIR/sdists-repo" \
+    --wheels-repo="$OUTDIR/explicit-wheels-repo" \
+    --work-dir="$OUTDIR/explicit-work-dir" \
+    --settings-file="$OUTDIR/explicit-global-settings.yaml" \
+    --settings-dir="$OUTDIR/explicit-build-settings" \
+    bootstrap 'stevedore==5.2.0'
+
+  grep -q "added extra metadata and build tag" "$LOGFILE"
+  python - "$OUTDIR/explicit-wheels-repo/downloads" "$counter" <<'PY'
+import email.parser
+import pathlib
+import sys
+import zipfile
+
+from packaging.utils import parse_wheel_filename
+
+directory = pathlib.Path(sys.argv[1])
+counter = int(sys.argv[2])
+wheel = directory / f"stevedore-5.2.0-{counter}-py3-none-any.whl"
+assert wheel.is_file(), wheel
+assert parse_wheel_filename(wheel.name)[2] == (counter, "")
+with zipfile.ZipFile(wheel) as archive:
+    metadata_path = "stevedore-5.2.0.dist-info/WHEEL"
+    metadata = email.parser.Parser().parsestr(archive.read(metadata_path).decode())
+    assert metadata["Build"] == str(counter), metadata
+    assert metadata.get_all("Tag") == ["py3-none-any"], metadata
+print(f"Verified {wheel.name}: Build: {counter}")
+PY
+done
+test -f "$OUTDIR/explicit-wheels-repo/downloads/stevedore-5.2.0-0-py3-none-any.whl"
+test -f "$OUTDIR/explicit-wheels-repo/downloads/stevedore-5.2.0-1-py3-none-any.whl"

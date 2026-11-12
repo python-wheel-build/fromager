@@ -89,18 +89,33 @@ def test_get_distributions_valid_json() -> None:
     """get_distributions returns a mapping of package names to versions."""
     env = Mock(spec=build_environment.BuildEnvironment)
     env.python = "/fake/python3"
-    env.run.return_value = json.dumps({"setuptools": "69.5.1", "pip": "24.0"})
+    env._installed_distributions.return_value = [
+        ("setuptools", "69.5.1", None),
+        ("pip", "24.0", "Wheel-Version: 1.0"),
+    ]
 
     result = build_environment.BuildEnvironment.get_distributions(env)
 
     assert result == {"pip": Version("24.0"), "setuptools": Version("69.5.1")}
 
 
-def test_get_distributions_invalid_json_raises() -> None:
-    """get_distributions raises on invalid JSON instead of UnboundLocalError."""
+def test_installed_distributions_invalid_json_raises() -> None:
+    """Shared metadata introspection preserves invalid-JSON diagnostics."""
     env = Mock(spec=build_environment.BuildEnvironment)
     env.python = "/fake/python3"
     env.run.return_value = "not valid json"
 
     with pytest.raises(json.JSONDecodeError):
-        build_environment.BuildEnvironment.get_distributions(env)
+        build_environment.BuildEnvironment._installed_distributions(env)
+
+
+def test_installed_distributions_reads_wheel_metadata() -> None:
+    """The shared reader supplies metadata for validation and version reporting."""
+    env = Mock(spec=build_environment.BuildEnvironment)
+    env.python = "/fake/python3"
+    installed = [["test-pkg", "1.0", "Build: 0\n"], ["legacy", "2.0", None]]
+    env.run.return_value = json.dumps(installed)
+
+    result = build_environment.BuildEnvironment._installed_distributions(env)
+
+    assert result == installed
