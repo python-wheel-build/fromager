@@ -35,6 +35,11 @@ Settings Loading Flow
 ``PackageBuildInfo`` objects are created lazily the first time a
 package is queried and cached for the rest of the run.
 
+.. versionchanged:: 0.104.0
+   Loading settings does not check ``source.build_sdist: hook``. The build
+   checks it before resolving or downloading the package. Only the
+   selected variant's hook is required.
+
 ``PackageSettings`` validates source settings when it loads each package.
 A package-level ``source`` cannot be combined with an explicitly set
 variant ``pre_built`` or ``wheel_server_url``. A variant-level ``source``

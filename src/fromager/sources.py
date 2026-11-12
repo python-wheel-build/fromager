@@ -210,7 +210,12 @@ def resolve_source(
     """Return (URL, version) for the best matching source version.
 
     Returns the highest matching version.
+
+    .. versionchanged:: 0.104.0
+       Rejects ``source.build_sdist: hook`` without a callable hook before
+       resolving.
     """
+    require_build_sdist_hook(ctx=ctx, req=req)
     constraint = ctx.constraints.get_constraint(req.name)
     logger.debug(
         f"resolving requirement {req} with constraint {constraint}; "
@@ -615,6 +620,27 @@ def prepare_new_source(
     vendor_rust.vendor_rust(req, pbi.build_dir(source_root_dir))
 
 
+def require_build_sdist_hook(*, ctx: context.WorkContext, req: Requirement) -> None:
+    """Raise ``ValueError`` if ``source.build_sdist: hook`` has no callable hook.
+
+    Packages that do not select ``hook`` are not checked, so their plugins
+    are not loaded.
+
+    .. versionadded:: 0.104.0
+    """
+    source_resolver = ctx.package_build_info(req).source_resolver
+    if (
+        source_resolver is None
+        or source_resolver.build_sdist is not packagesettings.BuildSDist.hook
+    ):
+        return
+    if not callable(overrides.find_override_method(req.name, "build_sdist")):
+        raise ValueError(
+            f"{req.name}: source.build_sdist='hook' requires a callable "
+            "build_sdist override hook"
+        )
+
+
 @metrics.timeit(description="build sdist")
 def build_sdist(
     *,
@@ -624,12 +650,32 @@ def build_sdist(
     sdist_root_dir: pathlib.Path,
     build_env: build_environment.BuildEnvironment,
 ) -> pathlib.Path:
-    """Build a source distribution using the configured strategy or legacy hook."""
+    """Build a source distribution using the configured strategy or legacy hook.
+
+    ``source.build_sdist: hook`` requires a package override. Configured
+    ``pep517`` and ``tarball`` strategies take precedence over overrides.
+
+    .. versionchanged:: 0.104.0
+       Configured source profiles can select the ``build_sdist`` override.
+    """
     pbi = ctx.package_build_info(req)
     source_resolver = pbi.source_resolver
+    strategy = source_resolver.build_sdist if source_resolver is not None else None
     build_dir = pbi.build_dir(sdist_root_dir)
 
     logger.info(f"building {ctx.variant} source distribution for {req} in {build_dir}")
+    # Backstop for callers that skip resolution, such as `step build-sdist`.
+    require_build_sdist_hook(ctx=ctx, req=req)
+    if (
+        source_resolver is not None
+        and strategy is not packagesettings.BuildSDist.hook
+        and overrides.find_override_method(req.name, "build_sdist") is not None
+    ):
+        logger.warning(
+            "%s: ignoring build_sdist override because source.build_sdist is %s",
+            req.name,
+            strategy,
+        )
     extra_environ = packagesettings.get_extra_environ(
         ctx=ctx,
         req=req,
@@ -637,42 +683,8 @@ def build_sdist(
         sdist_root_dir=sdist_root_dir,
         build_env=build_env,
     )
-    if source_resolver is not None:
-        if overrides.find_override_method(req.name, "build_sdist") is not None:
-            logger.warning(
-                "%s: ignoring build_sdist override because source.build_sdist is %s",
-                req.name,
-                source_resolver.build_sdist,
-            )
-    if (
-        source_resolver is not None
-        and source_resolver.build_sdist is packagesettings.BuildSDist.pep517
-    ):
-        sdist_file = pep517_build_sdist(
-            ctx=ctx,
-            extra_environ=extra_environ,
-            req=req,
-            version=version,
-            sdist_root_dir=sdist_root_dir,
-            build_env=build_env,
-        )
-    elif (
-        source_resolver is not None
-        and source_resolver.build_sdist is packagesettings.BuildSDist.tarball
-    ):
-        sdist_file = default_build_sdist(
-            ctx=ctx,
-            extra_environ=extra_environ,
-            req=req,
-            version=version,
-            sdist_root_dir=sdist_root_dir,
-            build_dir=build_dir,
-            build_env=build_env,
-            # Git checkouts keep their `.git`; keep it out of the sdist.
-            exclude_vcs=True,
-        )
-    elif source_resolver is None:
-        sdist_file = overrides.find_and_invoke(
+    if source_resolver is None or strategy is packagesettings.BuildSDist.hook:
+        sdist_file: pathlib.Path = overrides.find_and_invoke(
             req.name,
             "build_sdist",
             default_build_sdist,
@@ -684,10 +696,28 @@ def build_sdist(
             build_dir=build_dir,
             build_env=build_env,
         )
+    elif strategy is packagesettings.BuildSDist.pep517:
+        sdist_file = pep517_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
+    elif strategy is packagesettings.BuildSDist.tarball:
+        sdist_file = default_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            build_env=build_env,
+        )
     else:
         raise ValueError(
-            f"{req.name}: unsupported source.build_sdist strategy "
-            f"{source_resolver.build_sdist!r}"
+            f"{req.name}: unsupported source.build_sdist strategy {strategy!r}"
         )
     logger.info(f"built source distribution {sdist_file}")
 
@@ -713,12 +743,20 @@ def default_build_sdist(
     build_env: build_environment.BuildEnvironment,
     build_dir: pathlib.Path,
     *,
-    exclude_vcs: bool = False,
+    exclude_vcs: bool | None = None,
 ) -> pathlib.Path:
     """Repack *build_dir* as an sdist.
 
-    With *exclude_vcs*, VCS metadata such as ``.git`` is left out.
+    With *exclude_vcs*, VCS metadata such as ``.git`` is left out. By default,
+    exclude it when ``source:`` is configured, and retain it otherwise.
+    Explicit booleans override this policy.
+
+    .. versionchanged:: 0.104.0
+       With ``exclude_vcs=None``, exclude VCS metadata when the effective
+       package or variant has ``source:`` configured; retain it otherwise.
     """
+    if exclude_vcs is None:
+        exclude_vcs = ctx.package_build_info(req).source_resolver is not None
     # It seems like the "correct" way to do this would be to run the
     # PEP 517 API in the source tree we have modified. However, quite
     # a few packages assume their source distribution is being built
