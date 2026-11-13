@@ -32,13 +32,19 @@ Registered authentication callbacks take precedence, including callbacks that
 return no credentials. Explicit headers and request-specific authentication
 also take precedence.
 
+The same lookup rules apply to redirect destinations. Fromager strips
+`Authorization` when Requests considers forwarding it unsafe, then resolves
+credentials for the destination. Explicit `Authorization` headers are preserved
+on same-origin redirects. Environment proxy settings remain supported.
+
 Fallback results, including missing credentials, are cached per scheme and host
 for the lifetime of the session. Create a new session after changing netrc
 credentials.
 
 ```{versionchanged} 0.104.0
 Restore cached netrc Basic authentication for hosts without a registered
-authentication callback, limited to exact `machine` entries over HTTPS.
+authentication callback, limited to exact `machine` entries over HTTPS,
+including redirect destinations.
 ```
 
 ## netrc

@@ -83,6 +83,23 @@ class SessionAuth(requests.auth.AuthBase):
         return r
 
 
+class _AuthenticatedSession(requests.Session):
+    """Apply the session's authentication policy to redirected requests."""
+
+    def rebuild_auth(
+        self, prepared_request: requests.PreparedRequest, response: requests.Response
+    ) -> None:
+        """Strip unsafe Authorization headers and resolve destination credentials."""
+        if self.should_strip_auth(
+            response.request.url or "", prepared_request.url or ""
+        ):
+            prepared_request.headers.pop("Authorization", None)
+
+        # Requests' implementation performs an unrestricted netrc lookup here.
+        if isinstance(self.auth, SessionAuth):
+            self.auth(prepared_request)
+
+
 def _find_netrc() -> str | None:
     """Find netrc using NETRC or the standard home-directory locations."""
     netrc_env = os.environ.get("NETRC")
@@ -166,7 +183,7 @@ def create_session() -> tuple[requests.Session, SessionAuth]:
     Mounts a `RetryHTTPAdapter` on ``http://`` and ``https://``.
     Registers lazy auth callbacks for GitHub and GitLab on a
     `SessionAuth` handler keyed by ``(scheme, hostname)``. Other HTTPS hosts
-    use exact netrc machine entries as a cached fallback.
+    use exact netrc machine entries as a cached fallback, including on redirects.
 
     Returns the session and its `SessionAuth` so callers can
     register additional auth callbacks via ``auth.add()``.
@@ -176,7 +193,7 @@ def create_session() -> tuple[requests.Session, SessionAuth]:
         timeout=float(os.environ.get("FROMAGER_HTTP_TIMEOUT", "120.0")),
     )
 
-    s = requests.Session()
+    s = _AuthenticatedSession()
     s.mount("http://", adapter)
     s.mount("https://", adapter)
 

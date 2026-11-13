@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+import requests_mock
 
 from fromager.request_session import (
     SessionAuth,
@@ -408,3 +409,140 @@ def test_session_handles_unsupported_netrc_encoding(
     assert request.headers.get("Authorization") == (
         "Bearer explicit" if explicit else None
     )
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "http://wheels.test/download",
+        "http://cdn.test/download",
+        "https://other.test/download",
+    ],
+)
+def test_session_redirect_ignores_ineligible_netrc_credentials(
+    netrc_path: pathlib.Path, requests_mock: requests_mock.Mocker, target: str
+) -> None:
+    """Redirects never use default entries or send fallback credentials over HTTP."""
+    netrc_path.write_text(
+        "machine wheels.test login reader password secret\n"
+        "machine cdn.test login reader password secret\n"
+        "default login fallback password secret\n"
+    )
+    source = "https://wheels.test/simple/"
+    requests_mock.get(source, status_code=302, headers={"Location": target})
+    requests_mock.get(target, content=b"wheel")
+    session, _ = create_session()
+
+    response = session.get(source)
+
+    assert response.content == b"wheel"
+    assert len(response.history) == 1
+    assert (
+        response.history[0].request.headers["Authorization"]
+        == "Basic cmVhZGVyOnNlY3JldA=="
+    )
+    assert "Authorization" not in response.request.headers
+
+
+def test_session_redirect_uses_cached_destination_credentials(
+    netrc_path: pathlib.Path, requests_mock: requests_mock.Mocker
+) -> None:
+    """HTTPS redirects use the exact destination entry from the shared cache."""
+    netrc_path.write_text("machine cdn.test login reader password secret\n")
+    source = "https://wheels.test/simple/"
+    target = "https://cdn.test/download"
+    requests_mock.get(source, status_code=302, headers={"Location": target})
+    requests_mock.get(target, content=b"wheel")
+    session, _ = create_session()
+    session.prepare_request(requests.Request("GET", target))
+    netrc_path.write_text("machine cdn.test login changed password credentials\n")
+
+    response = session.get(source)
+
+    assert "Authorization" not in response.history[0].request.headers
+    assert response.request.headers["Authorization"] == "Basic cmVhZGVyOnNlY3JldA=="
+
+
+@pytest.mark.parametrize("resolved", [{}, {"Authorization": "token destination"}])
+def test_session_redirect_uses_registered_destination_auth(
+    netrc_path: pathlib.Path,
+    requests_mock: requests_mock.Mocker,
+    resolved: dict[str, str],
+) -> None:
+    """Destination callbacks, including opt-outs, take precedence over netrc."""
+    netrc_path.write_text("machine cdn.test login reader password secret\n")
+    source = "https://wheels.test/simple/"
+    target = "https://cdn.test/download"
+    requests_mock.get(source, status_code=302, headers={"Location": target})
+    requests_mock.get(target, content=b"wheel")
+    session, auth = create_session()
+    auth.add(target, lambda scheme, hostname: resolved)
+
+    response = session.get(source)
+
+    assert response.request.headers.get("Authorization") == resolved.get(
+        "Authorization"
+    )
+
+
+@pytest.mark.parametrize("explicit_auth", [False, True])
+@pytest.mark.parametrize(
+    "target,retained",
+    [
+        ("https://wheels.test/download", True),
+        ("https://other.test/download", False),
+        ("http://wheels.test/download", False),
+        ("https://wheels.test:8443/download", False),
+    ],
+)
+def test_session_redirect_preserves_explicit_auth_only_for_same_origin(
+    requests_mock: requests_mock.Mocker,
+    explicit_auth: bool,
+    target: str,
+    retained: bool,
+) -> None:
+    """Preserve explicit auth only where Requests allows it to be forwarded."""
+    source = "https://wheels.test/simple/"
+    requests_mock.get(source, status_code=302, headers={"Location": target})
+    requests_mock.get(target, content=b"wheel")
+    session, _ = create_session()
+
+    response = session.get(
+        source,
+        auth=("explicit", "token") if explicit_auth else None,
+        headers={} if explicit_auth else {"Authorization": "Bearer explicit"},
+    )
+
+    expected = "Basic ZXhwbGljaXQ6dG9rZW4=" if explicit_auth else "Bearer explicit"
+    assert response.request.headers.get("Authorization") == (
+        expected if retained else None
+    )
+
+
+def test_session_redirect_preserves_explicit_auth_over_netrc(
+    netrc_path: pathlib.Path, requests_mock: requests_mock.Mocker
+) -> None:
+    """A same-origin redirect must not replace explicit auth with netrc auth."""
+    netrc_path.write_text("machine wheels.test login reader password secret\n")
+    source = "https://wheels.test/simple/"
+    requests_mock.get(source, status_code=302, headers={"Location": "/download"})
+    requests_mock.get("https://wheels.test/download", content=b"wheel")
+    session, _ = create_session()
+
+    response = session.get(source, headers={"Authorization": "Bearer explicit"})
+
+    assert response.request.headers["Authorization"] == "Bearer explicit"
+
+
+def test_session_preserves_proxy_environment(
+    mock_environ: MutableMapping[str, str],
+) -> None:
+    """Authentication policy must leave environment proxy support enabled."""
+    mock_environ["HTTPS_PROXY"] = "http://proxy.test:8080"
+    session, _ = create_session()
+
+    settings = session.merge_environment_settings(
+        "https://wheels.test/", {}, None, None, None
+    )
+
+    assert settings["proxies"]["https"] == "http://proxy.test:8080"
