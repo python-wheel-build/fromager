@@ -9,7 +9,7 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import external_commands, log
+from fromager import external_commands, log, packagesettings
 
 
 def test_external_commands_environ() -> None:
@@ -176,3 +176,65 @@ def test_format_exception_formats_chained_exceptions() -> None:
         assert "Higher level error" in formatted
         assert "because" in formatted
         assert "Root cause" in formatted
+
+
+# --- env_filter wiring tests ---
+
+
+@mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout=b""))
+@mock.patch.dict(os.environ, {"HOME": "/h", "SECRET": "s"}, clear=True)
+def test_run_env_filter_none_passes_full_environ(m_run: mock.Mock) -> None:
+    """Without env_filter, the full os.environ is passed to the subprocess."""
+    external_commands.run(["true"])
+    call_env = m_run.call_args.kwargs["env"]
+    assert call_env["HOME"] == "/h"
+    assert call_env["SECRET"] == "s"
+
+
+@mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout=b""))
+@mock.patch.dict(os.environ, {"HOME": "/h", "SECRET": "s"}, clear=True)
+def test_run_env_filter_strips_deleted_vars(m_run: mock.Mock) -> None:
+    """With env_filter configured, deleted vars are stripped from the env."""
+    env_filter = packagesettings.ExternalCommands(delete_env=["*"])
+    external_commands.run(["true"], env_filter=env_filter)
+    call_env = m_run.call_args.kwargs["env"]
+    assert call_env["HOME"] == "/h"
+    assert "SECRET" not in call_env
+
+
+@mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout=b""))
+@mock.patch.dict(os.environ, {"HOME": "/h", "SECRET": "s"}, clear=True)
+def test_run_env_filter_extra_environ_survives(m_run: mock.Mock) -> None:
+    """extra_environ values are applied after filtering and never stripped."""
+    env_filter = packagesettings.ExternalCommands(delete_env=["*"])
+    external_commands.run(
+        ["true"],
+        extra_environ={"MY_BUILD_VAR": "42"},
+        env_filter=env_filter,
+    )
+    call_env = m_run.call_args.kwargs["env"]
+    assert call_env["MY_BUILD_VAR"] == "42"
+    assert "SECRET" not in call_env
+
+
+@mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout=b""))
+@mock.patch.dict(os.environ, {"HOME": "/h", "CI_TOKEN": "t", "USER": "u"}, clear=True)
+def test_run_env_filter_selective_delete(m_run: mock.Mock) -> None:
+    """Selective delete_env removes only matching vars."""
+    env_filter = packagesettings.ExternalCommands(delete_env=["CI_TOKEN"])
+    external_commands.run(["true"], env_filter=env_filter)
+    call_env = m_run.call_args.kwargs["env"]
+    assert call_env["HOME"] == "/h"
+    assert call_env["USER"] == "u"
+    assert "CI_TOKEN" not in call_env
+
+
+@mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout=b""))
+@mock.patch.dict(os.environ, {"HOME": "/h", "SECRET": "s"}, clear=True)
+def test_run_env_filter_default_is_noop(m_run: mock.Mock) -> None:
+    """Default ExternalCommands (empty lists) passes all POSIX-valid vars."""
+    env_filter = packagesettings.ExternalCommands()
+    external_commands.run(["true"], env_filter=env_filter)
+    call_env = m_run.call_args.kwargs["env"]
+    assert call_env["HOME"] == "/h"
+    assert call_env["SECRET"] == "s"
