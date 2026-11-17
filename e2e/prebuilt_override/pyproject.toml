@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prebuilt-wheel-override"
+version = "0.1.0"
+description = "Prebuilt wheel download hook for end-to-end tests"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.entry-points."fromager.project_overrides"]
+setuptools = "package_plugins.prebuilt_setuptools"
