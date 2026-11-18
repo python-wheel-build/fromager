@@ -186,6 +186,7 @@ class BuildEnvironment:
             cwd=cwd,
             extra_environ=extra_environ,
             network_isolation=network_isolation,
+            env_filter=self._ctx.settings.external_commands,
             log_filename=log_filename,
             stdin=stdin,
         )
@@ -209,6 +210,7 @@ class BuildEnvironment:
         external_commands.run(
             cmd,
             network_isolation=self._ctx.network_isolation,
+            env_filter=self._ctx.settings.external_commands,
         )
         logger.info("created build environment in %s", self.path)
 
