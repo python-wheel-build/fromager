@@ -260,6 +260,49 @@ def test_tracking_topology_sorter() -> None:
     assert topo.get_available() == {d}
 
 
+def test_tracking_topology_sorter_exclusive_under_polling() -> None:
+    # build-parallel polls get_available() continuously while builds are
+    # in flight (nodes that were returned but are not done, yet). An
+    # exclusive node must never be offered next to another in-flight node,
+    # and never more than one exclusive node at a time.
+    a = mknode("a")
+    b = mknode("b")
+    x = mknode("x")
+    y = mknode("y")
+
+    graph: typing.Mapping[DependencyNode, typing.Iterable[DependencyNode]]
+    graph = {
+        a: [],
+        b: [],
+        x: [],
+        y: [],
+    }
+
+    topo = TrackingTopologicalSorter(graph)
+    topo.add(x, exclusive=True)
+    topo.add(y, exclusive=True)
+    topo.prepare()
+
+    # plain nodes are preferred over exclusive nodes
+    assert topo.get_available() == {a, b}
+    # polling again while a and b are in flight changes nothing
+    assert topo.get_available() == {a, b}
+
+    topo.done(a)
+    assert topo.get_available() == {b}
+    topo.done(b)
+
+    # exactly one exclusive node at a time, also when polling while it is
+    # in flight
+    assert topo.get_available() == {x}
+    assert topo.get_available() == {x}
+
+    topo.done(x)
+    assert topo.get_available() == {y}
+    topo.done(y)
+    assert not topo.is_active()
+
+
 def test_tracking_topology_sorter_cyclic_error() -> None:
     # cyclic graph
     a = mknode("a")

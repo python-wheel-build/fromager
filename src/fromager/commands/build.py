@@ -677,6 +677,18 @@ def build_parallel(
     can be built concurrently. By default, all possible packages are built in
     parallel. Use --max-workers to limit the number of concurrent builds.
 
+    A package is queued as soon as its build dependencies are ready, without
+    waiting for unrelated builds to finish. Build order and log output are
+    therefore no longer deterministic between runs.
+
+    The first failure aborts the run. The command stops queueing new builds,
+    cancels builds that are queued but not started yet, waits for builds that
+    are already running, and then exits with an error.
+
+    .. versionchanged:: 0.104.0
+       Builds are queued continuously as soon as their build dependencies
+       are ready instead of waiting for a whole round of builds to finish,
+       and a failure cancels queued builds instead of letting them run.
     """
     wkctx.enable_parallel_builds()
 
@@ -711,9 +723,9 @@ def build_parallel(
         _nodes_to_string(topo.dependency_nodes),
     )
 
-    future2node: dict[BuildSequenceEntryFuture, dependency_graph.DependencyNode] = {}
+    pending: dict[BuildSequenceEntryFuture, dependency_graph.DependencyNode] = {}
     built_entries: list[BuildSequenceEntry] = []
-    rounds: int = 0
+    error: RuntimeError | None = None
 
     with (
         progress.progress_context(total=len(graph)) as progressbar,
@@ -722,53 +734,73 @@ def build_parallel(
 
         def update_progressbar_cb(future: concurrent.futures.Future) -> None:
             """Immediately update the progress and mark node as done"""
-            progressbar.update()
+            if not future.cancelled():
+                progressbar.update()
 
-        while topo.is_active():
-            rounds += 1
-            nodes_to_build = topo.get_available()
-            logger.info(
-                "round %i: starting to build %i node(s): %s",
-                rounds,
-                len(nodes_to_build),
-                _nodes_to_string(nodes_to_build),
+        while topo.is_active() or pending:
+            if error is None and topo.is_active():
+                # Add newly available nodes to the queue, unless a build
+                # for them is already in flight.
+                new_nodes = topo.get_available() - set(pending.values())
+                for node in new_nodes:
+                    with req_ctxvar_context(node.requirement, node.version):
+                        if node in topo.exclusive_nodes:
+                            logger.info("requires exclusive build")
+                        logger.info("ready to build")
+
+                    req = Requirement(f"{node.canonicalized_name}=={node.version}")
+
+                    future = executor.submit(
+                        _build_parallel,
+                        wkctx=wkctx,
+                        resolved_version=node.version,
+                        req=req,
+                        source_download_url=node.download_url,
+                        force=force,
+                        cache_wheel_server_url=cache_wheel_server_url,
+                    )
+                    future.add_done_callback(update_progressbar_cb)
+                    pending[future] = node
+
+            if not pending:
+                # No builds in flight: either everything is done, or the
+                # run is aborting and no further builds are started.
+                break
+
+            # Wait for at least one build to complete, then queue whatever
+            # became ready in the meantime.
+            done, _ = concurrent.futures.wait(
+                pending, return_when=concurrent.futures.FIRST_COMPLETED
             )
-            for node in nodes_to_build:
-                with req_ctxvar_context(node.requirement, node.version):
-                    if node in topo.exclusive_nodes:
-                        logger.info("requires exclusive build")
-                    logger.info("ready to build")
-
-                req = Requirement(f"{node.canonicalized_name}=={node.version}")
-
-                future = executor.submit(
-                    _build_parallel,
-                    wkctx=wkctx,
-                    resolved_version=node.version,
-                    req=req,
-                    source_download_url=node.download_url,
-                    force=force,
-                    cache_wheel_server_url=cache_wheel_server_url,
-                )
-                future.add_done_callback(update_progressbar_cb)
-                future2node[future] = node
-
-            # Wait for all builds to complete
-            for future in concurrent.futures.as_completed(future2node):
-                node = future2node.pop(future)
+            for future in done:
+                node = pending.pop(future)
                 with req_ctxvar_context(node.requirement, node.version):
                     try:
                         entry = future.result()
+                    except concurrent.futures.CancelledError:
+                        # the build was queued but never started because
+                        # another build failed and the run is aborting
+                        logger.info("build of %s was cancelled", node.key)
                     except Exception as e:
                         logger.error(f"Failed to build {node.key}: {e}")
-                        raise RuntimeError(f"Failed to build {node.key}") from e
+                        if error is None:
+                            error = RuntimeError(f"Failed to build {node.key}")
+                            error.__cause__ = e
+                            # Stop queueing new builds and cancel everything
+                            # that is queued but not running yet. Builds that
+                            # are already running cannot be cancelled, so we
+                            # keep draining them below.
+                            for queued in pending:
+                                queued.cancel()
                     else:
                         # success
                         built_entries.append(entry)
                     finally:
                         # mark node as done, progress bar is updated in callback.
                         topo.done(node)
-                        # Re-raise with package context since context var is lost across threads
+
+    if error is not None:
+        raise error
 
     metrics.summarize(wkctx, "Building in parallel")
     _summary(wkctx, built_entries)

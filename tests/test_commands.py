@@ -4,6 +4,8 @@ import json
 import pathlib
 import subprocess
 import tarfile
+import threading
+import time
 import typing
 from unittest.mock import Mock, patch
 
@@ -14,7 +16,11 @@ from click.testing import CliRunner
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import packagesettings, server, wheels
+from fromager import (
+    packagesettings,
+    server,
+    wheels,
+)
 from fromager.commands import bootstrap, build, download_sequence, step
 from fromager.context import WorkContext
 from fromager.log import requirement_ctxvar
@@ -741,6 +747,112 @@ def test_build_sequence_accepts_matching_source_provider(
 
     assert result.exit_code == 0, result.output
     run_build.assert_called_once()
+
+
+def test_build_parallel_dispatches_continuously(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    e2e_path: pathlib.Path,
+) -> None:
+    """A package starts building as soon as its build dependencies are ready,
+    without waiting for unrelated builds to finish."""
+    # In e2e/build-parallel/graph.json, jinja2 build-depends on flit-core,
+    # while setuptools and flit-core have no build dependencies. With
+    # round-based scheduling, jinja2 could never start before setuptools
+    # finishes.
+    fast_started = threading.Event()
+    events: list[tuple[str, str]] = []
+    events_lock = threading.Lock()
+
+    def record(event: str, name: str) -> None:
+        with events_lock:
+            events.append((event, name))
+
+    def fake_build(
+        wkctx: WorkContext,
+        resolved_version: Version,
+        req: Requirement,
+        source_download_url: str,
+        force: bool,
+        cache_wheel_server_url: str | None,
+    ) -> build.BuildSequenceEntry:
+        record("start", req.name)
+        if req.name == "setuptools":
+            assert fast_started.wait(timeout=30), (
+                "jinja2 did not start while setuptools was building"
+            )
+        elif req.name == "jinja2":
+            fast_started.set()
+        record("end", req.name)
+        return build.BuildSequenceEntry(
+            name=req.name,
+            version=resolved_version,
+            prebuilt=False,
+            download_url=source_download_url,
+            wheel_filename=pathlib.Path(f"{req.name}-{resolved_version}.whl"),
+        )
+
+    with (
+        patch.object(build.server, "start_wheel_server"),
+        patch.object(build, "_build", side_effect=fake_build) as run_build,
+        patch.object(build.metrics, "summarize"),
+        patch.object(build, "_summary"),
+    ):
+        result = cli_runner.invoke(
+            build.build_parallel,
+            [str(e2e_path / "build-parallel" / "graph.json")],
+            obj=tmp_context,
+        )
+
+    assert result.exit_code == 0, result.output
+    # all 16 packages of the graph were built
+    assert run_build.call_count == 16
+    # jinja2 became ready when flit-core finished and started while
+    # setuptools was still building
+    assert events.index(("start", "jinja2")) < events.index(("end", "setuptools"))
+
+
+def test_build_parallel_failure_cancels_queued_builds(
+    cli_runner: CliRunner,
+    tmp_context: WorkContext,
+    e2e_path: pathlib.Path,
+) -> None:
+    """A failure aborts the run: builds that are queued but not running are
+    cancelled and the command fails with the build error instead of an
+    unhandled CancelledError."""
+    graph_file = e2e_path / "build-parallel" / "graph.json"
+
+    def fake_build(
+        wkctx: WorkContext,
+        resolved_version: Version,
+        req: Requirement,
+        source_download_url: str,
+        force: bool,
+        cache_wheel_server_url: str | None,
+    ) -> build.BuildSequenceEntry:
+        # Fail slowly so the other builds stay queued and can be cancelled
+        # when this failure is processed.
+        time.sleep(1)
+        raise RuntimeError(f"boom {req.name}")
+
+    with (
+        patch.object(build.server, "start_wheel_server"),
+        patch.object(build, "_build", side_effect=fake_build) as run_build,
+        patch.object(build.metrics, "summarize"),
+        patch.object(build, "_summary"),
+    ):
+        result = cli_runner.invoke(
+            build.build_parallel,
+            ["--max-workers", "1", str(graph_file)],
+            obj=tmp_context,
+        )
+
+    assert isinstance(result.exception, RuntimeError), result.output
+    assert str(result.exception).startswith("Failed to build")
+    # The first build failed and the worker may pick up one more build
+    # before the cancellation lands, but the remaining queued builds were
+    # cancelled and never ran.
+    assert 1 <= run_build.call_count <= 2
 
 
 def test_download_sequence_skips_test_mode_prebuilt_fallback_source(
