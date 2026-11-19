@@ -15,6 +15,7 @@ VERSION="5.2.0"
 pip install e2e/fromager_hooks
 
 OS=$(uname)
+# CI runs e2e tests on Linux only; the macOS branch is for local runs.
 if [ "$OS" = "Darwin" ]; then
     NETWORK_ISOLATION=""
 else

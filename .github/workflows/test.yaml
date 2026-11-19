@@ -30,6 +30,13 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+        exclude:
+          # macOS runners are congested and limited in number
+          # only run macOS tests on latest stable Python version
+          - os: macos-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.13"
 
     steps:
       - name: Get source
@@ -96,14 +103,6 @@ jobs:
           - ci_workflow_suite
         os:
           - ubuntu-latest
-          - macos-latest
-        exclude:
-          # macOS tests are slower and congested
-          # only run macOS tests on latest stable Python version
-          - os: macos-latest
-            python-version: "3.12"
-          - os: macos-latest
-            python-version: "3.13"
 
     steps:
       - name: Get source

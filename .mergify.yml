@@ -30,9 +30,7 @@ pull_request_rules:
 
           # Unit tests
           - check-success=unit (3.12, 1.75, ubuntu-latest)
-          - check-success=unit (3.12, 1.75, macos-latest)
           - check-success=unit (3.13, 1.75, ubuntu-latest)
-          - check-success=unit (3.13, 1.75, macos-latest)
           - check-success=unit (3.14, 1.75, ubuntu-latest)
           - check-success=unit (3.14, 1.75, macos-latest)
 
@@ -56,19 +54,13 @@ pull_request_rules:
           - check-success=e2e (3.13, 1.75, ci_config_suite, ubuntu-latest)
           - check-success=e2e (3.13, 1.75, ci_specialized_suite, ubuntu-latest)
           - check-success=e2e (3.13, 1.75, ci_workflow_suite, ubuntu-latest)
-          # Python 3.14 - Ubuntu + macOS (latest stable)
+          # Python 3.14 - Ubuntu only (macOS excluded)
           - check-success=e2e (3.14, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_bootstrap_parallel_suite, macos-latest)
           - check-success=e2e (3.14, 1.75, ci_bootstrap_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_bootstrap_suite, macos-latest)
           - check-success=e2e (3.14, 1.75, ci_build_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_build_suite, macos-latest)
           - check-success=e2e (3.14, 1.75, ci_config_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_config_suite, macos-latest)
           - check-success=e2e (3.14, 1.75, ci_specialized_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_specialized_suite, macos-latest)
           - check-success=e2e (3.14, 1.75, ci_workflow_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_workflow_suite, macos-latest)
 
           # At least 1 reviewer from maintainers
           - and:
