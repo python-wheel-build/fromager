@@ -40,6 +40,7 @@ source "$(hatch env find e2e)/bin/activate"
 export FROMAGER_CONSTRAINTS_FILE="${SCRIPTDIR}/constraints.txt"
 
 OS=$(uname)
+# CI runs e2e tests on Linux only; the macOS branch is for local runs.
 if [ "$OS" = "Darwin" ]; then
     NETWORK_ISOLATION=""
     # The tag comes back as something like "macosx-10.9-universal2" but the

@@ -36,7 +36,6 @@ rust_versions = list(sorted(matrix["rust-version"], key=Version))
 test_scripts = set(matrix["test-script"])
 print("found test scripts:\n  ", "\n  ".join(sorted(test_scripts)), sep="")
 os_versions = list(sorted(matrix["os"]))
-os_versions.remove("macos-latest")
 
 e2e_dir = pathlib.Path("e2e")
 # Look for CI suite scripts instead of individual test scripts
@@ -104,18 +103,6 @@ expected_jobs = set(
         rust_versions,
         test_scripts,
         os_versions,
-    )
-)
-# for macOS, only expect latest Python version and latest Rust version
-expected_jobs.update(
-    set(
-        str(combo).replace("'", "")
-        for combo in itertools.product(
-            python_versions[-1:],
-            rust_versions[-1:],
-            test_scripts,
-            ["macos-latest"],
-        )
     )
 )
 if not expected_jobs.difference(existing_jobs):
