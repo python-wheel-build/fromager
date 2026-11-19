@@ -357,6 +357,12 @@ def add_extra_metadata_to_wheels(
                 # identifies the wheel that actually contains it
                 wheel_version=dist_version,
             )
+            sbom.merge_cyclonedx_sboms(
+                sbom=sbom_doc,
+                sboms_dir=dist_info_dir / "sboms",
+                name=req.name,
+                version=str(dist_version),
+            )
             sbom.write_sbom(sbom=sbom_doc, dist_info_dir=dist_info_dir)
 
         build_tag = get_build_tag(
