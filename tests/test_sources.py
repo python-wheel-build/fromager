@@ -11,7 +11,7 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import context, packagesettings, resolver, sources
+from fromager import build_environment, context, packagesettings, resolver, sources
 from fromager.candidate import Cooldown
 from fromager.requirements_file import RequirementType
 
@@ -369,6 +369,29 @@ def test_resolve_source_uses_configured_source_resolver(
         req,
         max_age_cutoff=None,
     )
+
+
+@patch("fromager.resolver.find_all_matching_from_provider")
+def test_resolve_source_does_not_check_build_sdist_hook(
+    find_all_matching_from_provider: Mock,
+    tmp_context: context.WorkContext,
+) -> None:
+    """Resolve without the selected sdist hook, so a download-only step works."""
+    ps = packagesettings.PackageSettings.from_string(
+        "test-pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    tmp_context.settings._package_settings[ps.name] = ps
+    req = Requirement("test-pkg>=1.0")
+    find_all_matching_from_provider.return_value = [("url", Version("1.0"))]
+
+    with patch("fromager.overrides.find_override_method", return_value=None):
+        url, version = sources.resolve_source(
+            ctx=tmp_context,
+            req=req,
+            sdist_server_url=resolver.PYPI_SERVER_URL,
+        )
+
+    assert (url, version) == ("url", Version("1.0"))
 
 
 @patch("fromager.resolver.find_all_matching_from_provider")
@@ -1804,13 +1827,25 @@ def test_prepare_source_plugin_returns_bad_tuple(
         packagesettings.HookSDistResolver(
             provider="hook-sdist", build_sdist=packagesettings.BuildSDist.pep517
         ),
+        packagesettings.PyPISDistResolver(
+            provider="pypi-sdist", build_sdist=packagesettings.BuildSDist.pep517
+        ),
+        packagesettings.PyPIDownloadResolver(
+            provider="pypi-download",
+            download_url=pydantic.HttpUrl("https://pkg.test/pkg-{version}.tar.gz"),
+            download_kind=packagesettings.DownloadKind.tarball,
+            build_sdist=packagesettings.BuildSDist.pep517,
+        ),
     ],
-    ids=["git-clone", "hook-source"],
+    ids=["git-clone", "hook-source", "pypi-sdist", "pypi-download"],
 )
 @pytest.mark.parametrize("has_override", [False, True])
 def test_build_sdist_uses_pep517_for_configured_source(
     source_resolver: (
-        packagesettings.GitHubTagCloneResolver | packagesettings.HookSDistResolver
+        packagesettings.GitHubTagCloneResolver
+        | packagesettings.HookSDistResolver
+        | packagesettings.PyPISDistResolver
+        | packagesettings.PyPIDownloadResolver
     ),
     has_override: bool,
     tmp_context: context.WorkContext,
@@ -1858,40 +1893,117 @@ def test_build_sdist_uses_pep517_for_configured_source(
     )
     find_and_invoke.assert_not_called()
     find_override.assert_called_once_with(req.name, "build_sdist")
-    warning = "ignoring build_sdist override because source.build_sdist is pep517"
+    warning = (
+        "ignoring build_sdist override because source.build_sdist is pep517; "
+        "set source.build_sdist: hook to use it"
+    )
     assert (warning in caplog.text) is has_override
     if override is not None:
         override.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "source_resolver",
+    ("source_config", "has_override", "uses_hook"),
     [
-        None,
-        packagesettings.HookSDistResolver(
-            provider="hook-sdist", build_sdist=packagesettings.BuildSDist.tarball
+        pytest.param("", False, True, id="legacy"),
+        pytest.param("", True, True, id="legacy-override"),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n", False, False, id="pypi-sdist"
         ),
-        packagesettings.GitHubTagCloneResolver(
-            provider="github-tag-git",
-            project_url=pydantic.HttpUrl("https://github.test/org/pkg"),
-            build_sdist=packagesettings.BuildSDist.tarball,
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n", True, False, id="pypi-sdist-override"
+        ),
+        pytest.param(
+            "source:\n  provider: hook-sdist\n  build_sdist: tarball\n",
+            False,
+            False,
+            id="hook-sdist-tarball",
+        ),
+        pytest.param(
+            "source:\n  provider: hook-sdist\n  build_sdist: tarball\n",
+            True,
+            False,
+            id="hook-sdist-tarball-override",
+        ),
+        pytest.param(
+            "source:\n"
+            "  provider: github-tag-git\n"
+            "  project_url: https://github.test/org/pkg\n"
+            "  build_sdist: tarball\n",
+            False,
+            False,
+            id="git-tarball",
+        ),
+        pytest.param(
+            "source:\n"
+            "  provider: github-tag-git\n"
+            "  project_url: https://github.test/org/pkg\n"
+            "  build_sdist: tarball\n",
+            True,
+            False,
+            id="git-tarball-override",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n  build_sdist: hook\n",
+            True,
+            True,
+            id="pypi-sdist-hook",
+        ),
+        pytest.param(
+            "source:\n"
+            "  provider: pypi-download\n"
+            "  download_url: https://pkg.test/pkg-{version}.tar.gz\n"
+            "  download_kind: tarball\n"
+            "  build_sdist: hook\n",
+            True,
+            True,
+            id="pypi-download-hook",
+        ),
+        pytest.param(
+            "source:\n  provider: hook-sdist\n  build_sdist: hook\n",
+            True,
+            True,
+            id="hook-sdist-hook",
+        ),
+        pytest.param(
+            "source:\n"
+            "  provider: github-tag-git\n"
+            "  project_url: https://github.test/org/pkg\n"
+            "  build_sdist: hook\n",
+            True,
+            True,
+            id="git-hook",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n"
+            "variants:\n  cpu:\n    source:\n"
+            "      provider: pypi-sdist\n      build_sdist: hook\n",
+            True,
+            True,
+            id="variant-hook",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+            "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
+            True,
+            False,
+            id="variant-tarball",
         ),
     ],
-    ids=["legacy", "hook-source", "configured-tarball"],
 )
-@pytest.mark.parametrize("has_override", [False, True])
-def test_build_sdist_uses_configured_tarball_or_legacy_hook(
-    source_resolver: (
-        packagesettings.HookSDistResolver
-        | packagesettings.GitHubTagCloneResolver
-        | None
-    ),
+def test_build_sdist_uses_configured_strategy_or_legacy_hook(
+    source_config: str,
     has_override: bool,
+    uses_hook: bool,
     tmp_context: context.WorkContext,
     tmp_path: pathlib.Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Use configured tarball builds directly and keep overrides for legacy settings."""
+    """Use configured strategies directly and keep hooks for legacy and hook settings."""
+    # Arrange
+    if source_config:
+        ps = packagesettings.PackageSettings.from_string("pkg", source_config)
+        tmp_context.settings._package_settings[ps.name] = ps
     req = Requirement("pkg==1.0")
     version = Version("1.0")
     build_env = Mock()
@@ -1900,14 +2012,11 @@ def test_build_sdist_uses_configured_tarball_or_legacy_hook(
     sdist_file.write_text("fake sdist")
     override = Mock() if has_override else None
 
+    # Act
     with (
-        patch.object(
-            packagesettings.PackageBuildInfo,
-            "source_resolver",
-            new_callable=PropertyMock,
-            return_value=source_resolver,
-        ),
-        patch("fromager.packagesettings.get_extra_environ", return_value={}),
+        patch(
+            "fromager.overrides.find_override_method", return_value=override
+        ) as find_override,
         patch(
             "fromager.sources.overrides.find_and_invoke", return_value=sdist_file
         ) as find_and_invoke,
@@ -1915,9 +2024,7 @@ def test_build_sdist_uses_configured_tarball_or_legacy_hook(
         patch(
             "fromager.sources.default_build_sdist", return_value=sdist_file
         ) as tarball,
-        patch(
-            "fromager.sources.overrides.find_override_method", return_value=override
-        ) as find_override,
+        patch("fromager.packagesettings.get_extra_environ", return_value={}),
     ):
         result = sources.build_sdist(
             ctx=tmp_context,
@@ -1927,6 +2034,7 @@ def test_build_sdist_uses_configured_tarball_or_legacy_hook(
             build_env=build_env,
         )
 
+    # Assert
     assert result == sdist_file.resolve()
     build_kwargs = dict(
         ctx=tmp_context,
@@ -1937,21 +2045,275 @@ def test_build_sdist_uses_configured_tarball_or_legacy_hook(
         build_dir=sdist_root_dir,
         build_env=build_env,
     )
-    if source_resolver is None:
+    if uses_hook:
         find_and_invoke.assert_called_once_with(
             req.name, "build_sdist", tarball, **build_kwargs
         )
         tarball.assert_not_called()
-        find_override.assert_not_called()
     else:
-        tarball.assert_called_once_with(**build_kwargs, exclude_vcs=True)
         find_and_invoke.assert_not_called()
-        find_override.assert_called_once_with(req.name, "build_sdist")
-        if override is not None:
-            override.assert_not_called()
-    warning = "ignoring build_sdist override because source.build_sdist is tarball"
-    assert (warning in caplog.text) is (source_resolver is not None and has_override)
+        tarball.assert_called_once_with(**build_kwargs)
     pep517.assert_not_called()
+    if source_config:
+        # Either the hook requirement or the skipped-override warning looks
+        # up the hook, but a configured strategy never invokes it.
+        find_override.assert_called_once_with(req.name, "build_sdist")
+        if override is not None and not uses_hook:
+            override.assert_not_called()
+    else:
+        find_override.assert_not_called()
+    warning = "ignoring build_sdist override because source.build_sdist is tarball"
+    assert (warning in caplog.text) is (not uses_hook and has_override)
+
+
+@pytest.mark.parametrize(
+    "source_config",
+    [
+        pytest.param("", id="legacy"),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n  build_sdist: hook\n",
+            id="pypi-sdist-hook",
+        ),
+    ],
+)
+def test_build_sdist_hook_can_archive_repository(
+    source_config: str,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Selected hooks can archive the whole prepared repository."""
+    # Arrange
+    ps = packagesettings.PackageSettings.from_string(
+        "pkg", "build_dir: python\n" + source_config
+    )
+    tmp_context.settings._package_settings[ps.name] = ps
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    build_env = Mock(spec=build_environment.BuildEnvironment)
+    sdist_root_dir = tmp_path / "pkg-1.0"
+    build_dir = sdist_root_dir / "python"
+    build_dir.mkdir(parents=True)
+    (build_dir / "setup.py").write_text("# Wheel build also needs ../native.c.\n")
+    (sdist_root_dir / "native.c").write_text("int value(void) { return 1; }\n")
+    hook_calls: list[pathlib.Path] = []
+
+    def archive_repository(
+        ctx: context.WorkContext,
+        extra_environ: dict[str, str],
+        req: Requirement,
+        version: Version,
+        sdist_root_dir: pathlib.Path,
+        build_env: build_environment.BuildEnvironment,
+        build_dir: pathlib.Path,
+    ) -> pathlib.Path:
+        """Keep the whole repository while the wheel builds from a subdirectory."""
+        hook_calls.append(build_dir)
+        (sdist_root_dir / "generated.txt").write_text(extra_environ["BUILD_VALUE"])
+        return sources.default_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+            build_dir=sdist_root_dir,
+        )
+
+    # Act
+    with (
+        patch(
+            "fromager.overrides.find_override_method", return_value=archive_repository
+        ),
+        patch(
+            "fromager.packagesettings.get_extra_environ",
+            return_value={"BUILD_VALUE": "prepared"},
+        ),
+    ):
+        sdist_file = sources.build_sdist(
+            ctx=tmp_context,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
+
+    # Assert
+    assert sdist_file == tmp_context.sdists_builds / "pkg-1.0.tar.gz"
+    assert hook_calls == [build_dir]
+    with tarfile.open(sdist_file, "r:gz") as sdist:
+        names = sdist.getnames()
+        generated = sdist.extractfile("pkg-1.0/generated.txt")
+        assert generated is not None
+        assert generated.read() == b"prepared"
+    assert "pkg-1.0/PKG-INFO" in names
+    assert "pkg-1.0/native.c" in names
+    assert "pkg-1.0/generated.txt" in names
+    assert "pkg-1.0/python/setup.py" in names
+
+
+@pytest.mark.parametrize("hook", [None, "not-callable"])
+def test_build_sdist_requires_selected_hook(
+    hook: str | None,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Reject a missing selected hook before invoking environment or build hooks."""
+    req = Requirement("pkg==1.0")
+    ps = packagesettings.PackageSettings.from_string(
+        "pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    tmp_context.settings._package_settings[ps.name] = ps
+    with (
+        patch("fromager.overrides.find_override_method", return_value=hook),
+        patch("fromager.packagesettings.get_extra_environ") as extra_environ,
+        patch("fromager.sources.pep517_build_sdist") as pep517,
+        patch("fromager.sources.default_build_sdist") as tarball,
+    ):
+        with pytest.raises(
+            ValueError,
+            match=r"pkg: source\.build_sdist='hook' requires a callable build_sdist override hook",
+        ):
+            sources.build_sdist(
+                ctx=tmp_context,
+                req=req,
+                version=Version("1.0"),
+                sdist_root_dir=tmp_path,
+                build_env=Mock(spec=build_environment.BuildEnvironment),
+            )
+
+    extra_environ.assert_not_called()
+    pep517.assert_not_called()
+    tarball.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "source_config",
+    [
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n  build_sdist: hook\n",
+            id="package-hook",
+        ),
+        pytest.param(
+            "variants:\n  cpu:\n    source:\n"
+            "      provider: pypi-sdist\n      build_sdist: hook\n",
+            id="variant-hook",
+        ),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+            "variants:\n  cpu:\n    env:\n      BUILD_VALUE: prepared\n",
+            id="inherited-hook",
+        ),
+    ],
+)
+@pytest.mark.parametrize("hook", [None, "not-callable"])
+def test_require_build_sdist_hook_rejects_unusable_hook(
+    source_config: str, hook: str | None, tmp_context: context.WorkContext
+) -> None:
+    """Reject a missing or non-callable hook for the selected variant."""
+    ps = packagesettings.PackageSettings.from_string("test-pkg", source_config)
+    tmp_context.settings._package_settings[ps.name] = ps
+
+    with patch("fromager.overrides.find_override_method", return_value=hook):
+        with pytest.raises(
+            ValueError,
+            match=r"test-pkg: source\.build_sdist='hook' requires a callable",
+        ):
+            sources.require_build_sdist_hook(
+                ctx=tmp_context, req=Requirement("test-pkg")
+            )
+
+
+@pytest.mark.parametrize(
+    "source_config",
+    [
+        pytest.param("", id="legacy"),
+        pytest.param("source:\n  provider: pypi-sdist\n", id="tarball"),
+        pytest.param(
+            "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+            "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
+            id="variant-replaces-package-hook",
+        ),
+        pytest.param(
+            "variants:\n  cuda:\n    source:\n"
+            "      provider: pypi-sdist\n      build_sdist: hook\n",
+            id="inactive-variant-hook",
+        ),
+    ],
+)
+def test_require_build_sdist_hook_skips_unselected_hook(
+    source_config: str, tmp_context: context.WorkContext
+) -> None:
+    """Do not look up a hook unless the effective settings select it."""
+    ps = packagesettings.PackageSettings.from_string("test-pkg", source_config)
+    tmp_context.settings._package_settings[ps.name] = ps
+
+    with patch("fromager.overrides.find_override_method") as find_override:
+        sources.require_build_sdist_hook(ctx=tmp_context, req=Requirement("test-pkg"))
+
+    find_override.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("output", "error_type", "message"),
+    [
+        ("missing", FileNotFoundError, "pkg-1.0.tar.gz"),
+        ("outside", ValueError, "is not in sdists build directory"),
+        ("other-1.0.tar.gz", ValueError, "does not match requirement"),
+        ("pkg-2.0.tar.gz", ValueError, "does not match public version"),
+        ("exception", RuntimeError, "sdist generation failed"),
+    ],
+)
+def test_build_sdist_validates_selected_hook_result(
+    output: str,
+    error_type: type[Exception],
+    message: str,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Reject invalid hook output and propagate hook failures without fallback."""
+    ps = packagesettings.PackageSettings.from_string(
+        "pkg", "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    tmp_context.settings._package_settings[ps.name] = ps
+    if output == "outside":
+        sdist_file = tmp_path / "pkg-1.0.tar.gz"
+    else:
+        filename = "pkg-1.0.tar.gz" if output == "missing" else output
+        sdist_file = tmp_context.sdists_builds / filename
+    if output not in {"missing", "exception"}:
+        sdist_file.touch()
+
+    def hook(
+        ctx: context.WorkContext,
+        extra_environ: dict[str, str],
+        req: Requirement,
+        version: Version,
+        sdist_root_dir: pathlib.Path,
+        build_env: build_environment.BuildEnvironment,
+        build_dir: pathlib.Path,
+    ) -> pathlib.Path:
+        """Return invalid output or raise a generation error."""
+        if output == "exception":
+            raise RuntimeError("sdist generation failed")
+        return sdist_file
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=hook),
+        patch("fromager.packagesettings.get_extra_environ", return_value={}),
+        patch("fromager.sources.pep517_build_sdist") as pep517,
+        patch("fromager.sources.default_build_sdist") as tarball,
+    ):
+        with pytest.raises(error_type, match=message):
+            sources.build_sdist(
+                ctx=tmp_context,
+                req=Requirement("pkg==1.0"),
+                version=Version("1.0"),
+                sdist_root_dir=tmp_path,
+                build_env=Mock(spec=build_environment.BuildEnvironment),
+            )
+
+    pep517.assert_not_called()
+    tarball.assert_not_called()
 
 
 @pytest.mark.parametrize("strategy", [None, "unsupported"])
@@ -2120,13 +2482,29 @@ def test_default_build_sdist_normalizes_name_and_root(
         assert "foo_bar-1.0/setup.py" in names
 
 
-@pytest.mark.parametrize("exclude_vcs", [False, True])
+@pytest.mark.parametrize(
+    "source_config",
+    [
+        pytest.param("", id="legacy"),
+        pytest.param("source:\n  provider: pypi-sdist\n", id="package-source"),
+        pytest.param(
+            "variants:\n  cpu:\n    source:\n"
+            "      provider: github-tag-git\n"
+            "      project_url: https://github.test/org/pkg\n",
+            id="variant-source",
+        ),
+    ],
+)
+@pytest.mark.parametrize("exclude_vcs", [None, False, True])
 def test_default_build_sdist_exclude_vcs(
-    exclude_vcs: bool,
+    source_config: str,
+    exclude_vcs: bool | None,
     tmp_context: context.WorkContext,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Leave VCS metadata out of the sdist only when asked."""
+    """Use the source profile's VCS policy unless explicitly overridden."""
+    ps = packagesettings.PackageSettings.from_string("pkg", source_config)
+    tmp_context.settings._package_settings[ps.name] = ps
     build_dir = tmp_path / "pkg-1.0"
     (build_dir / ".git" / "objects").mkdir(parents=True)
     (build_dir / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
@@ -2149,6 +2527,7 @@ def test_default_build_sdist_exclude_vcs(
         names = tar.getnames()
     assert "pkg-1.0/setup.py" in names
     has_vcs = {"pkg-1.0/.git/HEAD", "pkg-1.0/sub/.git"} <= set(names)
-    assert has_vcs is not exclude_vcs
-    if exclude_vcs:
-        assert not any("/.git" in name for name in names)
+    should_exclude = bool(source_config) if exclude_vcs is None else exclude_vcs
+    assert has_vcs is not should_exclude
+    if should_exclude:
+        assert not any(".git" in pathlib.PurePosixPath(name).parts for name in names)

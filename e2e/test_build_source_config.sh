@@ -7,7 +7,9 @@
 # The git profile resolves stevedore tags on GitHub and builds from a
 # git checkout. The archive profile resolves on PyPI and downloads a
 # tarball from a URL template. The hook profiles use installed plugins
-# to resolve a source archive and download a prebuilt wheel.
+# to resolve a source archive and download a prebuilt wheel, and the
+# build_sdist hook profile selects the stevedore `build_sdist` override
+# through `source.build_sdist: hook`.
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPTDIR/common.sh"
@@ -20,6 +22,7 @@ BUILT_SDIST="sdists-repo/builds/${DIST}-${VERSION}.tar.gz"
 
 GIT_SETTINGS="$SCRIPTDIR/source_settings_git"
 ARCHIVE_SETTINGS="$SCRIPTDIR/source_settings_archive"
+HOOK_SETTINGS="$SCRIPTDIR/source_settings_hook"
 
 pass=true
 
@@ -40,7 +43,7 @@ expect_file() {
 
 expect_no_source_download() {
   if [ -n "$(find "$OUTDIR/sdists-repo/downloads/" -name "${DIST}-*")" ]; then
-    echo "FAIL: git profile downloaded a source archive for ${DIST}" 1>&2
+    echo "FAIL: build downloaded a source archive for ${DIST}" 1>&2
     pass=false
   fi
 }
@@ -48,6 +51,13 @@ expect_no_source_download() {
 expect_ignored_index_url() {
   if ! grep -q "ignoring index URL unreachable_url" "$1"; then
     echo "FAIL: configured resolver did not ignore the caller URL in $1" 1>&2
+    pass=false
+  fi
+}
+
+expect_hook_sdist() {
+  if ! grep -q "build_sdist override hook invoked" "$1"; then
+    echo "FAIL: source.build_sdist: hook did not invoke the override in $1" 1>&2
     pass=false
   fi
 }
@@ -220,5 +230,41 @@ then
   echo "FAIL: build order does not record the hook-prebuilt wheel" 1>&2
   pass=false
 fi
+# 7. The hook profile fails before downloading when no build_sdist
+# hook is installed. The github override example registers the stevedore
+# override module but provides no build_sdist method.
+remove_dist
+if fromager \
+    --log-file="$OUTDIR/build-hook-missing.log" \
+    --sdists-repo="$OUTDIR/sdists-repo" \
+    --wheels-repo="$OUTDIR/wheels-repo" \
+    --work-dir="$OUTDIR/work-dir" \
+    --settings-dir="$HOOK_SETTINGS" \
+    build "${DIST}" "${VERSION}" "unreachable_url"
+then
+  echo "FAIL: build succeeded without a build_sdist hook installed" 1>&2
+  pass=false
+fi
+expect_no_source_download
+
+# 8. Build with the hook profile. The installed stevedore override's
+# build_sdist hook builds the sdist through source.build_sdist: hook.
+# Uninstall the github override example first: both plugins register
+# the stevedore override entry point.
+remove_dist
+pip uninstall -y github-example-with-package-plugin
+pip install "$SCRIPTDIR/stevedore_override"
+fromager \
+    --log-file="$OUTDIR/build-hook.log" \
+    --sdists-repo="$OUTDIR/sdists-repo" \
+    --wheels-repo="$OUTDIR/wheels-repo" \
+    --work-dir="$OUTDIR/work-dir" \
+    --settings-dir="$HOOK_SETTINGS" \
+    build "${DIST}" "${VERSION}" "unreachable_url"
+
+expect_file "$WHEEL"
+expect_file "$BUILT_SDIST"
+expect_no_source_download
+expect_hook_sdist "$OUTDIR/build-hook.log"
 
 $pass

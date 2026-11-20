@@ -1,4 +1,5 @@
 import concurrent.futures
+import contextlib
 import dataclasses
 import datetime
 import json
@@ -314,6 +315,36 @@ def _create_table(
     return table
 
 
+def _new_wheel_log_handler(wheel_log: pathlib.Path) -> logging.FileHandler:
+    """Create a handler that logs the current thread to the per-wheel file."""
+    # Keep only the calling thread's messages so parallel builds do
+    # not interleave in each other's log files.
+    thread_name = threading.current_thread().name
+    handler = logging.FileHandler(filename=str(wheel_log))
+    handler.setFormatter(logging.Formatter(VERBOSE_LOG_FMT))
+    handler.addFilter(ThreadLogFilter(thread_name))
+    return handler
+
+
+@contextlib.contextmanager
+def _wheel_log_handler(wheel_log: pathlib.Path) -> typing.Iterator[None]:
+    """Capture this thread's log messages in the per-wheel log file.
+
+    The handler is removed and closed even when the build fails.
+    """
+    # Attach to the root logger so messages from every logger,
+    # including build dependencies, reach the wheel's log file.
+    root_logger = logging.getLogger()
+
+    handler = _new_wheel_log_handler(wheel_log)
+    root_logger.addHandler(handler)
+    try:
+        yield
+    finally:
+        root_logger.removeHandler(handler)
+        handler.close()
+
+
 def _build(
     wkctx: context.WorkContext,
     resolved_version: Version,
@@ -332,122 +363,113 @@ def _build(
     wheel_filename: pathlib.Path | None = None
     use_exiting_wheel: bool = False
 
-    # Set up a log file for all of the details of the build for this one wheel.
-    # We attach a handler to the root logger so that all messages are logged to
-    # the file, and we add a filter to the handler so that only messages from
-    # the current thread are logged for when we build in parallel.
-    root_logger = logging.getLogger(None)
+    # Log the details of the build for this one wheel to its own file.
     module_name = overrides.pkgname_to_override_module(req.name)
     wheel_log = wkctx.logs_dir / f"{module_name}-{resolved_version}.log"
-    file_handler = logging.FileHandler(filename=str(wheel_log))
-    file_handler.setFormatter(logging.Formatter(VERBOSE_LOG_FMT))
-    file_handler.addFilter(ThreadLogFilter(threading.current_thread().name))
-    root_logger.addHandler(file_handler)
+    with _wheel_log_handler(wheel_log):
+        logger.info("starting processing")
+        pbi = wkctx.package_build_info(req)
+        prebuilt = pbi.pre_built
 
-    logger.info("starting processing")
-    pbi = wkctx.package_build_info(req)
-    prebuilt = pbi.pre_built
+        # See if we can reuse an existing wheel.
+        if not force:
+            wheel_filename = _is_wheel_built(
+                wkctx,
+                req.name,
+                resolved_version,
+                cache_wheel_server_url=cache_wheel_server_url,
+            )
+            if wheel_filename:
+                logger.info("using existing wheel from %s", wheel_filename)
+                use_exiting_wheel = True
 
-    # See if we can reuse an existing wheel.
-    if not force:
-        wheel_filename = _is_wheel_built(
-            wkctx,
-            req.name,
-            resolved_version,
-            cache_wheel_server_url=cache_wheel_server_url,
-        )
-        if wheel_filename:
-            logger.info("using existing wheel from %s", wheel_filename)
-            use_exiting_wheel = True
+        # Handle prebuilt wheels.
+        if prebuilt:
+            if not wheel_filename:
+                logger.info("downloading prebuilt wheel")
+                wheel_filename = wheels.download_prebuilt_wheel(
+                    ctx=wkctx,
+                    req=req,
+                    version=resolved_version,
+                    download_url=source_download_url,
+                    direct_download_directory=wkctx.wheels_build,
+                )
+            else:
+                # already downloaded prebuilt wheel
+                use_exiting_wheel = True
 
-    # Handle prebuilt wheels.
-    if prebuilt:
+            # Run hooks for both cached and freshly downloaded prebuilt wheels.
+            hooks.run_prebuilt_wheel_hooks(
+                ctx=wkctx,
+                req=req,
+                dist_name=req.name,
+                dist_version=str(resolved_version),
+                wheel_filename=wheel_filename,
+            )
+
+        # If we get here and still don't have a wheel filename, then we need to
+        # build the wheel.
         if not wheel_filename:
-            logger.info("downloading prebuilt wheel")
-            wheel_filename = wheels.download_prebuilt_wheel(
+            # Fail before downloading a source that cannot produce an sdist.
+            sources.require_build_sdist_hook(ctx=wkctx, req=req)
+            downloaded_source = sources.download_source(
                 ctx=wkctx,
                 req=req,
                 version=resolved_version,
                 download_url=source_download_url,
-                direct_download_directory=wkctx.wheels_build,
             )
-        else:
-            # already downloaded prebuilt wheel
-            use_exiting_wheel = True
+            logger.debug(
+                "saved source of version %s from %s to %s",
+                resolved_version,
+                source_download_url,
+                downloaded_source.path,
+            )
 
-        # Run hooks for both cached and freshly downloaded prebuilt wheels.
-        hooks.run_prebuilt_wheel_hooks(
-            ctx=wkctx,
-            req=req,
-            dist_name=req.name,
-            dist_version=str(resolved_version),
-            wheel_filename=wheel_filename,
-        )
+            # Prepare source
+            source_root_dir = sources.prepare_source(
+                ctx=wkctx,
+                req=req,
+                source_filename=downloaded_source.path,
+                version=resolved_version,
+                download_kind=downloaded_source.kind,
+            )
 
-    # If we get here and still don't have a wheel filename, then we need to
-    # build the wheel.
-    if not wheel_filename:
-        downloaded_source = sources.download_source(
-            ctx=wkctx,
-            req=req,
-            version=resolved_version,
-            download_url=source_download_url,
-        )
-        logger.debug(
-            "saved source of version %s from %s to %s",
-            resolved_version,
-            source_download_url,
-            downloaded_source.path,
-        )
+            # Build environment
+            build_env = build_environment.prepare_build_environment(
+                ctx=wkctx,
+                req=req,
+                version=resolved_version,
+                sdist_root_dir=source_root_dir,
+            )
 
-        # Prepare source
-        source_root_dir = sources.prepare_source(
-            ctx=wkctx,
-            req=req,
-            source_filename=downloaded_source.path,
-            version=resolved_version,
-            download_kind=downloaded_source.kind,
-        )
+            # Make a new source distribution, in case we patched the code.
+            sdist_filename = sources.build_sdist(
+                ctx=wkctx,
+                req=req,
+                version=resolved_version,
+                sdist_root_dir=source_root_dir,
+                build_env=build_env,
+            )
 
-        # Build environment
-        build_env = build_environment.prepare_build_environment(
-            ctx=wkctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=source_root_dir,
-        )
+            # Build
+            wheel_filename = wheels.build_wheel(
+                ctx=wkctx,
+                req=req,
+                sdist_root_dir=source_root_dir,
+                version=resolved_version,
+                build_env=build_env,
+            )
 
-        # Make a new source distribution, in case we patched the code.
-        sdist_filename = sources.build_sdist(
-            ctx=wkctx,
-            req=req,
-            version=resolved_version,
-            sdist_root_dir=source_root_dir,
-            build_env=build_env,
-        )
+            hooks.run_post_build_hooks(
+                ctx=wkctx,
+                req=req,
+                dist_name=canonicalize_name(req.name),
+                dist_version=str(resolved_version),
+                sdist_filename=sdist_filename,
+                wheel_filename=wheel_filename,
+            )
 
-        # Build
-        wheel_filename = wheels.build_wheel(
-            ctx=wkctx,
-            req=req,
-            sdist_root_dir=source_root_dir,
-            version=resolved_version,
-            build_env=build_env,
-        )
-
-        hooks.run_post_build_hooks(
-            ctx=wkctx,
-            req=req,
-            dist_name=canonicalize_name(req.name),
-            dist_version=str(resolved_version),
-            sdist_filename=sdist_filename,
-            wheel_filename=wheel_filename,
-        )
-
-        wkctx.clean_build_dirs(source_root_dir, build_env)
-
-    root_logger.removeHandler(file_handler)
-    file_handler.close()
+            wkctx.clean_build_dirs(source_root_dir, build_env)
 
     if (
         prebuilt

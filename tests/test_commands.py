@@ -1,6 +1,7 @@
 import concurrent.futures
 import io
 import json
+import logging
 import pathlib
 import subprocess
 import tarfile
@@ -14,7 +15,7 @@ from click.testing import CliRunner
 from packaging.requirements import Requirement
 from packaging.version import Version
 
-from fromager import packagesettings, server, wheels
+from fromager import build_environment, packagesettings, server, wheels
 from fromager.commands import bootstrap, build, download_sequence, step
 from fromager.context import WorkContext
 from fromager.log import requirement_ctxvar
@@ -1251,6 +1252,54 @@ def test_default_source_kind_keeps_archive_fallback(
     assert result is packagesettings.DownloadKind.sdist
 
 
+def test_step_build_sdist_uses_selected_hook(
+    cli_runner: CliRunner, tmp_context: WorkContext
+) -> None:
+    """Use a configured sdist hook through the step command and source lookup."""
+    _configure_package(
+        tmp_context, "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    source_root = tmp_context.work_dir / "pkg-1.0" / "pkg-1.0"
+    source_root.mkdir(parents=True)
+    build_env = Mock(spec=build_environment.BuildEnvironment)
+    hook_environments: list[build_environment.BuildEnvironment] = []
+    output = tmp_context.sdists_builds / "pkg-1.0.tar.gz"
+
+    def hook(
+        ctx: WorkContext,
+        extra_environ: dict[str, str],
+        req: Requirement,
+        version: Version,
+        sdist_root_dir: pathlib.Path,
+        build_env: build_environment.BuildEnvironment,
+        build_dir: pathlib.Path,
+    ) -> pathlib.Path:
+        """Record the build environment and return the selected hook's output."""
+        assert sdist_root_dir == source_root
+        assert build_dir == source_root
+        hook_environments.append(build_env)
+        output.touch()
+        return output
+
+    with (
+        patch(
+            "fromager.overrides.find_override_method",
+            side_effect=lambda name, method: hook if method == "build_sdist" else None,
+        ),
+        patch("fromager.packagesettings.get_extra_environ", return_value={}),
+        patch.object(
+            step.build_environment, "BuildEnvironment", return_value=build_env
+        ),
+    ):
+        result = cli_runner.invoke(
+            step.step, ["build-sdist", "pkg", "1.0"], obj=tmp_context
+        )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == str(output)
+    assert hook_environments == [build_env]
+
+
 def test_step_prepare_source_accepts_explicit_hook_path(
     cli_runner: CliRunner, tmp_context: WorkContext, tmp_path: pathlib.Path
 ) -> None:
@@ -1359,3 +1408,65 @@ def test_build_passes_downloaded_kind_to_prepare_source(
         download_kind=packagesettings.DownloadKind.sdist,
     )
     assert result.wheel_filename == tmp_context.wheels_downloads / wheel_filename.name
+
+
+def test_build_rejects_missing_build_sdist_hook_before_download(
+    tmp_context: WorkContext,
+) -> None:
+    """Fail a replay build before downloading a source that cannot make an sdist."""
+    _configure_package(
+        tmp_context, "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    req = Requirement("pkg==1.0")
+    handlers_before = list(logging.getLogger().handlers)
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=None),
+        patch.object(build, "_is_wheel_built", return_value=None),
+        patch.object(build.sources, "download_source") as download_source,
+    ):
+        with pytest.raises(
+            ValueError, match=r"pkg: source\.build_sdist='hook' requires a callable"
+        ):
+            build._build(
+                tmp_context,
+                Version("1.0"),
+                req,
+                "https://pkg.test/pkg-1.0.tar.gz",
+                False,
+                None,
+            )
+
+    download_source.assert_not_called()
+    # The per-wheel log handler is removed even when the build fails.
+    assert logging.getLogger().handlers == handlers_before
+
+
+def test_build_uses_existing_wheel_without_build_sdist_hook(
+    tmp_context: WorkContext,
+) -> None:
+    """Reuse a built wheel without the hook, because no sdist is built."""
+    _configure_package(
+        tmp_context, "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
+    )
+    req = Requirement("pkg==1.0")
+    wheel = tmp_context.wheels_downloads / "pkg-1.0-py3-none-any.whl"
+
+    with (
+        patch("fromager.overrides.find_override_method", return_value=None),
+        patch.object(build, "_is_wheel_built", return_value=wheel),
+        patch.object(build.sources, "download_source") as download_source,
+        patch.object(build.server, "update_wheel_mirror"),
+    ):
+        result = build._build(
+            tmp_context,
+            Version("1.0"),
+            req,
+            "https://pkg.test/pkg-1.0.tar.gz",
+            False,
+            None,
+        )
+
+    assert result.skipped is True
+    assert result.wheel_filename == wheel
+    download_source.assert_not_called()
