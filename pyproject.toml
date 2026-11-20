@@ -42,7 +42,7 @@ dependencies = [
     "pyproject_hooks>=1.0.0,!=1.1.0",
     "PyYAML",
     "rich",
-    "requests",
+    "requests>=2.32.4",
     "resolvelib",
     "starlette",
     "stevedore",
