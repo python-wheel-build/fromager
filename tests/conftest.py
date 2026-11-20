@@ -124,6 +124,20 @@ def testdata_context(
     return ctx
 
 
+def _configure_package(ctx: context.WorkContext, yaml_str: str) -> None:
+    """Apply one package setting to the test context."""
+    ps = packagesettings.PackageSettings.from_string("pkg", yaml_str)
+    ctx.settings._package_settings[ps.name] = ps
+
+
+def _source_yaml(provider: str) -> str:
+    """Return package settings that select a configured source provider."""
+    yaml_str = f"source:\n  provider: {provider}\n"
+    if provider == "hook-prebuilt":
+        yaml_str += "  index_url: https://index.test/simple\n"
+    return yaml_str
+
+
 def make_sbom_ctx(
     tmp_path: pathlib.Path,
     sbom_settings: SbomSettings | None = None,
