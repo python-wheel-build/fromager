@@ -152,7 +152,7 @@ def test_get_source_provider_hook_uses_profile_url_and_applies_cooldown(
     tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
     source_resolver = packagesettings.HookSDistResolver(
         provider="hook-sdist",
-        build_sdist=packagesettings.BuildSDist.tarball,
+        build_sdist=packagesettings.BuildSDist.tarball_build_dir,
         index_url=pydantic.HttpUrl("https://profile.test/simple"),
         min_release_age=14,
     )
@@ -202,7 +202,7 @@ def test_get_source_provider_download_only_hook_uses_index_and_cooldown(
     tmp_context.cooldown = Cooldown(min_age=datetime.timedelta(days=7))
     source_resolver = packagesettings.HookSDistResolver(
         provider="hook-sdist",
-        build_sdist=packagesettings.BuildSDist.tarball,
+        build_sdist=packagesettings.BuildSDist.tarball_build_dir,
         index_url=pydantic.HttpUrl("https://profile.test/simple"),
         min_release_age=14,
     )
@@ -1914,34 +1914,34 @@ def test_build_sdist_uses_pep517_for_configured_source(
             "source:\n  provider: pypi-sdist\n", True, False, id="pypi-sdist-override"
         ),
         pytest.param(
-            "source:\n  provider: hook-sdist\n  build_sdist: tarball\n",
+            "source:\n  provider: hook-sdist\n  build_sdist: tarball-build-dir\n",
             False,
             False,
-            id="hook-sdist-tarball",
+            id="hook-sdist-build-dir",
         ),
         pytest.param(
-            "source:\n  provider: hook-sdist\n  build_sdist: tarball\n",
+            "source:\n  provider: hook-sdist\n  build_sdist: tarball-build-dir\n",
             True,
             False,
-            id="hook-sdist-tarball-override",
+            id="hook-sdist-build-dir-override",
         ),
         pytest.param(
             "source:\n"
             "  provider: github-tag-git\n"
             "  project_url: https://github.test/org/pkg\n"
-            "  build_sdist: tarball\n",
+            "  build_sdist: tarball-build-dir\n",
             False,
             False,
-            id="git-tarball",
+            id="git-build-dir",
         ),
         pytest.param(
             "source:\n"
             "  provider: github-tag-git\n"
             "  project_url: https://github.test/org/pkg\n"
-            "  build_sdist: tarball\n",
+            "  build_sdist: tarball-build-dir\n",
             True,
             False,
-            id="git-tarball-override",
+            id="git-build-dir-override",
         ),
         pytest.param(
             "source:\n  provider: pypi-sdist\n  build_sdist: hook\n",
@@ -1987,7 +1987,7 @@ def test_build_sdist_uses_pep517_for_configured_source(
             "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
             True,
             False,
-            id="variant-tarball",
+            id="variant-build-dir",
         ),
     ],
 )
@@ -2062,8 +2062,78 @@ def test_build_sdist_uses_configured_strategy_or_legacy_hook(
             override.assert_not_called()
     else:
         find_override.assert_not_called()
-    warning = "ignoring build_sdist override because source.build_sdist is tarball"
+    warning = (
+        "ignoring build_sdist override because source.build_sdist is tarball-build-dir"
+    )
     assert (warning in caplog.text) is (not uses_hook and has_override)
+
+
+@pytest.mark.parametrize(
+    ("build_sdist", "sdist_base", "deprecated"),
+    [
+        pytest.param("tarball-build-dir", "build", False, id="build-dir"),
+        pytest.param("tarball-root-dir", "root", False, id="root-dir"),
+        pytest.param("tarball", "build", True, id="deprecated-tarball"),
+    ],
+)
+def test_build_sdist_selects_tarball_base(
+    build_sdist: str,
+    sdist_base: str,
+    deprecated: bool,
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Pack the configured directory and warn about the deprecated alias."""
+    # Arrange
+    ps = packagesettings.PackageSettings.from_string(
+        "pkg",
+        "build_dir: python\n"
+        "source:\n"
+        "  provider: pypi-sdist\n"
+        f"  build_sdist: {build_sdist}\n",
+    )
+    tmp_context.settings._package_settings[ps.name] = ps
+    req = Requirement("pkg==1.0")
+    version = Version("1.0")
+    sdist_root_dir = tmp_path / "pkg-1.0"
+    build_dir = sdist_root_dir / "python"
+    build_dir.mkdir(parents=True)
+    sdist_file = tmp_context.sdists_builds / "pkg-1.0.tar.gz"
+    sdist_file.write_text("fake sdist")
+    build_env = Mock()
+    expected_kwargs: dict[str, object] = dict(
+        ctx=tmp_context,
+        extra_environ={},
+        req=req,
+        version=version,
+        sdist_root_dir=sdist_root_dir,
+        build_dir=build_dir,
+        build_env=build_env,
+    )
+    if sdist_base == "root":
+        expected_kwargs["sdist_base_dir"] = sdist_root_dir
+
+    # Act
+    with (
+        patch(
+            "fromager.sources.default_build_sdist", return_value=sdist_file
+        ) as default,
+        patch("fromager.packagesettings.get_extra_environ", return_value={}),
+    ):
+        result = sources.build_sdist(
+            ctx=tmp_context,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_env=build_env,
+        )
+
+    # Assert
+    assert result == sdist_file.resolve()
+    default.assert_called_once_with(**expected_kwargs)
+    deprecation = "source.build_sdist 'tarball' is deprecated"
+    assert (deprecation in caplog.text) is deprecated
 
 
 @pytest.mark.parametrize(
@@ -2227,7 +2297,7 @@ def test_require_build_sdist_hook_rejects_unusable_hook(
     "source_config",
     [
         pytest.param("", id="legacy"),
-        pytest.param("source:\n  provider: pypi-sdist\n", id="tarball"),
+        pytest.param("source:\n  provider: pypi-sdist\n", id="pypi-sdist"),
         pytest.param(
             "source:\n  provider: pypi-sdist\n  build_sdist: hook\n"
             "variants:\n  cpu:\n    source:\n      provider: pypi-sdist\n",
@@ -2480,6 +2550,36 @@ def test_default_build_sdist_normalizes_name_and_root(
         top_levels = {name.split("/")[0] for name in names}
         assert top_levels == {"foo_bar-1.0"}
         assert "foo_bar-1.0/setup.py" in names
+
+
+def test_default_build_sdist_root_dir_packs_full_tree(
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Pack the source root while adding PKG-INFO to the wheel build directory."""
+    sdist_root = tmp_path / "Foo.Bar-1.0"
+    build_dir = sdist_root / "python"
+    build_dir.mkdir(parents=True)
+    (build_dir / "setup.py").write_text("from setuptools import setup; setup()\n")
+    (sdist_root / "native.c").write_text("int value(void) { return 1; }\n")
+
+    sdist_file = sources.default_build_sdist(
+        ctx=tmp_context,
+        extra_environ={},
+        req=Requirement("Foo.Bar==1.0"),
+        version=Version("1.0"),
+        sdist_root_dir=sdist_root,
+        build_env=Mock(),
+        build_dir=build_dir,
+        sdist_base_dir=sdist_root,
+    )
+
+    with tarfile.open(sdist_file, "r:gz") as tar:
+        names = tar.getnames()
+    assert "foo_bar-1.0/native.c" in names
+    assert "foo_bar-1.0/python/setup.py" in names
+    assert "foo_bar-1.0/PKG-INFO" in names
+    assert "foo_bar-1.0/python/PKG-INFO" in names
 
 
 @pytest.mark.parametrize(

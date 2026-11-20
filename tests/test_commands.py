@@ -414,7 +414,8 @@ def test_download_sequence_calls_configured_hook_download(
 ) -> None:
     """A hook source uses its normal download result during sequence replay."""
     _configure_package(
-        tmp_context, "source:\n  provider: hook-sdist\n  build_sdist: tarball\n"
+        tmp_context,
+        "source:\n  provider: hook-sdist\n  build_sdist: tarball-build-dir\n",
     )
     url = "https://pkg.test/pkg-1.0.tar.gz"
     build_order = tmp_path / "build-order.json"
@@ -1232,7 +1233,7 @@ def test_step_prepare_source_defaults_to_tarball_for_download_provider(
     "source_yaml",
     [
         "source:\n  provider: pypi-sdist\n",
-        "source:\n  provider: hook-sdist\n  build_sdist: tarball\n",
+        "source:\n  provider: hook-sdist\n  build_sdist: tarball-build-dir\n",
         "source:\n  provider: pypi-download\n"
         "  download_url: https://pkg.test/pkg-{version}.tar.gz\n"
         "  download_kind: tarball\n",

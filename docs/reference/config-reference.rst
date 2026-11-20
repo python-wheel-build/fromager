@@ -85,14 +85,26 @@ Source Resolver
 .. autoclass:: BuildSDist
 
    .. autoattribute:: pep517
+   .. autoattribute:: tarball_build_dir
+   .. autoattribute:: tarball_root_dir
    .. autoattribute:: tarball
    .. autoattribute:: hook
 
 .. versionchanged:: 0.104.0
 
    ``pypi-sdist`` and ``pypi-download`` accept an explicit
-   ``build_sdist: pep517``. Their default remains ``tarball`` because some
-   build backends require VCS metadata that source archives do not contain.
+   ``build_sdist: pep517``. Their default remains tarball repacking because
+   some build backends require VCS metadata that source archives do not
+   contain.
+
+.. versionchanged:: 0.105.0
+
+   ``tarball`` is split into ``tarball-build-dir`` (pack the wheel build
+   directory, the previous behaviour) and ``tarball-root-dir`` (pack the
+   whole source tree). ``tarball`` remains a deprecated alias of
+   ``tarball-build-dir`` and is normalized with a warning when settings
+   load. It will be removed in the future. ``pypi-sdist`` and
+   ``pypi-download`` now default to ``tarball-build-dir``.
 
 .. autoclass:: DownloadedSource
    :members: path, kind
