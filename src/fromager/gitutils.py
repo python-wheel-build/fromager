@@ -23,6 +23,21 @@ logger = logging.getLogger(__name__)
 GIT_HEAD: typing.Final = "HEAD"
 
 
+def is_full_git_ref(ref: str) -> bool:
+    """Return whether *ref* is a literal full Git ref name under ``refs/``."""
+    return (
+        ref.startswith("refs/")
+        and not ref.endswith(".")
+        and ".." not in ref
+        and "@{" not in ref
+        and not any(ord(c) < 33 or ord(c) == 127 or c in "~^:?*[\\" for c in ref)
+        and all(
+            part and not part.startswith(".") and not part.endswith(".lock")
+            for part in ref.split("/")
+        )
+    )
+
+
 def git_checkout_dir(
     *, work_dir: pathlib.Path, distribution_name: str, version: Version
 ) -> pathlib.Path:
@@ -101,6 +116,7 @@ def git_clone_fast(
     output_dir: pathlib.Path,
     repo_url: str,
     ref: str = GIT_HEAD,
+    remote_name: str | None = None,
 ) -> None:
     """Efficient, blobless git clone with all submodules
 
@@ -111,8 +127,13 @@ def git_clone_fast(
 
     The *ref* parameter can be any tree-ish reference like a commit, tag, or
     branch. To force a tag, use ``refs/tags/v1.0`` to fetch the ``v1.0`` tag.
+    The *remote_name* parameter overrides Git's configured default remote name.
 
     Like in :command:`pip`, submodules are automatically cloned recursively.
+
+    .. versionchanged:: 0.104.0
+       Fetch missing full refs before checkout, including nondefault branches
+       and custom refs such as ``refs/pull/123/head``.
 
     .. note::
 
@@ -136,10 +157,27 @@ def git_clone_fast(
         "clone",
         "--filter=blob:none",
         "--no-checkout",
-        repo_url,
-        str(output_dir),
     ]
+    if remote_name is not None:
+        cmd.extend(["--origin", remote_name])
+    cmd.extend([repo_url, str(output_dir)])
     external_commands.run(cmd, network_isolation=False)
+
+    if is_full_git_ref(ref):
+        local_refs = external_commands.run(
+            ["git", "for-each-ref", "--format=%(refname)", ref],
+            cwd=str(output_dir),
+        ).splitlines()
+        if ref not in local_refs:
+            if remote_name is None:
+                remote_name = external_commands.run(
+                    ["git", "remote"], cwd=str(output_dir)
+                ).strip()
+            external_commands.run(
+                ["git", "fetch", remote_name, f"{ref}:{ref}"],
+                cwd=str(output_dir),
+                network_isolation=False,
+            )
 
     # check out reference / tag
     logger.debug("check out ref")

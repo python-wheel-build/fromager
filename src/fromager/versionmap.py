@@ -1,4 +1,4 @@
-"""VersionMap interface for managing package settings in plugins."""
+"""Map package versions to Git refs or plugin data."""
 
 import typing
 
@@ -7,12 +7,18 @@ from packaging.version import Version
 
 
 class VersionMap:
+    """Associate package versions with resolver values.
+
+    For ``versionmap-git``, values are Git refs and the clone URL belongs
+    to the resolver provider. Plugin resolvers can store other values.
+    """
+
     def __init__(
         self, initial_content: dict[Version | str, typing.Any] | None = None
     ) -> None:
         """Initialize the VersionMap
 
-        Stores the inputs associating versions and arbitrary data. If the
+        Store the inputs associating versions and arbitrary data. If the
         versions are strings, they are converted to Version instances
         internally. Any exceptions from the conversion are propagated.
         """
@@ -21,7 +27,7 @@ class VersionMap:
             self.add(k, v)
 
     def add(self, key: Version | str, value: typing.Any) -> None:
-        """Add a single value associated with a version
+        """Associate a value with a version.
 
         String keys are converted to Version instances. Any exceptions from the
         conversion are propagated.
@@ -31,7 +37,7 @@ class VersionMap:
         self._content[key] = value
 
     def __getitem__(self, key: Version | str) -> typing.Any:
-        """Get the value associated with a version
+        """Get the value associated with a version.
 
         String keys are converted to Version instances. Raises KeyError if the
         version is not found.

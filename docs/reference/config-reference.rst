@@ -55,6 +55,13 @@ Source Resolver
    :inherited-members: AbstractPyPIResolver, CooldownMixin
    :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
 
+.. versionchanged:: 0.104.0
+   ``pypi-git`` requires a host in ``clone_url`` and rejects URLs containing
+   queries or fragments.
+
+.. autopydantic_model:: VersionMapGitResolver
+   :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel
+
 .. autopydantic_model:: GitHubTagDownloadResolver
    :inherited-members: AbstractGitSourceResolver, CooldownMixin
    :members: download_kinds, supports_override_hooks, resolves_prebuilt_wheel

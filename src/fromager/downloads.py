@@ -243,5 +243,6 @@ def download_git_source(
         output_dir=destination_dir,
         repo_url=repo_url,
         ref=ref,
+        remote_name="origin",
     )
     return destination_dir

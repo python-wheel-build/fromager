@@ -1391,11 +1391,14 @@ class GitLabTagProvider(GenericProvider):
 
 
 class VersionMapProvider(BaseProvider):
-    """Lookup package versions from a VersionMap
+    """Resolve package versions to mapped values or Git refs in ``clone_url``.
 
-    This provider wraps a VersionMap instance to provide versions and URLs
-    for package resolution. The VersionMap should contain Version keys mapped
-    to URL strings.
+    When ``clone_url`` is provided, candidate URLs combine it with each
+    mapped Git ref. Otherwise, mapped values are returned unchanged for
+    existing resolver and download hooks.
+
+    .. versionchanged:: 0.104.0
+       Accept ``clone_url`` to resolve mapped Git refs.
     """
 
     provider_description: typing.ClassVar[str] = (
@@ -1408,6 +1411,7 @@ class VersionMapProvider(BaseProvider):
         package_name: str | None,
         constraints: Constraints | None = None,
         *,
+        clone_url: str | None = None,
         req_type: RequirementType | None = None,
         use_resolver_cache: bool = True,
     ) -> None:
@@ -1420,26 +1424,37 @@ class VersionMapProvider(BaseProvider):
         )
         self.version_map = version_map
         self.package_name = package_name
+        self.clone_url = clone_url
 
     @property
     def cache_key(self) -> str:
+        """Scope cached candidates to the package, repository, and mapped refs."""
         if self.package_name is None:
             raise ValueError("Cannot cache VersionMapProvider without package name")
-        return f"versionmap:{self.package_name}"
+        refs = tuple(
+            (str(version), self.version_map[version])
+            for version in self.version_map.versions()
+        )
+        return f"versionmap:{self.package_name}:{self.clone_url}:{refs!r}"
+
+    def _find_cached_candidates(self, identifier: str) -> Candidates:
+        """Bypass the shared cache for plugin values, including later additions."""
+        if any(
+            not isinstance(self.version_map[version], str)
+            for version in self.version_map.versions()
+        ):
+            return self.find_candidates(identifier)
+        return super()._find_cached_candidates(identifier)
 
     def find_candidates(self, identifier: str) -> Candidates:
-        """Find candidates from the VersionMap
-
-        Iterates through all versions in the VersionMap and creates Candidate
-        objects with the associated URLs.
-        """
+        """Return candidates with mapped values or Git checkout URLs."""
         candidates: list[Candidate] = []
         for version in self.version_map.versions():
-            url = self.version_map[version]
+            ref = self.version_map[version]
             candidate = Candidate(
                 name=identifier,
                 version=version,
-                url=url,
+                url=ref if self.clone_url is None else f"git+{self.clone_url}@{ref}",
             )
             candidates.append(candidate)
 

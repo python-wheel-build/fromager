@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import logging
 import re
@@ -12,6 +13,7 @@ from packaging.version import Version
 
 from fromager import constraints, resolver
 from fromager.__main__ import main as fromager
+from fromager.versionmap import VersionMap
 
 _hydra_core_simple_response = """
 <!DOCTYPE html>
@@ -868,18 +870,19 @@ def test_resolve_generic() -> None:
 
 
 def test_resolve_versionmap() -> None:
-    from fromager.versionmap import VersionMap
-
+    """Resolve the newest mapped version to its repository and git ref."""
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
-            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+            "1.2": "abad1dea",
+            "1.3": "refs/tags/v1.3",
+            "1.4.1": "refs/tags/v1.4.1",
         }
     )
 
     provider = resolver.VersionMapProvider(
-        version_map=version_map, package_name="testpkg"
+        version_map=version_map,
+        package_name="testpkg",
+        clone_url="https://git.test/pkg.git",
     )
     reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
@@ -889,25 +892,24 @@ def test_resolve_versionmap() -> None:
 
     candidate = result.mapping["testpkg"]
     assert str(candidate.version) == "1.4.1"
-    assert candidate.url == "https://example.com/pkg-1.4.1.tar.gz"
+    assert candidate.url == "git+https://git.test/pkg.git@refs/tags/v1.4.1"
 
     # VersionMapProvider uses resolver cache by default
     cache = resolver.BaseProvider.resolver_cache
     assert "testpkg" in cache
     cached_candidates = cache["testpkg"][
-        (resolver.VersionMapProvider, "versionmap:testpkg")
+        (resolver.VersionMapProvider, provider.cache_key)
     ]
     assert len(cached_candidates) == 3
 
 
 def test_resolve_versionmap_with_constraint() -> None:
-    from fromager.versionmap import VersionMap
-
+    """Apply constraints before selecting a mapped git ref."""
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
-            "1.4.1": "https://example.com/pkg-1.4.1.tar.gz",
+            "1.2": "abad1dea",
+            "1.3": "refs/tags/v1.3",
+            "1.4.1": "refs/tags/v1.4.1",
         }
     )
 
@@ -915,7 +917,10 @@ def test_resolve_versionmap_with_constraint() -> None:
     c.add_constraint("testpkg<1.4")
 
     provider = resolver.VersionMapProvider(
-        version_map=version_map, package_name="testpkg", constraints=c
+        version_map=version_map,
+        package_name="testpkg",
+        clone_url="https://git.test/pkg.git",
+        constraints=c,
     )
     reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
@@ -925,27 +930,137 @@ def test_resolve_versionmap_with_constraint() -> None:
 
     candidate = result.mapping["testpkg"]
     assert str(candidate.version) == "1.3"
-    assert candidate.url == "https://example.com/pkg-1.3.tar.gz"
+    assert candidate.url == "git+https://git.test/pkg.git@refs/tags/v1.3"
 
 
 def test_resolve_versionmap_no_match() -> None:
-    from fromager.versionmap import VersionMap
-
+    """Reject requirements with no mapped version."""
     version_map = VersionMap(
         {
-            "1.2": "https://example.com/pkg-1.2.tar.gz",
-            "1.3": "https://example.com/pkg-1.3.tar.gz",
+            "1.2": "abad1dea",
+            "1.3": "refs/tags/v1.3",
         }
     )
 
     provider = resolver.VersionMapProvider(
-        version_map=version_map, package_name="testpkg"
+        version_map=version_map,
+        package_name="testpkg",
+        clone_url="https://git.test/pkg.git",
     )
     reporter: resolvelib.BaseReporter = resolvelib.BaseReporter()
     rslvr = resolvelib.Resolver(provider, reporter)
 
     with pytest.raises(resolvelib.resolvers.ResolverException):
         rslvr.resolve([Requirement("testpkg>=2.0")])
+
+
+@pytest.mark.parametrize(
+    "value", ["https://pkg.test/testpkg-1.2.tar.gz", "custom-download", None]
+)
+def test_resolve_versionmap_without_clone_url(value: str | None) -> None:
+    """Preserve mapped values for existing resolver and download hooks."""
+    provider = resolver.VersionMapProvider(
+        version_map=VersionMap({"1.2": value}), package_name="testpkg"
+    )
+
+    results = resolver.find_all_matching_from_provider(provider, Requirement("testpkg"))
+
+    assert results == [(value, Version("1.2"))]
+
+
+def test_resolve_versionmap_does_not_cache_plugin_values() -> None:
+    """Keep distinct plugin values with identical reprs out of the shared cache."""
+
+    @dataclasses.dataclass
+    class Payload:
+        """Plugin value whose state is omitted from its repr."""
+
+        url: str = dataclasses.field(repr=False)
+
+    for value in (Payload("first"), Payload("second")):
+        provider = resolver.VersionMapProvider(
+            version_map=VersionMap({"1.2": value}), package_name="testpkg"
+        )
+
+        results = resolver.find_all_matching_from_provider(
+            provider, Requirement("testpkg")
+        )
+
+        assert results[0][0] is value
+
+    assert not resolver.BaseProvider.resolver_cache
+
+
+@pytest.mark.parametrize("warm_cache", [False, True])
+def test_resolve_versionmap_preserves_mutated_plugin_values(warm_cache: bool) -> None:
+    """Return plugin values added after construction without inspecting reprs."""
+
+    class Payload:
+        """Plugin value that cannot be represented as a cache key."""
+
+        def __repr__(self) -> str:
+            raise RuntimeError("plugin repr must not be called")
+
+    version_map = VersionMap({"1.2": "original"})
+    provider = resolver.VersionMapProvider(version_map, package_name="testpkg")
+    req = Requirement("testpkg")
+    if warm_cache:
+        assert resolver.find_all_matching_from_provider(provider, req) == [
+            ("original", Version("1.2"))
+        ]
+    value = Payload()
+    version_map.add("1.2", value)
+
+    results = resolver.find_all_matching_from_provider(provider, req)
+
+    assert results[0][0] is value
+
+
+def test_resolve_versionmap_cache_separates_repositories() -> None:
+    """Keep cached URLs scoped to the configured Git repository."""
+    version_map = VersionMap({"1.2": "refs/tags/v1.2"})
+    req = Requirement("testpkg")
+    for clone_url in (None, "https://git.test/pkg.git", "https://mirror.test/pkg.git"):
+        provider = resolver.VersionMapProvider(
+            version_map=version_map, package_name=req.name, clone_url=clone_url
+        )
+
+        results = resolver.find_all_matching_from_provider(provider, req)
+
+        expected_url = (
+            "refs/tags/v1.2" if clone_url is None else f"git+{clone_url}@refs/tags/v1.2"
+        )
+        assert results == [(expected_url, Version("1.2"))]
+
+
+def test_resolve_versionmap_without_package_name() -> None:
+    """Resolve without caching when no package name is configured."""
+    provider = resolver.VersionMapProvider(
+        version_map=VersionMap({"1.2": "abad1dea"}),
+        package_name=None,
+        clone_url="https://git.test/pkg.git",
+    )
+
+    results = resolver.find_all_matching_from_provider(provider, Requirement("testpkg"))
+
+    assert results == [("git+https://git.test/pkg.git@abad1dea", Version("1.2"))]
+    assert not resolver.BaseProvider.resolver_cache
+
+
+def test_resolve_versionmap_cache_separates_maps() -> None:
+    """Use each configured map when the package and clone URL are unchanged."""
+    for ref in ("abad1dea", "refs/tags/v1.2"):
+        provider = resolver.VersionMapProvider(
+            version_map=VersionMap({"1.2": ref}),
+            package_name="testpkg",
+            clone_url="https://git.test/pkg.git",
+        )
+
+        results = resolver.find_all_matching_from_provider(
+            provider, Requirement("testpkg")
+        )
+
+        assert results == [(f"git+https://git.test/pkg.git@{ref}", Version("1.2"))]
 
 
 _gitlab_submodlib_repo_response = """
