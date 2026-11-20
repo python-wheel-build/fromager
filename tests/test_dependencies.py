@@ -3,12 +3,14 @@ import itertools
 import os
 import pathlib
 import shutil
+import sys
 import textwrap
 import typing
 import zipfile
 from unittest.mock import Mock, patch
 
 import hatchling.build
+import pyproject_hooks
 import pytest
 from packaging.metadata import Metadata
 from packaging.requirements import Requirement
@@ -319,6 +321,60 @@ def test_get_build_sdist_dependencies(
     )
     names = set(r.name for r in results)
     assert names == set()
+
+
+@pytest.mark.parametrize(
+    "backend_source,expected",
+    [
+        (
+            "def get_requires_for_build_wheel(config_settings=None):\n"
+            "    return ['wheel-only>=1']\n"
+            "def get_requires_for_build_sdist(config_settings=None):\n"
+            "    return ['sdist-only>=2']\n",
+            ["sdist-only>=2"],
+        ),
+        (
+            "def get_requires_for_build_wheel(config_settings=None):\n"
+            "    return ['wheel-only>=1']\n",
+            [],
+        ),
+        (
+            "def get_requires_for_build_wheel(config_settings=None):\n"
+            "    raise RuntimeError('wheel hook must not run')\n"
+            "def get_requires_for_build_sdist(config_settings=None):\n"
+            "    return ['sdist-only>=2']\n",
+            ["sdist-only>=2"],
+        ),
+    ],
+    ids=["distinct-requirements", "optional-sdist-hook", "wheel-hook-fails"],
+)
+def test_default_get_build_sdist_dependencies_uses_sdist_hook(
+    backend_source: str,
+    expected: list[str],
+    tmp_context: context.WorkContext,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Discover sdist requirements independently of the wheel hook."""
+    tmp_path.joinpath("backend.py").write_text(backend_source)
+    hook_caller = pyproject_hooks.BuildBackendHookCaller(
+        source_dir=str(tmp_path),
+        build_backend="backend",
+        backend_path=["."],
+        python_executable=sys.executable,
+    )
+    with patch(
+        "fromager.dependencies.get_build_backend_hook_caller",
+        return_value=hook_caller,
+    ):
+        results = dependencies.default_get_build_sdist_dependencies(
+            ctx=tmp_context,
+            req=Requirement("example"),
+            sdist_root_dir=tmp_path,
+            build_dir=tmp_path,
+            extra_environ={},
+            build_env=Mock(spec=build_environment.BuildEnvironment),
+        )
+    assert list(results) == expected
 
 
 def test_get_build_sdist_dependencies_cached(
