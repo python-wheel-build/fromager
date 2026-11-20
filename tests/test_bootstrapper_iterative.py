@@ -22,6 +22,7 @@ import concurrent.futures
 import logging
 import pathlib
 import typing
+import zipfile
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -31,11 +32,12 @@ from packaging.version import Version
 from resolvelib.resolvers import ResolverException
 
 from fromager import bootstrapper, build_environment
+from fromager.bootstrapper import _cache
 from fromager.bootstrapper._build import Build
 from fromager.bootstrapper._complete import Complete
 from fromager.bootstrapper._phase import Phase
 from fromager.bootstrapper._prepare_build import PrepareBuild
-from fromager.bootstrapper._prepare_source import PrepareSource
+from fromager.bootstrapper._prepare_source import PrepareSource, _bg_prepare_source
 from fromager.bootstrapper._process_install_deps import ProcessInstallDeps
 from fromager.bootstrapper._resolve import Resolve
 from fromager.bootstrapper._start import Start
@@ -353,6 +355,108 @@ class TestCreateUnresolvedWorkItems:
 
 
 class TestPhaseResolve:
+    def test_cached_top_level_versions_keep_build_edges(
+        self, tmp_context: WorkContext
+    ) -> None:
+        """Cache hits retain metadata needed to rebuild after a cache miss."""
+        bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
+        req = Requirement("testpkg")
+        versions = [(f"source-{v}", Version(v)) for v in ("2.0", "1.0")]
+        cached: dict[Version, tuple[pathlib.Path, pathlib.Path]] = {}
+        for _, version in versions:
+            wheel = tmp_context.wheels_downloads / f"testpkg-{version}-py3-none-any.whl"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                for phase, contents in (
+                    ("system", f"backend=={version}\n"),
+                    ("backend", ""),
+                    ("sdist", ""),
+                ):
+                    archive.writestr(
+                        f"testpkg-{version}.dist-info/fromager-build-{phase}-requirements.txt",
+                        contents,
+                    )
+            unpacked = _cache._extract_build_reqs_from_wheel(
+                tmp_context.work_dir, req, version, wheel
+            )
+            assert unpacked is not None
+            cached[version] = wheel, unpacked
+
+        with patch.object(bt, "resolve_versions", return_value=versions):
+            bt._resolve_and_add_top_level(req)
+        item = _make_resolve_item(req_type=RequirementType.TOP_LEVEL)
+        item.bg_future = _make_resolved_future(versions)
+
+        def find_cached(
+            ctx: WorkContext,
+            cache_url: str | None,
+            requirement: Requirement,
+            version: Version,
+        ) -> tuple[pathlib.Path, pathlib.Path]:
+            return cached[version]
+
+        with patch(
+            "fromager.bootstrapper._cache.find_cached_wheel", side_effect=find_cached
+        ):
+            starts = item.run(bt)
+        assert {start.work_item.resolved_version for start in starts} == {
+            Version("1.0"),
+            Version("2.0"),
+        }
+
+        with patch("fromager.sources.download_source") as download_source:
+            for start in starts:
+                prepare = start.run(bt)[0]
+                wi = prepare.work_item
+                assert wi.resolved_version is not None
+                assert wi.source_url is not None
+                with patch(
+                    "fromager.bootstrapper._cache.find_cached_wheel",
+                    side_effect=find_cached,
+                ):
+                    prepared = _bg_prepare_source(
+                        tmp_context, None, req, wi.resolved_version, wi.source_url
+                    )
+                prepare.bg_future = _make_resolved_future(prepared)
+                with patch(
+                    "fromager.build_environment.BuildEnvironment", return_value=Mock()
+                ):
+                    phases = prepare.run(bt)
+                backend = next(phase for phase in phases if isinstance(phase, Resolve))
+                backend.bg_future = _make_resolved_future(
+                    [("backend-source", wi.resolved_version)]
+                )
+                with patch(
+                    "fromager.bootstrapper._cache.find_cached_wheel",
+                    return_value=(None, None),
+                ):
+                    backend_start = backend.run(bt)[0]
+                backend_start.run(bt)
+                with patch.object(Build, "_build_wheel") as build_wheel:
+                    assert Build(wi).do_build(tmp_context) == (
+                        cached[wi.resolved_version][0],
+                        None,
+                    )
+                build_wheel.assert_not_called()
+            download_source.assert_not_called()
+
+        # The remote cache can now disappear: a source rebuild cannot run in
+        # round 1 before its backend, unlike a cache-skipped bare graph node.
+        graph = tmp_context.dependency_graph
+        for _, version in versions:
+            assert [
+                node.key
+                for node in graph.nodes[f"testpkg=={version}"].iter_build_requirements()
+            ] == [f"backend=={version}"]
+        topology = graph.get_build_topology(tmp_context)
+        topology.prepare()
+        ready = topology.get_available()
+        assert {node.key for node in ready} == {"backend==1.0", "backend==2.0"}
+        topology.done(*ready)
+        assert {node.key for node in topology.get_available()} == {
+            "testpkg==1.0",
+            "testpkg==2.0",
+        }
+
     def test_single_version(self, tmp_context: WorkContext) -> None:
         bt = bootstrapper.Bootstrapper(tmp_context)
         item = _make_resolve_item()
@@ -405,12 +509,19 @@ class TestPhaseResolve:
 
         assert result[0].work_item.why_snapshot == snapshot
 
-    def test_filters_cached_versions_in_multiple_versions_mode(
-        self, tmp_context: WorkContext
+    @pytest.mark.parametrize(
+        "req_type, expected",
+        [
+            (RequirementType.INSTALL, {"1.0", "3.0"}),
+            (RequirementType.TOP_LEVEL, {"1.0", "2.0", "3.0"}),
+        ],
+    )
+    def test_filters_cached_dependency_versions_in_multiple_versions_mode(
+        self, tmp_context: WorkContext, req_type: RequirementType, expected: set[str]
     ) -> None:
-        """Cached versions are filtered out before creating Starts."""
+        """Skip cached dependency versions without stranding top-level nodes."""
         bt = bootstrapper.Bootstrapper(tmp_context, multiple_versions=True)
-        item = _make_resolve_item()
+        item = _make_resolve_item(req_type=req_type)
         item.bg_future = _make_resolved_future(
             [
                 ("url-3.0", Version("3.0")),
@@ -431,9 +542,8 @@ class TestPhaseResolve:
         ):
             result = item.run(bt)
 
-        assert len(result) == 2
         versions = {str(it.work_item.resolved_version) for it in result}
-        assert versions == {"1.0", "3.0"}
+        assert versions == expected
 
     def test_all_cached_keeps_highest_version(self, tmp_context: WorkContext) -> None:
         """If all versions are cached, keeps the highest for dependency discovery."""
