@@ -127,7 +127,7 @@ class TestPyPISDistResolver:
         assert isinstance(r, PyPISDistResolver)
         assert r.provider == "pypi-sdist"
         assert str(r.index_url) == "https://pypi.test/simple"
-        assert r.build_sdist == BuildSDist.tarball
+        assert r.build_sdist is BuildSDist.tarball_build_dir
         assert r.min_release_age is None
         assert r.supports_override_hooks is False
         assert r.resolves_prebuilt_wheel is False
@@ -245,7 +245,7 @@ class TestPyPIDownloadResolver:
         assert r.provider == "pypi-download"
         assert str(r.index_url) == "https://pypi.test/simple"
         assert "%7Bversion%7D" in str(r.download_url)
-        assert r.build_sdist == BuildSDist.tarball
+        assert r.build_sdist is BuildSDist.tarball_build_dir
         assert r.min_release_age is None
         assert r.supports_override_hooks is False
         assert r.resolves_prebuilt_wheel is False
@@ -888,7 +888,7 @@ class TestHookSDistResolver:
         source:
           provider: hook-sdist
           index_url: https://index.test/simple
-          build_sdist: tarball
+          build_sdist: tarball-build-dir
     """
 
     def test_parse(self) -> None:
@@ -896,14 +896,22 @@ class TestHookSDistResolver:
         assert isinstance(r, HookSDistResolver)
         assert r.provider == "hook-sdist"
         assert str(r.index_url) == "https://index.test/simple"
-        assert r.build_sdist is BuildSDist.tarball
+        assert r.build_sdist is BuildSDist.tarball_build_dir
         assert r.supports_override_hooks is True
         assert r.resolves_prebuilt_wheel is False
         assert r.download_kinds == frozenset(
             {DownloadKind.sdist, DownloadKind.tarball, DownloadKind.git_checkout}
         )
 
-    @pytest.mark.parametrize("build_method", list(BuildSDist))
+    @pytest.mark.parametrize(
+        "build_method",
+        [
+            BuildSDist.pep517,
+            BuildSDist.tarball_build_dir,
+            BuildSDist.tarball_root_dir,
+            BuildSDist.hook,
+        ],
+    )
     def test_build_sdist_method(self, build_method: BuildSDist) -> None:
         """Load the hook sdist build method from YAML."""
         r = _parse(
@@ -912,6 +920,15 @@ class TestHookSDistResolver:
 
         assert r.build_sdist is build_method
 
+    def test_build_sdist_deprecated_tarball_alias(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Normalize the deprecated tarball alias and log a warning."""
+        r = _parse("source:\n  provider: hook-sdist\n  build_sdist: tarball\n")
+
+        assert r.build_sdist is BuildSDist.tarball_build_dir
+        assert "<n/a>: source.build_sdist 'tarball' is deprecated" in caplog.text
+
     def test_build_sdist_method_required(self) -> None:
         """Require a build method because hook artifacts need different strategies."""
         with pytest.raises(pydantic.ValidationError, match="build_sdist"):
@@ -919,7 +936,9 @@ class TestHookSDistResolver:
 
     def test_default_index_url(self) -> None:
         """Source hook profiles may use the standard PyPI index."""
-        r = _parse("source:\n  provider: hook-sdist\n  build_sdist: tarball\n")
+        r = _parse(
+            "source:\n  provider: hook-sdist\n  build_sdist: tarball-build-dir\n"
+        )
 
         assert isinstance(r, HookSDistResolver)
         assert str(r.index_url) == "https://pypi.org/simple/"
@@ -1453,7 +1472,7 @@ def test_hook_resolver_supports_legacy_hook_signature(
 
     find_override_method.return_value = legacy_hook
     resolver_model = HookSDistResolver(
-        provider="hook-sdist", build_sdist=BuildSDist.tarball
+        provider="hook-sdist", build_sdist=BuildSDist.tarball_build_dir
     )
 
     result = resolver_model.resolver_provider(tmp_context, _REQ, _REQ_TYPE)
@@ -1620,7 +1639,7 @@ def test_hook_resolver_chains_hook_exception(
 
     find_override_method.return_value = hook
     resolver_model = HookSDistResolver(
-        provider="hook-sdist", build_sdist=BuildSDist.tarball
+        provider="hook-sdist", build_sdist=BuildSDist.tarball_build_dir
     )
 
     with pytest.raises(RuntimeError, match="hook-sdist") as exc_info:

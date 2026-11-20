@@ -770,7 +770,10 @@ class PackageSettings(pydantic.BaseModel):
         """Load from a dict"""
         package = Package(canonicalize_name(package, validate=True))
         try:
-            return cls(name=package, has_config=has_config, **parsed)
+            return cls.model_validate(
+                {**parsed, "name": package, "has_config": has_config},
+                context={"package": package, "source": source},
+            )
         except Exception as err:
             raise RuntimeError(
                 f"{package}: failed to load settings (source: {source!r}): {err}"

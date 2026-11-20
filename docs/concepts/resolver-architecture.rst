@@ -212,22 +212,31 @@ Building the Sdist
    Git checkouts can be prepared directly. Configured source resolvers
    also select the sdist build method.
 
-For source builds, ``source.build_sdist`` selects one of three methods:
+For source builds, ``source.build_sdist`` selects one of four methods:
 
 - ``pep517`` builds the sdist with the package's build backend.
   Git checkout resolvers default to it.
-- ``tarball`` repacks the prepared source without VCS metadata such as
-  ``.git``. ``pypi-sdist`` and ``pypi-download`` default to it.
+- ``tarball-build-dir`` repacks the wheel build directory without VCS
+  metadata such as ``.git``. ``pypi-sdist`` and ``pypi-download`` default
+  to it. This is the behaviour of the deprecated ``tarball`` value.
+- ``tarball-root-dir`` repacks the whole prepared source tree without VCS
+  metadata such as ``.git``. Use it when the wheel builds from a
+  subdirectory but the sdist must ship the full tree, as with a native
+  library at the repository root.
 - ``hook`` runs the package's ``build_sdist`` override hook, which can
   generate files or choose which directory to pack.
+
+``tarball`` remains a deprecated alias of ``tarball-build-dir``. Settings
+loading normalizes it to ``tarball-build-dir`` and logs a warning. It will
+be removed in the future.
 
 The choice follows these rules:
 
 - ``hook`` requires an installed, callable hook. If it is missing, the
   build fails before downloading the source. A cached wheel needs no
   hook, so it is used without the check.
-- A configured ``pep517`` or ``tarball`` skips an installed hook with a
-  warning.
+- A configured ``pep517`` or ``tarball-*`` strategy skips an installed
+  hook with a warning.
 - Without ``source:``, the hook runs when present; otherwise the default
   method is used.
 - ``hook-sdist`` has no default and always needs an explicit setting.

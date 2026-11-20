@@ -391,7 +391,7 @@ Source hooks
             build_sdist: hook
 
        The hook must be installed. Without it, the build fails before
-       downloading the source. ``pep517`` and ``tarball`` ignore the hook and log a
+       downloading the source. ``pep517`` and ``tarball-*`` ignore the hook and log a
        warning. Packages without ``source:`` use the hook when it exists.
 
        Any profile that builds from source can select ``hook``.
