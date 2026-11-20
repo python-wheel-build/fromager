@@ -1,3 +1,72 @@
+# Check one PR at a time, on the PR itself. Mergify then updates the PR
+# with main and merges it once CI passes, which the "branches must be up
+# to date" rule requires. Do not raise this: with more than one parallel
+# check, Mergify tests copies of PRs on branches in this repository instead.
+merge_queue:
+  max_parallel_checks: 1
+
+queue_rules:
+  - name: default
+    update_method: rebase
+    merge_method: merge
+    # No merge_conditions: Mergify then reuses queue_conditions, which keeps
+    # the checks on the PR itself.
+    queue_conditions:
+      - "-draft"
+      # At least 1 reviewer from maintainers
+      - "#approved-reviews-by>=1"
+      # Fork PRs that change workflows are merged by hand. So are fork PRs
+      # without "Allow edits by maintainers", since Mergify can't update
+      # them. Merge those only after approval and the checks below pass.
+      - or:
+          - head-repo-full-name=python-wheel-build/fromager
+          - "-files~=^\\.github/workflows/"
+      - or:
+          - and:
+              # Unit tests
+              - check-success=unit (3.12, 1.75, ubuntu-latest)
+              - check-success=unit (3.13, 1.75, ubuntu-latest)
+              - check-success=unit (3.14, 1.75, ubuntu-latest)
+              - check-success=unit (3.14, 1.75, macos-latest)
+
+              # checks (see check.yaml)
+              - check-success=pre-commit
+              - check-success=pkglint
+              - check-success=readthedocs
+
+              # E2E test suites (consolidated from individual tests)
+              # Python 3.12 - Ubuntu only (macOS excluded)
+              - check-success=e2e (3.12, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
+              - check-success=e2e (3.12, 1.75, ci_bootstrap_suite, ubuntu-latest)
+              - check-success=e2e (3.12, 1.75, ci_build_suite, ubuntu-latest)
+              - check-success=e2e (3.12, 1.75, ci_config_suite, ubuntu-latest)
+              - check-success=e2e (3.12, 1.75, ci_specialized_suite, ubuntu-latest)
+              - check-success=e2e (3.12, 1.75, ci_workflow_suite, ubuntu-latest)
+              # Python 3.13 - Ubuntu only (macOS excluded)
+              - check-success=e2e (3.13, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
+              - check-success=e2e (3.13, 1.75, ci_bootstrap_suite, ubuntu-latest)
+              - check-success=e2e (3.13, 1.75, ci_build_suite, ubuntu-latest)
+              - check-success=e2e (3.13, 1.75, ci_config_suite, ubuntu-latest)
+              - check-success=e2e (3.13, 1.75, ci_specialized_suite, ubuntu-latest)
+              - check-success=e2e (3.13, 1.75, ci_workflow_suite, ubuntu-latest)
+              # Python 3.14 - Ubuntu only (macOS excluded)
+              - check-success=e2e (3.14, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
+              - check-success=e2e (3.14, 1.75, ci_bootstrap_suite, ubuntu-latest)
+              - check-success=e2e (3.14, 1.75, ci_build_suite, ubuntu-latest)
+              - check-success=e2e (3.14, 1.75, ci_config_suite, ubuntu-latest)
+              - check-success=e2e (3.14, 1.75, ci_specialized_suite, ubuntu-latest)
+              - check-success=e2e (3.14, 1.75, ci_workflow_suite, ubuntu-latest)
+
+          # Docs-only PRs: test.yaml skips these paths (paths-ignore), so unit
+          # and e2e checks never run. Keep this in sync with paths-ignore.
+          # True when every changed file is under docs/, a top-level *.md or
+          # *.rst file, or LICENSE.
+          - and:
+              - "-files~=^(?!docs/)(?![^/]+\\.(md|rst)$)(?!LICENSE$)"
+              - check-success=pre-commit
+              - check-success=pkglint
+              - check-success=readthedocs
+
 pull_request_rules:
   - name: Add CI label
     conditions:
@@ -24,51 +93,11 @@ pull_request_rules:
         add:
           - mergify
   - name: Automatic merge on approval
-    conditions:
-      - and:
-          - "-draft"
-
-          # Unit tests
-          - check-success=unit (3.12, 1.75, ubuntu-latest)
-          - check-success=unit (3.13, 1.75, ubuntu-latest)
-          - check-success=unit (3.14, 1.75, ubuntu-latest)
-          - check-success=unit (3.14, 1.75, macos-latest)
-
-          # checks (see check.yaml)
-          - check-success=pre-commit
-          - check-success=pkglint
-          - check-success=readthedocs
-
-          # E2E test suites (consolidated from individual tests)
-          # Python 3.12 - Ubuntu only (macOS excluded)
-          - check-success=e2e (3.12, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
-          - check-success=e2e (3.12, 1.75, ci_bootstrap_suite, ubuntu-latest)
-          - check-success=e2e (3.12, 1.75, ci_build_suite, ubuntu-latest)
-          - check-success=e2e (3.12, 1.75, ci_config_suite, ubuntu-latest)
-          - check-success=e2e (3.12, 1.75, ci_specialized_suite, ubuntu-latest)
-          - check-success=e2e (3.12, 1.75, ci_workflow_suite, ubuntu-latest)
-          # Python 3.13 - Ubuntu only (macOS excluded)
-          - check-success=e2e (3.13, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
-          - check-success=e2e (3.13, 1.75, ci_bootstrap_suite, ubuntu-latest)
-          - check-success=e2e (3.13, 1.75, ci_build_suite, ubuntu-latest)
-          - check-success=e2e (3.13, 1.75, ci_config_suite, ubuntu-latest)
-          - check-success=e2e (3.13, 1.75, ci_specialized_suite, ubuntu-latest)
-          - check-success=e2e (3.13, 1.75, ci_workflow_suite, ubuntu-latest)
-          # Python 3.14 - Ubuntu only (macOS excluded)
-          - check-success=e2e (3.14, 1.75, ci_bootstrap_parallel_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_bootstrap_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_build_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_config_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_specialized_suite, ubuntu-latest)
-          - check-success=e2e (3.14, 1.75, ci_workflow_suite, ubuntu-latest)
-
-          # At least 1 reviewer from maintainers
-          - and:
-            - "#approved-reviews-by>=1"
-
+    # Approval and CI requirements are in queue_rules above.
+    conditions: []
     actions:
-      merge:
-        method: merge
+      queue:
+        name: default
 
   - name: Ping author on conflicts
     conditions:
