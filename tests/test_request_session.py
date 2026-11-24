@@ -12,6 +12,7 @@ from fromager.request_session import (
     _resolve_github_auth,
     _resolve_gitlab_auth,
     create_session,
+    resolve_netrc_basic_auth,
 )
 
 
@@ -72,6 +73,19 @@ def test_session_auth() -> None:
     assert auth.get("https://api.test/") == {"X-Token": "new"}
 
 
+def test_session_auth_default() -> None:
+    """Unregistered hosts use the default callback; set_default clears the cache."""
+    auth = SessionAuth()
+    assert auth.get("https://other.test/") == {}
+
+    auth.set_default(lambda s, h: {"X-Token": "netrc"})
+    assert auth.get("https://other.test/") == {"X-Token": "netrc"}
+
+    auth.add("https://api.test", lambda s, h: {"X-Token": "api"})
+    assert auth.get("https://api.test/") == {"X-Token": "api"}
+    assert auth.get("https://other.test/") == {"X-Token": "netrc"}
+
+
 def test_session_auth_add_validation() -> None:
     auth = SessionAuth()
     with pytest.raises(ValueError, match="Unsupported scheme"):
@@ -118,6 +132,21 @@ def test_resolve_gitlab_auth(
     # Netrc with gitlab-ci-token login -> JOB-TOKEN
     mock_netrc.return_value = ("gitlab-ci-token", "job-secret")
     assert _resolve_gitlab_auth("https", "gitlab.com") == {"JOB-TOKEN": "job-secret"}
+
+
+def test_resolve_netrc_basic_auth(mock_netrc: MagicMock) -> None:
+    """Netrc credentials become a Basic auth header, missing ones are empty."""
+    assert resolve_netrc_basic_auth("https", "pkg.test") == {}
+
+    mock_netrc.return_value = ("user", "pass")
+    assert resolve_netrc_basic_auth("https", "pkg.test") == {
+        "Authorization": "Basic dXNlcjpwYXNz"
+    }
+    mock_netrc.assert_called_with("https://pkg.test")
+
+    # IPv6 literals are bracketed again
+    resolve_netrc_basic_auth("https", "::1")
+    mock_netrc.assert_called_with("https://[::1]")
 
 
 def test_create_session(
