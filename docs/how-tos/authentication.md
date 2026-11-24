@@ -25,6 +25,16 @@ the first match:
 2. `CI_JOB_TOKEN` environment variable
 3. `GITLAB_PRIVATE_TOKEN` environment variable
 
+**Other hosts**, such as private wheel indexes, use matching netrc
+credentials as HTTP Basic authentication. Registered callbacks take
+precedence. Plugins can change the fallback with
+`SessionAuth.set_default`.
+
+```{versionchanged} 0.105.0
+Restore netrc Basic authentication for hosts without a registered
+authentication callback.
+```
+
 ## netrc
 
 The [requests](https://requests.readthedocs.io) library, `pip`, and
