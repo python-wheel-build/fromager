@@ -45,8 +45,8 @@ class Resolve(Phase):
     Resolution runs in a background thread (via ``background_work``); ``run()``
     blocks until the result is ready.  In normal mode the highest matching
     version is used; in ``multiple_versions`` mode every candidate version is
-    returned, minus any that previously failed or whose wheels are already
-    cached.
+    returned, minus any that previously failed. Cached dependency versions can
+    be skipped, but top-level versions always need dependency discovery.
 
     Next phase: one ``Start`` item per version that still needs processing.
     """
@@ -77,13 +77,12 @@ class Resolve(Phase):
 
         Centralizes version resolution so all dependencies are expanded
         uniformly. In multiple_versions mode, filters out versions that
-        already failed in this run and versions whose wheels are already
-        cached to avoid redundant builds and transitive dependency
-        processing.
+        already failed in this run and cached dependency versions. Retains
+        cached top-level versions so their existing graph nodes acquire build
+        edges before a later build encounters a cache miss.
 
         Returns:
-            One Start item per resolved version that needs building.
-            Empty list if all versions are already cached.
+            One Start item per resolved version that needs dependency discovery.
         """
         assert self.bg_future is not None
         # bg_future.result() blocks until the background resolution completes,
@@ -115,12 +114,20 @@ class Resolve(Phase):
                 cached_wheel, _ = _cache.find_cached_wheel(
                     bt.ctx, bt.cache_wheel_server_url, self.work_item.req, version
                 )
-                if cached_wheel:
+                if (
+                    cached_wheel
+                    and self.work_item.req_type != RequirementType.TOP_LEVEL
+                ):
                     logger.info(
                         f"{self.work_item.req.name}=={version}: wheel already cached "
                         f"at {cached_wheel.name}, skipping"
                     )
                 else:
+                    # Every top-level version was already added to graph.json.
+                    # Leaving a cached version unprocessed would give it no
+                    # build edges if its wheel disappears before build-parallel.
+                    # PrepareSource reuses the wheel's saved build requirements,
+                    # and Build reuses the cached wheel instead of rebuilding it.
                     filtered.append((source_url, version))
             if not filtered:
                 # Always process the highest version (first in
