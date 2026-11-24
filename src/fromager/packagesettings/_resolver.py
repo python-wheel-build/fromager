@@ -31,7 +31,24 @@ class BuildSDist(enum.StrEnum):
     """Source distribution build method."""
 
     pep517 = "pep517"
+    tarball_build_dir = "tarball-build-dir"
+    """Repack the package's wheel build directory.
+
+    .. versionadded:: 0.105.0
+    """
+    tarball_root_dir = "tarball-root-dir"
+    """Repack the whole prepared source tree without VCS metadata such as
+    ``.git``.
+
+    .. versionadded:: 0.105.0
+    """
     tarball = "tarball"
+    """Deprecated alias of ``tarball-build-dir``.
+
+    .. deprecated:: 0.105.0
+       Use ``tarball-build-dir`` or ``tarball-root-dir``. This value will be
+       removed in the future.
+    """
     hook = "hook"
     """Call the package's ``build_sdist`` override hook.
 
@@ -92,6 +109,25 @@ class AbstractResolver(pydantic.BaseModel):
 
     resolves_prebuilt_wheel: typing.ClassVar[bool] = False
     """Does resolver return pre-built wheels?"""
+
+    @pydantic.field_validator("build_sdist", mode="after")
+    @classmethod
+    def _normalize_deprecated_tarball(
+        cls, value: BuildSDist | None, info: pydantic.ValidationInfo
+    ) -> BuildSDist | None:
+        """Replace the deprecated ``tarball`` alias and log a warning."""
+        if value is not BuildSDist.tarball:
+            return value
+        context = info.context or {}
+        package = context.get("package", "<n/a>")
+        logger.warning(
+            "%s: source.build_sdist 'tarball' is deprecated and will be "
+            "removed in the future; use 'tarball-build-dir' to repack the "
+            "build directory or 'tarball-root-dir' to repack the whole "
+            "source tree",
+            package,
+        )
+        return BuildSDist.tarball_build_dir
 
     def resolver_provider(
         self,
@@ -261,7 +297,7 @@ class PyPISDistResolver(AbstractPyPIResolver):
 
     # Tarball repacking is the safe default because some PEP 517 backends
     # require VCS metadata to generate a correct sdist.
-    build_sdist: BuildSDist = BuildSDist.tarball
+    build_sdist: BuildSDist = BuildSDist.tarball_build_dir
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset({DownloadKind.sdist})
 
     def resolver_provider(
@@ -373,7 +409,7 @@ class PyPIDownloadResolver(AbstractPyPIResolver):
     URL must contain '{version}' template string.
     """
 
-    build_sdist: BuildSDist = BuildSDist.tarball
+    build_sdist: BuildSDist = BuildSDist.tarball_build_dir
     download_kinds: typing.ClassVar[DownloadKindSet] = frozenset(
         {DownloadKind.sdist, DownloadKind.tarball}
     )
@@ -963,15 +999,16 @@ class HookSDistResolver(AbstractHookResolver):
     return ``DownloadedSource`` with a concrete kind, or a legacy archive
     ``Path`` treated as an sdist.
     Without a download hook, the resolved URL is downloaded as an sdist.
-    Specify ``build_sdist`` explicitly: ``tarball`` to repack an existing
-    sdist, ``pep517`` to build from a git checkout, or ``hook`` to call
-    the package's ``build_sdist`` override.
+    Specify ``build_sdist`` explicitly: ``tarball-build-dir`` to repack an
+    existing sdist, ``tarball-root-dir`` to repack the whole source tree,
+    ``pep517`` to build from a git checkout, or ``hook`` to call the
+    package's ``build_sdist`` override.
 
     Example::
 
         provider: hook-sdist
         index_url: https://pypi.test/simple
-        build_sdist: tarball
+        build_sdist: tarball-build-dir
     """
 
     provider: typing.Literal["hook-sdist"]

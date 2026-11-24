@@ -1201,6 +1201,18 @@ def test_variant_info_with_source() -> None:
     assert isinstance(vi.source, PyPIPrebuiltResolver)
 
 
+def test_package_settings_deprecated_tarball_alias(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Normalize the deprecated alias and name the package in the warning."""
+    yaml_str = "source:\n  provider: pypi-sdist\n  build_sdist: tarball\n"
+    ps = PackageSettings.from_string("test-source-pkg", yaml_str)
+
+    assert ps.source is not None
+    assert ps.source.build_sdist is BuildSDist.tarball_build_dir
+    assert "test-source-pkg: source.build_sdist 'tarball' is deprecated" in caplog.text
+
+
 def test_package_settings_without_source() -> None:
     """``PackageSettings`` without ``source:`` has ``source=None``."""
     ps = PackageSettings.from_default("test-pkg")

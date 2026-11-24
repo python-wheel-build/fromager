@@ -649,10 +649,17 @@ def build_sdist(
     """Build a source distribution using the configured strategy or legacy hook.
 
     ``source.build_sdist: hook`` requires a package override. Configured
-    ``pep517`` and ``tarball`` strategies take precedence over overrides.
+    ``pep517`` and ``tarball-*`` strategies take precedence over overrides.
+    ``tarball`` is a deprecated alias of ``tarball-build-dir`` and will be
+    removed in the future.
 
     .. versionchanged:: 0.104.0
        Configured source profiles can select the ``build_sdist`` override.
+
+    .. versionchanged:: 0.105.0
+       ``tarball-build-dir`` and ``tarball-root-dir`` select the packed
+       directory. ``tarball`` is normalized to ``tarball-build-dir`` with a
+       deprecation warning when settings load.
     """
     pbi = ctx.package_build_info(req)
     source_resolver = pbi.source_resolver
@@ -702,7 +709,11 @@ def build_sdist(
             sdist_root_dir=sdist_root_dir,
             build_env=build_env,
         )
-    elif strategy is packagesettings.BuildSDist.tarball:
+    elif strategy in (
+        packagesettings.BuildSDist.tarball_build_dir,
+        # deprecated alias, in case a resolver bypassed settings validation
+        packagesettings.BuildSDist.tarball,
+    ):
         sdist_file = default_build_sdist(
             ctx=ctx,
             extra_environ=extra_environ,
@@ -711,6 +722,17 @@ def build_sdist(
             sdist_root_dir=sdist_root_dir,
             build_dir=build_dir,
             build_env=build_env,
+        )
+    elif strategy is packagesettings.BuildSDist.tarball_root_dir:
+        sdist_file = default_build_sdist(
+            ctx=ctx,
+            extra_environ=extra_environ,
+            req=req,
+            version=version,
+            sdist_root_dir=sdist_root_dir,
+            build_dir=build_dir,
+            build_env=build_env,
+            sdist_base_dir=sdist_root_dir,
         )
     else:
         raise ValueError(
@@ -740,9 +762,14 @@ def default_build_sdist(
     build_env: build_environment.BuildEnvironment,
     build_dir: pathlib.Path,
     *,
+    sdist_base_dir: pathlib.Path | None = None,
     exclude_vcs: bool | None = None,
 ) -> pathlib.Path:
-    """Repack *build_dir* as an sdist.
+    """Repack *sdist_base_dir* as an sdist.
+
+    *sdist_base_dir* defaults to *build_dir*. Pass *sdist_root_dir* to pack
+    the whole source tree while still adding ``PKG-INFO`` to the wheel build
+    directory.
 
     With *exclude_vcs*, VCS metadata such as ``.git`` is left out. By default,
     exclude it when ``source:`` is configured, and retain it otherwise.
@@ -751,7 +778,12 @@ def default_build_sdist(
     .. versionchanged:: 0.104.0
        With ``exclude_vcs=None``, exclude VCS metadata when the effective
        package or variant has ``source:`` configured; retain it otherwise.
+
+    .. versionchanged:: 0.105.0
+       Added *sdist_base_dir* to select the packed directory.
     """
+    if sdist_base_dir is None:
+        sdist_base_dir = build_dir
     if exclude_vcs is None:
         exclude_vcs = ctx.package_build_info(req).source_resolver is not None
     # It seems like the "correct" way to do this would be to run the
@@ -780,8 +812,8 @@ def default_build_sdist(
     with tarfile.open(sdist_filename, "x:gz", format=tarfile.PAX_FORMAT) as sdist:
         tarballs.tar_reproducible(
             tar=sdist,
-            basedir=build_dir,
-            prefix=build_dir.parent,
+            basedir=sdist_base_dir,
+            prefix=sdist_base_dir.parent,
             exclude_vcs=exclude_vcs,
             arcname_root=f"{dist_name}-{version}",
         )
