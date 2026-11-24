@@ -187,6 +187,44 @@ def _make_repo(repo: pathlib.Path) -> pathlib.Path:
     return repo
 
 
+@needs_git_command
+@pytest.mark.parametrize("ref", ["refs/tags/v2~1", "refs/tags/v2^"])
+def test_git_clone_fast_accepts_revision_expressions(
+    tmp_path: pathlib.Path, ref: str
+) -> None:
+    """Check out revision expressions without using them as fetch refspecs."""
+    repo = _make_repo(tmp_path / "repo")
+    commit = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "commit", "--allow-empty", "-m", "Second commit")
+    _git(repo, "tag", "v2")
+    checkout = tmp_path / "checkout"
+
+    git_clone_fast(output_dir=checkout, repo_url=repo.as_uri(), ref=ref)
+
+    assert _git(checkout, "rev-parse", "HEAD").strip() == commit
+
+
+@needs_git_command
+@pytest.mark.parametrize("ref", ["refs/remotes/upstream/main", "refs/pull/123/head"])
+def test_git_clone_fast_respects_default_remote_name(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, ref: str
+) -> None:
+    """Preserve configured tracking refs and fetch missing refs from that remote."""
+    repo = _make_repo(tmp_path / "repo")
+    _git(repo, "branch", "-M", "main")
+    commit = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "update-ref", "refs/pull/123/head", commit)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "clone.defaultRemoteName")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "upstream")
+    checkout = tmp_path / "checkout"
+
+    git_clone_fast(output_dir=checkout, repo_url=repo.as_uri(), ref=ref)
+
+    assert _git(checkout, "rev-parse", "HEAD").strip() == commit
+    assert _git(checkout, "remote").strip() == "upstream"
+
+
 def _clone(repo: pathlib.Path, checkout: pathlib.Path, ref: str) -> pathlib.Path:
     """Clone *repo* to *checkout* and check out *ref* with submodules."""
     _git(repo.parent, "clone", "--recurse-submodules", str(repo), str(checkout))

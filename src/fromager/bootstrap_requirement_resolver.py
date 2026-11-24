@@ -16,8 +16,9 @@ from packaging.utils import NormalizedName, canonicalize_name
 from packaging.version import Version
 from resolvelib.resolvers import ResolverException
 
-from . import resolver, sources, wheels
+from . import gitutils, resolver, sources, wheels
 from .dependency_graph import DependencyGraph
+from .packagesettings import DownloadKind
 from .requirements_file import RequirementType
 
 if typing.TYPE_CHECKING:
@@ -178,6 +179,20 @@ class BootstrapRequirementResolver:
             source_resolver is not None and source_resolver.resolves_prebuilt_wheel
         )
         if cached_resolution:
+            if (
+                not pre_built
+                and source_resolver is not None
+                and source_resolver.download_kinds == {DownloadKind.git_checkout}
+            ):
+                for url, _ in cached_resolution:
+                    try:
+                        gitutils.parse_vcs_url(url)
+                    except ValueError as err:
+                        raise ValueError(
+                            f"{req.name}: previous bootstrap source URL is incompatible "
+                            f"with {source_resolver.provider!r}; bootstrap without "
+                            "--previous-bootstrap-file after changing source providers"
+                        ) from err
             logger.debug(
                 f"resolved from previous bootstrap: {len(cached_resolution)} version(s)"
             )

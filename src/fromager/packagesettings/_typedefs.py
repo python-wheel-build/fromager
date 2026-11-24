@@ -23,6 +23,8 @@ MODEL_CONFIG = pydantic.ConfigDict(
     use_attribute_docstrings=True,
     # preserve URLs as-is without trailing slash normalization
     url_preserve_empty_path=True,
+    # settings inputs may contain credentials
+    hide_input_in_errors=True,
 )
 
 

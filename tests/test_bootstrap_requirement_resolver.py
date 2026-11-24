@@ -469,6 +469,84 @@ def test_configured_pypi_prebuilt_resolves_from_selected_index(
     legacy.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "provider: versionmap-git\n  clone_url: https://git.test/repo.git\n"
+        "  versionmap: {'1.0': 'refs/tags/v1.0'}\n",
+        "provider: pypi-git\n  clone_url: https://git.test/repo.git\n"
+        "  tag: 'v{version}'\n",
+    ],
+)
+def test_configured_git_rejects_archive_from_previous_graph(
+    tmp_context: WorkContext, source: str
+) -> None:
+    """Report incompatible pinned URLs before dispatching to the Git downloader."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name(req.name)] = (
+        packagesettings.PackageSettings.from_string(req.name, f"source:\n  {source}")
+    )
+    graph = DependencyGraph()
+    graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=req,
+        req_version=Version("1.0"),
+        download_url="https://pkg.test/pkg-1.0.tar.gz",
+    )
+
+    with (
+        patch(
+            "fromager.bootstrap_requirement_resolver.sources.get_source_provider"
+        ) as provider,
+        pytest.raises(ValueError, match="previous bootstrap.*incompatible"),
+    ):
+        BootstrapRequirementResolver(tmp_context, graph).resolve(
+            req, RequirementType.TOP_LEVEL
+        )
+
+    provider.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("pre_built", "url"),
+    [
+        (False, "git+https://git.test/recorded.git@refs/tags/recorded"),
+        (True, "https://pkg.test/pkg-1.0-py3-none-any.whl"),
+    ],
+)
+def test_configured_git_preserves_compatible_previous_graph(
+    tmp_context: WorkContext, pre_built: bool, url: str
+) -> None:
+    """Keep recorded Git URLs and the prebuilt fallback pinned to the graph."""
+    req = Requirement("pkg==1.0")
+    tmp_context.settings._package_settings[canonicalize_name(req.name)] = (
+        packagesettings.PackageSettings.from_string(
+            req.name,
+            "source:\n  provider: versionmap-git\n"
+            "  clone_url: https://git.test/current.git\n"
+            "  versionmap: {'1.0': 'refs/tags/current'}\n",
+        )
+    )
+    graph = DependencyGraph()
+    graph.add_dependency(
+        parent_name=None,
+        parent_version=None,
+        req_type=RequirementType.TOP_LEVEL,
+        req=req,
+        req_version=Version("1.0"),
+        download_url=url,
+        pre_built=pre_built,
+    )
+
+    result = BootstrapRequirementResolver(tmp_context, graph).resolve(
+        req, RequirementType.TOP_LEVEL, pre_built=pre_built
+    )
+
+    assert result == [(url, Version("1.0"))]
+
+
 def test_configured_hook_prebuilt_uses_hook_provider(
     tmp_context: WorkContext,
 ) -> None:

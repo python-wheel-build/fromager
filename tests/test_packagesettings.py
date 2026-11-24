@@ -1,5 +1,6 @@
 import os
 import pathlib
+import traceback
 import typing
 from unittest.mock import Mock, patch
 
@@ -27,6 +28,7 @@ from fromager.packagesettings import (
     SettingsFile,
     SourceResolver,
     Variant,
+    VersionMapGitResolver,
     substitute_template,
 )
 from fromager.packagesettings._models import DeleteEnvPattern, KeepEnvPattern
@@ -1174,6 +1176,38 @@ def test_filter_env(
 # -- source field and source_resolver PBI property ----------------------------
 
 
+@pytest.mark.parametrize(
+    ("provider", "options"),
+    [
+        ("pypi-git", "tag: 'v{version}'"),
+        ("versionmap-git", "versionmap: {'1.0': 'refs/tags/v1.0'}"),
+    ],
+)
+@pytest.mark.parametrize(
+    "clone_url",
+    [
+        "http://user:test-token@git.test/repo.git",
+        "ssh://user:test-token@git.test",
+        "ssh://user:test-token@/repo.git",
+        "https://user:test-token@git.test/repo.git?query=1",
+        "https://user:test-token@git.test/repo.git#fragment",
+        "https://user:test-token@git.test:invalid/repo.git",
+    ],
+)
+def test_clone_url_errors_hide_credentials(
+    provider: str, options: str, clone_url: str
+) -> None:
+    """Keep clone credentials out of settings errors and chained tracebacks."""
+    raw_yaml = (
+        f"source:\n  provider: {provider}\n  clone_url: {clone_url}\n  {options}\n"
+    )
+
+    with pytest.raises(RuntimeError, match="clone_url") as exc_info:
+        PackageSettings.from_string(TEST_PKG, raw_yaml)
+
+    assert "test-token" not in "".join(traceback.format_exception(exc_info.value))
+
+
 def test_source_resolver_importable() -> None:
     """``SourceResolver`` is importable from ``fromager.packagesettings``."""
     args = typing.get_args(SourceResolver)
@@ -1181,6 +1215,7 @@ def test_source_resolver_importable() -> None:
     union_members = typing.get_args(args[0])
     assert PyPISDistResolver in union_members
     assert PyPIPrebuiltResolver in union_members
+    assert VersionMapGitResolver in union_members
 
 
 def test_package_settings_with_source() -> None:
@@ -1190,6 +1225,42 @@ def test_package_settings_with_source() -> None:
     assert ps.source is not None
     assert isinstance(ps.source, PyPISDistResolver)
     assert ps.source.provider == "pypi-sdist"
+
+
+@pytest.mark.parametrize("variant_source", [False, True])
+def test_package_settings_with_versionmap_source(
+    tmp_path: pathlib.Path, variant_source: bool
+) -> None:
+    """Select mapped Git sources from package or variant settings."""
+    source = {
+        "provider": "versionmap-git",
+        "clone_url": "https://git.test/project/repo.git",
+        "versionmap": {
+            "1.0": "abad1deaabad1deaabad1deaabad1deaabad1dea",
+            "1.1": "refs/tags/1.1",
+        },
+    }
+    data = (
+        {"variants": {"cpu": {"source": source}}}
+        if variant_source
+        else {"source": source}
+    )
+    ps = PackageSettings.model_validate(
+        {"name": "test-pkg", "has_config": True, **data}
+    )
+    settings = Settings(
+        settings=SettingsFile(),
+        package_settings=[ps],
+        variant="cpu",
+        patches_dir=tmp_path,
+        max_jobs=1,
+    )
+
+    pbi = settings.package_build_info("test-pkg")
+
+    assert isinstance(pbi.source_resolver, VersionMapGitResolver)
+    assert pbi.source_resolver.versionmap == source["versionmap"]
+    assert pbi.pre_built is False
 
 
 def test_variant_info_with_source() -> None:
