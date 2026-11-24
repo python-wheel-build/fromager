@@ -1,4 +1,6 @@
 import json
+import pathlib
+import subprocess
 import textwrap
 from unittest.mock import Mock, patch
 
@@ -9,6 +11,68 @@ from packaging.version import Version
 from fromager import build_environment
 from fromager.context import WorkContext
 from fromager.requirements_file import RequirementType
+
+
+def test_install_keeps_earlier_explicit_bounds_across_phases(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A later transitive upgrade must still satisfy the first phase's cap."""
+    ctx = Mock(pip_constraint_args=[], pip_wheel_server_args=[])
+    with patch.object(build_environment.BuildEnvironment, "_createenv"):
+        env = build_environment.BuildEnvironment(
+            ctx=ctx, req=Requirement("pyarrow==15.0.2"), sdist_root_dir=tmp_path
+        )
+    with patch.object(env, "run") as run:
+        env.install(iter([Requirement("setuptools<82")]))
+        env.install(
+            iter([Requirement("setuptools_scm<8"), Requirement("cython>=0.29")])
+        )
+
+    second_command = run.call_args_list[1].args[0]
+    assert second_command[-3:] == [
+        "setuptools<82",
+        "setuptools_scm<8",
+        "cython>=0.29",
+    ]
+
+
+def test_failed_later_install_reports_earlier_bounds(tmp_path: pathlib.Path) -> None:
+    """A conflict report includes the bound from the first phase."""
+    ctx = Mock(pip_constraint_args=[], pip_wheel_server_args=[])
+    with patch.object(build_environment.BuildEnvironment, "_createenv"):
+        env = build_environment.BuildEnvironment(
+            ctx=ctx, req=Requirement("pyarrow"), sdist_root_dir=tmp_path
+        )
+    failure = subprocess.CalledProcessError(
+        1, "uv pip install", output="Because you require setuptools>=82"
+    )
+    with (
+        patch.object(env, "run", side_effect=[None, failure]),
+        patch("fromager.resolver.resolve", return_value=("", Version("81"))) as resolve,
+    ):
+        build_environment._safe_install(
+            ctx,
+            Requirement("pyarrow"),
+            env,
+            [Requirement("setuptools<82")],
+            RequirementType.BUILD_SYSTEM,
+        )
+        with pytest.raises(build_environment.MissingDependency) as exc:
+            build_environment._safe_install(
+                ctx,
+                Requirement("pyarrow"),
+                env,
+                [Requirement("setuptools>=82")],
+                RequirementType.BUILD_BACKEND,
+            )
+
+    assert resolve.call_count == 1
+    assert [str(req) for req in exc.value.all_reqs] == [
+        "setuptools<82",
+        "setuptools>=82",
+    ]
+    assert "setuptools<82 (earlier bound)" in str(exc.value)
+    assert [str(req) for req in env._installed_requirements] == ["setuptools<82"]
 
 
 @patch("fromager.resolver.resolve")
