@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests.exceptions
+from conftest import _configure_package, _source_yaml
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
@@ -46,20 +47,6 @@ from fromager.packagesettings import (
     WheelSettings,
 )
 from fromager.requirements_file import RequirementType, SourceType
-
-
-def _configure_package(ctx: WorkContext, yaml_str: str) -> None:
-    """Apply one package setting to the test context."""
-    ps = PackageSettings.from_string("pkg", yaml_str)
-    ctx.settings._package_settings[ps.name] = ps
-
-
-def _source_yaml(provider: str) -> str:
-    """Return package settings that select a configured source provider."""
-    yaml_str = f"source:\n  provider: {provider}\n"
-    if provider == "hook-prebuilt":
-        yaml_str += "  index_url: https://index.test/simple\n"
-    return yaml_str
 
 
 def test_phase_subclass_without_phase_attribute_raises() -> None:
